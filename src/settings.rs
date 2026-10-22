@@ -559,6 +559,7 @@ pub enum Message {
     SetupDismissed(bool),
     SetupOpen(bool),
     OpenWeatherSource,
+    OpenIslandsGuide,
     ShowControls,
     Restore(bool),
     Capture,
@@ -2618,6 +2619,13 @@ impl Settings {
                     "/usr/bin/xdg-open".into(),
                     vec![self.calendar.connection.web_url()],
                     "Calendar opened",
+                );
+            }
+            Message::OpenIslandsGuide => {
+                return run_command(
+                    "/usr/bin/xdg-open".into(),
+                    vec!["https://github.com/profilaz3/halcyon/blob/main/packaging/islands/README.md".into()],
+                    "Islands guide opened",
                 );
             }
             Message::OpenWeatherSource => {

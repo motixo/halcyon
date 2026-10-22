@@ -40,10 +40,11 @@ jobs:
           done
           python3 -m unittest scripts/test_controller.py
           python3 -m unittest discover -s packaging -p 'test_*.py'
+          python3 packaging/islands/test_islands.py
       - name: Test Rust
-        # Some rendering tests need a COSMIC/Wayland display unavailable on this runner.
-        continue-on-error: true
-        run: cargo test --locked
+        run: cargo test --locked -- --test-threads=1
+      - name: Test Islands core
+        run: cargo test --locked --manifest-path companion/dock-islands-core/Cargo.toml
       - name: Install license report generator
         run: cargo install cargo-about --locked --version 0.9.2 --features cli
       - name: Collect dependency licenses
@@ -60,6 +61,7 @@ jobs:
             --output-file packaging/licenses/THIRD_PARTY_LICENSES.txt
           cat "$RUNNER_TEMP/source-license-notices.txt" >> packaging/licenses/THIRD_PARTY_LICENSES.txt
       - name: Build Debian package
+        id: package
         env:
           GOOGLE_CALENDAR_CLIENT_JSON: ${{ secrets.GOOGLE_CALENDAR_CLIENT_JSON }}
         run: |
@@ -84,6 +86,9 @@ jobs:
           args=()
           if [[ -s "$client_file" ]]; then
             args+=(--google-client "$client_file")
+            echo "calendar=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "calendar=false" >> "$GITHUB_OUTPUT"
           fi
           unset GOOGLE_CALENDAR_CLIENT_JSON
           python3 packaging/build-deb.py --binary target/release/halcyon \
@@ -96,9 +101,22 @@ jobs:
         # Warnings are reported but do not prevent a release. Errors still fail.
         run: lintian --allow-root --fail-on error dist/*.deb
       - name: Prepare release notes
+        env:
+          CALENDAR_CONFIGURED: ${{ steps.package.outputs.calendar }}
         run: |
           dpkg-parsechangelog --file packaging/debian/changelog --count 1 \
             --show-field Changes > "$RUNNER_TEMP/halcyon-release-notes.txt"
+          cat >> "$RUNNER_TEMP/halcyon-release-notes.txt" <<'NOTES'
+
+          Install the main .deb on Pop!_OS 24.04. Islands is optional and distributed separately.
+          Updates for this first release are downloaded from GitHub Releases; the APT feed is not yet active.
+          See packaging/islands/README.md for supported COSMIC versions and activation.
+          NOTES
+          if [[ "$CALENDAR_CONFIGURED" == true ]]; then
+            echo "Google Calendar sign-in is included; availability also depends on the publisher's Google consent configuration." >> "$RUNNER_TEMP/halcyon-release-notes.txt"
+          else
+            echo "Google Calendar sign-in is not configured in this build. All other widgets work without a Google account." >> "$RUNNER_TEMP/halcyon-release-notes.txt"
+          fi
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:

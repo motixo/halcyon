@@ -29,7 +29,7 @@ def stage_file(source, destination, mode=0o644):
     destination.chmod(mode)
 
 
-def build(binary, manifest, version, out):
+def build(binary, manifest, version, out, licenses=None):
     if not re.fullmatch(r'[0-9][A-Za-z0-9.+:~\-]*', version):
         raise ValueError('Invalid Debian version')
     subprocess.run(['dpkg', '--validate-version', version], check=True)
@@ -48,17 +48,24 @@ def build(binary, manifest, version, out):
         # build's behavior is unchanged; the manifest records the new hash.
         staged = library / 'cosmic-panel-islands'
         if staged.read_bytes()[:4] == b'\x7fELF':
+            if licenses is None or not licenses.is_file() or not licenses.stat().st_size:
+                raise ValueError('Native releases require --licenses with dependency notices')
             subprocess.run(['strip', '--strip-unneeded', str(staged)], check=True)
             record = json.loads((library / 'companion-manifest.json').read_text())
             record['binary_sha256'] = hashlib.sha256(staged.read_bytes()).hexdigest()
             (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
             if not panel_launcher.compatible(library, panel_launcher.PACKAGES, 'companion-manifest.json'):
                 raise ValueError('The stripped binary fails the selector checks')
+        record = json.loads((library / 'companion-manifest.json').read_text())
+        record['packages'] = panel_launcher.PACKAGES
+        (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
         for name in ('install.py', 'panel_launcher.py'):
             stage_file(COMPANION / name, library / name, 0o755)
         stage_file(HERE / 'halcyon-islands', staging / 'usr/bin/halcyon-islands', 0o755)
         docs = staging / 'usr/share/doc' / PACKAGE
         stage_file(HERE / 'copyright', docs / 'copyright')
+        if licenses is not None:
+            stage_file(licenses, docs / 'THIRD_PARTY_LICENSES.txt')
         stage_file(HERE / 'README.md', docs / 'README')
         changelog = (f'{PACKAGE} ({version}) unstable; urgency=medium\n\n'
                      '  * Package the optional, version-locked Islands panel.\n\n'
@@ -67,13 +74,23 @@ def build(binary, manifest, version, out):
         man = staging / 'usr/share/man/man1/halcyon-islands.1.gz'
         man.parent.mkdir(parents=True)
         man.write_bytes(gzip.compress((HERE / 'halcyon-islands.1').read_bytes(), mtime=0))
+        debian = Path(temporary) / 'debian'
+        debian.mkdir()
+        (debian / 'control').write_text(
+            f'Source: {PACKAGE}\nSection: utils\nPriority: optional\n'
+            f'Maintainer: {MAINTAINER}\n\nPackage: {PACKAGE}\n'
+            'Architecture: amd64\nDescription: Optional Islands panel\n')
         shlibs = subprocess.run(
             ['dpkg-shlibdeps', '-O', f'-e{library / "cosmic-panel-islands"}'],
             cwd=Path(temporary), capture_output=True, text=True)
-        native = shlibs.stdout.strip().removeprefix('shlibs:Depends=')
+        native = next((line.removeprefix('shlibs:Depends=').strip()
+                       for line in shlibs.stdout.splitlines()
+                       if line.startswith('shlibs:Depends=')), '')
+        if staged.read_bytes()[:4] == b'\x7fELF' and (shlibs.returncode != 0 or not native):
+            raise ValueError('Cannot determine native library dependencies: ' + shlibs.stderr.strip())
         dependencies = ([native] if shlibs.returncode == 0 and native else ['libc6']) + [
             'python3', 'cosmic-ext-halcyon'] + [
-            f'{name} (= {pin})' for name, pin in panel_launcher.PACKAGES.items()]
+            name for name in panel_launcher.PACKAGES]
         size = sum(path.stat().st_size for path in staging.rglob('*') if path.is_file())
         control = staging / 'DEBIAN/control'
         control.parent.mkdir()
@@ -85,7 +102,8 @@ def build(binary, manifest, version, out):
             'Homepage: https://github.com/profilaz3/halcyon\n'
             'Description: optional version-locked floating panel islands for Halcyon\n'
             ' A patched COSMIC panel that splits the panel into floating islands.\n'
-            ' This separate add-on requires the exact tested COSMIC package versions.\n'
+            ' The launcher uses the standard panel when COSMIC versions do not match.\n'
+            ' Installing the add-on never holds back COSMIC system updates.\n'
             ' Activation is per user with halcyon-islands enable, at the next login.\n'
             ' Installing this package does not activate or restart a panel.\n')
         staging.chmod(0o755)
@@ -112,10 +130,11 @@ def main():
     parser.add_argument('--binary', type=Path, required=True, help='prebuilt cosmic-panel-islands')
     parser.add_argument('--manifest', type=Path, required=True, help='reviewed companion-manifest.json')
     parser.add_argument('--version', required=True)
+    parser.add_argument('--licenses', type=Path, help='dependency license report (required for native binaries)')
     parser.add_argument('--out', type=Path, required=True, help='output directory')
     args = parser.parse_args()
     try:
-        print(build(args.binary, args.manifest, args.version, args.out))
+        print(build(args.binary, args.manifest, args.version, args.out, args.licenses))
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f'Cannot build Islands package: {error}\n')
 

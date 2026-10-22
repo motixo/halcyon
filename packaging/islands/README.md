@@ -8,8 +8,9 @@ Choose the Islands style in Halcyon's Dock & panel settings after activation.
 
 ## Supported versions
 
-The selector in `companion/panel_launcher.py` is the source of the package pins.
-The package requires these exact installed versions:
+The selector in `companion/panel_launcher.py` checks these versions at runtime.
+APT dependencies are unversioned so the add-on never holds back COSMIC updates.
+Islands runs only with this tested combination:
 
 | Package | Version |
 | --- | --- |
@@ -115,12 +116,33 @@ manifest.write_text(json.dumps({
 PY
 python3 packaging/islands/build-deb.py \
   --binary /path/to/cosmic-panel-islands \
+  --licenses /path/to/ISLANDS_THIRD_PARTY_LICENSES.txt \
   --manifest /path/to/companion-manifest.json --version 0.1.0 --out dist
 ```
 
 The builder needs Python 3 and dpkg tools, never invokes Cargo, and validates the
 binary and manifest with the selector. It outputs
 `cosmic-ext-halcyon-islands_<v>_amd64.deb` and a sibling `.deb.sha256` file.
+Generate the companion's notices from its reconstructed source, using the
+same cargo-about version as the release workflow:
+
+```sh
+cat packaging/licenses/about.toml packaging/islands/licenses.toml > /tmp/islands-about.toml
+cargo about generate --locked --fail \
+  --manifest-path /path/to/new-panel-source/Cargo.toml \
+  --config /tmp/islands-about.toml packaging/licenses/about.hbs \
+  --output-file /path/to/ISLANDS_THIRD_PARTY_LICENSES.txt
+cargo metadata --locked --format-version 1 --filter-platform x86_64-unknown-linux-gnu \
+  --manifest-path /path/to/new-panel-source/Cargo.toml > /tmp/islands-metadata.json
+python3 packaging/collect-licenses.py --metadata /tmp/islands-metadata.json \
+  --cargo-home "$HOME/.cargo" --allow-missing --out /tmp/islands-source-notices.txt
+cat /tmp/islands-source-notices.txt >> /path/to/ISLANDS_THIRD_PARTY_LICENSES.txt
+```
+
+The native package builder requires this report and includes it in the package.
+Review collector warnings: cargo-about supplies standard license text where
+upstream crates omit standalone notice files.
+
 Set `SOURCE_DATE_EPOCH` for reproducible package timestamps. The binary must be
 an amd64 release build compatible with the target system's native libraries;
 the fake-binary tests do not establish native runtime compatibility.

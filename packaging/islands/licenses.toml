@@ -1,0 +1,26 @@
+# Append to packaging/licenses/about.toml when collecting the companion's licenses.
+# These upstream workspace members omit license fields; their parent license is
+# GPL version 3. Verify the pinned source license before making that declaration.
+[cosmic-notifications-config.clarify]
+license = "GPL-3.0-only"
+[[cosmic-notifications-config.clarify.files]]
+path = "../LICENSE.md"
+checksum = "6ea843d9f221a2a7cb757d65c86368b9f207584ed0f2653e4b215a7702a7e1c7"
+
+[cosmic-panel-bin.clarify]
+license = "GPL-3.0-only"
+[[cosmic-panel-bin.clarify.files]]
+path = "../LICENSE.md"
+checksum = "6ea843d9f221a2a7cb757d65c86368b9f207584ed0f2653e4b215a7702a7e1c7"
+
+[cosmic-panel-config.clarify]
+license = "GPL-3.0-only"
+[[cosmic-panel-config.clarify.files]]
+path = "../LICENSE.md"
+checksum = "6ea843d9f221a2a7cb757d65c86368b9f207584ed0f2653e4b215a7702a7e1c7"
+
+[xdg-shell-wrapper-config.clarify]
+license = "GPL-3.0-only"
+[[xdg-shell-wrapper-config.clarify.files]]
+path = "../LICENSE.md"
+checksum = "6ea843d9f221a2a7cb757d65c86368b9f207584ed0f2653e4b215a7702a7e1c7"

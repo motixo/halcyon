@@ -36,6 +36,9 @@ impl Settings {
                 status,
                 WARN,
                 vec![
+                    button::text("Setup & updates")
+                        .on_press(Message::OpenIslandsGuide)
+                        .into(),
                     button::text("Check again")
                         .on_press(change(IslandEdit::Check))
                         .into(),

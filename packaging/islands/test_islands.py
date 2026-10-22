@@ -150,7 +150,7 @@ class IslandsPackage(unittest.TestCase):
                       'python3, cosmic-ext-halcyon', 'optional version-locked']:
             self.assertIn(field, info.stdout)
         for name, pin in panel_launcher.PACKAGES.items():
-            self.assertIn(f'{name} (= {pin})', info.stdout)
+            self.assertIn(name, info.stdout)
             self.assertIn(pin, (HERE / 'README.md').read_text())
         control = self.case / 'control'
         result = run(['dpkg-deb', '-e', self.deb, control])
@@ -162,6 +162,36 @@ class IslandsPackage(unittest.TestCase):
         copyright_text = (HERE / 'copyright').read_text()
         self.assertIn('System76', copyright_text)
         self.assertIn('GPL-3.0-only', copyright_text)
+
+    def test_cosmic_upgrades_are_not_blocked_by_package_dependencies(self):
+        result = run(['dpkg-deb', '-f', self.deb, 'Depends'])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        dependencies = [entry.strip() for entry in result.stdout.split(',')]
+        for name in ('cosmic-panel', 'cosmic-comp', 'cosmic-session'):
+            self.assertIn(name, dependencies,
+                          'COSMIC compatibility belongs in the launcher, not an APT version constraint')
+
+    def test_real_elf_dependencies_are_detected_without_silent_fallback(self):
+        binary = self.case / 'cosmic-panel-islands'
+        shutil.copyfile('/usr/bin/true', binary)
+        record = self.case / 'elf-manifest.json'
+        manifest(binary, record)
+        out = self.case / 'elf-package'
+        licenses = self.case / 'licenses.txt'
+        licenses.write_text('Fixture dependency notice\n')
+        command = [sys.executable, HERE / 'build-deb.py', '--binary', binary,
+                   '--manifest', record, '--version', '0.1.0', '--out', out]
+        missing = run(command)
+        self.assertNotEqual(missing.returncode, 0, 'Native releases need their license notices')
+        result = run([*command, '--licenses', licenses])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        control = run(['dpkg-deb', '-f', out / self.deb.name, 'Depends'])
+        self.assertEqual(control.returncode, 0, control.stderr)
+        extracted = self.case / 'elf-extracted'
+        self.assertEqual(run(['dpkg-deb', '-x', out / self.deb.name, extracted]).returncode, 0)
+        self.assertEqual((extracted / f'usr/share/doc/{PACKAGE}/THIRD_PARTY_LICENSES.txt').read_text(), licenses.read_text())
+        self.assertIn('libc6 (>=', control.stdout,
+                      'Real ELF packages must retain the ABI floor found by dpkg-shlibdeps')
 
     def test_reproducible_build(self):
         original = self.deb.read_bytes()

@@ -33,6 +33,10 @@ desktop a coordinated look: wallpaper, colors, windows, dock and panel.
   `python3 scripts/install.py` to install for your account under `~/.local`.
   Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
+To update this first release, download and install the newer `.deb` from
+GitHub Releases. A system update repository is planned but is not yet active.
+See [distribution and updates](docs/DISTRIBUTION.md) for the rollout plan.
+
 Upgrading from Desktop Cards (the earlier name) keeps your settings, notes,
 looks and calendar connection.
 
