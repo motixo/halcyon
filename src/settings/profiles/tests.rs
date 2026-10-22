@@ -1045,6 +1045,20 @@ fn review_r1_planned_wallpaper_images_preview_and_acknowledge_only_the_analyzed_
 #[test]
 fn review_r1_theme_preview_rechecks_planned_images_and_wallpaper_exclusion() {
     let desk = Desk::new("review-r1-planned-image-conflict");
+    // The desktop's own wallpaper, so the test never falls back to the
+    // computer's installed COSMIC default.
+    let current = desk.fixture.0.join("current.png");
+    image::RgbImage::from_pixel(32, 32, image::Rgb([40u8, 60, 90]))
+        .save(&current)
+        .unwrap();
+    desk.fixture.system(
+        "com.system76.CosmicBackground",
+        "all",
+        &format!(
+            "(output: \"all\", source: Path({:?}), filter_by_theme: true, rotation_frequency: 3600, filter_method: Lanczos, scaling_mode: Zoom, sampling_method: Alphanumeric)",
+            current.to_string_lossy()
+        ),
+    );
     let image = desk.fixture.0.join("planned.png");
     image::RgbImage::from_pixel(32, 32, image::Rgb([245u8, 245, 245]))
         .save(&image)

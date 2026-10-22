@@ -489,6 +489,12 @@ fn settings_follow_the_system_theme_independently_of_widget_colors() {
     if child("settings_follow_the_system_theme_independently_of_widget_colors") {
         return;
     }
+    // libcosmic reads the light and dark themes from COSMIC's installed
+    // defaults; without COSMIC (a build server) there is nothing to follow.
+    if !std::path::Path::new("/usr/share/cosmic/com.system76.CosmicTheme.Light").exists() {
+        eprintln!("COSMIC's theme defaults aren't installed; skipped");
+        return;
+    }
     let mode = std::path::PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").unwrap())
         .join("cosmic/com.system76.CosmicTheme.Mode/v1/is_dark");
     std::fs::create_dir_all(mode.parent().unwrap()).unwrap();

@@ -1630,6 +1630,15 @@ mod runtime_loop {
             .args(["-c", "sleep 60; true", "--settings"])
             .spawn()
             .unwrap();
+        // Until the child has started `sh`, its command line is still this
+        // test's own; wait for the stand-in to be what it claims to be.
+        let started = Instant::now();
+        while !std::fs::read(format!("/proc/{}/cmdline", settings.id()))
+            .is_ok_and(|cmdline| cmdline.split(|byte| *byte == 0).any(|arg| arg == b"--settings"))
+        {
+            assert!(started.elapsed() < std::time::Duration::from_secs(5), "the stand-in never started");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
         writes_hold_of(&store, settings.id(), &held());
         assert_eq!(read_hold(&store), held());
         let now = Instant::now();
