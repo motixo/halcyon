@@ -1,0 +1,151 @@
+# Islands optional add-on
+
+Islands is a patched COSMIC panel that splits the panel into floating islands.
+It is shipped separately as `cosmic-ext-halcyon-islands`. Installing Halcyon does
+not install or activate Islands. Installing this add-on only places files under
+`/usr`; it does not change your session. Activation is per user at the next login.
+Choose the Islands style in Halcyon's Dock & panel settings after activation.
+
+## Supported versions
+
+The selector in `companion/panel_launcher.py` is the source of the package pins.
+The package requires these exact installed versions:
+
+| Package | Version |
+| --- | --- |
+| cosmic-panel | `1.10.0~1791315703~24.04~3ce6ce1` |
+| cosmic-comp | `0.1~1791979042~24.04~742b800` |
+| cosmic-session | `1.10.0~1791314577~24.04~8093b59` |
+
+The reviewed cosmic-panel revision is
+`3ce6ce1cec97669f91e809962d9446aaefe8a06e`, with companion protocol 1.
+A package version change selects the stock panel until a compatible add-on is
+released. Status uses the selector's installed-package, manifest and binary
+checksum checks; it does not identify the versions of already running processes.
+After a COSMIC upgrade, log out and in before relying on the new package versions.
+
+## Install and activate
+
+Install Halcyon first, then replace `<v>` with the add-on release version:
+
+```sh
+sudo apt install ./cosmic-ext-halcyon-islands_<v>_amd64.deb
+halcyon-islands status
+halcyon-islands enable
+```
+
+Run `enable` as your desktop user from a COSMIC session. Your session PATH must
+put `~/.local/bin` before `/usr/bin`, and `XDG_DATA_HOME` must be unset or
+`~/.local/share`. The installer checks PATH and login identity. Log out and back
+in to start Islands. No running panel is stopped or restarted by these commands.
+Restarts in the login where you enabled Islands still select stock.
+
+`halcyon-islands status` reports whether the add-on is present, whether the
+selector compatibility checks pass, and whether Islands is enabled for you.
+Exit status is 0 when installed, compatible and enabled (including waiting for
+the next login); 1 means disabled, unavailable, incompatible, blocked by a failure
+marker, or an operation failed; 2 means invalid command usage. `--help` exits 0.
+Enable and disable exit 0 when their requested changes succeed.
+
+A previous companion installation from source must first be restored using its
+original `install-record.json`; the command refuses to take over another panel
+selector. Repeated `enable` calls are harmless. After installing an updated add-on,
+run `enable` again to copy it into your per-user bundle for the next login.
+
+## Turn off and remove
+
+For each user who enabled Islands:
+
+```sh
+halcyon-islands disable
+```
+
+Log out and back in to use the stock panel. Once all users have disabled it:
+
+```sh
+sudo apt remove cosmic-ext-halcyon-islands
+```
+
+Disable restores this command's installation records in reverse order, including
+across add-on upgrades. Backups are kept. External edits or corrupt backups cause
+a clear failure instead of being overwritten. An interrupted enable can also be
+undone with `disable`. If an individual restore needs manual recovery, use:
+
+```sh
+python3 /usr/lib/cosmic-ext-halcyon-islands/install.py --restore /path/to/install-record.json
+```
+
+Package removal alone does not delete per-user data or the copied selector and
+binary. If removed before disabling, reinstall the add-on and run `disable`.
+Saved island layouts and native preferences are preserved.
+
+The existing paths remain `~/.local/share/cosmic-desktop-cards/companion`,
+`~/.local/share/cosmic-desktop-cards/backups/panel-*/install-record.json`, and
+`~/.local/state/desktop-cards-panel`. A crash leaves a `failed` marker in that
+state directory (or `$XDG_STATE_HOME/desktop-cards-panel`). It keeps stock selected,
+even after `enable`. Remove only that marker when deliberately retrying a reviewed
+component. Enable never silently clears it. IPC and socket names are unchanged.
+
+## Build a release
+
+Use Rust 1.93.0 and the native dependencies in cosmic-panel's upstream README.
+Build separately from Halcyon, in new source and target directories:
+
+```sh
+python3 companion/build.py --archive /path/to/verified-upstream.tar.gz \
+  --workdir /path/to/new-panel-source --target-dir /path/to/panel-target --offline
+cp /path/to/panel-target/release/cosmic-panel /path/to/cosmic-panel-islands
+```
+
+Omit `--offline` to fetch locked dependencies. Omit `--archive` to download the
+pinned archive with SHA256 verification. `companion/build.py` builds the upstream
+binary but does not currently emit the renamed binary or manifest. After reviewing
+the build, create `companion-manifest.json` alongside `cosmic-panel-islands`:
+
+```sh
+python3 - /path/to/cosmic-panel-islands /path/to/companion-manifest.json <<'PY'
+import hashlib, json, pathlib, runpy, sys
+binary, manifest = map(pathlib.Path, sys.argv[1:])
+revision = runpy.run_path('companion/build.py')['REVISION']
+manifest.write_text(json.dumps({
+    'protocol': 1,
+    'upstream': revision,
+    'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
+}, indent=2) + '\n')
+PY
+python3 packaging/islands/build-deb.py \
+  --binary /path/to/cosmic-panel-islands \
+  --manifest /path/to/companion-manifest.json --version 0.1.0 --out dist
+```
+
+The builder needs Python 3 and dpkg tools, never invokes Cargo, and validates the
+binary and manifest with the selector. It outputs
+`cosmic-ext-halcyon-islands_<v>_amd64.deb` and a sibling `.deb.sha256` file.
+Set `SOURCE_DATE_EPOCH` for reproducible package timestamps. The binary must be
+an amd64 release build compatible with the target system's native libraries;
+the fake-binary tests do not establish native runtime compatibility.
+
+The package includes the patched panel under GPL-3.0-only, credited to System76,
+and the Python helpers. `dock-islands-core` is linked into the binary and is not
+a runtime file. The release handoff must include corresponding frozen sources,
+patches, lockfiles, dependency notices, binary hashes and native validation
+as described in `companion/README.md`.
+
+The main `cosmic-ext-halcyon` package must be available to satisfy the dependency.
+It must not activate Islands or depend on this add-on. No main package files,
+services or activation hooks belong in the add-on.
+
+## Isolated verification
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 python3 scripts/test_panel_companion.py
+PYTHONDONTWRITEBYTECODE=1 python3 packaging/islands/test_islands.py
+```
+
+Tests build a fake-binary package in a temporary directory, inspect it using
+`dpkg-deb -c/-I`, and run lintian. They extract the command and exercise it with
+fake package queries, fixture HOME/XDG directories and the installer's `--root`
+mode. They never launch a real panel or install a Debian package. To retain the
+fixture deb and lintian log for review, pass `--artifacts /path/to/temporary-dir`.
+The command's hidden `--root /path/to/fixture-home` option is only for fixture
+verification; normal activation always uses the installer's `--user` mode.

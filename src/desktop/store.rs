@@ -24,7 +24,7 @@
 //! wildcard is cosmic-bg's `output.*`, limited to valid display names.
 //!
 //! An owned transaction (`apply_owned`) may also carry allowlisted members
-//! of the Desktop Cards widget configuration (`widget`). It takes the shared
+//! of the Halcyon widget configuration (`widget`). It takes the shared
 //! `config.json.lock` before `desktop.lock`, journals both parts before the
 //! first write, reverses both conditionally on failure, and records the
 //! persistent latest change (`undo`) before its journal is removed.
@@ -317,7 +317,7 @@ impl fmt::Display for DesktopError {
         match self {
             Self::ReadOnly(reason) => write!(f, "{reason}"),
             Self::InvalidKey(message) => write!(f, "{message}"),
-            Self::NotAllowed(key) => write!(f, "Desktop Cards does not edit {key}"),
+            Self::NotAllowed(key) => write!(f, "Halcyon does not edit {key}"),
             Self::InvalidValue {
                 key: Some(key),
                 message,
@@ -657,7 +657,7 @@ pub enum Access {
 pub enum RootChoice {
     Live,
     Fixture(PathBuf),
-    /// An alternate Desktop Cards config without a fixture: read live
+    /// An alternate Halcyon config without a fixture: read live
     /// values for display, never write them.
     ReadOnlyLive,
 }
@@ -726,7 +726,7 @@ pub struct DesktopStore {
     system_roots: Vec<PathBuf>,
     state_dir: PathBuf,
     access: Access,
-    /// The Desktop Cards configuration file, from trusted context only.
+    /// The Halcyon configuration file, from trusted context only.
     app_config: Option<PathBuf>,
     #[cfg(test)]
     fault: std::cell::RefCell<Option<Fault>>,
@@ -784,12 +784,12 @@ impl DesktopStore {
     pub fn live() -> Result<Self, DesktopError> {
         let config = dirs::config_dir()
             .ok_or_else(|| DesktopError::Io("Configuration directory unavailable".into()))?;
-        let data = dirs::data_dir()
+        let data = crate::paths::data_dir()
             .ok_or_else(|| DesktopError::Io("Data directory unavailable".into()))?;
         Ok(Self::with_roots(
             config.join("cosmic"),
             live_system_roots(),
-            data.join("cosmic-desktop-cards"),
+            data,
             Access::Live,
         ))
     }
@@ -1739,7 +1739,7 @@ impl DesktopStore {
                 change,
                 self.app_config.as_deref().ok_or_else(|| {
                     DesktopError::Io(
-                        "This interrupted change also touched widget settings. Open Desktop Cards settings normally to restore it.".into(),
+                        "This interrupted change also touched widget settings. Open Halcyon settings normally to restore it.".into(),
                     )
                 })?,
             )),

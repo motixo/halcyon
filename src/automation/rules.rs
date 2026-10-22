@@ -391,7 +391,7 @@ impl Automation {
             .and_then(serde_json::Value::as_u64)
             .is_some_and(|version| version > u64::from(VERSION))
         {
-            return Err("The automation settings come from a newer Desktop Cards.".into());
+            return Err("The automation settings come from a newer Halcyon.".into());
         }
         let automation: Self = serde_json::from_value(value)
             .map_err(|error| format!("The automation settings are damaged: {error}."))?;

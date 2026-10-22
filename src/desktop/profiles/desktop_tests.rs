@@ -547,7 +547,7 @@ fn missing_wallpaper_asset_blocks_only_its_part() {
     let wallpaper_part = part(&blocked, Domain::Wallpaper);
     assert_eq!(
         wallpaper_part.blocked,
-        ["The built-in Amber wallpaper isn’t installed. Reinstall it on the Wallpaper page."]
+        ["The built-in Amber wallpaper isn’t installed. Reinstall Halcyon to restore it."]
     );
     let icons = part(&blocked, Domain::DesktopIcons);
     assert!(icons.blocked.is_empty());
@@ -570,7 +570,7 @@ fn missing_wallpaper_asset_blocks_only_its_part() {
     assert_eq!(config.icon_size.get(), 150);
 
     // Once installed, the part applies and previews its picture.
-    let amber = bundled(&fixture, "amber", "4k");
+    let amber = picture(&fixture, "pictures/Desktop Cards/amber.jpg");
     let ready = plan(&store, &installed, &profile, &parts(&profile));
     assert!(ready.can_apply(), "{:?}", ready.blocking_reasons());
     assert_eq!(

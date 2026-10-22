@@ -1286,7 +1286,7 @@ impl Settings {
                 split(label("Getting started", 14., FG),
                     button::text("Show setup").on_press(Message::SetupOpen(true)).into()),
                 separator(),
-                split(self.help("restore-wallpaper", "Original wallpaper", "Restore the wallpaper from before Desktop Cards was installed."),
+                split(self.help("restore-wallpaper", "Original wallpaper", "Restore the wallpaper from before Halcyon was installed."),
                     button::text("Restore")
                         .on_press_maybe((!self.busy && !preview()).then_some(Message::Restore(true))).into()),
             ]),

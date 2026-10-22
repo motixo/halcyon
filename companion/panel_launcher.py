@@ -25,9 +25,9 @@ def digest(path):
         for part in iter(lambda:f.read(1024*1024),b''):h.update(part)
     return h.hexdigest()
 
-def compatible(bundle, versions=None):
+def compatible(bundle, versions=None, manifest_name='manifest.json'):
     try:
-        manifest=json.loads((bundle/'manifest.json').read_text())
+        manifest=json.loads((bundle/manifest_name).read_text())
         if not isinstance(manifest, dict):return False
         if manifest['upstream']!='3ce6ce1cec97669f91e809962d9446aaefe8a06e' or manifest['protocol']!=1:return False
         if digest(bundle/'cosmic-panel-islands')!=manifest['binary_sha256']:return False

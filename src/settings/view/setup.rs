@@ -42,7 +42,7 @@ impl Settings {
         };
         section(vec![
             split(
-                detail("Set up Desktop Cards", "All steps are optional."),
+                detail("Set up Halcyon", "All steps are optional."),
                 button::text("Skip setup")
                     .id(cosmic::widget::Id::new("setup-skip"))
                     .on_press(Message::SetupDismissed(true))

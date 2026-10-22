@@ -985,7 +985,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cosmic-desktop-cards"
+name = "cosmic-ext-halcyon"
 version = "0.1.0"
 dependencies = [
  "base64",

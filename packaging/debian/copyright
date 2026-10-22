@@ -1,0 +1,36 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: Halcyon
+Upstream-Contact: profilaz3 <261673162+profilaz3@users.noreply.github.com>
+Source: https://github.com/profilaz3/halcyon
+
+Files: *
+Copyright: 2026 profilaz3 and contributors
+License: GPL-3.0-or-later
+Comment: Artwork origins are documented in ASSETS.md. Dependency declarations
+ and their license texts are provided in THIRD_PARTY.md and
+ THIRD_PARTY_LICENSES.txt. Dependencies retain their respective licenses.
+ The two GPL-3.0-only dependencies make the combined binary GPL version 3,
+ as explained in THIRD_PARTY.md; Halcyon's own source is GPL-3.0-or-later.
+
+Files: packaging/io.github.profilaz3.Halcyon.metainfo.xml
+Copyright: 2026 profilaz3 and contributors
+License: CC0-1.0
+ To the extent possible under law, the authors have waived all copyright
+ and related or neighboring rights to this metadata under CC0 1.0 Universal.
+ .
+ The full text is available at https://creativecommons.org/publicdomain/zero/1.0/
+ and on Debian systems in /usr/share/common-licenses/CC0-1.0.
+
+License: GPL-3.0-or-later
+ This program is free software: you can redistribute it and/or modify
+ it under the terms of the GNU General Public License as published by
+ the Free Software Foundation, either version 3 of the License, or
+ (at your option) any later version.
+ .
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ GNU General Public License for more details.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 3 is available in /usr/share/common-licenses/GPL-3.

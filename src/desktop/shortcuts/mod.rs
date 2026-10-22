@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 pub const NAMESPACE: &str = "com.system76.CosmicSettings.Shortcuts";
-/// Desktop Cards' own local state; not a COSMIC namespace.
+/// Halcyon's own local state; not a COSMIC namespace.
 pub const PAUSED_NAMESPACE: &str = "io.github.workstation.DesktopCards.Shortcuts";
 const MAX_NAME: usize = 120;
 

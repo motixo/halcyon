@@ -1,4 +1,4 @@
-//! The Desktop Cards widget configuration as a transaction participant.
+//! The Halcyon widget configuration as a transaction participant.
 //!
 //! Only a fixed allowlist of JSON members may be written, each addressed by
 //! a JSON pointer from the table below and checked by its own validator. The
@@ -369,7 +369,7 @@ impl WidgetPatch {
         desired: Option<Value>,
     ) -> Result<(), String> {
         let field =
-            field(pointer).ok_or_else(|| format!("Desktop Cards does not edit {pointer}"))?;
+            field(pointer).ok_or_else(|| format!("Halcyon does not edit {pointer}"))?;
         if let Some(value) = &desired
             && original.as_ref() != Some(value)
             && !field.accepts(value)

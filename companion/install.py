@@ -47,7 +47,7 @@ def safe_path(root, relative):
     return path
 
 
-def install(root, binary, manifest, enable=False, defer_session=None):
+def install(root, binary, manifest, enable=False, defer_session=None, record_owner=None):
     root, binary, manifest = root.resolve(), binary.resolve(), manifest.resolve()
     record = json.loads(manifest.read_text())
     if digest(binary) != record['binary_sha256']:
@@ -81,6 +81,8 @@ def install(root, binary, manifest, enable=False, defer_session=None):
         'modes': {rel: mode for rel, (_, mode) in contents.items()},
         'complete': False, 'restored': False,
     }
+    if record_owner is not None:
+        result['owner'] = record_owner
     record_path = backup / 'install-record.json'
     # Record every intended replacement before the first mutation. This also
     # permits safe recovery after a hard interruption between replace and return.
@@ -144,6 +146,7 @@ def main():
     parser.add_argument('--binary', type=Path)
     parser.add_argument('--manifest', type=Path)
     parser.add_argument('--enable-next-login', action='store_true')
+    parser.add_argument('--record-owner', help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.restore:
         restore(args.restore)
@@ -158,7 +161,7 @@ def main():
     defer_session = session_identity() if args.enable_next_login else None
     if args.enable_next_login and defer_session is None:
         raise SystemExit('Run from the COSMIC desktop session so selection can wait for the next login')
-    result = install(root, args.binary, args.manifest, args.enable_next_login, defer_session)
+    result = install(root, args.binary, args.manifest, args.enable_next_login, defer_session, args.record_owner)
     print(json.dumps(result, indent=2))
     print('Prepared for the next login. No running process or desktop preference was changed.', file=sys.stderr)
 

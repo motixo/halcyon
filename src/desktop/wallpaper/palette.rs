@@ -311,7 +311,7 @@ mod tests {
     fn bundled_dark_wallpapers_recommend_visible_hue_related_accents() {
         for name in ["lavender", "teal", "ocean", "amber", "rose", "graphite"] {
             let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("assets/wallpapers/{name}-1080p.png"));
+                .join(format!("assets/wallpapers/{name}.jpg"));
             let Preview::Ready(pixels) = media::thumbnail(&path) else {
                 panic!("{name}");
             };
@@ -334,7 +334,7 @@ mod tests {
         // The reported amber case: every offered accent is a visible color,
         // never one of the picture's dark browns.
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets/wallpapers/amber-1080p.png");
+            .join("assets/wallpapers/amber.jpg");
         let Preview::Ready(pixels) = media::thumbnail(&path) else {
             panic!("amber");
         };

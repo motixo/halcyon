@@ -169,15 +169,15 @@ async fn receive(auth: &Authorization) -> Result<String, Problem> {
         let (status, body) = match result {
             Callback::Ignore => (
                 "400 Bad Request",
-                "This sign-in request is no longer valid. Return to Desktop Cards and try again.",
+                "This sign-in request is no longer valid. Return to Halcyon and try again.",
             ),
             Callback::Denied => (
                 "200 OK",
-                "Sign-in was not completed. You can return to Desktop Cards.",
+                "Sign-in was not completed. You can return to Halcyon.",
             ),
             Callback::Code(_) => (
                 "200 OK",
-                "Google sign-in received. Return to Desktop Cards to see your connection status.",
+                "Google sign-in received. Return to Halcyon to see your connection status.",
             ),
         };
         let response = format!(

@@ -14,21 +14,17 @@ mod seek_bar;
 use crate::config::Config;
 use std::path::{Path, PathBuf};
 
-/// Where a tool keeps user data (`~/.local/share/cosmic-desktop-cards`).
+/// Where a tool keeps user data (`~/.local/share/halcyon`).
 /// With an alternate configuration (previews, captures, tests) the file sits
 /// beside that configuration instead, so a preview never touches the real one.
 pub fn data_path(file: &str) -> Option<PathBuf> {
     isolated(file)
-        .or_else(|| dirs::data_dir().map(|dir| dir.join("cosmic-desktop-cards").join(file)))
+        .or_else(|| crate::paths::data_dir().map(|dir| dir.join(file)))
 }
 
-/// Where a tool keeps runtime state (`~/.local/state/cosmic-desktop-cards`).
+/// Where a tool keeps runtime state (`~/.local/state/halcyon`).
 pub fn state_path(file: &str) -> Option<PathBuf> {
-    isolated(file).or_else(|| {
-        dirs::state_dir()
-            .or_else(dirs::data_local_dir)
-            .map(|dir| dir.join("cosmic-desktop-cards").join(file))
-    })
+    isolated(file).or_else(|| crate::paths::state_dir().map(|dir| dir.join(file)))
 }
 
 fn isolated(file: &str) -> Option<PathBuf> {
@@ -128,7 +124,7 @@ pub async fn notify(summary: String, body: String) -> Result<(), String> {
     let hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>> =
         std::collections::HashMap::from([("category", zbus::zvariant::Value::from("presence"))]);
     let message = (
-        "Desktop Cards",
+        "Halcyon",
         0u32,
         "alarm-symbolic",
         summary.as_str(),

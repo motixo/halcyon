@@ -200,7 +200,7 @@ impl cosmic::Application for Cards {
     type Executor = cosmic::executor::Default;
     type Flags = Config;
     type Message = Message;
-    const APP_ID: &'static str = "io.github.workstation.DesktopCards";
+    const APP_ID: &'static str = "io.github.profilaz3.Halcyon.Cards";
     fn core(&self) -> &Core {
         &self.core
     }
@@ -233,7 +233,7 @@ impl cosmic::Application for Cards {
                 // intercept clicks intended for Calendar or the desktop.
                 input_zone: Some(Vec::new()),
                 exclusive_zone: 0,
-                namespace: "desktop-cards-clock".into(),
+                namespace: "halcyon-clock".into(),
                 ..Default::default()
             }),
             get_layer_surface(SctkLayerSurfaceSettings {
@@ -249,7 +249,7 @@ impl cosmic::Application for Cards {
                 },
                 size: Some((Some(360), Some(0))),
                 exclusive_zone: 0,
-                namespace: "desktop-cards-widgets".into(),
+                namespace: "halcyon-widgets".into(),
                 ..Default::default()
             }),
             Self::controls_surface(ids[2], sidebar.margin()),
@@ -267,7 +267,7 @@ impl cosmic::Application for Cards {
                 },
                 size: Some((Some(360), Some(0))),
                 exclusive_zone: 0,
-                namespace: "desktop-cards-calendar".into(),
+                namespace: "halcyon-calendar".into(),
                 ..Default::default()
             }),
         ];
@@ -286,7 +286,7 @@ impl cosmic::Application for Cards {
                 },
                 size: Some((Some(16), Some(16))),
                 exclusive_zone: 0,
-                namespace: format!("desktop-cards-extra-{index}"),
+                namespace: format!("halcyon-extra-{index}"),
                 ..Default::default()
             }));
         }
@@ -565,7 +565,7 @@ impl Cards {
             },
             size: Some((Some(drawer::SIDEBAR_WIDTH), Some(drawer::SIDEBAR_HEIGHT))),
             exclusive_zone: 0,
-            namespace: "desktop-cards-controls".into(),
+            namespace: "halcyon-controls".into(),
             ..Default::default()
         })
     }
@@ -578,7 +578,7 @@ impl Cards {
             anchor: Anchor::RIGHT | Anchor::TOP | Anchor::BOTTOM,
             size: Some((Some(2), Some(0))),
             exclusive_zone: 0,
-            namespace: "desktop-cards-edge".into(),
+            namespace: "halcyon-edge".into(),
             ..Default::default()
         })
     }
@@ -974,20 +974,20 @@ impl Cards {
                 self.metrics.t3 = active;
                 Task::none()
             }
-            Message::Settings => self.launch("desktop-cards", vec!["settings".into()]),
-            Message::WeatherSettings => self.launch("desktop-cards", vec!["weather-picker".into()]),
+            Message::Settings => self.launch(crate::paths::CONTROLLER, vec!["settings".into()]),
+            Message::WeatherSettings => self.launch(crate::paths::CONTROLLER, vec!["weather-picker".into()]),
             Message::CalendarSettings => self.launch(
-                "desktop-cards",
+                crate::paths::CONTROLLER,
                 vec!["settings".into(), "--page".into(), "calendar".into()],
             ),
             Message::ProjectSettings => self.launch(
-                "desktop-cards",
+                crate::paths::CONTROLLER,
                 vec!["settings".into(), "--page".into(), "projects".into()],
             ),
             Message::Open(url) => self.launch("xdg-open", vec![url]),
             Message::ControlFinished(result) => {
                 if let Err(e) = result {
-                    eprintln!("Desktop Cards: {e}");
+                    eprintln!("Halcyon: {e}");
                 }
                 Task::none()
             }
@@ -1052,7 +1052,7 @@ impl Cards {
             },
             Message::ToolDone(result) => {
                 if let Err(error) = result {
-                    eprintln!("Desktop Cards: {error}");
+                    eprintln!("Halcyon: {error}");
                 }
                 Task::none()
             }
@@ -1496,10 +1496,8 @@ impl Cards {
         days
     }
     fn launch(&self, command: &str, args: Vec<String>) -> Task<Message> {
-        let command = if command == "desktop-cards" {
-            dirs::home_dir()
-                .unwrap_or_default()
-                .join(".local/bin/desktop-cards")
+        let command = if command == crate::paths::CONTROLLER {
+            crate::paths::controller()
         } else {
             std::path::PathBuf::from("/usr/bin/xdg-open")
         };

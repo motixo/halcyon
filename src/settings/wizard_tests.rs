@@ -68,7 +68,7 @@ fn seed_desktop() {
     for (name, _) in crate::desktop::wallpaper::BUNDLED {
         std::fs::copy(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("assets/wallpapers/{name}-1080p.png")),
+                .join(format!("assets/wallpapers/{name}.jpg")),
             crate::desktop::wallpaper::bundled_path(&bundled, name),
         )
         .unwrap();

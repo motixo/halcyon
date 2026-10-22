@@ -25,18 +25,29 @@ desktop a coordinated look: wallpaper, colors, windows, dock and panel.
 
 ## Install
 
-Halcyon is in development; the first release is being prepared.
+- **Pop!_OS 24.04 (COSMIC):** download `cosmic-ext-halcyon_<version>_amd64.deb`
+  from the [Releases page](https://github.com/profilaz3/halcyon/releases),
+  open it, and choose Install. Or, in a terminal:
+  `sudo apt install ./cosmic-ext-halcyon_<version>_amd64.deb`
+- **From source:** build with `cargo build --release --locked`, then run
+  `python3 scripts/install.py` to install for your account under `~/.local`.
+  Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
-- **Pop!_OS 24.04 (COSMIC):** a `.deb` package will be published on the
-  Releases page. Download it, open it, and choose Install.
-- **From source:** see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+Upgrading from Desktop Cards (the earlier name) keeps your settings, notes,
+looks and calendar connection.
+
+To remove Halcyon: `sudo apt remove cosmic-ext-halcyon`. Your settings and
+notes stay in `~/.config/halcyon` and `~/.local/share/halcyon` until you delete
+them. Desktop changes made by a look (wallpaper, colors, dock and panel) stay
+too; undo them in Halcyon's Setups page before removing it if you like.
 
 After installing, open **Halcyon** from the app launcher. A short setup picks a
 look, your dock and panel, and your city for the weather.
 
 **Islands** (a panel split into floating islands) is an optional, separate
-add-on. It only runs on the exact COSMIC versions it was tested with and
-otherwise leaves the normal panel in place.
+add-on, `cosmic-ext-halcyon-islands`. It only runs on the exact COSMIC versions
+it was tested with and otherwise leaves the normal panel in place. See
+[packaging/islands/README.md](packaging/islands/README.md).
 
 ## What leaves your computer
 

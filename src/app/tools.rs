@@ -646,7 +646,7 @@ impl Cards {
             // Clicks land on the card itself; its transparent shadow margin
             // passes them to whatever is under it.
             input_zone: Some(self.tool_input_zone(widget)),
-            namespace: format!("desktop-cards-{}", widget.key()),
+            namespace: format!("halcyon-{}", widget.key()),
             ..Default::default()
         })
     }

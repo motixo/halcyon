@@ -1,5 +1,5 @@
 //! Accessibility: the supported app-motion preference and its limits.
-//! Desktop Cards edge-menu animation belongs in App settings.
+//! Halcyon edge-menu animation belongs in App settings.
 use super::desktop::WARN;
 use super::pages::section;
 use super::*;
@@ -40,7 +40,7 @@ impl Settings {
             label("Apps", 16., FG),
             row_of(
                 "Reduce motion",
-                "Reduces motion in Desktop Cards settings, GTK apps, Firefox and Chromium-based browsers.",
+                "Reduces motion in Halcyon settings, GTK apps, Firefox and Chromium-based browsers.",
                 apps,
             ),
         ];

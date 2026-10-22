@@ -1,5 +1,12 @@
 # Halcyon: developer reference
 
+> Names and paths changed with the rename: the program is `halcyon`, the
+> controller `halcyon-ctl`, the service `halcyon.service`, and per-person
+> folders are `~/.config/halcyon` and so on. Where this document still says
+> `cosmic-desktop-cards` or `desktop-cards`, read the new names;
+> [packaging/README.md](../packaging/README.md) is authoritative. Test with
+> `cargo test --bin halcyon`.
+
 How Halcyon (formerly Desktop Cards; the code and paths still use that name until the rename) is built and how its parts work. For what it is and how to install it, see the [README](../README.md). It ships thirteen wallpapers: seven Halcyon scenes and six procedural palette gradients (see [ASSETS.md](../ASSETS.md)).
 
 The clock and selected cards stay above the wallpaper and below application windows. The default layout places Clock in the upper-left corner; it lets pointer input pass through. Calendar has its own interactive surface, vertically centered on the left in the default layout. Weather, Devbox and Projects form an independently centered right column by default. All five widgets can also be positioned freely in the desktop arrangement editor. Only the control sidebar slides in, over the cards and application windows; revealing it does not move any widget. Normal desktop surfaces never take keyboard focus or reserve screen space. The arrangement editor temporarily takes focus until Save or Cancel.

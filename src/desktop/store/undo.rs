@@ -167,7 +167,7 @@ impl LatestChange {
         }
         if file.version != VERSION {
             return Err(invalid(
-                "The saved Undo record comes from a different version of Desktop Cards.",
+                "The saved Undo record comes from a different version of Halcyon.",
             ));
         }
         if !valid_name(&file.id, 96) {

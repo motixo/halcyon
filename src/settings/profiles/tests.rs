@@ -551,7 +551,7 @@ mod wallpaper_parts {
     #[test]
     fn apply_rechecks_wallpaper_assets_and_leaving_it_out_applies_the_rest() {
         let desk = desk("recheck");
-        let teal = picture(&desk, "pictures/Desktop Cards/teal-4k.png");
+        let teal = picture(&desk, "pictures/Desktop Cards/teal.jpg");
         let mut editor = desk.editor();
         select_saved(
             &desk,
@@ -643,7 +643,7 @@ mod wallpaper_parts {
     fn exporting_a_local_profile_names_what_stays_and_shared_files_refuse_local_members() {
         let desk = desk("export");
         let beach = picture(&desk, "home/me/beach.png");
-        picture(&desk, "pictures/Desktop Cards/teal-4k.png");
+        picture(&desk, "pictures/Desktop Cards/teal.jpg");
         let local = profile(
             "Mine",
             WallpaperLook {

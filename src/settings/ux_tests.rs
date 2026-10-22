@@ -521,7 +521,7 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
     assert!(background.starts_with(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap()));
     std::fs::create_dir_all(background.parent().unwrap()).unwrap();
     let picture =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal-1080p.png");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal.jpg");
     std::fs::write(background,format!("(output: \"all\", source: Path({}), filter_by_theme: false, rotation_frequency: 3600, filter_method: Lanczos, scaling_mode: Zoom, sampling_method: Alphanumeric)",serde_json::to_string(&picture).unwrap())).unwrap();
     let before = std::fs::read(Config::path().unwrap()).unwrap();
     for size in [Size::new(820., 600.), Size::new(1024., 720.)] {

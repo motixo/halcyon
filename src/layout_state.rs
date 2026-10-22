@@ -38,7 +38,7 @@ pub fn path() -> Option<PathBuf> {
     if std::env::var_os("DESKTOP_CARDS_CONFIG").is_some() {
         Config::path().map(|path| path.with_file_name("layout-state.json"))
     } else {
-        dirs::runtime_dir().map(|dir| dir.join("desktop-cards/layout-state.json"))
+        crate::paths::runtime_dir().map(|dir| dir.join("layout-state.json"))
     }
 }
 

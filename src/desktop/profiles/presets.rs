@@ -319,7 +319,7 @@ pub fn missing(
     islands: bool,
 ) -> Option<&'static str> {
     if !installed(preset, bundled_dir) {
-        Some("The built-in wallpapers aren’t installed, so your wallpaper stays. Reinstall them on the Wallpaper page.")
+        Some("The built-in wallpapers aren’t installed, so your wallpaper stays. Reinstall Halcyon to restore them.")
     } else if !islands && wants_islands(preset) {
         Some("The Islands panel isn’t running, so the panel stays one bar.")
     } else {
@@ -361,8 +361,8 @@ mod tests {
         for (name, _) in crate::desktop::wallpaper::BUNDLED {
             std::fs::copy(
                 std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join(format!("assets/wallpapers/{name}-1080p.png")),
-                bundled.join(format!("{name}-4k.png")),
+                    .join(format!("assets/wallpapers/{name}.jpg")),
+                bundled.join(format!("{name}.jpg")),
             )
             .unwrap();
         }
@@ -422,7 +422,7 @@ mod tests {
                 let name = wallpaper["background"]["source"]["bundled"].as_str().unwrap();
                 assert!(
                     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .join(format!("assets/wallpapers/{name}-1080p.png"))
+                        .join(format!("assets/wallpapers/{name}.jpg"))
                         .exists(),
                     "{name}"
                 );
@@ -527,7 +527,7 @@ mod tests {
         assert_eq!(panel.border_radius, Some(PILL));
         // Without the bundled wallpapers the rest of the look still applies.
         std::fs::remove_dir_all(fixture.0.join("pictures")).unwrap();
-        assert!(missing(&workbench, &dir, true).unwrap().contains("Wallpaper page"));
+        assert!(missing(&workbench, &dir, true).unwrap().contains("Reinstall Halcyon"));
         let without = fitted(workbench, &config, &dir, true);
         assert!(without.profile.wallpaper.is_none());
         assert!(without.profile.widget_style.is_some());

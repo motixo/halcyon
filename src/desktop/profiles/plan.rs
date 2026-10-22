@@ -156,7 +156,7 @@ impl Asset {
         let name = file_label(&self.path);
         let missing = || match &self.origin {
             Origin::Bundled(palette) => format!(
-                "The built-in {} wallpaper isn’t installed. Reinstall it on the Wallpaper page.",
+                "The built-in {} wallpaper isn’t installed. Reinstall Halcyon to restore it.",
                 palette_title(palette)
             ),
             Origin::System(_, relative) => {
@@ -1180,10 +1180,10 @@ fn edit_background(
     }
 }
 
-/// The native source of a profile source. A bundled wallpaper keeps the
-/// target's installed size when it already shows it, else uses the 4K
-/// file (or the 1080p one where only that is installed); a COSMIC
-/// wallpaper must resolve canonically inside a trusted folder.
+/// The native source of a profile source. A bundled wallpaper is the
+/// installed one (a desktop already showing the same wallpaper from an
+/// install before the rename keeps it); a COSMIC wallpaper must resolve
+/// canonically inside a trusted folder.
 fn resolve(
     source: &SourceLook,
     installed: &Installed,
@@ -1193,15 +1193,17 @@ fn resolve(
         SourceLook::Bundled(name) => {
             let palette = crate::desktop::wallpaper::bundled_name(name)
                 .ok_or_else(|| format!("“{name}” is not a built-in wallpaper."))?;
-            let sizes = ["4k", "1080p"]
-                .map(|size| installed.bundled_dir.join(format!("{palette}-{size}.png")));
+            let installed_path = wallpaper::bundled_path(&installed.bundled_dir, palette);
             let path = match current {
-                Some(BgSource::Path(path)) if sizes.contains(path) => path.clone(),
-                _ => sizes
-                    .iter()
-                    .find(|path| path.is_file())
-                    .unwrap_or(&sizes[0])
-                    .clone(),
+                Some(BgSource::Path(path))
+                    if !installed_path.is_file()
+                        && path.is_file()
+                        && wallpaper::classify(path, &installed.bundled_dir, &[])
+                            == Class::Bundled(palette) =>
+                {
+                    path.clone()
+                }
+                _ => installed_path,
             };
             (BgSource::Path(path), Origin::Bundled(palette))
         }

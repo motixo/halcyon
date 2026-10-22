@@ -46,7 +46,7 @@ fn cache_directory() -> Option<PathBuf> {
     if preview() {
         Some(directory()?.join("calendar-cache"))
     } else {
-        Some(dirs::cache_dir()?.join("cosmic-desktop-cards"))
+        crate::paths::cache_dir()
     }
 }
 pub fn cache_path(month: &str) -> Option<PathBuf> {
@@ -285,9 +285,9 @@ pub fn load_client() -> Result<GoogleClient, Problem> {
     if own.exists() {
         return parse_client(&std::fs::read(own).map_err(|_| Problem::InvalidClient)?);
     }
-    let bundled = dirs::data_local_dir()
-        .ok_or(Problem::MissingClient)?
-        .join("cosmic-desktop-cards/google-calendar-client.json");
+    // The publisher's sign-in client, installed with Halcyon.
+    let bundled =
+        crate::paths::shared("google-calendar-client.json").ok_or(Problem::MissingClient)?;
     if bundled.exists() && !preview() {
         return parse_client(&std::fs::read(bundled).map_err(|_| Problem::InvalidClient)?);
     }

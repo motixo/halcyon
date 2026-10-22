@@ -158,7 +158,7 @@ const FIRST_RUN: &str = r#"{"enabled_widgets":["clock","calendar","weather","dev
 const REPORTED: &str = r#"{"setup_dismissed":true,"theme":"amber","enabled_widgets":["clock","calendar","weather","devbox","projects"],"location":{"name":"Sample city","latitude":45.0,"longitude":16.0},"appearance":{"opacity":92,"corner_radius":24,"border_opacity":20,"color_source":"custom","accent":[64,53,44],"sync_colors":true,"wallpaper_colors":true}}"#;
 
 fn amber() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/amber-1080p.png")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/amber.jpg")
 }
 
 #[test]

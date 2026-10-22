@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build and packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config pkgconf cmake just \
+            libxkbcommon-dev libwayland-dev libexpat1-dev libfontconfig-dev \
+            libfreetype-dev libinput-dev libudev-dev libdbus-1-dev libseat-dev \
+            libegl1-mesa-dev libvulkan-dev libssl-dev libclang-dev \
+            dpkg-dev appstream desktop-file-utils lintian python3
+      - name: Install Rust 1.93
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: '1.93.0'
+      - uses: Swatinem/rust-cache@v2
+      - name: Validate desktop metadata
+        run: |
+          appstreamcli validate --no-net packaging/io.github.profilaz3.Halcyon.metainfo.xml
+          desktop-file-validate packaging/io.github.profilaz3.Halcyon.desktop
+      - name: Build release binary
+        run: cargo build --release --locked
+      - name: Test Python helpers and packaging
+        run: |
+          for test in scripts/test_*.py; do
+            python3 "$test"
+          done
+          python3 -m unittest scripts/test_controller.py
+          python3 -m unittest discover -s packaging -p 'test_*.py'
+      - name: Test Rust
+        # Some rendering tests need a COSMIC/Wayland display unavailable on this runner.
+        continue-on-error: true
+        run: cargo test --locked
+      - name: Install license report generator
+        run: cargo install cargo-about --locked --version 0.9.2 --features cli
+      - name: Collect dependency licenses
+        run: |
+          cargo metadata --locked --format-version 1 \
+            --filter-platform x86_64-unknown-linux-gnu > "$RUNNER_TEMP/cargo-metadata.json"
+          python3 packaging/collect-licenses.py \
+            --metadata "$RUNNER_TEMP/cargo-metadata.json" \
+            --cargo-home "${CARGO_HOME:-$HOME/.cargo}" --allow-missing \
+            --out "$RUNNER_TEMP/source-license-notices.txt"
+          mkdir -p packaging/licenses
+          cargo about generate --locked --fail \
+            --config packaging/licenses/about.toml packaging/licenses/about.hbs \
+            --output-file packaging/licenses/THIRD_PARTY_LICENSES.txt
+          cat "$RUNNER_TEMP/source-license-notices.txt" >> packaging/licenses/THIRD_PARTY_LICENSES.txt
+      - name: Build Debian package
+        run: |
+          python3 packaging/build-deb.py --binary target/release/halcyon \
+            --version "0.1.0~ci${GITHUB_RUN_NUMBER}" --out dist
+      - name: Inspect Debian package
+        run: |
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+      - name: Upload Debian package
+        uses: actions/upload-artifact@v4
+        with:
+          name: halcyon-deb-${{ github.run_number }}
+          path: |
+            dist/*.deb
+            dist/*.sha256
+          if-no-files-found: error

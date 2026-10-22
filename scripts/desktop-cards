@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Control Desktop Cards and its coordinated COSMIC wallpapers."""
+"""Control Halcyon: its widgets, Settings window, focus timer and wallpapers.
+
+Installed as `halcyon-ctl` beside the `halcyon` program (see packaging/README.md).
+"""
 import argparse
 from contextlib import contextmanager
 import fcntl
 import json
 import os
 from pathlib import Path
-import runpy
 import shutil
 import subprocess
 import sys
@@ -15,14 +17,22 @@ import urllib.parse
 import urllib.request
 
 USER_DIR = Path.home()
-CONFIG = USER_DIR / '.config/cosmic-desktop-cards'
+# The install prefix (`/usr` or `~/.local`): this script lives in `<prefix>/bin`.
+PREFIX = Path(__file__).resolve().parent.parent
+LEGACY_BINARY = USER_DIR / '.local/bin/cosmic-desktop-cards'
+BINARY = PREFIX / 'bin/halcyon' if (PREFIX / 'bin/halcyon').exists() else LEGACY_BINARY
+CONFIG = USER_DIR / '.config/halcyon'
 CONFIG_FILE = Path(os.environ.get('DESKTOP_CARDS_CONFIG', CONFIG / 'config.json'))
 BACKGROUND = USER_DIR / '.config/cosmic/com.system76.CosmicBackground/v1/all'
 CUSTOM = USER_DIR / '.config/cosmic/com.system76.CosmicSettings.Wallpaper/v1/custom-images'
-WALLPAPERS = USER_DIR / 'Pictures/Desktop Cards'
+# Built-in wallpapers come with Halcyon; an install from before the rename
+# copied them to Pictures/Desktop Cards.
+INSTALLED_WALLPAPERS = PREFIX / 'share/backgrounds/halcyon'
+LEGACY_WALLPAPERS = USER_DIR / 'Pictures/Desktop Cards'
+WALLPAPERS = INSTALLED_WALLPAPERS if INSTALLED_WALLPAPERS.is_dir() else LEGACY_WALLPAPERS
 THEMES = {'lavender': 'Quiet lavender', 'amber': 'Warm amber', 'teal': 'Night teal',
           'ocean': 'Ocean blue', 'rose': 'Rose', 'graphite': 'Graphite'}
-SERVICE = 'cosmic-desktop-cards.service'
+SERVICE = 'halcyon.service'
 WIDGETS = {'calendar': 'Calendar — today and meeting links', 'projects': 'Projects — branches and servers',
            'devbox': 'System monitor — CPU, memory, disk, network and GPU', 'weather': 'Weather — current conditions and forecast',
            'clock': 'Clock — time and date above the wallpaper',
@@ -115,20 +125,24 @@ def backup():
         if path.exists() and not target.exists():
             shutil.copy2(path, target)
 
-def installer():
-    helper = Path(__file__).resolve().with_name('install_wallpapers.py')
-    if not helper.is_file():
-        helper = USER_DIR / '.local/share/cosmic-desktop-cards/source/scripts/install_wallpapers.py'
-    if not helper.is_file():
-        raise RuntimeError('Bundled wallpapers are missing. Reinstall Desktop Cards.')
-    return runpy.run_path(str(helper))
+def wallpaper_file(name):
+    """A built-in wallpaper's file: `<name>.jpg`, or the old `<name>-4k.png`."""
+    if WALLPAPERS == INSTALLED_WALLPAPERS:
+        return WALLPAPERS / f'{name}.jpg'
+    return WALLPAPERS / f'{name}-4k.png'
 
 def bundled_wallpaper(name):
-    return installer()['ensure_wallpaper'](name, WALLPAPERS)
+    """The built-in wallpaper; they come with Halcyon and aren't copied anywhere."""
+    path = wallpaper_file(name)
+    if not path.is_file():
+        raise RuntimeError('The built-in wallpapers are missing. Reinstall Halcyon to restore them.')
+    return path
 
 def install_bundled_wallpapers():
-    installed = installer()['install_wallpapers'](WALLPAPERS)
-    print(f'{len(installed)} bundled wallpapers installed in {WALLPAPERS}')
+    missing = [name for name in THEMES if not wallpaper_file(name).is_file()]
+    if missing:
+        raise RuntimeError('The built-in wallpapers are missing. Reinstall Halcyon to restore them.')
+    print(f'The built-in wallpapers are installed in {WALLPAPERS}')
 
 def register_custom_images():
     """Lists the bundled wallpapers in COSMIC Settings' own collection."""
@@ -138,13 +152,13 @@ def register_custom_images():
     if not custom.endswith(']'):
         raise RuntimeError('The wallpaper collection is not a list. Original settings preserved.')
     for key in THEMES:
-        path = str(WALLPAPERS / f'{key}-4k.png')
+        path = str(wallpaper_file(key))
         if json.dumps(path) not in custom:
             custom = custom[:-1].rstrip() + '\n    ' + json.dumps(path) + ',\n]'
     atomic(CUSTOM, custom + '\n')
 
 def helper(*args, failure):
-    result = subprocess.run([str(USER_DIR / '.local/bin/cosmic-desktop-cards'), *args],
+    result = subprocess.run([str(BINARY), *args],
                             text=True, capture_output=True)
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or failure)
@@ -154,14 +168,14 @@ def apply_palette_links(name, *, wallpaper, colors):
     if 'DESKTOP_CARDS_CONFIG' in os.environ:
         raise RuntimeError('Desktop changes are disabled in an isolated preview.')
     if name not in THEMES:
-        raise RuntimeError('Unknown Desktop Cards palette.')
+        raise RuntimeError('Unknown Halcyon palette.')
     flags = ['--wallpaper'] * wallpaper + ['--colors'] * colors
     if flags:
         helper('--apply-palette-links', name, *flags, failure='Could not match the palette.')
 
 def apply_theme(name):
     if name not in THEMES:
-        raise RuntimeError('Unknown Desktop Cards palette.')
+        raise RuntimeError('Unknown Halcyon palette.')
     with config_lock():
         data = config()
         appearance = data.get('appearance', {})
@@ -199,7 +213,7 @@ def apply_cosmic_colors(name):
     if 'DESKTOP_CARDS_CONFIG' in os.environ:
         raise RuntimeError('COSMIC color changes are disabled in an isolated preview.')
     if name not in THEMES:
-        raise RuntimeError('Unknown Desktop Cards palette.')
+        raise RuntimeError('Unknown Halcyon palette.')
     helper('--apply-cosmic-colors', name, failure='Could not apply COSMIC accent colors.')
 
 def set_cosmic_colors(enabled):
@@ -236,7 +250,7 @@ def set_weather(query, interactive=False):
         if not interactive:
             print(json.dumps([{'name': v['name'], 'region': v.get('admin1'), 'country': v.get('country'),
                                'latitude': v['latitude'], 'longitude': v['longitude']} for v in results], indent=2))
-            print('Several places match. Run desktop-cards weather-picker to choose one.', file=sys.stderr)
+            print('Several places match. Run halcyon-ctl weather-picker to choose one.', file=sys.stderr)
             return
         entries = []
         for i, place in enumerate(results):
@@ -258,7 +272,7 @@ def weather_picker():
 
 
 def desktop_command(payload):
-    folder = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'desktop-cards'
+    folder = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}')) / 'halcyon'
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     atomic(folder / 'command.json', json.dumps(payload))
 
@@ -279,7 +293,7 @@ def settings(page=''):
             atomic(CONFIG_FILE.with_name('settings-command.json'), json.dumps({'page': page}))
             return
         CONFIG_FILE.with_name('settings-command.json').unlink(missing_ok=True)
-        subprocess.run([str(USER_DIR / '.local/bin/cosmic-desktop-cards'), '--settings', page], check=True)
+        subprocess.run([str(BINARY), '--settings', page], check=True)
 
 
 def restore_background():
@@ -354,5 +368,5 @@ if __name__ == '__main__':
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         if len(sys.argv) < 2 or sys.argv[1] in ('settings', 'weather-picker'):
-            dialog('--error', '--title=Desktop Cards', '--text=' + str(exc))
+            dialog('--error', '--title=Halcyon', '--text=' + str(exc))
         sys.exit(1)

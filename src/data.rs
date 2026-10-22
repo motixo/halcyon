@@ -40,7 +40,7 @@ impl WeatherSnapshot {
     fn path() -> Option<PathBuf> {
         std::env::var_os("DESKTOP_CARDS_CACHE_DIR")
             .map(PathBuf::from)
-            .or_else(|| dirs::cache_dir().map(|dir| dir.join("cosmic-desktop-cards")))
+            .or_else(crate::paths::cache_dir)
             .map(|dir| dir.join("weather.json"))
     }
     pub fn cached(location: &Location) -> Option<Self> {
@@ -1146,10 +1146,11 @@ pub struct ProjectServer {
 }
 pub async fn fetch_projects() -> Result<ProjectsData, String> {
     tokio::task::spawn_blocking(move || {
-        let home = dirs::home_dir().ok_or("Home directory unavailable")?;
+        let helper =
+            crate::paths::helper("project-status.py").ok_or("Project status unavailable")?;
         let output = std::process::Command::new("/usr/bin/timeout")
             .args(["25s", "/usr/bin/python3"])
-            .arg(home.join(".local/share/cosmic-desktop-cards/project-status.py"))
+            .arg(helper)
             .output()
             .map_err(|e| e.to_string())?;
         if !output.status.success() {

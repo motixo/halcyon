@@ -270,12 +270,12 @@ fn desktop<'a>(
 fn wallpapers() -> Vec<(&'static str, std::path::PathBuf)> {
     let bundled = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers");
     let mut list = vec![
-        ("amber", bundled.join("amber-1080p.png")),
-        ("teal", bundled.join("teal-1080p.png")),
-        ("graphite", bundled.join("graphite-1080p.png")),
-        ("lavender", bundled.join("lavender-1080p.png")),
-        ("rose", bundled.join("rose-1080p.png")),
-        ("ocean", bundled.join("ocean-1080p.png")),
+        ("amber", bundled.join("amber.jpg")),
+        ("teal", bundled.join("teal.jpg")),
+        ("graphite", bundled.join("graphite.jpg")),
+        ("lavender", bundled.join("lavender.jpg")),
+        ("rose", bundled.join("rose.jpg")),
+        ("ocean", bundled.join("ocean.jpg")),
     ];
     for (name, file) in [
         (

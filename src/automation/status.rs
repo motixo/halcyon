@@ -104,7 +104,7 @@ fn parts(skipped: &[String]) -> String {
 }
 
 /// The status card. `manual_at`: the last change someone made through
-/// Desktop Cards after automation's own last switch.
+/// Halcyon after automation's own last switch.
 pub fn status<Tz: TimeZone>(
     automation: &Automation,
     state: &State,

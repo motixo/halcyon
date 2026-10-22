@@ -23,7 +23,7 @@ fn seeded(name: &str) -> Fixture {
     let fixture = Fixture::new(name);
     fs::write(fixture.0.join("outputs"), "DP-1\nHDMI-1\n").unwrap();
     png(
-        &fixture.0.join("pictures/Desktop Cards/teal-4k.png"),
+        &fixture.0.join("pictures/Desktop Cards/teal.jpg"),
         [20, 150, 140],
     );
     png(&fixture.0.join("backgrounds/cosmic/a.png"), [200, 120, 40]);
@@ -817,7 +817,7 @@ fn selecting_bundled_tile_drafts_shared_source_with_installed_path() {
     assert!(editor.thumb(&teal).is_some(), "compiled-in thumbnail");
     editor.update(Message::Select(teal.pick));
     drive(&mut editor);
-    let installed = fixture.0.join("pictures/Desktop Cards/teal-4k.png");
+    let installed = fixture.0.join("pictures/Desktop Cards/teal.jpg");
     assert_eq!(source(&editor), BgSource::Path(installed));
     assert!(
         editor.shown().handle.is_some(),
@@ -848,7 +848,7 @@ fn selecting_bundled_tile_drafts_shared_source_with_installed_path() {
     editor.update(Message::Select(Pick::Bundled("unknown".into())));
     assert_eq!(
         source(&editor),
-        BgSource::Path(fixture.0.join("pictures/Desktop Cards/amber-4k.png")),
+        BgSource::Path(fixture.0.join("pictures/Desktop Cards/amber.jpg")),
         "an unknown name is no edit"
     );
 }
@@ -1644,7 +1644,7 @@ fn unreachable_typed_state_is_pruned() {
 #[test]
 fn missing_current_background_is_truthful_and_does_not_block() {
     let fixture = seeded("wallpaper-page-missing-current");
-    let amber = fixture.0.join("pictures/Desktop Cards/amber-4k.png");
+    let amber = fixture.0.join("pictures/Desktop Cards/amber.jpg");
     fixture.user(
         NAMESPACE,
         "all",

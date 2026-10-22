@@ -28,7 +28,7 @@ pub(super) async fn ready() -> Result<(), Problem> {
     let collection = match service.get_default_collection().await {
         Ok(collection) => collection,
         Err(_) => service
-            .create_collection("Desktop Cards", "default")
+            .create_collection("Halcyon", "default")
             .await
             .map_err(|_| Problem::Keyring)?,
     };
@@ -72,7 +72,7 @@ pub(super) async fn save(id: &str, credential: &Credential) -> Result<(), Proble
     let bytes = serde_json::to_vec(credential).map_err(|_| Problem::Storage)?;
     collection
         .create_item(
-            "Desktop Cards · Google Calendar",
+            "Halcyon · Google Calendar",
             attributes(id),
             &bytes,
             true,

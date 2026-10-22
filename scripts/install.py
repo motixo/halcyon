@@ -1,211 +1,179 @@
 #!/usr/bin/env python3
-"""Install or upgrade Desktop Cards for the current user.
+"""Install or upgrade Halcyon for the current user, from a source build.
 
-Copies a release build, the controller, the data helpers, the source (with the
-bundled wallpapers), the user service and the launcher into the home folder.
-Preferences, notes, drafts, profiles, automation and undo records are never
-touched, and nothing is enabled or started: `desktop-cards start` does that.
-An upgrade keeps the previous binary and controller in a dated backup folder.
+Installs the same layout as the Debian package (packaging/README.md) under
+`~/.local`: the program, its controller and helpers, the built-in wallpapers,
+the launcher, icons and the user service. Preferences, notes, looks, accounts
+and undo records are never touched.
+
+An install from before the rename (Desktop Cards) is taken over: its service
+is switched off in favour of `halcyon.service` (kept enabled or running as it
+was), its launcher is removed, and `desktop-cards` keeps working as a shortcut
+to `halcyon-ctl`. Replaced programs are kept in a dated backup folder.
 """
 import argparse
 from datetime import datetime, timezone
 import hashlib
-import json
 import os
 from pathlib import Path
-import runpy
 import shutil
 import subprocess
 import sys
 import tempfile
 
 SOURCE = Path(__file__).resolve().parent.parent
-SERVICE = 'cosmic-desktop-cards.service'
-LAUNCHER = 'io.github.workstation.DesktopCards.desktop'
-# Kept out of the installed source copy.
-SKIP = shutil.ignore_patterns('target', '__pycache__', '.git', '*.pyc')
-
-UNIT = """[Unit]
-Description=Coordinated COSMIC desktop clock, weather and devbox cards
-PartOf=graphical-session.target
-After=graphical-session.target
-
-[Service]
-ExecStart=%h/.local/bin/cosmic-desktop-cards
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=graphical-session.target
-"""
-
-
-def launcher(home):
-    return f"""[Desktop Entry]
-Type=Application
-Name=Desktop Cards
-Comment=Desktop widgets, wallpapers and COSMIC customization
-Exec={home}/.local/bin/desktop-cards settings
-Icon=preferences-desktop-wallpaper
-Terminal=false
-Categories=Settings;DesktopSettings;
-Keywords=widgets;weather;wallpaper;themes;clock;dock;panel;profiles;
-StartupWMClass=io.github.workstation.DesktopCards.Settings
-"""
+PACKAGE = 'cosmic-ext-halcyon'
+APP_ID = 'io.github.profilaz3.Halcyon'
+SERVICE = 'halcyon.service'
+ICON_SIZES = (48, 64, 128, 256, 512)
+LEGACY_SERVICE = 'cosmic-desktop-cards.service'
+LEGACY_LAUNCHER = 'io.github.workstation.DesktopCards.desktop'
 
 
 def default_binary():
     target = Path(os.environ.get('CARGO_TARGET_DIR', SOURCE / 'target'))
     if not target.is_absolute():
         target = SOURCE / target
-    return target / 'release' / 'cosmic-desktop-cards'
-
-
-def digest(path):
-    hasher = hashlib.sha256()
-    with Path(path).open('rb') as file:
-        for block in iter(lambda: file.read(1 << 20), b''):
-            hasher.update(block)
-    return hasher.hexdigest()
-
-
-def same(path, data):
-    try:
-        return Path(path).read_bytes() == data
-    except FileNotFoundError:
-        return False
+    return target / 'release' / 'halcyon'
 
 
 def place(path, data, mode):
-    """Writes `data` atomically; returns whether anything changed."""
+    """Writes `data` to `path` atomically; returns whether it changed."""
     path = Path(path)
-    if same(path, data) and (path.stat().st_mode & 0o777) == mode:
-        return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    handle, name = tempfile.mkstemp(dir=path.parent, prefix=f'.{path.name}.')
     try:
-        with os.fdopen(handle, 'wb') as file:
-            file.write(data)
-            file.flush()
-            os.fsync(file.fileno())
-        os.chmod(name, mode)
-        os.replace(name, path)
+        if path.read_bytes() == data and (path.stat().st_mode & 0o777) == mode:
+            return False
+    except FileNotFoundError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, prefix=f'.{path.name}.', delete=False) as file:
+        file.write(data)
+        file.flush()
+        os.fsync(file.fileno())
+        temporary = Path(file.name)
+    try:
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
     finally:
-        Path(name).unlink(missing_ok=True)
+        temporary.unlink(missing_ok=True)
     return True
 
 
-def replace_tree(source, destination):
-    """Swaps in a fresh copy of the source; the old copy goes only after the swap."""
-    destination = Path(destination)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    fresh = Path(tempfile.mkdtemp(dir=destination.parent, prefix='.source-new-'))
-    old = destination.with_name('.source-old')
-    try:
-        shutil.copytree(source, fresh, ignore=SKIP, dirs_exist_ok=True)
-        shutil.rmtree(old, ignore_errors=True)
-        if destination.exists():
-            os.replace(destination, old)
-        os.replace(fresh, destination)
-    finally:
-        shutil.rmtree(fresh, ignore_errors=True)
-        shutil.rmtree(old, ignore_errors=True)
+def unit(prefix):
+    template = (SOURCE / 'packaging/systemd/halcyon.service').read_text()
+    return template.replace('/usr/bin/halcyon', str(prefix / 'bin/halcyon'))
 
 
-def google_client(path):
-    """Validate publisher configuration before installing anything; never log it."""
-    try:
-        with Path(path).open('rb') as file:
-            raw = file.read(64 * 1024 + 1)
-        if len(raw) > 64 * 1024:
-            raise ValueError()
-        value = json.loads(raw)['installed']
-        client_id, secret = value['client_id'], value['client_secret']
-        if (not isinstance(client_id, str) or not isinstance(secret, str)
-                or not client_id.endswith('.apps.googleusercontent.com')
-                or len(client_id) > 512 or any(c.isspace() for c in client_id)
-                or not 0 < len(secret) <= 512):
-            raise ValueError()
-        # Ignore imported endpoints and unrelated data. The app pins Google's endpoints.
-        return json.dumps({'installed': {'client_id': client_id,
-                                        'client_secret': secret}}).encode()
-    except (KeyError, TypeError, ValueError, OSError):
-        raise RuntimeError('Choose a valid Google OAuth JSON file for a Desktop app.') from None
+def launcher(prefix):
+    text = (SOURCE / 'packaging' / f'{APP_ID}.desktop').read_text()
+    lines = []
+    for line in text.splitlines():
+        if line.startswith('Exec=halcyon'):
+            line = 'Exec=' + str(prefix / 'bin') + '/' + line[len('Exec='):]
+        lines.append(line)
+    return '\n'.join(lines) + '\n'
 
 
-def install(binary, home, *, systemd=True, restart=False, google_oauth_client=None,
-            run=subprocess.run):
-    binary, home = Path(binary), Path(home)
-    if not binary.is_file() or not os.access(binary, os.X_OK):
-        raise RuntimeError(f'No release build at {binary}. Run: cargo build --release --locked')
-    client = google_client(google_oauth_client) if google_oauth_client is not None else None
-    bin_dir = home / '.local/bin'
-    data = home / '.local/share/cosmic-desktop-cards'
-    app = bin_dir / 'cosmic-desktop-cards'
-    controller = bin_dir / 'desktop-cards'
-    first = not app.exists()
-    new_app = binary.read_bytes()
-    new_controller = (SOURCE / 'scripts/desktop-cards').read_bytes()
+def files(binary, prefix, google_client):
+    """(destination, bytes, mode) for every installed file."""
+    share = prefix / 'share'
+    out = [
+        (prefix / 'bin/halcyon', binary.read_bytes(), 0o755),
+        (prefix / 'bin/halcyon-ctl', (SOURCE / 'scripts/desktop-cards').read_bytes(), 0o755),
+        (share / PACKAGE / 'google-calendar-setup.html',
+         (SOURCE / 'docs/google-calendar-setup.html').read_bytes(), 0o644),
+        (share / 'applications' / f'{APP_ID}.desktop', launcher(prefix).encode(), 0o644),
+        (share / 'metainfo' / f'{APP_ID}.metainfo.xml',
+         (SOURCE / 'packaging' / f'{APP_ID}.metainfo.xml').read_bytes(), 0o644),
+    ]
+    for name in ('calendar-sync.py', 'project-status.py'):
+        out.append((prefix / 'lib' / PACKAGE / name, (SOURCE / 'scripts' / name).read_bytes(), 0o755))
+    for wallpaper in sorted((SOURCE / 'assets/wallpapers').glob('*.jpg')):
+        out.append((share / 'backgrounds/halcyon' / wallpaper.name, wallpaper.read_bytes(), 0o644))
+    for size in ICON_SIZES:
+        icon = SOURCE / 'packaging/icons' / str(size) / f'{APP_ID}.png'
+        out.append((share / f'icons/hicolor/{size}x{size}/apps' / f'{APP_ID}.png', icon.read_bytes(), 0o644))
+    if google_client is not None:
+        out.append((share / PACKAGE / 'google-calendar-client.json', google_client.read_bytes(), 0o644))
+    return out
 
-    # Keep what is being replaced, so an upgrade can be rolled back by hand.
-    replaced = [path for path, new in ((app, new_app), (controller, new_controller))
-                if path.exists() and not same(path, new)]
+
+def system_run(args, check=False):
+    return subprocess.run(args, check=check, capture_output=True, text=True)
+
+
+def install(binary, home, *, systemd=True, google_client=None, run=system_run):
+    binary = Path(binary).resolve(strict=True)
+    home = Path(home)
+    prefix = home / '.local'
+    planned = files(binary, prefix, google_client)
+    # Replaced programs are kept, so an upgrade can be rolled back by hand.
+    replaced = [path for path, data, _ in planned[:2] if path.exists() and path.read_bytes() != data]
     backup = None
     if replaced:
-        stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
-        backup = data / 'backups' / f'{stamp}-install'
+        stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        backup = home / '.local/share/halcyon/backups' / f'{stamp}-install'
         backup.mkdir(parents=True, exist_ok=True)
         for path in replaced:
             shutil.copy2(path, backup / path.name)
+    first = not (prefix / 'bin/halcyon').exists()
+    for path, data, mode in planned:
+        place(path, data, mode)
+    unit_changed = place(home / '.config/systemd/user' / SERVICE, unit(prefix).encode(), 0o644)
 
-    place(app, new_app, 0o755)
-    place(controller, new_controller, 0o755)
-    for helper in ('calendar-sync.py', 'project-status.py'):
-        place(data / helper, (SOURCE / 'scripts' / helper).read_bytes(), 0o755)
-    if client is not None:
-        place(data / 'google-calendar-client.json', client, 0o600)
-    replace_tree(SOURCE, data / 'source')
-    unit_changed = place(home / '.config/systemd/user' / SERVICE, UNIT.encode(), 0o644)
-    place(home / '.local/share/applications' / LAUNCHER, launcher(home).encode(), 0o644)
-    wallpapers = runpy.run_path(str(data / 'source/scripts/install_wallpapers.py'))
-    wallpapers['install_wallpapers'](home / 'Pictures/Desktop Cards')
+    # Take over an install from before the rename.
+    legacy_unit = home / '.config/systemd/user' / LEGACY_SERVICE
+    was_enabled = was_running = False
+    if legacy_unit.exists():
+        if systemd:
+            was_enabled = run(['systemctl', '--user', 'is-enabled', '--quiet', LEGACY_SERVICE]).returncode == 0
+            was_running = run(['systemctl', '--user', 'is-active', '--quiet', LEGACY_SERVICE]).returncode == 0
+            run(['systemctl', '--user', 'disable', '--now', LEGACY_SERVICE])
+        legacy_unit.unlink()
+        unit_changed = True
+    (home / '.local/share/applications' / LEGACY_LAUNCHER).unlink(missing_ok=True)
+    shim = prefix / 'bin/desktop-cards'
+    if shim.exists() and not shim.is_symlink():
+        shim.unlink()
+    if not shim.exists():
+        shim.symlink_to('halcyon-ctl')
 
     if systemd:
         if unit_changed:
             run(['systemctl', '--user', 'daemon-reload'], check=True)
-        if restart:
-            # Restarts only a running service; never enables or starts one.
+        if was_enabled:
+            run(['systemctl', '--user', 'enable', SERVICE], check=True)
+        if was_running:
+            run(['systemctl', '--user', 'restart', SERVICE], check=True)
+        elif run(['systemctl', '--user', 'is-active', '--quiet', SERVICE]).returncode == 0:
             run(['systemctl', '--user', 'try-restart', SERVICE], check=True)
-    return {'first': first, 'sha256': digest(app), 'backup': backup}
+        run(['update-desktop-database', str(prefix / 'share/applications')])
+    return {'first': first, 'backup': backup, 'took_over': was_enabled or was_running}
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--binary', type=Path, default=default_binary(),
                         help='release build to install (default: %(default)s)')
-    parser.add_argument('--restart', action='store_true',
-                        help='restart the cards if they are already running')
     parser.add_argument('--google-oauth-client', type=Path,
-                        help='publisher Google Desktop app JSON (optional; preserves an existing client)')
+                        help='publisher Google Desktop app JSON (optional)')
     parser.add_argument('--no-systemd', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--home', type=Path, default=Path.home(), help=argparse.SUPPRESS)
     args = parser.parse_args()
-    result = install(args.binary, args.home, systemd=not args.no_systemd, restart=args.restart,
-                     google_oauth_client=args.google_oauth_client)
-    print(f"Installed cosmic-desktop-cards {result['sha256'][:12]} in {args.home / '.local/bin'}")
+    result = install(args.binary, args.home, systemd=not args.no_systemd,
+                     google_client=args.google_oauth_client)
+    print(f'Installed Halcyon in {args.home / ".local"}')
     if result['backup']:
-        print(f"Previous version kept in {result['backup']}")
-    if result['first']:
-        print('Run `desktop-cards start` to show the cards and start them at login, '
-              'or open Desktop Cards from the launcher.')
-    elif not args.restart:
-        print('Run `desktop-cards restart` (or log out and in) to use the new version.')
+        print(f'Previous version kept in {result["backup"]}')
+    if result['took_over']:
+        print('Desktop Cards is now Halcyon; your settings, notes and looks came along.')
+    elif result['first']:
+        print('Open Halcyon from the app launcher to set it up.')
 
 
 if __name__ == '__main__':
     try:
         main()
-    except (RuntimeError, OSError) as exc:
-        print(str(exc), file=sys.stderr)
+    except (OSError, subprocess.CalledProcessError, ValueError) as error:
+        print(str(error), file=sys.stderr)
         sys.exit(1)
