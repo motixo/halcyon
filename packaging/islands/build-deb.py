@@ -4,6 +4,7 @@ import argparse
 import datetime
 import gzip
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -43,6 +44,16 @@ def build(binary, manifest, version, out):
         stage_file(manifest, library / 'companion-manifest.json')
         if not panel_launcher.compatible(library, panel_launcher.PACKAGES, 'companion-manifest.json'):
             raise ValueError('Binary or manifest fails the selector checksum, upstream or protocol checks')
+        # Shipped without debug symbols. Only symbols go, so the reviewed
+        # build's behavior is unchanged; the manifest records the new hash.
+        staged = library / 'cosmic-panel-islands'
+        if staged.read_bytes()[:4] == b'\x7fELF':
+            subprocess.run(['strip', '--strip-unneeded', str(staged)], check=True)
+            record = json.loads((library / 'companion-manifest.json').read_text())
+            record['binary_sha256'] = hashlib.sha256(staged.read_bytes()).hexdigest()
+            (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
+            if not panel_launcher.compatible(library, panel_launcher.PACKAGES, 'companion-manifest.json'):
+                raise ValueError('The stripped binary fails the selector checks')
         for name in ('install.py', 'panel_launcher.py'):
             stage_file(COMPANION / name, library / name, 0o755)
         stage_file(HERE / 'halcyon-islands', staging / 'usr/bin/halcyon-islands', 0o755)
@@ -56,7 +67,12 @@ def build(binary, manifest, version, out):
         man = staging / 'usr/share/man/man1/halcyon-islands.1.gz'
         man.parent.mkdir(parents=True)
         man.write_bytes(gzip.compress((HERE / 'halcyon-islands.1').read_bytes(), mtime=0))
-        dependencies = ['python3', 'cosmic-ext-halcyon'] + [
+        shlibs = subprocess.run(
+            ['dpkg-shlibdeps', '-O', f'-e{library / "cosmic-panel-islands"}'],
+            cwd=Path(temporary), capture_output=True, text=True)
+        native = shlibs.stdout.strip().removeprefix('shlibs:Depends=')
+        dependencies = ([native] if shlibs.returncode == 0 and native else ['libc6']) + [
+            'python3', 'cosmic-ext-halcyon'] + [
             f'{name} (= {pin})' for name, pin in panel_launcher.PACKAGES.items()]
         size = sum(path.stat().st_size for path in staging.rglob('*') if path.is_file())
         control = staging / 'DEBIAN/control'

@@ -147,7 +147,7 @@ class IslandsPackage(unittest.TestCase):
             self.assertTrue(line.startswith('-rwxr-xr-x' if mode == 0o755 else '-rw-r--r--'), line)
             self.assertIn('root/root', line)
         for field in [f'Package: {PACKAGE}', 'Architecture: amd64', 'Version: 0.1.0',
-                      'Depends: python3, cosmic-ext-halcyon', 'optional version-locked']:
+                      'python3, cosmic-ext-halcyon', 'optional version-locked']:
             self.assertIn(field, info.stdout)
         for name, pin in panel_launcher.PACKAGES.items():
             self.assertIn(f'{name} (= {pin})', info.stdout)
