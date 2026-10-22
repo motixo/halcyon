@@ -50,13 +50,12 @@ def generate(names, output, previews):
     previews.mkdir(parents=True, exist_ok=True)
     for name in names:
         result = render(name)
-        result.save(output / f'{name}-4k.png', optimize=True)
-        result.resize((1920, 1080), Image.Resampling.LANCZOS).save(
-            output / f'{name}-1080p.png', optimize=True)
+        # One 3840x2160 JPEG per wallpaper; 4:4:4 chroma keeps gradients clean.
+        result.convert('RGB').save(output / f'{name}.jpg', quality=92, subsampling=0, optimize=True)
         for suffix, size in [('preview', (960, 540)), ('thumb', (320, 180))]:
             result.resize(size, Image.Resampling.LANCZOS).save(
                 previews / f'{name}-{suffix}.png', optimize=True)
-        print(output / f'{name}-4k.png')
+        print(output / f'{name}.jpg')
 
 
 def main():

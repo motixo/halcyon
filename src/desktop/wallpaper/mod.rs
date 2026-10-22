@@ -555,18 +555,29 @@ pub fn check_path(path: &Path) -> Result<(), String> {
     }
 }
 
-/// Where the controller installs the bundled wallpapers.
+/// The built-in wallpapers, installed with Halcyon (see `paths`).
 pub fn bundled_dir(store: &DesktopStore) -> PathBuf {
     match store.fixture_root() {
         Some(root) => root.join("pictures/Desktop Cards"),
-        None => dirs::home_dir()
-            .unwrap_or_default()
-            .join("Pictures/Desktop Cards"),
+        None => crate::paths::backgrounds().unwrap_or_default(),
     }
 }
-/// The 4K bundled wallpaper of palette `name`.
+/// The built-in wallpaper `name` (a 3840x2160 JPEG).
 pub fn bundled_path(dir: &Path, name: &str) -> PathBuf {
-    dir.join(format!("{name}-4k.png"))
+    dir.join(format!("{name}.jpg"))
+}
+/// The built-in wallpaper a path from an install before the rename names:
+/// `Desktop Cards/<name>-4k.png` or `-1080p.png` in the Pictures folder.
+fn legacy_bundled(path: &Path) -> Option<&'static str> {
+    if path.parent()?.file_name()? != "Desktop Cards" {
+        return None;
+    }
+    let file = path.file_name()?.to_str()?;
+    BUNDLED.iter().map(|(name, _)| *name).find(|name| {
+        ["4k", "1080p"]
+            .iter()
+            .any(|size| file == format!("{name}-{size}.png"))
+    })
 }
 /// Trusted system `backgrounds` directories: `$XDG_DATA_DIRS`, without any
 /// entry inside the home folder or the user's data home (also through a
@@ -650,12 +661,12 @@ pub enum Class {
 /// escaping symlink; otherwise Personal.
 pub fn classify(path: &Path, bundled_dir: &Path, dirs: &[PathBuf]) -> Class {
     for (name, _) in BUNDLED {
-        if ["4k", "1080p"]
-            .iter()
-            .any(|size| path == bundled_dir.join(format!("{name}-{size}.png")))
-        {
+        if path == bundled_path(bundled_dir, name) {
             return Class::Bundled(name);
         }
+    }
+    if let Some(name) = legacy_bundled(path) {
+        return Class::Bundled(name);
     }
     for dir in dirs {
         let Ok(relative) = path.strip_prefix(dir) else {

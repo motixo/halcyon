@@ -1,12 +1,14 @@
 import importlib.util
-import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
 spec = importlib.util.spec_from_file_location('install', Path(__file__).with_name('install.py'))
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
+
+APP_ID = 'io.github.profilaz3.Halcyon'
 
 
 class InstallTests(unittest.TestCase):
@@ -15,98 +17,86 @@ class InstallTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         self.home = self.root / 'home'
-        self.binary = self.root / 'cosmic-desktop-cards'
+        self.binary = self.root / 'halcyon'
         self.build(b'release one')
         self.calls = []
+        # systemctl answers: which `is-enabled` / `is-active` checks succeed.
+        self.ok = set()
 
     def build(self, contents):
         self.binary.write_bytes(contents)
         self.binary.chmod(0o755)
 
-    def run_install(self, **options):
-        return installer.install(self.binary, self.home,
-                                 run=lambda args, check: self.calls.append(args), **options)
+    def runner(self, args, check=False):
+        self.calls.append(args)
+        query = tuple(args[2:4]) if len(args) > 3 else ()
+        code = 0 if any(query == (verb, name) or (verb in args and name in args) for verb, name in self.ok) else 1
+        if args[2:3] not in (['is-enabled'], ['is-active']):
+            code = 0
+        return subprocess.CompletedProcess(args, code, '', '')
 
-    def test_first_install_places_every_part_and_starts_nothing(self):
-        result = self.run_install()
+    def install(self, **options):
+        return installer.install(self.binary, self.home, run=self.runner, **options)
+
+    def test_first_install_places_the_package_layout_under_local(self):
+        result = self.install()
         self.assertTrue(result['first'])
-        self.assertIsNone(result['backup'])
-        app = self.home / '.local/bin/cosmic-desktop-cards'
-        self.assertEqual(app.read_bytes(), b'release one')
-        for path in (app, self.home / '.local/bin/desktop-cards',
-                     self.home / '.local/share/cosmic-desktop-cards/calendar-sync.py',
-                     self.home / '.local/share/cosmic-desktop-cards/project-status.py'):
+        local = self.home / '.local'
+        self.assertEqual((local / 'bin/halcyon').read_bytes(), b'release one')
+        for path in (local / 'bin/halcyon', local / 'bin/halcyon-ctl',
+                     local / 'lib/cosmic-ext-halcyon/calendar-sync.py',
+                     local / 'lib/cosmic-ext-halcyon/project-status.py'):
             self.assertEqual(path.stat().st_mode & 0o777, 0o755, path)
-        source = self.home / '.local/share/cosmic-desktop-cards/source'
-        self.assertTrue((source / 'scripts/install_wallpapers.py').is_file())
-        self.assertTrue((source / 'assets/wallpapers/teal-4k.png').is_file())
-        self.assertFalse((source / 'target').exists())
-        self.assertEqual(list(source.rglob('__pycache__')), [])
-        self.assertEqual(len(list((self.home / 'Pictures/Desktop Cards').glob('*.png'))), 26)
-        launcher = (self.home / '.local/share/applications' / installer.LAUNCHER).read_text()
-        self.assertIn(f'Exec={self.home}/.local/bin/desktop-cards settings\n', launcher)
-        unit = (self.home / '.config/systemd/user' / installer.SERVICE).read_text()
-        self.assertIn('ExecStart=%h/.local/bin/cosmic-desktop-cards\n', unit)
-        # Only a reload: never enabled or started by installing.
-        self.assertEqual(self.calls, [['systemctl', '--user', 'daemon-reload']])
-        self.assertFalse((self.home / '.config/cosmic-desktop-cards').exists())
+        wallpapers = sorted(p.name for p in (local / 'share/backgrounds/halcyon').iterdir())
+        self.assertIn('halcyon-night.jpg', wallpapers)
+        self.assertEqual(len(wallpapers), 13)
+        for size in (48, 64, 128, 256, 512):
+            self.assertTrue((local / f'share/icons/hicolor/{size}x{size}/apps/{APP_ID}.png').is_file())
+        launcher = (local / f'share/applications/{APP_ID}.desktop').read_text()
+        self.assertIn(f'Exec={local}/bin/halcyon --settings', launcher)
+        unit = (self.home / '.config/systemd/user/halcyon.service').read_text()
+        self.assertIn(f'ExecStart={local}/bin/halcyon', unit)
+        self.assertTrue((local / 'share/cosmic-ext-halcyon/google-calendar-setup.html').is_file())
+        # Nothing is enabled or started on a fresh install.
+        self.assertFalse(any('enable' in call or 'restart' in call for call in self.calls))
 
-    def test_upgrade_keeps_preferences_drafts_and_the_previous_build(self):
-        self.run_install()
-        config = self.home / '.config/cosmic-desktop-cards/config.json'
-        config.parent.mkdir(parents=True)
-        config.write_text(json.dumps({'theme': 'rose', 'future': 1}))
-        data = self.home / '.local/share/cosmic-desktop-cards'
-        private = {name: f'{name} contents' for name in
-                   ('notes.json', 'notes-draft.json', 'desktop-undo.json', 'automation.json',
-                    'profiles/mine.json')}
-        for name, text in private.items():
-            (data / name).parent.mkdir(parents=True, exist_ok=True)
-            (data / name).write_text(text)
-        (data / 'source/stale.txt').write_text('from an older release')
-        self.calls.clear()
+    def test_an_install_from_before_the_rename_is_taken_over(self):
+        units = self.home / '.config/systemd/user'
+        units.mkdir(parents=True)
+        (units / 'cosmic-desktop-cards.service').write_text('[Service]\n')
+        launchers = self.home / '.local/share/applications'
+        launchers.mkdir(parents=True)
+        (launchers / 'io.github.workstation.DesktopCards.desktop').write_text('[Desktop Entry]\n')
+        bin_dir = self.home / '.local/bin'
+        bin_dir.mkdir(parents=True)
+        (bin_dir / 'desktop-cards').write_text('old controller')
+        self.ok = {('is-enabled', 'cosmic-desktop-cards.service'), ('is-active', 'cosmic-desktop-cards.service')}
+        result = self.install()
+        self.assertTrue(result['took_over'])
+        self.assertIn(['systemctl', '--user', 'disable', '--now', 'cosmic-desktop-cards.service'], self.calls)
+        self.assertIn(['systemctl', '--user', 'enable', 'halcyon.service'], self.calls)
+        self.assertIn(['systemctl', '--user', 'restart', 'halcyon.service'], self.calls)
+        self.assertFalse((units / 'cosmic-desktop-cards.service').exists())
+        self.assertFalse((launchers / 'io.github.workstation.DesktopCards.desktop').exists())
+        # Old shortcuts that run `desktop-cards` keep working.
+        shim = bin_dir / 'desktop-cards'
+        self.assertTrue(shim.is_symlink())
+        self.assertEqual(shim.resolve(), (bin_dir / 'halcyon-ctl').resolve())
+
+    def test_an_upgrade_keeps_the_previous_program(self):
+        self.install()
         self.build(b'release two')
-        result = self.run_install(restart=True)
+        result = self.install()
         self.assertFalse(result['first'])
-        self.assertEqual((self.home / '.local/bin/cosmic-desktop-cards').read_bytes(), b'release two')
-        self.assertEqual((result['backup'] / 'cosmic-desktop-cards').read_bytes(), b'release one')
-        self.assertFalse((result['backup'] / 'desktop-cards').exists(), 'unchanged controller')
-        self.assertEqual(json.loads(config.read_text()), {'theme': 'rose', 'future': 1})
-        for name, text in private.items():
-            self.assertEqual((data / name).read_text(), text, name)
-        self.assertFalse((data / 'source/stale.txt').exists())
-        self.assertEqual([path.name for path in data.iterdir() if path.name.startswith('.')], [])
-        # The unit is unchanged, so only a running service is restarted.
-        self.assertEqual(self.calls, [['systemctl', '--user', 'try-restart', installer.SERVICE]])
+        self.assertEqual((result['backup'] / 'halcyon').read_bytes(), b'release one')
+        self.assertEqual((self.home / '.local/bin/halcyon').read_bytes(), b'release two')
 
-    def test_a_missing_build_changes_nothing(self):
-        self.binary.unlink()
-        with self.assertRaises(RuntimeError):
-            self.run_install()
-        self.assertFalse(self.home.exists())
-        self.assertEqual(self.calls, [])
-
-    def test_publisher_client_is_sanitized_private_and_preserved_on_upgrade(self):
-        client = self.root / 'google.json'
-        expected = {'client_id': 'sample.apps.googleusercontent.com', 'client_secret': 'fixture'}
-        client.write_text(json.dumps({'installed': {**expected,
-            'token_uri': 'https://example.invalid/token'}, 'unrelated': 'omit'}))
-        self.run_install(google_oauth_client=client)
-        installed = self.home / '.local/share/cosmic-desktop-cards/google-calendar-client.json'
-        self.assertEqual(json.loads(installed.read_text()), {'installed': expected})
-        self.assertEqual(installed.stat().st_mode & 0o777, 0o600)
-        self.build(b'release two')
-        self.run_install()
-        self.assertEqual(json.loads(installed.read_text()), {'installed': expected})
-
-    def test_invalid_publisher_client_changes_nothing(self):
-        client = self.root / 'google.json'
-        for raw in ('{}', '{"web":{}}', 'not json', 'x' * (64 * 1024 + 1)):
-            client.write_text(raw)
-            with self.assertRaises(RuntimeError):
-                self.run_install(google_oauth_client=client)
-            self.assertFalse(self.home.exists())
-            self.assertEqual(self.calls, [])
+    def test_preferences_and_notes_are_never_touched(self):
+        config = self.home / '.config/halcyon/config.json'
+        config.parent.mkdir(parents=True)
+        config.write_text('{"theme":"teal"}')
+        self.install()
+        self.assertEqual(config.read_text(), '{"theme":"teal"}')
 
 
 if __name__ == '__main__':

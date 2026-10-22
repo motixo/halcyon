@@ -108,7 +108,7 @@ impl Cards {
             size: Some((Some(0), Some(0))),
             exclusive_zone: 0,
             input_zone: if editing { None } else { Some(Vec::new()) },
-            namespace: "desktop-cards-arrange".into(),
+            namespace: "halcyon-arrange".into(),
             ..Default::default()
         })
     }
@@ -939,7 +939,7 @@ impl Cards {
                 anchor: Anchor::TOP | Anchor::LEFT,
                 exclusive_zone: 0,
                 input_zone: Some(zone(&self.card_input_rects(widget))),
-                namespace: format!("desktop-cards-{}", widget.key()),
+                namespace: format!("halcyon-{}", widget.key()),
                 size: Some((
                     Some(size[0].ceil() as u32 + mu),
                     Some(size[1].ceil() as u32 + mu),

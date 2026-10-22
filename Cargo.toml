@@ -1,10 +1,16 @@
 [package]
-name = "cosmic-desktop-cards"
+name = "cosmic-ext-halcyon"
 version = "0.1.0"
-description = "Coordinated clock, weather and system cards for the COSMIC desktop"
+description = "Desktop widgets and themes for COSMIC"
+homepage = "https://github.com/profilaz3/halcyon"
+repository = "https://github.com/profilaz3/halcyon"
 edition = "2024"
 rust-version = "1.93"
 license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "halcyon"
+path = "src/main.rs"
 
 [dependencies]
 dock-islands-core = { path = "companion/dock-islands-core" }
@@ -43,4 +49,5 @@ sha2 = "=0.11.0"
 getrandom = "=0.4.3"
 
 [profile.release]
-strip = "debuginfo"
+# Release packages ship without symbols.
+strip = true

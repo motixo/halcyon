@@ -489,6 +489,12 @@ fn settings_follow_the_system_theme_independently_of_widget_colors() {
     if child("settings_follow_the_system_theme_independently_of_widget_colors") {
         return;
     }
+    // libcosmic reads the light and dark themes from COSMIC's installed
+    // defaults; without COSMIC (a build server) there is nothing to follow.
+    if !std::path::Path::new("/usr/share/cosmic/com.system76.CosmicTheme.Light").exists() {
+        eprintln!("COSMIC's theme defaults aren't installed; skipped");
+        return;
+    }
     let mode = std::path::PathBuf::from(std::env::var_os("XDG_CONFIG_HOME").unwrap())
         .join("cosmic/com.system76.CosmicTheme.Mode/v1/is_dark");
     std::fs::create_dir_all(mode.parent().unwrap()).unwrap();
@@ -521,7 +527,7 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
     assert!(background.starts_with(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap()));
     std::fs::create_dir_all(background.parent().unwrap()).unwrap();
     let picture =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal-1080p.png");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal.jpg");
     std::fs::write(background,format!("(output: \"all\", source: Path({}), filter_by_theme: false, rotation_frequency: 3600, filter_method: Lanczos, scaling_mode: Zoom, sampling_method: Alphanumeric)",serde_json::to_string(&picture).unwrap())).unwrap();
     let before = std::fs::read(Config::path().unwrap()).unwrap();
     for size in [Size::new(820., 600.), Size::new(1024., 720.)] {

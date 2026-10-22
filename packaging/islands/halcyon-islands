@@ -1,0 +1,166 @@
+#!/usr/bin/python3
+"""Enable or restore the optional Islands panel for this user."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+PACKAGE = 'cosmic-ext-halcyon-islands'
+LIBRARY = Path(__file__).resolve().parent.parent / 'lib' / PACKAGE
+DATA = Path('.local/share/cosmic-desktop-cards')
+
+
+def read_json(path):
+    value = json.loads(path.read_text())
+    if not isinstance(value, dict):
+        raise ValueError(f'Invalid record: {path}')
+    return value
+
+
+def records(home, installer):
+    backups = installer.safe_path(home, str(DATA / 'backups'))
+    result = []
+    for path in sorted(backups.glob('panel-*/install-record.json'), reverse=True):
+        installer.safe_path(home, str(path.relative_to(home)))
+        record = read_json(path)
+        if record.get('owner') == PACKAGE and not record.get('restored'):
+            if record.get('root') != str(home):
+                raise ValueError(f'Install record belongs to another home: {path}')
+            result.append((path, record))
+    return result
+
+
+def run_installer(arguments, env):
+    result = subprocess.run([sys.executable, '-B', str(LIBRARY / 'install.py'), *arguments],
+                            env=env, text=True, capture_output=True)
+    if result.returncode:
+        # Installer errors can contain a traceback. Keep the actionable last line.
+        message = (result.stderr or result.stdout).strip().splitlines()
+        raise ValueError(message[-1] if message else 'Companion installer failed')
+
+
+def status(home, launcher, installer):
+    installed = all((LIBRARY / name).is_file() for name in (
+        'cosmic-panel-islands', 'companion-manifest.json', 'install.py', 'panel_launcher.py'))
+    match = installed and launcher.compatible(LIBRARY, manifest_name='companion-manifest.json')
+    data = Path(os.environ.get('XDG_DATA_HOME', home / '.local/share'))
+    bundle = data / 'cosmic-desktop-cards/companion'
+    try:
+        selection = read_json(bundle / 'selection.json')
+    except (OSError, ValueError):
+        selection = {}
+    selector = home / '.local/bin/cosmic-panel'
+    known_selectors = {launcher.digest(LIBRARY / 'panel_launcher.py')}
+    active = records(home, installer)
+    if active:
+        known_selectors.add(active[0][1]['installed']['.local/bin/cosmic-panel'])
+    selected = (selector.is_file() and launcher.digest(selector) in known_selectors
+                and selection.get('enabled') is True)
+    state = Path(os.environ.get('XDG_STATE_HOME', home / '.local/state')) / 'desktop-cards-panel'
+    failed = (state / 'failed').exists()
+    ready = selected and launcher.compatible(bundle) and not failed
+    print('Installed: ' + ('yes' if installed else 'no'))
+    print('System compatibility (selector checks): ' + ('match' if match else 'no match'))
+    print('Enabled for this user: ' + ('yes' if selected else 'no'))
+    if failed:
+        print('Stock panel selected: a previous Islands failure is recorded.')
+    elif selected and not ready:
+        print('Stock panel selected: the user bundle or COSMIC versions do not match.')
+    elif ready:
+        current = launcher.session_identity()
+        if selection.get('defer_session') is not None and (
+                current is None or current == selection['defer_session']):
+            print('Activation: waiting for the next login.')
+        else:
+            print('Activation: eligible in this login; running processes are not inspected.')
+    else:
+        print('Activation: disabled.')
+    return 0 if installed and match and ready else 1
+
+
+def change(command, home, fixture, launcher, installer):
+    env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}
+    # The installer deliberately uses its historical home-relative layout.
+    # Refuse an XDG data override that would make the selector read elsewhere.
+    if command == 'enable' and Path(env.get('XDG_DATA_HOME', home / '.local/share')) != home / '.local/share':
+        raise ValueError('XDG_DATA_HOME must be ~/.local/share for the companion selector')
+    lockpath = installer.safe_path(home, str(DATA / 'backups/.islands.lock'))
+    lockpath.parent.mkdir(parents=True, exist_ok=True)
+    with os.fdopen(os.open(lockpath, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600), 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise ValueError('Another halcyon-islands command is running') from None
+        active = records(home, installer)
+        if command == 'disable':
+            for path, _ in active:
+                run_installer(['--restore', str(path)], env)
+            if not active and (home / '.local/bin/cosmic-panel').exists():
+                raise ValueError('An existing panel selector is not managed by this command; restore its original install record')
+            print('Islands disabled. Log out and back in to use the stock panel.')
+            return 0
+        if active and not active[0][1].get('complete'):
+            raise ValueError('An interrupted install exists. Run halcyon-islands disable before enabling again')
+        if not active and os.path.lexists(home / '.local/bin/cosmic-panel'):
+            raise ValueError('An existing panel selector is not managed by this command; restore its original install record first')
+        if not launcher.compatible(LIBRARY, launcher.PACKAGES, 'companion-manifest.json'):
+            raise ValueError('Packaged binary or manifest fails the selector integrity checks')
+        # Never hide edits by layering a fresh installation over a changed bundle.
+        if active:
+            record = active[0][1]
+            for relative, expected in record['installed'].items():
+                path = installer.safe_path(home, relative)
+                if (not path.is_file() or launcher.digest(path) != expected
+                        or path.stat().st_mode & 0o777 != record['modes'][relative]):
+                    raise ValueError(f'A companion file changed since installation: {relative}')
+            bundle = home / DATA / 'companion'
+            same = all((bundle / dest).read_bytes() == (LIBRARY / source).read_bytes()
+                       for source, dest in [('cosmic-panel-islands', 'cosmic-panel-islands'),
+                                            ('companion-manifest.json', 'manifest.json')])
+            same = same and (home / '.local/bin/cosmic-panel').read_bytes() == (LIBRARY / 'panel_launcher.py').read_bytes()
+        else:
+            same = False
+        if not same:
+            target = ['--root', str(home)] if fixture else ['--user']
+            run_installer([*target, '--binary', str(LIBRARY / 'cosmic-panel-islands'),
+                           '--manifest', str(LIBRARY / 'companion-manifest.json'),
+                           '--enable-next-login', '--record-owner', PACKAGE], env)
+        print('Islands enabled for the next login. Log out and back in to start it.')
+        print('The normal panel is used whenever COSMIC versions do not match.')
+        state = Path(env.get('XDG_STATE_HOME', home / '.local/state')) / 'desktop-cards-panel'
+        if (state / 'failed').exists():
+            print('A previous failure marker still selects the stock panel; see the package README.')
+        return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, epilog='Run as your desktop user, without sudo.')
+    parser.add_argument('--root', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('command', choices=['status', 'enable', 'disable'])
+    args = parser.parse_args()
+    home = (args.root or Path.home()).resolve()
+    if args.root:
+        # Fixture mode keeps even inherited XDG paths inside the fixture.
+        os.environ.update(HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'),
+                          XDG_STATE_HOME=str(home / '.local/state'), XDG_CONFIG_HOME=str(home / '.config'))
+    if not (LIBRARY / 'panel_launcher.py').is_file() or not (LIBRARY / 'install.py').is_file():
+        print('Islands package is not installed completely. Install or reinstall cosmic-ext-halcyon-islands.', file=sys.stderr)
+        return 1
+    sys.path.insert(0, str(LIBRARY))
+    import panel_launcher as launcher
+    import install as installer
+    try:
+        if args.command == 'status':
+            return status(home, launcher, installer)
+        return change(args.command, home, args.root is not None, launcher, installer)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError) as error:
+        print(f'Islands: {error}', file=sys.stderr)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

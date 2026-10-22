@@ -20,6 +20,9 @@ __pycache__/
 /docs/brand/wizard/*.png
 /docs/brand/wizard/generation-prompts.txt
 
+# Generated at release time from Cargo.lock.
+/packaging/licenses/THIRD_PARTY_LICENSES.txt
+
 # Credentials and local configuration never belong in the repository.
 google-calendar-client.json
 *.secret

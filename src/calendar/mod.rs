@@ -235,7 +235,7 @@ async fn legacy(
     let home = dirs::home_dir().ok_or(Problem::Storage)?;
     let result =
         tokio::process::Command::new(home.join(".local/share/workspace-mcp/venv/bin/python"))
-            .arg(home.join(".local/share/cosmic-desktop-cards/calendar-sync.py"))
+            .arg(crate::paths::helper("calendar-sync.py").ok_or(Problem::Storage)?)
             .args(["--month", month, "--account", &connection.account])
             .stdin(Stdio::null())
             .stderr(Stdio::null())

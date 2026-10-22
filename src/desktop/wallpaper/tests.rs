@@ -482,7 +482,7 @@ fn palette_links_conflict_with_open_wallpaper_draft() {
     fixture.user(NAMESPACE, SHARED, &entry("all", &path("/shared.png")));
     let bundled = fixture.0.join("pictures/Desktop Cards");
     fs::create_dir_all(&bundled).unwrap();
-    fs::write(bundled.join("teal-4k.png"), b"png").unwrap();
+    fs::write(bundled.join("teal.jpg"), b"png").unwrap();
     let store = fixture.store();
     let mut draft = WallpaperDraft::load(&store).unwrap();
     draft.set_scaling(&Target::Shared, ScalingMode::Stretch);

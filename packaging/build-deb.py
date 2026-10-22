@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Build the /usr Halcyon package without installing or modifying source files."""
+
+import argparse
+import gzip
+import hashlib
+import math
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+REPO = Path(__file__).resolve().parent.parent
+PACKAGE = "cosmic-ext-halcyon"
+APP_ID = "io.github.profilaz3.Halcyon"
+MAINTAINER = "profilaz3 <261673162+profilaz3@users.noreply.github.com>"
+HOMEPAGE = "https://github.com/profilaz3/halcyon"
+ICON_SIZES = (48, 64, 128, 256, 512)
+
+
+def install(source, destination, mode=0o644):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, destination)
+    destination.chmod(mode)
+
+
+def dependencies(binary, scratch):
+    """Give dpkg-shlibdeps its own Debian source context, never the checkout."""
+    debian = scratch / "debian"
+    debian.mkdir()
+    (debian / "control").write_text(
+        f"Source: {PACKAGE}\nSection: x11\nPriority: optional\n"
+        f"Maintainer: {MAINTAINER}\n\nPackage: {PACKAGE}\n"
+        "Architecture: amd64\nDescription: Desktop widgets and themes for COSMIC\n"
+    )
+    detected = ""
+    if shutil.which("dpkg-shlibdeps"):
+        result = subprocess.run(
+            ["dpkg-shlibdeps", "-O", "-e" + str(binary)],
+            cwd=scratch, capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            for line in result.stdout.splitlines():
+                if line.startswith("shlibs:Depends="):
+                    detected = line.partition("=")[2].strip()
+        if not detected and result.stderr:
+            print(result.stderr.strip(), file=sys.stderr)
+    if not detected:
+        print("Warning: no shared-library dependencies detected; using "
+              "fallback libc6, libxkbcommon0.", file=sys.stderr)
+        detected = "libc6, libxkbcommon0"
+    return detected + ", python3, git, systemd"
+
+
+def default_wallpapers():
+    for path in (REPO / "assets/wallpapers-jpg", REPO / "assets/wallpapers"):
+        if any(path.glob("*.jpg")):
+            return path
+    return REPO / "assets/wallpapers-jpg"
+
+
+def build(args):
+    if not re.fullmatch(r"[0-9][A-Za-z0-9.+~\-]*", args.version):
+        raise ValueError("version must be a Debian version without an epoch or path separators")
+    binary = args.binary.resolve(strict=True)
+    if not binary.is_file():
+        raise ValueError("binary must be a regular file")
+    wallpaper_dir = args.wallpapers if args.wallpapers is not None else default_wallpapers()
+    wallpapers = sorted(path for path in wallpaper_dir.glob("*.jpg") if path.is_file())
+    if not wallpapers:
+        raise ValueError(f"no <name>.jpg wallpapers in {wallpaper_dir}; use --wallpapers")
+    if args.google_client:
+        args.google_client.resolve(strict=True)
+    args.out.mkdir(parents=True, exist_ok=True)
+    output = args.out.resolve() / f"{PACKAGE}_{args.version}_amd64.deb"
+
+    with tempfile.TemporaryDirectory(prefix="halcyon-deb-") as temp:
+        scratch = Path(temp)
+        root = scratch / "package"
+        usr = root / "usr"
+        install(binary, usr / "bin/halcyon", 0o755)
+        install(REPO / "scripts/desktop-cards", usr / "bin/halcyon-ctl", 0o755)
+        for name in ("calendar-sync.py", "project-status.py"):
+            install(REPO / "scripts" / name, usr / "lib" / PACKAGE / name, 0o755)
+        install(REPO / "docs/google-calendar-setup.html",
+                usr / "share" / PACKAGE / "google-calendar-setup.html")
+        if args.google_client:
+            install(args.google_client, usr / "share" / PACKAGE / "google-calendar-client.json")
+        for wallpaper in wallpapers:
+            install(wallpaper, usr / "share/backgrounds/halcyon" / wallpaper.name)
+        install(REPO / "packaging/systemd/halcyon.service",
+                usr / "lib/systemd/user/halcyon.service")
+        for suffix, directory in (("desktop", "applications"), ("metainfo.xml", "metainfo")):
+            name = f"{APP_ID}.{suffix}"
+            install(REPO / "packaging" / name, usr / "share" / directory / name)
+        for size in ICON_SIZES:
+            name = f"{APP_ID}.png"
+            install(REPO / "packaging/icons" / str(size) / name,
+                    usr / f"share/icons/hicolor/{size}x{size}/apps" / name)
+        docs = usr / "share/doc" / PACKAGE
+        for name in ("LICENSE", "THIRD_PARTY.md", "ASSETS.md"):
+            install(REPO / name, docs / name)
+        install(REPO / "packaging/debian/copyright", docs / "copyright")
+        bundle = REPO / "packaging/licenses/THIRD_PARTY_LICENSES.txt"
+        if bundle.is_file():
+            install(bundle, docs / bundle.name)
+        else:
+            print("Warning: dependency license bundle absent; generate it with "
+                  "packaging/collect-licenses.py before distributing.", file=sys.stderr)
+        # Equivalent to gzip -n: omit the input filename and timestamp.
+        with (docs / "changelog.gz").open("wb") as stream:
+            with gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed:
+                compressed.write((REPO / "packaging/debian/changelog").read_bytes())
+        for name in ("halcyon.1", "halcyon-ctl.1"):
+            destination = usr / "share/man/man1" / (name + ".gz")
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with destination.open("wb") as stream:
+                with gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed:
+                    compressed.write((REPO / "packaging/man" / name).read_bytes())
+
+        depends = dependencies(binary, scratch)
+        # Debian Policy: regular files rounded up to KiB, plus 1 KiB per directory.
+        installed_size = sum(
+            math.ceil(path.stat().st_size / 1024) if path.is_file() else 1
+            for path in root.rglob("*")
+        )
+        control = root / "DEBIAN"
+        control.mkdir()
+        (control / "control").write_text(
+            f"Package: {PACKAGE}\nVersion: {args.version}\nArchitecture: amd64\n"
+            "Section: x11\nPriority: optional\n"
+            f"Maintainer: {MAINTAINER}\nHomepage: {HOMEPAGE}\n"
+            f"Installed-Size: {installed_size}\nDepends: {depends}\n"
+            "Recommends: cosmic-session\n"
+            "Description: Desktop widgets and themes for COSMIC\n"
+            " Halcyon puts widgets on your COSMIC desktop and gives the whole\n"
+            " desktop a coordinated look: wallpaper, colors, windows, dock and panel.\n"
+            " .\n"
+            " Choose six starter looks and thirteen widget styles. Widgets include\n"
+            " clock, date, weather, system monitor, calendar, projects, music, notes\n"
+            " and a focus timer. Changes can be undone, and your applets, their order\n"
+            " and your panel position stay yours.\n"
+        )
+        (control / "md5sums").write_text("".join(
+            f"{hashlib.md5(path.read_bytes()).hexdigest()}  {path.relative_to(root)}\n"
+            for path in sorted(usr.rglob("*")) if path.is_file()
+        ))
+        root.chmod(0o755)
+        for path in root.rglob("*"):
+            path.chmod(0o755 if path.is_dir() or path.stat().st_mode & 0o111 else 0o644)
+        env = os.environ.copy()
+        env.setdefault("SOURCE_DATE_EPOCH", "1792627200")  # 2026-10-22 00:00:00 UTC
+        subprocess.run(
+            ["dpkg-deb", "--build", "--root-owner-group", str(root), str(output)],
+            check=True, env=env,
+        )
+    checksum = output.with_suffix(output.suffix + ".sha256")
+    checksum.write_text(f"{hashlib.sha256(output.read_bytes()).hexdigest()}  {output.name}\n")
+    output.chmod(0o644)
+    checksum.chmod(0o644)
+    print(output)
+    print(checksum)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--binary", required=True, type=Path)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument("--google-client", type=Path)
+    parser.add_argument("--wallpapers", type=Path,
+                        help="directory of <name>.jpg files (default: assets/wallpapers-jpg)")
+    args = parser.parse_args()
+    try:
+        build(args)
+    except (OSError, ValueError, subprocess.CalledProcessError) as error:
+        parser.exit(1, f"build-deb: {error}\n")
+
+
+if __name__ == "__main__":
+    main()

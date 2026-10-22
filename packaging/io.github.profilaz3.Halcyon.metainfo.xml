@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.profilaz3.Halcyon</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>Halcyon</name>
+  <summary>Desktop widgets and themes for COSMIC</summary>
+  <description>
+    <p>Halcyon puts a small set of widgets on your COSMIC desktop and gives the
+    whole desktop a coordinated look: wallpaper, colors, windows, dock and panel.</p>
+    <p>Choose a starter look in a short first-run setup, then make it your own.</p>
+    <ul>
+      <li>Six complete starter looks with wallpapers and matching colors.</li>
+      <li>Clock, date, weather, system monitor, calendar, projects, music, notes
+      and focus timer widgets that never overlap.</li>
+      <li>Thirteen widget styles, from soft cards and frosted glass to outlines,
+      paper and terminal, with a matching dock and panel.</li>
+      <li>Reversible changes that preserve your applets, their order, panel
+      position and the widgets you set up.</li>
+    </ul>
+    <p>No analytics, no tracking, and no account needed. Connecting Google Calendar
+    is optional. Weather uses Open-Meteo and sign-in tokens stay in your system keyring.</p>
+  </description>
+  <developer id="io.github.profilaz3">
+    <name>profilaz3</name>
+  </developer>
+  <url type="homepage">https://github.com/profilaz3/halcyon</url>
+  <url type="bugtracker">https://github.com/profilaz3/halcyon/issues</url>
+  <launchable type="desktop-id">io.github.profilaz3.Halcyon.desktop</launchable>
+  <provides>
+    <binary>halcyon</binary>
+    <id>com.system76.CosmicApplication</id>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-22">
+      <description><p>First release with desktop widgets, six starter looks,
+      thirteen widget styles and coordinated COSMIC themes.</p></description>
+    </release>
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Halcyon look with frosted widgets over a night sea</caption>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/halcyon-look.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>A short welcome setup for your desktop</caption>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/setup-welcome.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>Choose a coordinated starter look</caption>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/setup-looks.jpg</image>
+    </screenshot>
+    <screenshot>
+      <caption>Paper style widgets and a matching desktop</caption>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/paper-look.jpg</image>
+    </screenshot>
+  </screenshots>
+  <branding>
+    <color type="primary" scheme_preference="light">#367d89</color>
+    <color type="primary" scheme_preference="dark">#162e46</color>
+  </branding>
+</component>

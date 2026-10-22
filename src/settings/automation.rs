@@ -200,7 +200,7 @@ pub struct AutomationEditor {
     pub draft: Option<RuleDraft>,
     pub confirm_delete: Option<String>,
     pub notice: Option<Notice>,
-    /// The last change someone made through Desktop Cards, when it isn't
+    /// The last change someone made through Halcyon, when it isn't
     /// automation's own.
     pub manual_at: Option<i64>,
     /// The desktop's latest change is automation's own last switch (Undo is

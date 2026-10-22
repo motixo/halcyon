@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Halcyon
+Comment=Desktop widgets and themes for COSMIC
+Exec=halcyon --settings
+Icon=io.github.profilaz3.Halcyon
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=widgets;desktop;theme;wallpaper;dock;panel;cosmic;
+StartupWMClass=io.github.profilaz3.Halcyon

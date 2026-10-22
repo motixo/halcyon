@@ -603,7 +603,7 @@ pub async fn seek_to(connection: &zbus::Connection, request: &SeekRequest) -> Re
 
 /// Follows the session bus while subscribed.
 pub fn watch() -> Subscription<Feed> {
-    Subscription::run_with("desktop-cards-mpris", |_| feed())
+    Subscription::run_with("halcyon-mpris", |_| feed())
 }
 
 fn feed() -> impl cosmic::iced::futures::Stream<Item = Feed> {

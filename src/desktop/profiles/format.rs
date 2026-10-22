@@ -1052,11 +1052,11 @@ impl Profile {
     /// Checks everything before the record is stored or used.
     pub fn validate(&self) -> Result<(), ProfileError> {
         if self.format != FORMAT {
-            return Err(ProfileError::Invalid("Not a Desktop Cards profile.".into()));
+            return Err(ProfileError::Invalid("Not a Halcyon profile.".into()));
         }
         if !(LEGACY_VERSION..=VERSION).contains(&self.version) {
             return Err(ProfileError::Unsupported(format!(
-                "This profile uses format version {}; this version of Desktop Cards reads versions {LEGACY_VERSION} to {VERSION}.",
+                "This profile uses format version {}; this version of Halcyon reads versions {LEGACY_VERSION} to {VERSION}.",
                 self.version
             )));
         }
@@ -1217,20 +1217,20 @@ pub fn import_local(bytes: &[u8]) -> Result<Profile, ProfileError> {
         return Err(ProfileError::Invalid("This profile is too large.".into()));
     }
     let value: Value = serde_json::from_slice(bytes)
-        .map_err(|_| ProfileError::Invalid("This file is not a Desktop Cards profile.".into()))?;
+        .map_err(|_| ProfileError::Invalid("This file is not a Halcyon profile.".into()))?;
     let object = value
         .as_object()
-        .ok_or_else(|| ProfileError::Invalid("This file is not a Desktop Cards profile.".into()))?;
+        .ok_or_else(|| ProfileError::Invalid("This file is not a Halcyon profile.".into()))?;
     match object.get("format").and_then(Value::as_str) {
         Some(FORMAT) => {}
         Some("desktop-cards-journal" | "desktop-cards-undo") => {
             return Err(ProfileError::Invalid(
-                "This is a Desktop Cards recovery record, not a profile.".into(),
+                "This is a Halcyon recovery record, not a profile.".into(),
             ));
         }
         _ => {
             return Err(ProfileError::Invalid(
-                "This file is not a Desktop Cards profile.".into(),
+                "This file is not a Halcyon profile.".into(),
             ));
         }
     }
@@ -1240,7 +1240,7 @@ pub fn import_local(bytes: &[u8]) -> Result<Profile, ProfileError> {
         }
         Some(version) if version > u64::from(VERSION) => {
             return Err(ProfileError::Unsupported(format!(
-                "This profile was made by a newer version of Desktop Cards (format {version})."
+                "This profile was made by a newer version of Halcyon (format {version})."
             )));
         }
         _ => {
@@ -1267,7 +1267,7 @@ pub fn import_local(bytes: &[u8]) -> Result<Profile, ProfileError> {
         match since(key) {
             None => {
                 return Err(ProfileError::Unsupported(format!(
-                    "This profile includes “{}”, which this version of Desktop Cards does not support.",
+                    "This profile includes “{}”, which this version of Halcyon does not support.",
                     key.chars().take(64).collect::<String>()
                 )));
             }

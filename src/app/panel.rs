@@ -284,7 +284,7 @@ impl Cards {
             Config::path()
                 .and_then(|p| p.parent().map(|parent| parent.join("desktop-command.json")))
         } else {
-            dirs::runtime_dir().map(|p| p.join("desktop-cards/command.json"))
+            crate::paths::runtime_dir().map(|dir| dir.join("command.json"))
         }
     }
     pub(super) fn read_command() -> Option<Message> {

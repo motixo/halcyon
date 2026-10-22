@@ -104,7 +104,7 @@ impl Config {
     pub fn path() -> Option<std::path::PathBuf> {
         std::env::var_os("DESKTOP_CARDS_CONFIG")
             .map(std::path::PathBuf::from)
-            .or_else(|| dirs::config_dir().map(|p| p.join("cosmic-desktop-cards/config.json")))
+            .or_else(|| crate::paths::config_dir().map(|dir| dir.join("config.json")))
     }
     pub fn load() -> Self {
         Self::try_load().unwrap_or_default()

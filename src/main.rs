@@ -10,6 +10,7 @@ mod layout;
 mod layout_state;
 #[cfg(test)]
 mod native_test;
+mod paths;
 mod schedule;
 mod settings;
 mod system_theme;
@@ -18,12 +19,14 @@ mod watch;
 mod widget_style;
 
 fn main() -> cosmic::iced::Result {
+    // Settings from before the rename move to the new folders, once.
+    paths::migrate();
     let mut args = std::env::args().skip(1);
     let command = args.next();
     if command.as_deref() == Some("--apply-cosmic-colors") {
         let result = args
             .next()
-            .ok_or_else(|| "Choose a Desktop Cards palette".into())
+            .ok_or_else(|| "Choose a Halcyon palette".into())
             .and_then(|name| system_theme::apply(&name));
         match result {
             Ok(()) => println!("COSMIC accents matched"),
@@ -37,7 +40,7 @@ fn main() -> cosmic::iced::Result {
     if command.as_deref() == Some("--apply-palette-links") {
         let result = args
             .next()
-            .ok_or_else(|| "Choose a Desktop Cards palette".to_string())
+            .ok_or_else(|| "Choose a Halcyon palette".to_string())
             .and_then(|name| {
                 let mut links = system_theme::Links::default();
                 for flag in args.by_ref() {

@@ -19,7 +19,7 @@ impl Settings {
                 return section(vec![
                     label("Applets", 16., FG),
                     banner(
-                        "This applet layout uses a format Desktop Cards does not edit. It is kept as is.",
+                        "This applet layout uses a format Halcyon does not edit. It is kept as is.",
                         WARN,
                         Vec::new(),
                     ),

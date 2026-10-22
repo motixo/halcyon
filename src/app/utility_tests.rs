@@ -535,7 +535,7 @@ fn widgets_remain_readable_on_a_vivid_wallpaper() {
         .widget_sizes
         .insert("projects".into(), [360., projects_height]);
     let wallpaper =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal-1080p.png");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal.jpg");
     let scene = stack(vec![
         cosmic::widget::image(cosmic::widget::image::Handle::from_path(wallpaper))
             .width(Length::Fill)

@@ -127,18 +127,27 @@ fn with_family(font: Font, family: Option<&'static str>) -> Font {
         ..font
     })
 }
+fn default_font(weight: cosmic::iced::font::Weight) -> Font {
+    // A missing named font can resolve digits to a color emoji face. Choose
+    // an installed text family, retaining Fira on desktops that have it.
+    crate::desktop_theme::load_installed_fonts();
+    crate::desktop_theme::FontSpec {
+        names: &["Fira Sans", "Open Sans", "DejaVu Sans"],
+        generic: crate::desktop_theme::Generic::Sans,
+        weight,
+    }
+    .font(crate::desktop_theme::font_installed)
+}
 pub fn font() -> Font {
-    let theme = CONTEXT
-        .get()
-        .map_or(Font::with_name("Fira Sans"), |r| r.body);
+    let theme = CONTEXT.get().map_or_else(
+        || default_font(cosmic::iced::font::Weight::Normal),
+        |r| r.body,
+    );
     with_family(theme, FAMILIES.get().body)
 }
 pub fn clock_font() -> Font {
-    let theme = CONTEXT.get().map_or(
-        Font {
-            weight: cosmic::iced::font::Weight::Light,
-            ..Font::with_name("Fira Sans")
-        },
+    let theme = CONTEXT.get().map_or_else(
+        || default_font(cosmic::iced::font::Weight::Light),
         |r| r.clock,
     );
     // The clock follows the widget font unless it has its own.
@@ -344,7 +353,7 @@ mod font_tests {
             assert_eq!(clock_font().family, Family::Name("Noto Serif"));
         }
         // Leaving the scope restores whatever was there before.
-        assert_eq!(font().family, Font::with_name("Fira Sans").family);
+        assert_eq!(font(), theme.0);
         config.widget_font = None;
         config.clock_font = None;
         let _scope = scope(&config);

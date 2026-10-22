@@ -100,7 +100,7 @@ class ControllerTests(unittest.TestCase):
                     controller.main()
                     settings.assert_called_once_with(page)
         with patch.dict(controller.os.environ, {'XDG_RUNTIME_DIR': self.directory.name}):
-            command = Path(self.directory.name) / 'desktop-cards/command.json'
+            command = Path(self.directory.name) / 'halcyon/command.json'
             with patch.object(controller.sys, 'argv', ['desktop-cards', 'toggle', 'notes']):
                 controller.main()
             self.assertEqual(json.loads(command.read_text()), {'action': 'toggle', 'widget': 'notes'})
@@ -278,16 +278,14 @@ class ControllerTests(unittest.TestCase):
                 self.run.assert_not_called()
                 self.assertEqual({path: path.read_bytes() for path in before}, before)
 
-    def test_missing_installed_wallpaper_is_restored_from_the_offline_bundle(self):
+    def test_a_missing_built_in_wallpaper_asks_to_reinstall_without_touching_anything(self):
         controller.BACKGROUND.write_text('(source: Path("/previous.png"))\n')
         self.config.write_text('{"theme":"lavender","future_setting":42}')
-        with patch.object(controller.urllib.request, 'urlopen') as network, redirect_stdout(io.StringIO()):
-            controller.apply_theme('ocean')
+        with patch.object(controller.urllib.request, 'urlopen') as network:
+            with self.assertRaisesRegex(RuntimeError, 'Reinstall Halcyon'):
+                controller.apply_theme('ocean')
             network.assert_not_called()
-        bundle = Path(__file__).resolve().parent.parent / 'assets/wallpapers'
-        for resolution in ('4k', '1080p'):
-            name = f'ocean-{resolution}.png'
-            self.assertEqual((controller.WALLPAPERS / name).read_bytes(), (bundle / name).read_bytes())
+        self.assertEqual(controller.BACKGROUND.read_text(), '(source: Path("/previous.png"))\n')
         self.assertEqual(json.loads(self.config.read_text())['future_setting'], 42)
 
     def test_invalid_config_does_not_change_wallpaper_or_overwrite_settings(self):
@@ -409,16 +407,14 @@ class ControllerTests(unittest.TestCase):
                                              text=True, capture_output=True)
             service.assert_not_called()
 
-    def test_wallpapers_install_installs_bundle_offline(self):
+    def test_wallpapers_install_checks_the_installed_wallpapers_offline(self):
+        for name in controller.THEMES:
+            controller.wallpaper_file(name).parent.mkdir(parents=True, exist_ok=True)
+            controller.wallpaper_file(name).write_bytes(b'wallpaper')
         output = io.StringIO()
-        with patch.object(controller.sys, 'argv', ['desktop-cards', 'wallpapers-install']):
+        with patch.object(controller.sys, 'argv', ['halcyon-ctl', 'wallpapers-install']):
             with patch.object(controller.urllib.request, 'urlopen') as network, redirect_stdout(output):
                 controller.main()
                 network.assert_not_called()
         self.run.assert_not_called()
-        bundle = Path(__file__).resolve().parent.parent / 'assets/wallpapers'
-        installed = sorted(path.name for path in controller.WALLPAPERS.iterdir())
-        self.assertEqual(installed, sorted(path.name for path in bundle.glob('*.png')))
-        for name in installed:
-            self.assertEqual((controller.WALLPAPERS / name).read_bytes(), (bundle / name).read_bytes())
-        self.assertIn(str(len(installed)), output.getvalue())
+        self.assertIn('installed', output.getvalue())

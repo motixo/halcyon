@@ -315,9 +315,7 @@ impl Settings {
             }
             Message::PublisherHelp(on) => self.calendar.publisher_help = on,
             Message::OpenGuide => {
-                let path = dirs::data_local_dir()
-                    .unwrap_or_default()
-                    .join("cosmic-desktop-cards/source/docs/google-calendar-setup.html");
+                let path = crate::paths::shared("google-calendar-setup.html").unwrap_or_default();
                 return run_command(
                     "/usr/bin/xdg-open".into(),
                     vec![path.to_string_lossy().into_owned()],

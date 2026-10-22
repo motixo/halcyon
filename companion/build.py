@@ -10,8 +10,8 @@ import tarfile
 import tempfile
 import urllib.request
 
-REVISION = '3ce6ce1cec97669f91e809962d9446aaefe8a06e'
-ARCHIVE_SHA256 = 'e589390a38ff01bd82d1b517129c3635484a9c06b0b677316085de5d8c279cfb'
+REVISION = 'ca20ce3185b3b4404f429d59d429c40b58a2ddef'
+ARCHIVE_SHA256 = '27854c7d3fc54cb29bc866b8421a078aa6b396ea73e2d88fe4ec0cf4fdd55704'
 
 
 def prepare(archive, destination):

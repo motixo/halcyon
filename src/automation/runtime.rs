@@ -361,12 +361,12 @@ impl Automator {
     }
 }
 
-/// When someone last changed the desktop through Desktop Cards, as far as
+/// When someone last changed the desktop through Halcyon, as far as
 /// can be seen: the store's latest-change record (an Apply on a Pop!_OS
 /// page or a profile Apply), unless it is automation's own, and a widget
 /// layout Settings saved while a switch waited for it (the hold says so).
 /// An Undo removes the record, so it isn't seen; neither are changes made
-/// outside Desktop Cards.
+/// outside Halcyon.
 fn manual_at(store: &DesktopStore, applied: Option<&str>) -> Option<DateTime<Utc>> {
     let _ = applied;
     let recorded = store

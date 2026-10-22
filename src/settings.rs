@@ -559,6 +559,7 @@ pub enum Message {
     SetupDismissed(bool),
     SetupOpen(bool),
     OpenWeatherSource,
+    OpenIslandsGuide,
     ShowControls,
     Restore(bool),
     Capture,
@@ -683,7 +684,7 @@ fn open_wizard() -> wizard::Wizard {
 /// Whether the cards start at sign-in (the user service is enabled).
 fn startup_enabled() -> bool {
     std::process::Command::new("/usr/bin/systemctl")
-        .args(["--user", "is-enabled", "--quiet", "cosmic-desktop-cards.service"])
+        .args(["--user", "is-enabled", "--quiet", crate::paths::SERVICE])
         .status()
         .is_ok_and(|status| status.success())
 }
@@ -749,7 +750,7 @@ impl cosmic::Application for Settings {
     type Executor = cosmic::executor::Default;
     type Flags = Page;
     type Message = Message;
-    const APP_ID: &'static str = "io.github.workstation.DesktopCards.Settings";
+    const APP_ID: &'static str = "io.github.profilaz3.Halcyon";
     fn core(&self) -> &Core {
         &self.core
     }
@@ -834,7 +835,7 @@ impl cosmic::Application for Settings {
             capture_key: String::new(),
             window: initial_size(),
         };
-        app.set_header_title("Desktop Cards".into());
+        app.set_header_title("Halcyon".into());
         // With frosted windows, libcosmic's title bar has no color of its own:
         // the compositor's blur shows through it, unlike the opaque pages, and
         // flickers as the desktop underneath redraws. Settings draws the bar
@@ -846,7 +847,7 @@ impl cosmic::Application for Settings {
         let title = app
             .core
             .main_window_id()
-            .map(|id| app.set_window_title("Desktop Cards — Settings".into(), id))
+            .map(|id| app.set_window_title("Halcyon".into(), id))
             .unwrap_or_else(Task::none);
         let service = if matches!(page, Page::General | Page::Overview) {
             service_task()
@@ -2620,6 +2621,13 @@ impl Settings {
                     "Calendar opened",
                 );
             }
+            Message::OpenIslandsGuide => {
+                return run_command(
+                    "/usr/bin/xdg-open".into(),
+                    vec!["https://github.com/profilaz3/halcyon/blob/main/packaging/islands/README.md".into()],
+                    "Islands guide opened",
+                );
+            }
             Message::OpenWeatherSource => {
                 return run_command(
                     "/usr/bin/xdg-open".into(),
@@ -3365,7 +3373,7 @@ impl Settings {
 fn profile_dialog(request: profiles::Request) -> Task<Message> {
     use cosmic::dialog::ashpd::desktop::ResponseError;
     use cosmic::dialog::file_chooser::{self, FileFilter};
-    let filter = || FileFilter::new("Desktop Cards profile").glob("*.json");
+    let filter = || FileFilter::new("Halcyon profile").glob("*.json");
     let cancelled = |error: &file_chooser::Error| {
         matches!(
             error,
@@ -4163,7 +4171,7 @@ fn capture_automation(event: &serde_json::Value) -> Option<automation::Message> 
     })
 }
 /// A `"motion"` capture action and whether it writes desktop settings
-/// (the sidebar slide is a Desktop Cards preference, saved like the rest).
+/// (the sidebar slide is a Halcyon preference, saved like the rest).
 fn capture_motion(event: &serde_json::Value) -> Option<(Message, bool)> {
     if let Some(on) = event["animations"].as_bool() {
         let message = motion::Message::Animations(on);
@@ -4186,7 +4194,7 @@ fn desktop_command_path() -> Option<PathBuf> {
     if preview() {
         Config::path().map(|path| path.with_file_name("desktop-command.json"))
     } else {
-        dirs::runtime_dir().map(|dir| dir.join("desktop-cards/command.json"))
+        crate::paths::runtime_dir().map(|dir| dir.join("command.json"))
     }
 }
 fn desktop_command(action: &'static str, status: &'static str) -> Task<Message> {
@@ -4196,12 +4204,12 @@ fn desktop_command(action: &'static str, status: &'static str) -> Task<Message> 
         let result = tokio::task::spawn_blocking(move || {
             if !isolated {
                 let output = std::process::Command::new("/usr/bin/systemctl")
-                    .args(["--user", "start", "cosmic-desktop-cards.service"])
+                    .args(["--user", "start", crate::paths::SERVICE])
                     .output()
                     .map_err(|error| format!("Could not show desktop widgets: {error}"))?;
                 if !output.status.success() {
                     return Err(
-                        "Could not show desktop widgets. Check the Desktop Cards service.".into(),
+                        "Could not show desktop widgets. Check the Halcyon service.".into(),
                     );
                 }
             }
@@ -4294,18 +4302,12 @@ fn run_command(command: PathBuf, args: Vec<String>, status: &'static str) -> Tas
     })
 }
 fn controller(args: Vec<String>, status: &'static str) -> Task<Message> {
-    run_command(
-        dirs::home_dir()
-            .unwrap_or_default()
-            .join(".local/bin/desktop-cards"),
-        args,
-        status,
-    )
+    run_command(crate::paths::controller(), args, status)
 }
 fn systemctl(args: Vec<&'static str>, status: &'static str) -> Task<Message> {
     let mut command = vec!["--user".into()];
     command.extend(args.into_iter().map(String::from));
-    command.push("cosmic-desktop-cards.service".into());
+    command.push(crate::paths::SERVICE.into());
     run_command("/usr/bin/systemctl".into(), command, status)
 }
 fn service_task() -> Task<Message> {
@@ -4313,7 +4315,7 @@ fn service_task() -> Task<Message> {
         let result = tokio::task::spawn_blocking(|| {
             let check = |verb| {
                 std::process::Command::new("/usr/bin/systemctl")
-                    .args(["--user", verb, "cosmic-desktop-cards.service"])
+                    .args(["--user", verb, crate::paths::SERVICE])
                     .output()
                     .map(|out| out.status.success())
                     .map_err(|e| e.to_string())
@@ -4474,7 +4476,7 @@ mod tests {
         std::fs::create_dir_all(config.parent().unwrap()).unwrap();
         std::fs::write(&config, preferences).unwrap();
         // Without an alternate config the app uses its default path in HOME.
-        let default_config = home.join(".config/cosmic-desktop-cards/config.json");
+        let default_config = home.join(".config/halcyon/config.json");
         std::fs::create_dir_all(default_config.parent().unwrap()).unwrap();
         std::fs::write(&default_config, preferences).unwrap();
         let root = dir.join("cosmic-root");
@@ -8483,7 +8485,7 @@ mod tests {
         for (name, _) in crate::config::Palette::CHOICES {
             let target = bundled_path(&bundled, name);
             std::fs::create_dir_all(target.parent().unwrap()).unwrap();
-            std::fs::copy(assets.join(format!("{name}-1080p.png")), &target).unwrap();
+            std::fs::copy(assets.join(format!("{name}.jpg")), &target).unwrap();
         }
         let teal = bundled_path(&bundled, "teal");
         seed(

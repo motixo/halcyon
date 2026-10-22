@@ -1,6 +1,6 @@
 //! Motion page state: whether apps animate (`desktop::motion`), read when
 //! the page opens and written only by the toggle, off the UI thread. The
-//! sidebar's own slide is an ordinary Desktop Cards preference.
+//! sidebar's own slide is an ordinary Halcyon preference.
 use crate::desktop::DesktopStore;
 use crate::desktop::motion::AppAnimations;
 

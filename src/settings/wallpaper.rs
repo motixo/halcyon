@@ -93,7 +93,7 @@ pub fn hex(rgb: [f32; 3]) -> String {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tab {
-    /// Desktop Cards' bundled wallpapers.
+    /// Halcyon's bundled wallpapers.
     Bundled,
     Cosmic,
     Yours,

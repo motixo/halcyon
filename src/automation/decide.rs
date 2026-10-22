@@ -210,7 +210,7 @@ pub struct Decision {
 /// Decides what is due at `now` and advances `state`. `displays` is the
 /// current, settled set of connected displays (`None`: not watched or not
 /// known). `manual_at` returns when someone other than automation last
-/// changed the desktop through Desktop Cards; it is asked only when a
+/// changed the desktop through Halcyon; it is asked only when a
 /// missed switch is about to be caught up.
 pub fn decide<Tz: TimeZone>(
     automation: &Automation,

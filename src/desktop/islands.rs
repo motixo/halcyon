@@ -34,6 +34,104 @@ pub static RULES: [KeyRule; 2] = [
     },
 ];
 
+#[derive(Debug, PartialEq)]
+enum InactiveReason {
+    NotInstalled,
+    Disabled,
+    CosmicChanged,
+    Failed,
+    NotRunning,
+}
+impl InactiveReason {
+    fn message(&self) -> &'static str {
+        match self {
+            Self::NotInstalled => {
+                "Install and enable the Islands add-on to use this style. The standard dock and panel remain available."
+            }
+            Self::Disabled => {
+                "Islands is disabled. Run halcyon-islands enable, then log out and back in."
+            }
+            Self::CosmicChanged => {
+                "Islands needs an update for this COSMIC version. Install the matching add-on, run halcyon-islands enable, then log out and back in. Your saved layout is kept."
+            }
+            Self::Failed => {
+                "Islands stopped unexpectedly, so the standard panel was selected. See the Islands troubleshooting guide before enabling it again."
+            }
+            Self::NotRunning => {
+                "Islands is not running. After enabling or updating the add-on, log out and back in. The standard dock and panel remain available."
+            }
+        }
+    }
+}
+
+fn read_record(path: &std::path::Path) -> Option<serde_json::Value> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut bytes = Vec::new();
+    file.take(65537).read_to_end(&mut bytes).ok()?;
+    (bytes.len() <= 65536)
+        .then(|| serde_json::from_slice(&bytes).ok())
+        .flatten()
+}
+
+fn inactive_reason(
+    bundle: &std::path::Path,
+    state: &std::path::Path,
+    installed_version: impl Fn(&str) -> Option<String>,
+) -> InactiveReason {
+    if !bundle.join("manifest.json").is_file() || !bundle.join("cosmic-panel-islands").is_file() {
+        return InactiveReason::NotInstalled;
+    }
+    let selection = read_record(&bundle.join("selection.json"));
+    if selection.as_ref().and_then(|v| v["enabled"].as_bool()) == Some(false) {
+        return InactiveReason::Disabled;
+    }
+    if state.join("failed").is_file() {
+        return InactiveReason::Failed;
+    }
+    if let Some(manifest) = read_record(&bundle.join("manifest.json")) {
+        // Only query fixed package names. Older manifests may omit packages;
+        // absent or unreadable version evidence must not invent an upgrade.
+        for package in ["cosmic-panel", "cosmic-comp", "cosmic-session"] {
+            if let Some(expected) = manifest["packages"][package].as_str()
+                && let Some(actual) = installed_version(package)
+                && actual != expected
+            {
+                return InactiveReason::CosmicChanged;
+            }
+        }
+    }
+    InactiveReason::NotRunning
+}
+
+fn inactive_message(store: &DesktopStore) -> String {
+    if store.fixture_root().is_some() || std::env::var_os("DESKTOP_CARDS_CONFIG").is_some() {
+        return "The isolated Islands panel component is not active".into();
+    }
+    let Some(data) = dirs::data_dir() else {
+        return InactiveReason::NotRunning.message().into();
+    };
+    let Some(state) = dirs::state_dir() else {
+        return InactiveReason::NotRunning.message().into();
+    };
+    inactive_reason(
+        &data.join("cosmic-desktop-cards/companion"),
+        &state.join("desktop-cards-panel"),
+        |package| {
+            let result = std::process::Command::new("/usr/bin/dpkg-query")
+                .args(["-W", "-f=${Version}", package])
+                .output()
+                .ok()?;
+            if !result.status.success() {
+                return None;
+            }
+            let version = String::from_utf8(result.stdout).ok()?.trim().to_string();
+            (!version.is_empty()).then_some(version)
+        },
+    )
+    .message()
+    .into()
+}
+
 pub struct Client {
     stream: BufReader<UnixStream>,
 }
@@ -57,13 +155,18 @@ impl Client {
         } else {
             runtime.join("desktop-cards-islands-v1.sock")
         };
-        let meta = std::fs::symlink_metadata(&path)
-            .map_err(|_| "The Islands panel component is not active")?;
+        Self::connect_at(&path, || inactive_message(store))
+    }
+
+    fn connect_at(path: &std::path::Path, inactive: impl Fn() -> String) -> Result<Self, String> {
+        let meta = std::fs::symlink_metadata(path).map_err(|_| inactive())?;
         if !meta.file_type().is_socket() || meta.uid() != unsafe { libc::geteuid() } {
             return Err("The panel socket is not owned by this user".into());
         }
-        let stream = UnixStream::connect(path)
-            .map_err(|_| "The Islands panel component is not responding")?;
+        let stream = UnixStream::connect(path).map_err(|error| match error.kind() {
+            std::io::ErrorKind::ConnectionRefused | std::io::ErrorKind::NotFound => inactive(),
+            _ => "The Islands panel component is not responding".into(),
+        })?;
         stream
             .set_read_timeout(Some(Duration::from_millis(750)))
             .map_err(|e| e.to_string())?;
@@ -116,6 +219,149 @@ mod tests {
         panels::{PanelDraft, Setting},
         store::{Owner, tests::Fixture},
     };
+    #[test]
+    fn stale_socket_reports_failure_and_respects_isolation() {
+        let fixture = Fixture::new("islands-stale-socket");
+        let socket = fixture.0.join("panel.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        drop(listener);
+        assert!(
+            std::fs::symlink_metadata(&socket)
+                .unwrap()
+                .file_type()
+                .is_socket()
+        );
+        let bundle = fixture.0.join("bundle");
+        let state = fixture.0.join("state");
+        std::fs::create_dir_all(&bundle).unwrap();
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(bundle.join("manifest.json"), "{}").unwrap();
+        std::fs::write(bundle.join("cosmic-panel-islands"), "fixture").unwrap();
+        std::fs::write(state.join("failed"), "crashed").unwrap();
+        let result = Client::connect_at(&socket, || {
+            inactive_reason(&bundle, &state, |_| {
+                panic!("failure needs no package query")
+            })
+            .message()
+            .into()
+        });
+        assert_eq!(result.err().unwrap(), InactiveReason::Failed.message());
+        assert_eq!(
+            Client::connect_at(&socket, || inactive_message(&fixture.store()))
+                .err()
+                .unwrap(),
+            "The isolated Islands panel component is not active"
+        );
+        std::fs::remove_file(state.join("failed")).unwrap();
+        assert_eq!(
+            Client::connect_at(&socket, || inactive_reason(&bundle, &state, |_| None)
+                .message()
+                .into())
+            .err()
+            .unwrap(),
+            InactiveReason::NotRunning.message()
+        );
+    }
+
+    #[test]
+    fn invalid_socket_is_rejected_before_diagnosis() {
+        let fixture = Fixture::new("islands-invalid-socket");
+        let socket = fixture.0.join("panel.sock");
+        std::fs::write(&socket, "not a socket").unwrap();
+        assert_eq!(
+            Client::connect_at(&socket, || panic!("invalid socket must not diagnose"))
+                .err()
+                .unwrap(),
+            "The panel socket is not owned by this user"
+        );
+    }
+
+    #[test]
+    fn inactive_status_distinguishes_upgrade_from_disabled_and_failure() {
+        let fixture = Fixture::new("islands-status");
+        let bundle = fixture.0.join("bundle");
+        let state = fixture.0.join("state");
+        assert_eq!(
+            inactive_reason(&bundle, &state, |_| None),
+            InactiveReason::NotInstalled
+        );
+        std::fs::create_dir_all(&bundle).unwrap();
+        std::fs::write(bundle.join("cosmic-panel-islands"), "fixture").unwrap();
+        std::fs::write(
+            bundle.join("manifest.json"),
+            r#"{"packages":{"cosmic-panel":"1.11","cosmic-comp":"2","cosmic-session":"3"}}"#,
+        )
+        .unwrap();
+        std::fs::write(bundle.join("selection.json"), r#"{"enabled":false}"#).unwrap();
+        assert_eq!(
+            inactive_reason(&bundle, &state, |_| panic!(
+                "disabled must not query packages"
+            )),
+            InactiveReason::Disabled
+        );
+        std::fs::write(bundle.join("selection.json"), r#"{"enabled":true}"#).unwrap();
+        for changed in ["cosmic-panel", "cosmic-comp", "cosmic-session"] {
+            let status = inactive_reason(&bundle, &state, |name| {
+                Some(
+                    if name == changed {
+                        "new"
+                    } else {
+                        match name {
+                            "cosmic-panel" => "1.11",
+                            "cosmic-comp" => "2",
+                            _ => "3",
+                        }
+                    }
+                    .into(),
+                )
+            });
+            assert_eq!(status, InactiveReason::CosmicChanged);
+        }
+        assert_eq!(
+            inactive_reason(&bundle, &state, |name| Some(
+                match name {
+                    "cosmic-panel" => "1.11",
+                    "cosmic-comp" => "2",
+                    _ => "3",
+                }
+                .into()
+            )),
+            InactiveReason::NotRunning
+        );
+        std::fs::create_dir_all(&state).unwrap();
+        std::fs::write(state.join("failed"), "previous crash").unwrap();
+        assert_eq!(
+            inactive_reason(&bundle, &state, |_| panic!("failure has priority")),
+            InactiveReason::Failed
+        );
+    }
+
+    #[test]
+    fn isolated_inactive_message_never_reads_host_companion_state() {
+        let fixture = Fixture::new("islands-status-isolated");
+        let before = fixture.tree();
+        assert_eq!(
+            inactive_message(&fixture.store()),
+            "The isolated Islands panel component is not active"
+        );
+        assert_eq!(fixture.tree(), before);
+    }
+
+    #[test]
+    fn inactive_status_does_not_invent_an_upgrade_without_version_evidence() {
+        let fixture = Fixture::new("islands-status-unknown");
+        let bundle = &fixture.0;
+        std::fs::write(bundle.join("cosmic-panel-islands"), "fixture").unwrap();
+        std::fs::write(bundle.join("selection.json"), r#"{"enabled":true}"#).unwrap();
+        for manifest in ["{}", "invalid", r#"{"packages":{"cosmic-panel":"1.11"}}"#] {
+            std::fs::write(bundle.join("manifest.json"), manifest).unwrap();
+            assert_eq!(
+                inactive_reason(bundle, &fixture.0.join("state"), |_| None),
+                InactiveReason::NotRunning
+            );
+        }
+    }
+
     #[test]
     fn sidecar_apply_conflict_and_persistent_undo_preserve_native_lists() {
         let fixture = Fixture::new("islands-transaction");

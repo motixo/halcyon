@@ -29,7 +29,7 @@ const IDS: [&str; 4] = [
     "com.system76.CosmicTheme.Light.Builder",
 ];
 const BACKUP: &str = "cosmic-colors-original.json";
-/// Taken before the shared store lock, so an older Desktop Cards release
+/// Taken before the shared store lock, so an older Halcyon release
 /// that only knows this lock never interleaves with us.
 const LEGACY_LOCK: &str = "cosmic-colors.lock";
 /// The controller's background backup is one RON value.
@@ -91,7 +91,7 @@ pub fn apply_with(store: &DesktopStore, name: &str) -> Result<(), String> {
 }
 
 /// Applies the links of palette `name` in `store` as one change: the
-/// shared background's source becomes `<bundled>/<name>-4k.png` (every
+/// shared background's source becomes `<bundled>/<name>.jpg` (every
 /// other member kept, `output` = `all`) and/or both accents follow the
 /// palette.
 ///
@@ -106,7 +106,7 @@ pub fn apply_links_with(
     bundled: &Path,
 ) -> Result<(), String> {
     if !Palette::CHOICES.iter().any(|(key, _)| *key == name) {
-        return Err("Unknown Desktop Cards palette".into());
+        return Err("Unknown Halcyon palette".into());
     }
     if !links.wallpaper && !links.colors {
         return Ok(());
@@ -186,7 +186,7 @@ pub fn apply_links_with(
             "{what} were not applied; {restored}: {error}.{original}"
         )),
         Err(DesktopError::RollbackIncomplete { error, keys, .. }) => Err(format!(
-            "{what} change failed: {error}. Could not restore: {}. Open Desktop Cards settings to restore.{original}",
+            "{what} change failed: {error}. Could not restore: {}. Open Halcyon settings to restore.{original}",
             keys.iter()
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
@@ -272,7 +272,7 @@ pub fn restore_background_with(store: &DesktopStore, path: &Path) -> Result<(), 
     match store.apply(&patch) {
         Ok(_) => Ok(()),
         Err(DesktopError::RecoveryPending) => Err(
-            "An earlier desktop change was interrupted. Open Desktop Cards settings to restore or keep it; the wallpaper was not changed."
+            "An earlier desktop change was interrupted. Open Halcyon settings to restore or keep it; the wallpaper was not changed."
                 .into(),
         ),
         Err(error) => Err(error.to_string()),
@@ -286,7 +286,7 @@ fn recovery_message(links: Links) -> String {
         (false, _) => "COSMIC colors were",
     };
     format!(
-        "An earlier desktop change was interrupted. Open Desktop Cards settings to restore or keep it; {what} not changed."
+        "An earlier desktop change was interrupted. Open Halcyon settings to restore or keep it; {what} not changed."
     )
 }
 
@@ -910,7 +910,7 @@ mod tests {
         #[test]
         fn palette_links_set_shared_source_and_accents_in_one_change() {
             let (fixture, bundled) = seeded("links-both", "Path(\"/old.png\")");
-            fs::write(bundled.join("teal-4k.png"), b"png").unwrap();
+            fs::write(bundled.join("teal.jpg"), b"png").unwrap();
             let store = fixture.store();
             let config = || crate::desktop::store::tests::tree(&fixture.0.join("config"));
             let before = config();
@@ -932,7 +932,7 @@ mod tests {
             apply_links_with(&store, "teal", BOTH, &bundled).unwrap();
             assert_eq!(
                 current(&fixture),
-                expected(BgSource::Path(bundled.join("teal-4k.png")))
+                expected(BgSource::Path(bundled.join("teal.jpg")))
             );
             let accent =
                 |root: &Path| fs::read(root.join("config/cosmic").join(IDS[0]).join("v2/accent"));
@@ -958,13 +958,13 @@ mod tests {
         #[test]
         fn palette_links_switch_a_colour_background_to_the_bundled_image() {
             let (fixture, bundled) = seeded("links-colour", "Color(Single((0.2, 0.3, 0.4)))");
-            fs::write(bundled.join("rose-4k.png"), b"png").unwrap();
+            fs::write(bundled.join("rose.jpg"), b"png").unwrap();
             let theme =
                 crate::desktop::store::tests::tree(&fixture.0.join("config/cosmic").join(IDS[0]));
             apply_links_with(&fixture.store(), "rose", WALLPAPER, &bundled).unwrap();
             assert_eq!(
                 current(&fixture),
-                expected(BgSource::Path(bundled.join("rose-4k.png")))
+                expected(BgSource::Path(bundled.join("rose.jpg")))
             );
             assert_eq!(
                 crate::desktop::store::tests::tree(&fixture.0.join("config/cosmic").join(IDS[0])),
@@ -994,7 +994,7 @@ mod tests {
             let error = apply_links_with(&fixture.store(), "ocean", BOTH, &bundled).unwrap_err();
             assert!(error.contains("missing"), "{error}");
             assert_eq!(fixture.tree(), files);
-            fs::write(bundled.join("ocean-4k.png"), b"png").unwrap();
+            fs::write(bundled.join("ocean.jpg"), b"png").unwrap();
             fixture.user(
                 NAMESPACE,
                 "all",

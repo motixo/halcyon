@@ -518,7 +518,7 @@ impl Settings {
         // An unchanged missing background warns; Apply isn't held back.
         if editor.shown().warning {
             let mut actions = Vec::new();
-            // The Desktop Cards tab has its own Reinstall banner.
+            // The Halcyon tab has its own Reinstall banner.
             if editor.shown().bundled && editor.tab != Tab::Bundled {
                 actions.push(
                     button::standard("Reinstall bundled wallpapers")
@@ -580,7 +580,7 @@ impl Settings {
         let tab = editor.tab;
         items.push(segmented(
             [
-                ("Desktop Cards", Tab::Bundled),
+                ("Halcyon", Tab::Bundled),
                 ("COSMIC", Tab::Cosmic),
                 ("Yours", Tab::Yours),
                 ("Solid & gradient", Tab::Colors),

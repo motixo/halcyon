@@ -1,0 +1,61 @@
+# License choices follow THIRD_PARTY.md. Full source notices are appended by
+# collect-licenses.py, including notices for assets within dependency sources.
+accepted = [
+    "MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "ISC", "Zlib",
+    "0BSD", "Unlicense", "CC0-1.0", "Unicode-3.0", "Unicode-DFS-2016",
+    "MPL-2.0", "CDLA-Permissive-2.0", "GPL-3.0-only", "GPL-3.0-or-later",
+    "OFL-1.1", "CC-BY-SA-4.0",
+]
+targets = ["x86_64-unknown-linux-gnu"]
+ignore-build-dependencies = false
+ignore-dev-dependencies = false
+
+# These pinned git crates omit the manifest license field. Verify their actual
+# repository license files by SHA-256, including parent workspace licenses.
+[libcosmic.clarify]
+license = "MPL-2.0"
+[[libcosmic.clarify.files]]
+path = "LICENSE"
+checksum = "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+
+[cosmic-config.clarify]
+license = "MPL-2.0"
+[[cosmic-config.clarify.files]]
+path = "../LICENSE"
+checksum = "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+
+[cosmic-config-derive.clarify]
+license = "MPL-2.0"
+[[cosmic-config-derive.clarify.files]]
+path = "../LICENSE"
+checksum = "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+
+[cosmic-theme.clarify]
+license = "MPL-2.0"
+[[cosmic-theme.clarify.files]]
+path = "../LICENSE"
+checksum = "1f256ecad192880510e84ad60474eab7589218784b9a50bc7ceee34c2b91f1d5"
+
+[iced_accessibility.clarify]
+license = "MIT"
+[[iced_accessibility.clarify.files]]
+path = "../LICENSE"
+checksum = "fc9086ba4eba4b77e4c603906362742bc3715ffa2c7810c6074fe7780d3a0398"
+
+[cosmic-settings-daemon.clarify]
+license = "MPL-2.0"
+[[cosmic-settings-daemon.clarify.files]]
+path = "../LICENSE.md"
+checksum = "e368885fd6ab4d78863ed9a0daac8a16b40a55c58395a9061f7c36b52a30536d"
+
+[dnd.clarify]
+license = "MIT"
+[[dnd.clarify.files]]
+path = "../LICENSE"
+checksum = "7faec985f3e9b1c4a1df646bfedc304ba67e409447f7ab7f4f591f68708d85dc"
+
+[mime.clarify]
+license = "MIT"
+[[mime.clarify.files]]
+path = "../LICENSE"
+checksum = "7faec985f3e9b1c4a1df646bfedc304ba67e409447f7ab7f4f591f68708d85dc"
