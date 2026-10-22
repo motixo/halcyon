@@ -72,7 +72,7 @@ jobs:
       - name: Build Debian package
         run: |
           python3 packaging/build-deb.py --binary target/release/halcyon \
-            --version "0.1.0~ci${GITHUB_RUN_NUMBER}" --out dist
+            --version "$(dpkg-parsechangelog --file packaging/debian/changelog --show-field Version)~ci${GITHUB_RUN_NUMBER}" --out dist
       - name: Inspect Debian package
         run: |
           dpkg-deb --info dist/*.deb

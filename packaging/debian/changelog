@@ -1,3 +1,13 @@
+cosmic-ext-halcyon (0.1.1) unstable; urgency=medium
+
+  * Keep music progress and elapsed time visible after seeking in browser
+    players, including repeated seeks and temporary missing duration data.
+  * Avoid marking Islands as crashed when the COSMIC compositor shuts down
+    during logout or reboot. The matching Islands add-on includes this fix.
+  * Refresh the project presentation and release installation instructions.
+
+ -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Fri, 23 Oct 2026 00:00:00 +0000
+
 cosmic-ext-halcyon (0.1.0) unstable; urgency=medium
 
   * First release of Halcyon, desktop widgets and themes for COSMIC.
