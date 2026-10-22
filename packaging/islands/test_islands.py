@@ -29,7 +29,7 @@ def run(command, **kwargs):
 
 def manifest(binary, destination):
     destination.write_text(json.dumps({
-        'protocol': 1, 'upstream': '3ce6ce1cec97669f91e809962d9446aaefe8a06e',
+        'protocol': 1, 'upstream': 'ca20ce3185b3b4404f429d59d429c40b58a2ddef',
         'binary_sha256': hashlib.sha256(binary.read_bytes()).hexdigest(),
     }) + '\n')
 

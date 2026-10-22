@@ -7,7 +7,9 @@ pub const NAMESPACE: &str = "io.github.desktopcards.DockIslands";
 pub const VERSION: u32 = 1;
 pub const BASIS: u16 = 10_000;
 pub const MAX_WIRE_BYTES: usize = 64 * 1024;
-pub const UPSTREAM: &str = "3ce6ce1cec97669f91e809962d9446aaefe8a06e";
+/// The cosmic-panel source the companion was built from. Reported for
+/// diagnostics only: the protocol version is the contract between the two.
+pub const UPSTREAM: &str = "ca20ce3185b3b4404f429d59d429c40b58a2ddef";
 pub const HANDLE: f64 = 18.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -514,7 +516,7 @@ impl Default for Capabilities {
 }
 impl Capabilities {
     pub fn compatible(&self) -> bool {
-        self.protocol == VERSION && self.upstream == UPSTREAM && self.together && self.separate
+        self.protocol == VERSION && self.together && self.separate
     }
 }
 

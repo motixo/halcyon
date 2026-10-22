@@ -27,7 +27,7 @@ class CompanionPackaging(unittest.TestCase):
         self.binary = self.root / 'binary'
         self.binary.write_bytes(b'fixture panel')
         self.manifest = self.root / 'manifest.json'
-        self.manifest.write_text(json.dumps({'protocol': 1, 'upstream': '3ce6ce1cec97669f91e809962d9446aaefe8a06e', 'binary_sha256': launcher.digest(self.binary)}))
+        self.manifest.write_text(json.dumps({'protocol': 1, 'upstream': 'ca20ce3185b3b4404f429d59d429c40b58a2ddef', 'binary_sha256': launcher.digest(self.binary)}))
 
     def test_stage_restore_preserves_preferences_and_previous_launcher(self):
         old = self.home / '.local/bin/cosmic-panel'
@@ -77,7 +77,7 @@ class CompanionPackaging(unittest.TestCase):
     def test_enable_next_login_keeps_restarts_in_the_current_session_on_stock(self):
         marker = self.root / 'companion-started'
         self.binary.write_text('#!/usr/bin/python3\nfrom pathlib import Path\nPath(' + repr(str(marker)) + ').write_text("started")\n')
-        self.manifest.write_text(json.dumps({'protocol': 1, 'upstream': '3ce6ce1cec97669f91e809962d9446aaefe8a06e', 'binary_sha256': launcher.digest(self.binary)}))
+        self.manifest.write_text(json.dumps({'protocol': 1, 'upstream': 'ca20ce3185b3b4404f429d59d429c40b58a2ddef', 'binary_sha256': launcher.digest(self.binary)}))
         runtime = self.root / 'runtime'
         runtime.mkdir(mode=0o700)
         env = {**os.environ, 'HOME': str(self.home), 'XDG_DATA_HOME': str(self.home / '.local/share'),

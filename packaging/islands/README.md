@@ -13,12 +13,12 @@ The package requires these exact installed versions:
 
 | Package | Version |
 | --- | --- |
-| cosmic-panel | `1.10.0~1791315703~24.04~3ce6ce1` |
-| cosmic-comp | `0.1~1791979042~24.04~742b800` |
-| cosmic-session | `1.10.0~1791314577~24.04~8093b59` |
+| cosmic-panel | `1.11.0~1792526322~24.04~ca20ce3` |
+| cosmic-comp | `0.1~1792508925~24.04~8cb1802` |
+| cosmic-session | `1.11.0~1792525615~24.04~4b0a0a2` |
 
 The reviewed cosmic-panel revision is
-`3ce6ce1cec97669f91e809962d9446aaefe8a06e`, with companion protocol 1.
+`ca20ce3185b3b4404f429d59d429c40b58a2ddef`, with companion protocol 1.
 A package version change selects the stock panel until a compatible add-on is
 released. Status uses the selector's installed-package, manifest and binary
 checksum checks; it does not identify the versions of already running processes.
