@@ -1,0 +1,2791 @@
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -724,11 +724,13 @@
+  "cosmic-panel-config",
+  "cosmic-protocols",
+  "cosmic-theme",
++ "dock-islands-core",
+  "freedesktop-desktop-entry",
+  "futures",
+  "iced_tiny_skia",
+  "itertools",
+  "launch-pad",
++ "libc",
+  "libcosmic",
+  "log-panics",
+  "notify",
+@@ -736,6 +738,7 @@
+  "ordered-stream",
+  "rand 0.10.3",
+  "ron",
++ "serde_json",
+  "shlex 1.3.0",
+  "smallvec",
+  "smithay",
+@@ -1100,6 +1103,14 @@
+  "raw-window-handle",
+  "smithay-client-toolkit",
+  "smithay-clipboard",
++]
++
++[[package]]
++name = "dock-islands-core"
++version = "0.1.0"
++dependencies = [
++ "serde",
++ "serde_json",
+ ]
+ 
+ [[package]]
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -1,6 +1,7 @@
+ [workspace]
+ members = [
+     "cosmic-panel-bin",
++    "dock-islands-core",
+     "cosmic-panel-config",
+     "xdg-shell-wrapper-config",
+ ]
+--- a/cosmic-panel-bin/Cargo.toml
++++ b/cosmic-panel-bin/Cargo.toml
+@@ -9,6 +9,9 @@
+ path = "src/main.rs"
+ 
+ [dependencies]
++dock-islands-core = { path = "../dock-islands-core" }
++serde_json = "1"
++libc = "0.2"
+ calloop = { version = "0.14.4", features = ["executor"] }
+ ordered-float = "5.3.0"
+ smithay = { git = "https://github.com/smithay/smithay", default-features = false, features = [
+--- a/cosmic-panel-bin/src/config_watching.rs
++++ b/cosmic-panel-bin/src/config_watching.rs
+@@ -165,6 +165,7 @@
+                         None,
+                         state.client_state.overlap_notify.clone(),
+                     );
++                    crate::islands::reconcile_outputs(state);
+                 }
+                 info!("Removing entries: {:?}", entries);
+                 let to_remove = state
+@@ -190,6 +191,7 @@
+                     None,
+                     state.client_state.overlap_notify.clone(),
+                 );
++                crate::islands::reconcile_outputs(state);
+             },
+             channel::Event::Closed => {},
+         };
+--- a/cosmic-panel-bin/src/iced/elements/background.rs
++++ b/cosmic-panel-bin/src/iced/elements/background.rs
+@@ -20,6 +20,7 @@
+     None,
+     /// 4 sides
+     Full,
++    Accent,
+     /// single line on the side facing away from the anchored edge
+     Side(PanelAnchor),
+ }
+@@ -41,6 +42,7 @@
+     IcedElement::new(
+         Background {
+             id,
++            label: None,
+             logical_width,
+             logical_height,
+             radius,
+@@ -59,6 +61,7 @@
+ }
+ 
+ pub struct Background {
++    pub label: Option<String>,
+     pub id: id::Id,
+     pub logical_width: i32,
+     pub logical_height: i32,
+@@ -81,8 +84,16 @@
+ 
+         let color = self.color;
+         // no border when panel is fully transparent
+-        let border = if color[3] < 0.01 { PanelBorder::None } else { self.border };
+-        let border_width = if matches!(border, PanelBorder::Full) { self.border_width } else { 0. };
++        let border = if color[3] < 0.01 && self.border != PanelBorder::Accent {
++            PanelBorder::None
++        } else {
++            self.border
++        };
++        let border_width = if matches!(border, PanelBorder::Full | PanelBorder::Accent) {
++            self.border_width
++        } else {
++            0.
++        };
+ 
+         // for a single edge, avoide the corner radius (panel won't have curved corner in this mode
+         // anyways)
+@@ -94,7 +105,15 @@
+             _ => (true, (0., 0.)),
+         };
+         let line = self.border_width;
+-        let content = if matches!(border, PanelBorder::Side(_)) {
++        let content = if let Some(label) = &self.label {
++            Element::from(
++                container(cosmic::widget::text::caption(label))
++                    .width(Length::Fill)
++                    .height(Length::Fill)
++                    .align_x(Horizontal::Center)
++                    .align_y(Vertical::Center),
++            )
++        } else if matches!(border, PanelBorder::Side(_)) {
+             let fill_mode = rule::FillMode::AsymmetricPadding(inset.0 as u16, inset.1 as u16);
+             Element::from(
+                 if line_horizontal { rule::horizontal(line) } else { rule::vertical(line) }.class(
+@@ -122,7 +141,11 @@
+                     border: cosmic::iced::Border {
+                         radius: radius_arr.into(),
+                         width: border_width,
+-                        color: cosmic.bg_divider().into(),
++                        color: if border == PanelBorder::Accent {
++                            cosmic.accent.base.into()
++                        } else {
++                            cosmic.bg_divider().into()
++                        },
+                     },
+                     shadow: Shadow::default(),
+                     snap: true,
+@@ -139,3 +162,41 @@
+         Element::from(bg)
+     }
+ }
++
++pub fn island_handle(
++    id: id::Id,
++    width: i32,
++    height: i32,
++    pos: [f32; 2],
++    label: String,
++    active: bool,
++    loop_handle: LoopHandle<'static, GlobalState>,
++    theme: Theme,
++    panel_id: usize,
++    scale: f64,
++) -> BackgroundElement {
++    let c = if active {
++        theme.cosmic().accent.base
++    } else {
++        theme.cosmic().primary(false).component.base
++    };
++    IcedElement::new(
++        Background {
++            id,
++            label: Some(label),
++            logical_width: width,
++            logical_height: height,
++            radius: [4.; 4],
++            logical_pos: (pos[0] as i32, pos[1] as i32),
++            color: [c.red, c.green, c.blue, 1.],
++            scale,
++            border: PanelBorder::Full,
++            border_width: if active { 2. } else { 1. },
++        },
++        (width, height),
++        loop_handle,
++        theme,
++        panel_id,
++        false,
++    )
++}
+--- /dev/null
++++ b/cosmic-panel-bin/src/islands.rs
+@@ -0,0 +1,1047 @@
++//! Desktop Cards companion extension. Stock panel schemas remain unchanged.
++use crate::iced::elements::CosmicMappedInternal;
++use crate::iced::elements::background::{BackgroundElement, PanelBorder, background_element};
++use crate::space::PanelSpace;
++use cosmic::widget::Id;
++use cosmic_panel_config::PanelAnchor;
++use dock_islands_core::{Layout, Settings};
++use sctk::shell::WaylandSurface;
++use smithay::{desktop::space::SpaceElement, utils::Rectangle};
++use std::{fs, path::PathBuf};
++
++#[derive(Debug, Default)]
++pub struct IslandState {
++    pub settings: Settings,
++    pub geometry: Layout,
++    pub backgrounds: Vec<BackgroundElement>,
++    pub overflow_sizes: Vec<(smithay::desktop::Window, f64)>,
++    pub error: Option<String>,
++    pub lease: Option<Lease>,
++    pub handles: Vec<(Handle, Span, Span)>,
++    pub expiry: Option<calloop::RegistrationToken>,
++    pub last_major: i32,
++    pub touch: Option<(i32, (f64, f64))>,
++    background_stamp: Option<BackgroundStamp>,
++}
++
++#[derive(Debug, PartialEq)]
++struct BackgroundStamp {
++    layout: Layout,
++    dimensions: (i32, i32),
++    anchor_gap: i32,
++    scale: f64,
++    radius: u32,
++    color: [f32; 4],
++    lease: Option<(u64, u64, bool)>,
++}
++
++pub fn settings_path(panel: &str) -> Result<PathBuf, String> {
++    if !matches!(panel, "Dock" | "Panel") {
++        return Err("Unsupported panel entry".into());
++    }
++    let config = std::env::var_os("XDG_CONFIG_HOME")
++        .map(PathBuf::from)
++        .or_else(|| std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".config")))
++        .ok_or("No configuration directory")?;
++    Ok(config.join("cosmic").join(dock_islands_core::NAMESPACE).join("v1").join(panel))
++}
++pub fn load_settings(panel: &str) -> Result<Settings, String> {
++    let path = settings_path(panel)?;
++    let data = match fs::read(&path) {
++        Ok(data) if data.len() <= dock_islands_core::MAX_WIRE_BYTES => data,
++        Ok(_) => return Err("Island settings are too large".into()),
++        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Settings::default()),
++        Err(e) => return Err(e.to_string()),
++    };
++    let settings: Settings = ron::de::from_bytes(&data).map_err(|e| e.to_string())?;
++    settings.validate()?;
++    Ok(settings)
++}
++impl IslandState {
++    pub fn load(panel: &str) -> Self {
++        match load_settings(panel) {
++            Ok(settings) => Self { settings, ..Self::default() },
++            Err(error) => Self { error: Some(error), ..Self::default() },
++        }
++    }
++}
++impl PanelSpace {
++    pub(crate) fn layout_island_backgrounds(
++        &mut self,
++        width: i32,
++        height: i32,
++        _thickness: i32,
++    ) -> anyhow::Result<()> {
++        let color = self.colors.color_override.unwrap_or_else(|| {
++            let c = self.colors.theme.cosmic().bg_color();
++            [c.red, c.green, c.blue, self.config.opacity]
++        });
++        let stamp = BackgroundStamp {
++            layout: self.islands.geometry.clone(),
++            dimensions: (width, height),
++            anchor_gap: self.anchor_gap,
++            scale: self.scale,
++            radius: self.border_radius(),
++            color,
++            lease: self
++                .islands
++                .lease
++                .as_ref()
++                .map(|l| (l.token, l.revision, l.drag.as_ref().is_some_and(|d| d.started))),
++        };
++        // Iced elements request their first frame on creation. Keep unchanged
++        // backgrounds, otherwise a relayout would create a repaint loop.
++        if self.islands.background_stamp.as_ref() == Some(&stamp)
++            && !self.is_background_dirty
++            && !self.transitioning
++        {
++            return Ok(());
++        }
++        if let Some(bg) = self.background_element.take() {
++            self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
++        }
++        for bg in self.islands.backgrounds.drain(..) {
++            self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
++        }
++        let Some((_, output, _)) = self.output.as_ref() else {
++            anyhow::bail!("output missing");
++        };
++        let Some(region) = self.input_region.as_ref() else {
++            anyhow::bail!("input region missing");
++        };
++        let Some(layer) = self.layer.as_ref() else {
++            anyhow::bail!("layer missing");
++        };
++        region.subtract(0, 0, i32::MAX, i32::MAX);
++        self.islands.handles.clear();
++        let horizontal = self.config.is_horizontal();
++        let thickness =
++            (if horizontal { height } else { width } - self.config.margin as i32).max(1);
++        let cross = match self.config.anchor {
++            PanelAnchor::Top | PanelAnchor::Left => self.config.margin as i32 + self.anchor_gap,
++            _ => -self.anchor_gap,
++        };
++
++        // This compositor has one corner-radius object per surface. A single
++        // layer cannot express independently frosted rounded islands. Keep
++        // translucent backgrounds and never frost the transparent gaps.
++        if let Some(blur) = &self.blur_surface {
++            blur.set_blur_region(None);
++        }
++        if let Some(corners) = &self.corner_radius_wlr {
++            corners.set_radius(0, 0, 0, 0);
++            corners.set_padding(0, 0, 0, 0);
++        }
++        for (i, span) in self.islands.geometry.spans.iter().enumerate() {
++            let Some(span) = span else {
++                continue;
++            };
++            let major = span.start.round() as i32;
++            let length = (span.end().round() as i32 - major).max(1);
++            let (x, y, w, h) = if horizontal {
++                (major, cross, length, thickness)
++            } else {
++                (cross, major, thickness, length)
++            };
++            let radius = (self.border_radius() as f32).min(w as f32 / 2.).min(h as f32 / 2.);
++            let dragging =
++                self.islands.lease.as_ref().and_then(|l| l.drag.as_ref()).is_some_and(|d| {
++                    d.started
++                        && (d.handle == Handle::Group
++                            || d.handle == Handle::Island(Section::ALL[i]))
++                });
++            let bg = background_element(
++                Id::new(format!("island-{i}")),
++                w,
++                h,
++                [radius; 4],
++                self.shared.loop_handle.clone(),
++                self.colors.theme.clone(),
++                self.space.id(),
++                [x as f32, y as f32],
++                color,
++                self.scale,
++                if dragging { PanelBorder::Accent } else { PanelBorder::Full },
++                if dragging { 2. } else { self.config.border_width },
++            );
++            bg.output_enter(output, Rectangle::default());
++            self.space.map_element(CosmicMappedInternal::Background(bg.clone()), (x, y), false);
++            self.islands.backgrounds.push(bg);
++            // Rounded input masks follow visible pixels. Add a small edge
++            // reveal strip while hidden; gaps never become input surfaces.
++            for row in 0..h {
++                let r = radius as f64;
++                let cy = if (row as f64) < r {
++                    r - row as f64 - 0.5
++                } else if (row as f64) >= h as f64 - r {
++                    row as f64 + 0.5 - (h as f64 - r)
++                } else {
++                    0.
++                };
++                let inset = (r - (r * r - cy * cy).max(0.).sqrt()).ceil().max(0.) as i32;
++                if w > 2 * inset {
++                    region.add(x + inset, y + row, w - 2 * inset, 1);
++                }
++            }
++            if self.config.autohide_enabled() && self.anchor_gap != 0 {
++                let reveal = self.config.get_hide_handle().max(1) as i32;
++                match self.config.anchor {
++                    PanelAnchor::Top => region.add(major, 0, length, reveal.min(height)),
++                    PanelAnchor::Bottom => {
++                        region.add(major, (height - reveal).max(0), length, reveal.min(height))
++                    },
++                    PanelAnchor::Left => region.add(0, major, reveal.min(width), length),
++                    PanelAnchor::Right => {
++                        region.add((width - reveal).max(0), major, reveal.min(width), length)
++                    },
++                }
++            }
++        }
++        if let Some(lease) = &self.islands.lease {
++            let extra = self.arrange_extra();
++            let band = if matches!(self.config.anchor, PanelAnchor::Bottom | PanelAnchor::Right) {
++                cross
++            } else {
++                cross + thickness - extra
++            };
++            let together = self.islands.settings.placement == Placement::Together;
++            let mut handles: Vec<_> = self
++                .islands
++                .geometry
++                .spans
++                .iter()
++                .enumerate()
++                .filter_map(|(i, s)| {
++                    s.map(|s| {
++                        (
++                            Handle::Island(Section::ALL[i]),
++                            s,
++                            Span {
++                                start: band as f64 + if together { HANDLE } else { 0. },
++                                length: HANDLE,
++                            },
++                            format!(":: {}", i + 1),
++                        )
++                    })
++                })
++                .collect();
++            if together && self.islands.geometry.spans.iter().any(Option::is_some) {
++                let group = self.islands.geometry.group;
++                let length = group.length.min(100.);
++                handles.push((
++                    Handle::Group,
++                    Span { start: group.center() - length / 2., length },
++                    Span { start: band as f64, length: HANDLE },
++                    "Move group".into(),
++                ));
++            }
++            for (handle, major, cross, mut label) in handles {
++                if horizontal
++                    && lease.drag.as_ref().is_some_and(|d| d.started && d.handle == handle)
++                {
++                    let span =
++                        if handle == Handle::Group { self.islands.geometry.group } else { major };
++                    let bounds = self.islands.geometry.bounds;
++                    let hint = if (span.start - bounds.start).abs() < 1. {
++                        "Start"
++                    } else if (span.end() - bounds.end()).abs() < 1. {
++                        "End"
++                    } else if (span.center() - bounds.center()).abs() < 1. {
++                        "Center"
++                    } else {
++                        ""
++                    };
++                    label = format!("{hint} {} px", self.islands.geometry.gap.round() as u32);
++                }
++                let (x, y, w, h) = if horizontal {
++                    (major.start, cross.start, major.length, cross.length)
++                } else {
++                    (cross.start, major.start, cross.length, major.length)
++                };
++                let label = if !horizontal {
++                    if handle == Handle::Group { "::".into() } else { label.replace(":: ", "") }
++                } else {
++                    label
++                };
++                let bg = crate::iced::elements::background::island_handle(
++                    Id::new(format!("island-handle-{handle:?}")),
++                    w.round() as i32,
++                    h.round() as i32,
++                    [x as f32, y as f32],
++                    label,
++                    handle == lease.selected,
++                    self.shared.loop_handle.clone(),
++                    self.colors.theme.clone(),
++                    self.space.id(),
++                    self.scale,
++                );
++                bg.output_enter(output, Rectangle::default());
++                self.space.map_element(
++                    CosmicMappedInternal::Background(bg.clone()),
++                    (x as i32, y as i32),
++                    true,
++                );
++                self.islands.backgrounds.insert(0, bg);
++                region.add(x.round() as i32, y.round() as i32, w.round() as i32, h.round() as i32);
++                self.islands.handles.push((handle, major, cross));
++            }
++        }
++        layer.wl_surface().set_input_region(Some(region.wl_region()));
++        self.is_background_dirty = false;
++        self.islands.background_stamp = Some(stamp);
++        self.transitioning = false;
++        Ok(())
++    }
++}
++
++use dock_islands_core::{
++    Capabilities, Drag, HANDLE, Handle, MAX_WIRE_BYTES, Placement, Request, Response, Section, Span,
++};
++use sctk::shell::wlr_layer::KeyboardInteractivity;
++use std::io::{BufRead, BufReader, Read, Write};
++use std::os::unix::{
++    fs::{FileTypeExt, MetadataExt, PermissionsExt},
++    net::{UnixListener, UnixStream},
++};
++use std::sync::{
++    Arc,
++    atomic::{AtomicU64, AtomicUsize, Ordering},
++    mpsc,
++};
++use std::time::Duration;
++
++#[derive(Debug)]
++pub struct Lease {
++    pub connection: u64,
++    pub token: u64,
++    pub revision: u64,
++    pub selected: Handle,
++    pub drag: Option<Drag>,
++    pub output: String,
++}
++#[derive(Debug)]
++pub enum Event {
++    Command { connection: u64, request: Request, reply: mpsc::SyncSender<Response> },
++    Disconnected(u64),
++    Reload,
++    Expire(u64, u64),
++}
++
++pub fn serve(tx: calloop::channel::Sender<crate::PanelCalloopMsg>) -> anyhow::Result<()> {
++    let runtime = PathBuf::from(
++        std::env::var_os("XDG_RUNTIME_DIR")
++            .ok_or_else(|| anyhow::anyhow!("No runtime directory"))?,
++    );
++    let meta = runtime.metadata()?;
++    if meta.uid() != rustix_uid() || meta.permissions().mode() & 0o077 != 0 {
++        anyhow::bail!("Runtime directory is not private");
++    }
++    let path = runtime.join("desktop-cards-islands-v1.sock");
++    if let Ok(meta) = fs::symlink_metadata(&path) {
++        if !meta.file_type().is_socket() || meta.uid() != rustix_uid() {
++            anyhow::bail!("Unsafe existing socket");
++        }
++        if UnixStream::connect(&path).is_ok() {
++            anyhow::bail!("An islands panel is already running");
++        }
++        fs::remove_file(&path)?;
++    }
++    let listener = UnixListener::bind(&path)?;
++    fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
++    // Filesystem notification, not a polling worker. Watch the existing
++    // config tree so creating the sidecar namespace is also detected.
++    let watch_tx = tx.clone();
++    use notify::Watcher;
++    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
++        if let Ok(e) = event
++            && matches!(
++                e.kind,
++                notify::EventKind::Create(_)
++                    | notify::EventKind::Modify(_)
++                    | notify::EventKind::Remove(_)
++            )
++            && e.paths.iter().any(|p| {
++                p.components().any(|part| part.as_os_str() == dock_islands_core::NAMESPACE)
++            })
++        {
++            let _ = watch_tx.send(crate::PanelCalloopMsg::Islands(Event::Reload));
++        }
++    })?;
++    if let Ok(path) = settings_path("Dock") {
++        if let Some(root) = path.parent().and_then(|p| p.parent()).and_then(|p| p.parent()) {
++            if root.is_dir() {
++                watcher.watch(root, notify::RecursiveMode::Recursive)?;
++            }
++        }
++    }
++    std::thread::spawn(move || {
++        let _watcher = watcher;
++        let next = AtomicU64::new(1);
++        let connections = Arc::new(AtomicUsize::new(0));
++        for stream in listener.incoming().flatten() {
++            if connections.fetch_add(1, Ordering::SeqCst) >= 4 {
++                connections.fetch_sub(1, Ordering::SeqCst);
++                continue;
++            }
++            let id = next.fetch_add(1, Ordering::Relaxed);
++            let tx = tx.clone();
++            let connections = connections.clone();
++            std::thread::spawn(move || {
++                connection(stream, id, &tx);
++                let _ = tx.send(crate::PanelCalloopMsg::Islands(Event::Disconnected(id)));
++                connections.fetch_sub(1, Ordering::SeqCst);
++            });
++        }
++    });
++    Ok(())
++}
++fn rustix_uid() -> u32 {
++    // A bound runtime socket is already private. Compare ownership without
++    // adding a toolkit-specific dependency to the wire crate.
++    unsafe { libc::geteuid() }
++}
++fn connection(stream: UnixStream, id: u64, tx: &calloop::channel::Sender<crate::PanelCalloopMsg>) {
++    let Ok(writer) = stream.try_clone() else {
++        return;
++    };
++    let mut writer = writer;
++    let _ = writer.set_write_timeout(Some(Duration::from_secs(2)));
++    let mut reader = BufReader::new(stream);
++    loop {
++        let mut bytes = Vec::new();
++        match reader.by_ref().take((MAX_WIRE_BYTES + 1) as u64).read_until(b'\n', &mut bytes) {
++            Ok(0) | Err(_) => break,
++            Ok(_) if bytes.len() > MAX_WIRE_BYTES || !bytes.ends_with(b"\n") => break,
++            _ => {},
++        }
++        let response = match serde_json::from_slice::<Request>(&bytes) {
++            Ok(request) => {
++                let (reply, result) = mpsc::sync_channel(1);
++                if tx
++                    .send(crate::PanelCalloopMsg::Islands(Event::Command {
++                        connection: id,
++                        request,
++                        reply,
++                    }))
++                    .is_err()
++                {
++                    break;
++                }
++                result.recv_timeout(Duration::from_secs(2)).unwrap_or_else(|_| {
++                    Response::Error("Panel did not acknowledge the request".into())
++                })
++            },
++            Err(_) => Response::Error("Invalid islands request".into()),
++        };
++        let Ok(mut data) = serde_json::to_vec(&response) else {
++            break;
++        };
++        data.push(b'\n');
++        if writer.write_all(&data).is_err() {
++            break;
++        }
++    }
++}
++
++pub fn handle_event(state: &mut crate::xdg_shell_wrapper::shared_state::GlobalState, event: Event) {
++    match event {
++        Event::Command { connection, request, reply } => {
++            let _ = reply.send(command(state, connection, request));
++        },
++        Event::Disconnected(connection) => {
++            for panel in &mut state.space.space_list {
++                if panel.islands.lease.as_ref().is_some_and(|l| l.connection == connection) {
++                    panel.end_island_lease();
++                }
++            }
++        },
++        Event::Reload => {
++            reconcile_outputs(state);
++            for panel in &mut state.space.space_list {
++                if let Ok(settings) = load_settings(&panel.config.name) {
++                    if panel.islands.lease.is_none() && settings != panel.islands.settings {
++                        panel.set_islands(settings);
++                    }
++                }
++            }
++        },
++        Event::Expire(token, revision) => {
++            for panel in &mut state.space.space_list {
++                if panel
++                    .islands
++                    .lease
++                    .as_ref()
++                    .is_some_and(|l| l.token == token && l.revision == revision)
++                {
++                    panel.end_island_lease();
++                }
++            }
++        },
++    }
++}
++// A configured connector can be temporarily absent while its dock is shown
++// on the fallback output. Only that configured name may select the fallback.
++fn panel_index(
++    state: &crate::xdg_shell_wrapper::shared_state::GlobalState,
++    panel: &str,
++    output: &str,
++) -> Option<usize> {
++    let fallback = !output.is_empty()
++        && state.space.config.config_list.iter().any(|c| {
++            c.name == panel
++                && matches!(&c.output, cosmic_panel_config::CosmicPanelOuput::Name(name) if name == output)
++        })
++        && !state.space.outputs.iter().any(|o| o.1.name() == output);
++    state.space.space_list.iter().position(|p| {
++        p.config.name == panel
++            && (output.is_empty()
++                || fallback
++                || p.output.as_ref().is_some_and(|o| o.2.name.as_deref() == Some(output)))
++    })
++}
++
++fn command(
++    state: &mut crate::xdg_shell_wrapper::shared_state::GlobalState,
++    connection: u64,
++    request: Request,
++) -> Response {
++    match request {
++        Request::Capabilities => Response::Capabilities(Capabilities::default()),
++        Request::Inspect { panel, output } => {
++            match panel_index(state, &panel, &output).map(|i| &state.space.space_list[i]) {
++                Some(p) => Response::Draft {
++                    token: 0,
++                    revision: 0,
++                    settings: p.islands.settings.clone(),
++                    layout: p.islands.geometry.clone(),
++                    view: p.island_view(),
++                },
++                None => Response::Error("This panel is not active on the selected display".into()),
++            }
++        },
++        Request::Begin { panel, output, base, draft } => {
++            if let Err(e) = draft.validate().and_then(|_| base.validate()) {
++                return Response::Error(e);
++            }
++            if !draft.enabled {
++                return Response::Error("Enable Islands to arrange".into());
++            }
++            if state.space.space_list.iter().any(|p| p.islands.lease.is_some()) {
++                return Response::Error("Another arrangement is open".into());
++            }
++            match load_settings(&panel) {
++                Ok(current) if current == base => {},
++                Ok(_) => {
++                    return Response::Error("Island settings changed outside this editor".into());
++                },
++                Err(e) => return Response::Error(e),
++            }
++            let Some(index) = panel_index(state, &panel, &output) else {
++                return Response::Error("This panel is not visible on the selected display".into());
++            };
++            let p = &mut state.space.space_list[index];
++            static TOKENS: AtomicU64 = AtomicU64::new(1);
++            let token = TOKENS.fetch_add(1, Ordering::Relaxed);
++            let output = p.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default();
++            p.islands.lease = Some(Lease {
++                connection,
++                token,
++                revision: 1,
++                selected: Handle::Island(Section::Center),
++                drag: None,
++                output,
++            });
++            p.set_islands(draft);
++            if let Some(layer) = &p.layer {
++                layer.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
++                layer.commit();
++            }
++            p.expire_lease();
++            p.island_response()
++        },
++        Request::Activate { panel, expected } => {
++            if let Err(e) = expected.validate() {
++                return Response::Error(e);
++            }
++            match load_settings(&panel) {
++                Ok(settings) if settings == expected => {
++                    let mut found = false;
++                    for p in state.space.space_list.iter_mut().filter(|p| p.config.name == panel) {
++                        p.end_island_lease();
++                        p.set_islands(settings.clone());
++                        found = true;
++                    }
++                    if found {
++                        Response::Applied { settings }
++                    } else {
++                        Response::Error("Settings saved, but no matching panel is active".into())
++                    }
++                },
++                Ok(_) => Response::Error("Persisted island settings do not match the draft".into()),
++                Err(e) => Response::Error(e),
++            }
++        },
++        other => {
++            let token = match &other {
++                Request::Update { token, .. }
++                | Request::Select { token, .. }
++                | Request::Read { token }
++                | Request::Done { token }
++                | Request::Cancel { token } => *token,
++                _ => unreachable!(),
++            };
++            let Some(p) = state.space.space_list.iter_mut().find(|p| {
++                p.islands
++                    .lease
++                    .as_ref()
++                    .is_some_and(|l| l.connection == connection && l.token == token)
++            }) else {
++                return Response::Error("The arrangement session ended".into());
++            };
++            match other {
++                Request::Update { revision, draft, .. } => {
++                    if let Err(e) = draft.validate() {
++                        return Response::Error(e);
++                    }
++                    if p.islands.lease.as_ref().unwrap().revision != revision {
++                        return Response::Error(
++                            "The arrangement changed; read its latest revision".into(),
++                        );
++                    }
++                    p.set_islands(draft);
++                    p.bump_island_revision();
++                    p.island_response()
++                },
++                Request::Select { handle, .. } => {
++                    if !p.islands.handles.iter().any(|(h, ..)| *h == handle) {
++                        return Response::Error("This island is empty".into());
++                    }
++                    p.islands.lease.as_mut().unwrap().selected = handle;
++                    p.bump_island_revision();
++                    p.island_response()
++                },
++                Request::Read { .. } => p.island_response(),
++                Request::Done { .. } => {
++                    p.cancel_island_drag();
++                    let result = p.island_response();
++                    p.end_island_lease();
++                    result
++                },
++                Request::Cancel { .. } => {
++                    p.end_island_lease();
++                    Response::Cancelled
++                },
++                _ => unreachable!(),
++            }
++        },
++    }
++}
++impl PanelSpace {
++    pub fn set_islands(&mut self, settings: Settings) {
++        if self.islands.settings.enabled != settings.enabled {
++            self.reset_overflow();
++        }
++        if let Some(lease) = &mut self.islands.lease {
++            if self.islands.settings.placement != settings.placement {
++                lease.drag = None;
++            }
++        }
++        self.islands.settings = settings;
++        self.normalize_island_selection();
++        self.islands.error = None;
++        self.is_dirty = true;
++        self.needs_layout = true;
++        self.is_background_dirty = true;
++    }
++    pub(crate) fn normalize_island_selection(&mut self) {
++        let Some(lease) = &mut self.islands.lease else {
++            return;
++        };
++        let valid = match lease.selected {
++            Handle::Group => {
++                self.islands.settings.placement == Placement::Together
++                    && self.islands.geometry.spans.iter().any(Option::is_some)
++            },
++            Handle::Island(section) => self.islands.geometry.spans[section.index()].is_some(),
++        };
++        if !valid {
++            if let Some(section) = self
++                .islands
++                .settings
++                .layout(&lease.output)
++                .order(self.islands.settings.placement)
++                .iter()
++                .find(|s| self.islands.geometry.spans[s.index()].is_some())
++            {
++                lease.selected = Handle::Island(*section);
++                lease.drag = None;
++            }
++        }
++    }
++    pub fn island_view(&self) -> dock_islands_core::View {
++        let size = self.output.as_ref().and_then(|o| o.2.logical_size).unwrap_or_else(|| {
++            self.output
++                .as_ref()
++                .map(|o| {
++                    o.1.current_mode()
++                        .map(|m| (m.size.w as f64 / self.scale, m.size.h as f64 / self.scale))
++                })
++                .flatten()
++                .map(|(w, h)| (w.round() as i32, h.round() as i32))
++                .unwrap_or((0, 0))
++        });
++        let origin = match self.config.anchor {
++            PanelAnchor::Top => {
++                [(size.0 - self.dimensions.w) as f64 / 2., self.additional_gap as f64]
++            },
++            PanelAnchor::Bottom => [
++                (size.0 - self.dimensions.w) as f64 / 2.,
++                (size.1 - self.dimensions.h - self.additional_gap) as f64,
++            ],
++            PanelAnchor::Left => {
++                [self.additional_gap as f64, (size.1 - self.dimensions.h) as f64 / 2.]
++            },
++            PanelAnchor::Right => [
++                (size.0 - self.dimensions.w - self.additional_gap) as f64,
++                (size.1 - self.dimensions.h) as f64 / 2.,
++            ],
++        };
++        dock_islands_core::View {
++            output: self.output.as_ref().and_then(|o| o.2.name.clone()).unwrap_or_default(),
++            selected: self.islands.lease.as_ref().map(|l| l.selected).filter(|selected| {
++                self.islands.handles.iter().any(|(handle, ..)| handle == selected)
++            }),
++            visible: matches!(
++                self.visibility,
++                crate::xdg_shell_wrapper::space::Visibility::Visible
++            ),
++            popups: self.popups.len() + usize::from(self.overflow_popup.is_some()),
++            overflow: [&self.overflow_left, &self.overflow_center, &self.overflow_right].map(|s| {
++                s.elements()
++                    .filter(|e| matches!(e, crate::iced::elements::PopupMappedInternal::Window(_)))
++                    .count()
++            }),
++            horizontal: self.config.is_horizontal(),
++            origin,
++            scale: self.scale,
++            handles: self.islands.handles.clone(),
++        }
++    }
++    pub fn island_response(&self) -> Response {
++        let Some(lease) = &self.islands.lease else {
++            return Response::Error("No arrangement is open".into());
++        };
++        Response::Draft {
++            token: lease.token,
++            revision: lease.revision,
++            settings: self.islands.settings.clone(),
++            layout: self.islands.geometry.clone(),
++            view: self.island_view(),
++        }
++    }
++    fn expire_lease(&mut self) {
++        if let Some(timer) = self.islands.expiry.take() {
++            self.shared.loop_handle.remove(timer);
++        }
++        if let Some(lease) = &self.islands.lease {
++            let token = lease.token;
++            let revision = lease.revision;
++            self.islands.expiry = self
++                .shared
++                .loop_handle
++                .insert_source(
++                    calloop::timer::Timer::from_duration(Duration::from_secs(900)),
++                    move |_, _, state| {
++                        handle_event(state, Event::Expire(token, revision));
++                        calloop::timer::TimeoutAction::Drop
++                    },
++                )
++                .ok();
++        }
++    }
++    fn bump_island_revision(&mut self) {
++        if let Some(lease) = &mut self.islands.lease {
++            lease.revision = lease.revision.saturating_add(1);
++        }
++        self.expire_lease();
++        self.needs_layout = true;
++        self.is_dirty = true;
++    }
++    pub fn end_island_lease(&mut self) {
++        if self.islands.lease.take().is_none() {
++            return;
++        }
++        self.islands.touch = None;
++        if let Some(timer) = self.islands.expiry.take() {
++            self.shared.loop_handle.remove(timer);
++        }
++        self.set_islands(load_settings(&self.config.name).unwrap_or_default());
++        if let Some(layer) = &self.layer {
++            let k = match self.config.keyboard_interactivity {
++                xdg_shell_wrapper_config::KeyboardInteractivity::None => {
++                    KeyboardInteractivity::None
++                },
++                xdg_shell_wrapper_config::KeyboardInteractivity::OnDemand => {
++                    KeyboardInteractivity::OnDemand
++                },
++                xdg_shell_wrapper_config::KeyboardInteractivity::Exclusive => {
++                    KeyboardInteractivity::Exclusive
++                },
++            };
++            layer.set_keyboard_interactivity(k);
++            layer.commit();
++        }
++        // Resume the existing wait interval, instead of hiding mid-exit.
++        self.start_instant = std::time::Instant::now();
++    }
++    pub fn arrange_extra(&self) -> i32 {
++        if self.islands.lease.is_some() {
++            HANDLE as i32
++                * if self.islands.settings.placement == Placement::Together { 2 } else { 1 }
++        } else {
++            0
++        }
++    }
++    pub fn cancel_island_drag(&mut self) {
++        if let Some(drag) = self.islands.lease.as_mut().and_then(|l| l.drag.take()) {
++            drag.cancel(&mut self.islands.settings);
++            self.bump_island_revision();
++        }
++    }
++    pub fn island_pointer(&mut self, event: &sctk::seat::pointer::PointerEvent) -> bool {
++        use sctk::seat::pointer::{BTN_LEFT, PointerEventKind as K};
++        if self.islands.lease.is_none()
++            || !self.layer.as_ref().is_some_and(|l| l.wl_surface() == &event.surface)
++        {
++            return false;
++        }
++        let (major, cross) = if self.config.is_horizontal() {
++            event.position
++        } else {
++            (event.position.1, event.position.0)
++        };
++        let handle = self
++            .islands
++            .handles
++            .iter()
++            .find(|(_, a, b)| a.contains(major) && b.contains(cross))
++            .map(|(h, ..)| *h);
++        match event.kind {
++            K::Enter { .. } | K::Leave { .. } => false,
++            K::Press { button: BTN_LEFT, .. } if handle.is_some() => {
++                let handle = handle.unwrap();
++                let drag = Drag::new(&self.islands.settings, &self.islands.geometry, handle, major);
++                let lease = self.islands.lease.as_mut().unwrap();
++                lease.selected = handle;
++                lease.drag = drag;
++                self.bump_island_revision();
++                true
++            },
++            K::Motion { .. } if self.islands.lease.as_ref().unwrap().drag.is_some() => {
++                let lease = self.islands.lease.as_mut().unwrap();
++                if lease.drag.as_mut().unwrap().motion(
++                    &mut self.islands.settings,
++                    &lease.output,
++                    &self.islands.geometry,
++                    major,
++                ) {
++                    self.bump_island_revision();
++                }
++                true
++            },
++            K::Release { button: BTN_LEFT, .. }
++                if self.islands.lease.as_ref().unwrap().drag.is_some() =>
++            {
++                let thickness =
++                    if self.config.is_horizontal() { self.dimensions.h } else { self.dimensions.w }
++                        as f64;
++                if cross < 0. || cross >= thickness || !self.islands.geometry.bounds.contains(major)
++                {
++                    self.cancel_island_drag();
++                } else {
++                    self.islands.lease.as_mut().unwrap().drag = None;
++                    self.bump_island_revision();
++                }
++                true
++            },
++            _ => handle.is_some(),
++        }
++    }
++    pub fn island_key(&mut self, key: u32) -> bool {
++        let Some(lease) = self.islands.lease.as_ref() else {
++            return false;
++        };
++        let handle = lease.selected;
++        let output = lease.output.clone();
++        match key {
++            0xff1b => {
++                if lease.drag.is_some() {
++                    self.cancel_island_drag();
++                } else {
++                    self.end_island_lease();
++                }
++            },
++            0xff09 | 0xfe20 => {
++                let mut handles: Vec<_> = self
++                    .islands
++                    .settings
++                    .layout(&output)
++                    .order(self.islands.settings.placement)
++                    .iter()
++                    .filter(|s| self.islands.geometry.spans[s.index()].is_some())
++                    .map(|s| Handle::Island(*s))
++                    .collect();
++                if self.islands.settings.placement == Placement::Together && !handles.is_empty() {
++                    handles.push(Handle::Group);
++                }
++                if !handles.is_empty() {
++                    let at = handles.iter().position(|h| *h == handle).unwrap_or(0);
++                    let next = if key == 0xfe20 {
++                        (at + handles.len() - 1) % handles.len()
++                    } else {
++                        (at + 1) % handles.len()
++                    };
++                    self.islands.lease.as_mut().unwrap().selected = handles[next];
++                }
++                self.bump_island_revision();
++            },
++            0xff50 | 0xff57 | 0xff51 | 0xff52 | 0xff53 | 0xff54 => {
++                let span = match handle {
++                    Handle::Group => Some(self.islands.geometry.group),
++                    Handle::Island(s) => self.islands.geometry.spans[s.index()],
++                };
++                if let Some(span) = span {
++                    let forward = matches!(key, 0xff53 | 0xff54 | 0xff57);
++                    if self.islands.settings.placement == Placement::Together
++                        && let Handle::Island(s) = handle
++                    {
++                        let present = self.islands.geometry.spans.map(|s| s.is_some());
++                        let steps = if key == 0xff50 {
++                            -3
++                        } else if key == 0xff57 {
++                            3
++                        } else if forward {
++                            1
++                        } else {
++                            -1
++                        };
++                        self.islands.settings.layout_mut(&output).reorder_visible(
++                            Placement::Together,
++                            s,
++                            present,
++                            steps,
++                        );
++                    } else {
++                        let wanted = if key == 0xff50 {
++                            self.islands.geometry.bounds.start
++                        } else if key == 0xff57 {
++                            self.islands.geometry.bounds.end() - span.length
++                        } else {
++                            span.start + if forward { 8. } else { -8. }
++                        };
++                        dock_islands_core::move_handle(
++                            &mut self.islands.settings,
++                            &output,
++                            &self.islands.geometry,
++                            handle,
++                            wanted,
++                            false,
++                        );
++                    }
++                    self.bump_island_revision();
++                }
++            },
++            _ => return false,
++        }
++        true
++    }
++}
++
++/// Keep a named-output island panel visible on a temporary fallback. The
++/// configured target and every saved monitor layout stay unchanged on disk.
++pub fn reconcile_outputs(state: &mut crate::xdg_shell_wrapper::shared_state::GlobalState) {
++    use cosmic_panel_config::CosmicPanelOuput;
++    let entries = state.space.config.config_list.clone();
++    for original in entries {
++        let CosmicPanelOuput::Name(ref wanted) = original.output else {
++            continue;
++        };
++        if !load_settings(&original.name).is_ok_and(|s| s.enabled) {
++            continue;
++        }
++        let target = state
++            .space
++            .outputs
++            .iter()
++            .find(|o| o.1.name() == *wanted)
++            .or_else(|| state.space.outputs.first())
++            .map(|o| o.1.name());
++        let Some(target) = target else {
++            continue;
++        };
++        state.space.space_list.retain(|p| {
++            p.config.name != original.name
++                || p.output.as_ref().is_some_and(|o| o.1.name() == target)
++        });
++        if state.space.space_list.iter().any(|p| {
++            p.config.name == original.name
++                && p.output.as_ref().is_some_and(|o| o.1.name() == target)
++        }) {
++            continue;
++        }
++        let mut temporary = original.clone();
++        temporary.output = CosmicPanelOuput::Name(target);
++        state.space.update_space(
++            temporary,
++            &state.client_state.compositor_state,
++            state.client_state.fractional_scaling_manager.as_ref(),
++            state.client_state.viewporter_state.as_ref(),
++            &mut state.client_state.layer_state,
++            &state.client_state.queue_handle,
++            None,
++            state.client_state.overlap_notify.clone(),
++        );
++        if let Some(saved) =
++            state.space.config.config_list.iter_mut().find(|c| c.name == original.name)
++        {
++            *saved = original;
++        }
++    }
++}
++impl PanelSpace {
++    pub fn island_touch(
++        &mut self,
++        surface: &sctk::reexports::client::protocol::wl_surface::WlSurface,
++        id: i32,
++        point: (f64, f64),
++        phase: u8,
++    ) -> bool {
++        use sctk::seat::pointer::{BTN_LEFT, PointerEvent, PointerEventKind as K};
++        if phase != 0 && self.islands.touch.as_ref().is_none_or(|t| t.0 != id) {
++            return false;
++        }
++        let kind = match phase {
++            0 => K::Press { time: 0, serial: 0, button: BTN_LEFT },
++            1 => K::Motion { time: 0 },
++            _ => K::Release { time: 0, serial: 0, button: BTN_LEFT },
++        };
++        let used =
++            self.island_pointer(&PointerEvent { surface: surface.clone(), position: point, kind });
++        if used {
++            self.islands.touch = if phase == 2 { None } else { Some((id, point)) };
++        }
++        used
++    }
++    pub fn island_touch_up(&mut self, id: i32) -> bool {
++        let Some((active, point)) = self.islands.touch else {
++            return false;
++        };
++        if active != id {
++            return false;
++        }
++        let Some(surface) = self.layer.as_ref().map(|l| l.wl_surface().clone()) else {
++            return false;
++        };
++        self.island_touch(&surface, id, point, 2)
++    }
++}
+--- a/cosmic-panel-bin/src/main.rs
++++ b/cosmic-panel-bin/src/main.rs
+@@ -1,5 +1,6 @@
+ mod config_watching;
+ mod iced;
++mod islands;
+ mod minimize;
+ mod notifications;
+ mod space;
+@@ -37,6 +38,7 @@
+ 
+ #[derive(Debug)]
+ pub enum PanelCalloopMsg {
++    Islands(islands::Event),
+     ClientSocketPair(ClientId),
+     RestartSpace(CosmicPanelConfig, WlOutput),
+     MinimizeRect { output: String, applet_info: MinimizeApplet },
+@@ -114,6 +116,7 @@
+     let (applet_tx, mut applet_rx) = mpsc::channel(200);
+     let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
+ 
++    islands::serve(calloop_tx.clone())?;
+     let event_loop = calloop::EventLoop::try_new()?;
+     let handle = event_loop.handle();
+     let _ = EVENT_LOOP_HANDLE.with(move |l| l.set(RefCell::new(handle)));
+@@ -170,6 +173,7 @@
+             tracing::trace!("Panel Event: {e:?}");
+             match e {
+                 calloop::channel::Event::Msg(e) => match e {
++                    PanelCalloopMsg::Islands(event) => islands::handle_event(state, event),
+                     PanelCalloopMsg::ClientSocketPair(client_id) => {
+                         state.space.cleanup_client(client_id);
+                     },
+--- a/cosmic-panel-bin/src/space/layout.rs
++++ b/cosmic-panel-bin/src/space/layout.rs
+@@ -68,6 +68,14 @@
+ impl PanelSpace {
+     pub(crate) fn layout_(&mut self) -> anyhow::Result<()> {
+         self.needs_layout = false;
++        let major = if self.config.is_horizontal() { self.dimensions.w } else { self.dimensions.h };
++        if self.islands.settings.enabled
++            && major > self.islands.last_major
++            && self.islands.last_major > 0
++        {
++            self.reset_overflow();
++        }
++        self.islands.last_major = major;
+         self.remap_attempts = self.remap_attempts.saturating_sub(1);
+ 
+         let make_indices_contiguous =
+@@ -199,7 +207,7 @@
+         let is_dock = !self.config.expand_to_edges()
+             || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
+ 
+-        if is_dock {
++        if is_dock && !self.islands.settings.enabled {
+             windows_center = windows_left
+                 .drain(..)
+                 .chain(windows_center)
+@@ -252,7 +260,7 @@
+             PanelAnchor::Left | PanelAnchor::Right => (self.dimensions.w, self.dimensions.h),
+             PanelAnchor::Top | PanelAnchor::Bottom => (self.dimensions.h, self.dimensions.w),
+         };
+-        let is_dock = !self.config.expand_to_edges();
++        let is_dock = !self.config.expand_to_edges() && !self.islands.settings.enabled;
+         if is_dock {
+             if let Some(left_button) = left_overflow_button.take() {
+                 self.space.unmap_elem(&CosmicMappedInternal::OverflowButton(left_button));
+@@ -419,7 +427,13 @@
+         .to_logical(self.scale)
+         .to_i32_round();
+ 
+-        let actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
++        let mut actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
++        let arrange_extra = self.arrange_extra();
++        if self.config.is_horizontal() {
++            actual_size_constrained.h += arrange_extra;
++        } else {
++            actual_size_constrained.w += arrange_extra;
++        }
+         if self.config.is_horizontal() {
+             self.actual_size.h = actual_size_constrained.h;
+         } else {
+@@ -474,7 +488,7 @@
+ 
+         let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
+ 
+-        let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
++        let mut left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
+         let mut right_pos = new_list_dim_length as f64
+             - container_lengthwise_pos as f64
+             - right_sum
+@@ -497,7 +511,7 @@
+         } else {
+             target_center_len -= spacing_u32 as f64;
+         }
+-        let target_left_len = if !has_center {
++        let mut target_left_len = if !has_center {
+             (layer_major as f64
+                 - right_sum.min(one_half)
+                 - (spacing_u32 as f64) / 2.
+@@ -512,7 +526,7 @@
+         }
+         .min(layer_major as f64);
+ 
+-        let target_right_len = if !has_center {
++        let mut target_right_len = if !has_center {
+             (layer_major as f64
+                 - left_sum.min(one_half)
+                 - (spacing_u32 as f64) / 2.
+@@ -526,15 +540,116 @@
+                 .max(one_third)
+         }
+         .min(layer_major as f64);
++        let mut island_geometry = None;
++        if self.islands.settings.enabled {
++            let actual = [left_sum, center_sum, right_sum]
++                .map(|n| if n > 0. { n + 2. * padding_u32 as f64 } else { 0. });
++            let desired =
++                |windows: &Vec<(usize, CosmicMappedInternal, Option<u32>, ShrinkablePadding)>,
++                 overflow: &Space<PopupMappedInternal>,
++                 actual: f64| {
++                    let extra: f64 = windows
++                        .iter()
++                        .filter_map(|(_, w, ..)| {
++                            w.toplevel().map(|t| {
++                                let max = with_states(t.wl_surface(), |states| {
++                                    states
++                                        .cached_state
++                                        .get::<SurfaceCachedState>()
++                                        .current()
++                                        .max_size
++                                });
++                                let current = w.geometry().size;
++                                if self.config.is_horizontal() {
++                                    (max.w - current.w).max(0) as f64
++                                } else {
++                                    (max.h - current.h).max(0) as f64
++                                }
++                            })
++                        })
++                        .sum();
++                    let hidden: f64 = overflow
++                        .elements()
++                        .filter_map(|w| match w {
++                            PopupMappedInternal::Window(w) => Some(
++                                self.islands
++                                    .overflow_sizes
++                                    .iter()
++                                    .find(|(window, _)| window == w)
++                                    .map_or_else(
++                                        || {
++                                            let size = w.geometry().size;
++                                            if self.config.is_horizontal() {
++                                                size.w as f64
++                                            } else {
++                                                size.h as f64
++                                            }
++                                        },
++                                        |(_, length)| *length,
++                                    )
++                                    + spacing_u32 as f64,
++                            ),
++                            _ => None,
++                        })
++                        .sum();
++                    actual + extra + hidden
++                };
++            let natural = [
++                desired(&windows_left, &self.overflow_left, actual[0]),
++                desired(&windows_center, &self.overflow_center, actual[1]),
++                desired(&windows_right, &self.overflow_right, actual[2]),
++            ];
++            let start = self.logical_layer_start_overlap.max(0) as f64;
++            let bounds = dock_islands_core::Span {
++                start,
++                length: (layer_major as f64 - start - self.logical_layer_end_overlap.max(0) as f64)
++                    .max(0.),
++            };
++            let output = self.output.as_ref().and_then(|o| o.2.name.as_deref()).unwrap_or("");
++            let allocation = dock_islands_core::resolve(
++                &self.islands.settings,
++                output,
++                bounds,
++                natural,
++                self.config.size.get_applet_icon_size(true) as f64
++                    + 2. * self.config.size.get_applet_shrinkable_padding(true) as f64
++                    + 2. * padding_u32 as f64,
++            );
++            let mut geometry = dock_islands_core::resolve(
++                &self.islands.settings,
++                output,
++                bounds,
++                actual,
++                self.config.size.get_applet_icon_size(true) as f64
++                    + 2. * self.config.size.get_applet_shrinkable_padding(true) as f64
++                    + 2. * padding_u32 as f64,
++            );
++            geometry.budgets = allocation.budgets;
++            geometry.natural = natural;
++            let position =
++                |i: usize| geometry.spans[i].map_or(0., |s| s.start + padding_u32 as f64);
++            left_pos = position(0);
++            center_pos = position(1);
++            right_pos = position(2);
++            target_left_len = (geometry.budgets[0] - 2. * padding_u32 as f64).max(0.);
++            target_center_len = (geometry.budgets[1] - 2. * padding_u32 as f64).max(0.);
++            target_right_len = (geometry.budgets[2] - 2. * padding_u32 as f64).max(0.);
++            island_geometry = Some(geometry);
++        }
+         let suggested_size = ((self.config.size.get_applet_icon_size(true) as f64
+             + self.config.size.get_applet_padding(true) as f64 * 2.)
+             * -1.5 // allows some wiggle room
+             * self.scale) as i32;
++        // A section containing only its overflow button cannot shrink again.
++        // On an exceptionally small output, clip that button to its bounded
++        // island instead of retrying the same layout indefinitely.
+         let center_overflow = (center_sum - target_center_len) as i32;
+         if center_overflow < suggested_size {
+             // check if it can be expanded
+             self.relax_overflow_center(center_overflow.unsigned_abs(), &mut center_overflow_button)
+-        } else if center_overflow > 0 {
++        } else if center_overflow > 0
++            && (!self.islands.settings.enabled || !windows_center.is_empty())
++        {
+             let overflow = self.shrink_center((center_sum - target_center_len) as u32);
+             self.is_dirty = true;
+             self.needs_layout = true;
+@@ -546,7 +661,9 @@
+ 
+             if left_overflow < suggested_size {
+                 self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
+-            } else if left_overflow > 0 {
++            } else if left_overflow > 0
++                && (!self.islands.settings.enabled || !windows_left.is_empty())
++            {
+                 info!("target: {target_left_len}, actual: {left_sum}");
+                 let overflow = self.shrink_left(left_overflow as u32);
+                 self.is_dirty = true;
+@@ -561,7 +678,9 @@
+                     right_overflow.unsigned_abs(),
+                     &mut right_overflow_button,
+                 );
+-            } else if right_overflow > 0 {
++            } else if right_overflow > 0
++                && (!self.islands.settings.enabled || !windows_right.is_empty())
++            {
+                 let overflow = self.shrink_right(right_overflow as u32);
+                 self.is_dirty = true;
+                 self.needs_layout = true;
+@@ -570,6 +689,10 @@
+             }
+         }
+ 
++        if let Some(geometry) = island_geometry {
++            self.islands.geometry = geometry;
++            self.normalize_island_selection();
++        }
+         // update input region of panel when list changes
+         let (input_region, layer) = match (self.input_region.as_ref(), self.layer.as_ref()) {
+             (Some(r), Some(layer)) => (r, layer),
+@@ -585,17 +708,23 @@
+         // offset for centering
+         let margin_offset = match anchor {
+             PanelAnchor::Top | PanelAnchor::Left => gap,
+-            PanelAnchor::Bottom | PanelAnchor::Right => 0,
++            PanelAnchor::Bottom | PanelAnchor::Right => arrange_extra as u16,
+         } as i32;
+ 
+         if let Some(right_button) = right_overflow_button {
+             let size = right_button.geometry().size.to_f64();
+             let crosswise_pos = if self.config.is_horizontal() {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.h as u32,
++                    )
+             } else {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.w as u32,
++                    )
+             };
+ 
+             let loc = if self.config().is_horizontal() {
+@@ -614,17 +743,27 @@
+             layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
+         // XXX this is a bit of a hack around the fact that we want the spacer
+         // to be placed before the overflow button
+-        if windows_left.is_empty() && !windows_center.is_empty() && is_overlapping_start {
++        if !self.islands.settings.enabled
++            && windows_left.is_empty()
++            && !windows_center.is_empty()
++            && is_overlapping_start
++        {
+             let (_, CosmicMappedInternal::Spacer(s), ..) = windows_center.remove(0) else {
+                 panic!("No spacer found");
+             };
+             let size = s.bbox().size.to_f64();
+             let crosswise_pos = if self.config.is_horizontal() {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.h as u32,
++                    )
+             } else {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.w as u32,
++                    )
+             };
+             let loc = if self.config().is_horizontal() {
+                 (center_pos.round() as i32, crosswise_pos)
+@@ -640,10 +779,16 @@
+             let size = center_button.geometry().size.to_f64();
+             let crosswise_pos = if self.config.is_horizontal() {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.h as u32,
++                    )
+             } else {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.w as u32,
++                    )
+             };
+             let loc = if self.config().is_horizontal() {
+                 (center_pos.round() as i32, crosswise_pos)
+@@ -688,7 +833,7 @@
+                         cur,
+                         margin_offset
+                             + center_in_bar(
+-                                new_logical_crosswise_dim.try_into().unwrap(),
++                                (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
+                                 size.h as u32,
+                             ),
+                     );
+@@ -707,7 +852,7 @@
+                     let cur = (
+                         margin_offset
+                             + center_in_bar(
+-                                new_logical_crosswise_dim.try_into().unwrap(),
++                                (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
+                                 size.w as u32,
+                             ),
+                         cur,
+@@ -760,10 +905,16 @@
+             let size = left_button.geometry().size.to_f64();
+             let crosswise_pos = if self.config.is_horizontal() {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.h as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.h as u32,
++                    )
+             } else {
+                 margin_offset
+-                    + center_in_bar(new_logical_crosswise_dim.try_into().unwrap(), size.w as u32)
++                    + center_in_bar(
++                        (new_logical_crosswise_dim - arrange_extra).try_into().unwrap(),
++                        size.w as u32,
++                    )
+             };
+             let loc = if self.config().is_horizontal() {
+                 (left_pos.round() as i32, crosswise_pos)
+@@ -791,6 +942,16 @@
+         }
+         self.space.refresh();
+ 
++        if self.islands.settings.enabled {
++            self.layout_island_backgrounds(new_dim.w, new_dim.h, new_logical_crosswise_dim)?;
++            self.reorder_overflow_space(OverflowSection::Left);
++            self.reorder_overflow_space(OverflowSection::Center);
++            self.reorder_overflow_space(OverflowSection::Right);
++            return Ok(());
++        }
++        for bg in self.islands.backgrounds.drain(..) {
++            self.space.unmap_elem(&CosmicMappedInternal::Background(bg));
++        }
+         let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
+         let container_length_scaled = self.container_length as f64 * self.scale;
+         if self.config.is_horizontal() {
+@@ -1207,7 +1368,7 @@
+                     shrink_size: shrink_min_size,
+                     padding_overlap: 0.0,
+                 });
+-            } else if c.shrink_priority.is_some() {
++            } else if c.shrink_priority.is_some() || self.islands.settings.enabled {
+                 let p = weighted_priority(&w);
+                 overflow_partition.movable.push((w.0, p));
+             } else {
+@@ -1238,11 +1399,12 @@
+         let g = self.clients_center.lock().unwrap();
+         let left_g = self.clients_left.lock().unwrap();
+         let right_g = self.clients_right.lock().unwrap();
+-        let center: Vec<&PanelClient> = if self.config.expand_to_edges {
+-            g.iter().collect()
+-        } else {
+-            left_g.iter().chain(g.iter()).chain(right_g.iter()).collect()
+-        };
++        let center: Vec<&PanelClient> =
++            if self.config.expand_to_edges || self.islands.settings.enabled {
++                g.iter().collect()
++            } else {
++                left_g.iter().chain(g.iter()).chain(right_g.iter()).collect()
++            };
+         let mut clients = self.shrinkable_clients(center.into_iter());
+         drop(g);
+         drop(left_g);
+@@ -1366,7 +1528,9 @@
+         clients: OverflowClientPartition,
+         section: OverflowSection,
+     ) -> u32 {
+-        if clients.movable.len() <= 1 {
++        if clients.movable.is_empty()
++            || (clients.movable.len() == 1 && !self.islands.settings.enabled)
++        {
+             tracing::info!("Needs at least 2 movable clients to move to overflow space.");
+             return overflow;
+         }
+@@ -1417,6 +1581,10 @@
+                 continue;
+             }
+             let diff = if is_horizontal { bbox.size.w as u32 } else { bbox.size.h as u32 };
++            if self.islands.settings.enabled {
++                self.islands.overflow_sizes.retain(|(window, _)| window.alive() && window != &w.0);
++                self.islands.overflow_sizes.push((w.0.clone(), diff as f64));
++            }
+             overflow = overflow.saturating_sub(diff);
+ 
+             let x_i = overflow_cnt % 8;
+--- a/cosmic-panel-bin/src/space/panel_space.rs
++++ b/cosmic-panel-bin/src/space/panel_space.rs
+@@ -382,6 +382,7 @@
+     pub overflow_popup: Option<(PanelPopup, OverflowSection)>,
+     pub remap_attempts: u32,
+     pub background_element: Option<BackgroundElement>,
++    pub islands: crate::islands::IslandState,
+     pub is_background_dirty: bool,
+     pub last_minimize_update: Instant,
+     pub(crate) minimized_toplevels: HashSet<wayland_backend::client::ObjectId>,
+@@ -413,7 +414,7 @@
+             if config.autohide_enabled() { Visibility::Hidden } else { Visibility::Visible };
+         let color_override = config.bg_color_override();
+         Self {
+-            config,
++            config: config.clone(),
+             shared: shared.clone(),
+             space: Space::default(),
+             unmapped_windows: Vec::new(),
+@@ -464,6 +465,7 @@
+             overflow_popup: None,
+             remap_attempts: 0,
+             background_element: None,
++            islands: crate::islands::IslandState::load(&config.name),
+             is_background_dirty: false,
+             last_minimize_update: Instant::now() - Duration::from_secs(1),
+             anchor_gap: 0,
+@@ -794,6 +796,26 @@
+             return;
+         };
+ 
++        if self.islands.lease.is_some()
++            || (self.islands.settings.enabled
++                && (!self.popups.is_empty() || self.overflow_popup.is_some()))
++        {
++            self.start_instant = Instant::now();
++            if !matches!(self.visibility, Visibility::Visible) || self.anchor_gap != 0 {
++                self.visibility = Visibility::Visible;
++                self.anchor_gap = 0;
++                self.is_dirty = true;
++                self.needs_layout = true;
++                Self::set_margin(
++                    self.config.anchor,
++                    self.config.get_margin() as i32,
++                    self.additional_gap,
++                    layer_surface,
++                );
++                layer_surface.commit();
++            }
++            return;
++        }
+         let intellihide =
+             matches!(self.config.autohide, AutoHide::OnOverlap) && self.overlap_notify.is_some();
+         let intellihide_no_toplevel = intellihide && !self.has_toplevel_overlap();
+@@ -1098,7 +1120,7 @@
+         }
+     }
+ 
+-    fn set_margin(
++    pub(crate) fn set_margin(
+         anchor: PanelAnchor,
+         margin: i32,
+         additional_gap: i32,
+@@ -1888,6 +1910,9 @@
+             {
+                 t.with_pending_state(|s| {
+                     s.size = None;
++                    if self.islands.settings.enabled {
++                        s.bounds = None;
++                    }
+                 });
+                 t.send_pending_configure();
+             }
+--- a/cosmic-panel-bin/src/space/render.rs
++++ b/cosmic-panel-bin/src/space/render.rs
+@@ -136,7 +136,11 @@
+             };
+             let egl_surface = self.egl_surface.as_mut().unwrap();
+             _ = unsafe { renderer.egl_context().make_current_with_surface(egl_surface) };
+-            let age = egl_surface.buffer_age().unwrap_or_default() as usize;
++            let age = if self.islands.settings.enabled {
++                0
++            } else {
++                egl_surface.buffer_age().unwrap_or_default() as usize
++            };
+             let mut f = renderer.bind(egl_surface)?;
+             // if not visible, just clear and exit early
+             let not_visible = self.config.autohide_enabled()
+@@ -212,7 +216,7 @@
+                         }
+ 
+                         w.toplevel().map(|t| {
+-                            let configured_size = t
++                            let mut configured_size = t
+                                 .with_committed_state(|s| s.as_ref().and_then(|s| s.size))
+                                 .map(|s| {
+                                     let mut r = Rectangle::new(
+@@ -232,6 +236,42 @@
+                                     r
+                                 });
+ 
++                            if self.islands.settings.enabled {
++                                let client = t.wl_surface().client();
++                                let section =
++                                    [&self.clients_left, &self.clients_center, &self.clients_right]
++                                        .iter()
++                                        .position(|clients| {
++                                            clients.lock().unwrap().iter().any(|c| {
++                                                c.client
++                                                    .as_ref()
++                                                    .zip(client.as_ref())
++                                                    .is_some_and(|(a, b)| a.id() == b.id())
++                                            })
++                                        });
++                                let Some(span) =
++                                    section.and_then(|i| self.islands.geometry.spans[i])
++                                else {
++                                    return Vec::new();
++                                };
++                                let mut clip = Rectangle::new((0, 0).into(), dim);
++                                let start = (span.start * self.scale).round() as i32;
++                                let end = (span.end() * self.scale).round() as i32;
++                                if self.config.is_horizontal() {
++                                    clip.loc.x = start;
++                                    clip.size.w = end - start;
++                                } else {
++                                    clip.loc.y = start;
++                                    clip.size.h = end - start;
++                                }
++                                configured_size = match configured_size {
++                                    Some(bounds) => bounds.intersection(clip),
++                                    None => Some(clip),
++                                };
++                                if configured_size.is_none() {
++                                    return Vec::new();
++                                }
++                            }
+                             render_elements_from_surface_tree(
+                                 renderer,
+                                 t.wl_surface(),
+@@ -259,24 +299,25 @@
+                     .flatten()
+                     .collect_vec();
+ 
+-                if let Some(bg) = self.background_element.as_ref().map(|e| {
+-                    let pos = e.with_program(|p| p.logical_pos);
+-                    e.render_elements(
+-                        renderer,
+-                        // Round like the compositor does for the blur box, otherwise the two
+-                        // disagree by a pixel at fractional scales.
+-                        Point::from((
+-                            (pos.0 as f64 * self.scale).round() as i32,
+-                            (pos.1 as f64 * self.scale).round() as i32,
+-                        )),
+-                        self.scale.into(),
+-                        1.0,
+-                    )
+-                    .into_iter()
+-                    .map(PanelRenderElement::Iced)
+-                }) {
++                for e in self.background_element.iter().chain(self.islands.backgrounds.iter()) {
++                    let bg = {
++                        let pos = e.with_program(|p| p.logical_pos);
++                        e.render_elements(
++                            renderer,
++                            // Round like the compositor does for the blur box, otherwise the two
++                            // disagree by a pixel at fractional scales.
++                            Point::from((
++                                (pos.0 as f64 * self.scale).round() as i32,
++                                (pos.1 as f64 * self.scale).round() as i32,
++                            )),
++                            self.scale.into(),
++                            1.0,
++                        )
++                        .into_iter()
++                        .map(PanelRenderElement::Iced)
++                    };
+                     elements.extend(bg);
+-                };
++                }
+ 
+                 let _res =
+                     my_renderer.render_output(renderer, &mut f, age, &elements, clear_color)?;
+--- a/cosmic-panel-bin/src/space/wrapper_space.rs
++++ b/cosmic-panel-bin/src/space/wrapper_space.rs
+@@ -460,9 +460,9 @@
+             let locales = freedesktop_desktop_entry::get_languages_from_env();
+ 
+             for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
+-                // This way each applet is at most started once,
+-                // even if multiple desktop files in different directories match
+-                if let Some(position) =
++                // Consume every configured occurrence from the first matching
++                // desktop file. Later search paths must not launch it again.
++                while let Some(position) =
+                     desktop_ids.iter().position(|(PanelClient { name, .. }, ..)| {
+                         Some(OsString::from(name).as_os_str()) == path.file_stem()
+                     })
+--- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/keyboard.rs
++++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/keyboard.rs
+@@ -115,6 +115,9 @@
+         serial: u32,
+         event: sctk::seat::keyboard::KeyEvent,
+     ) {
++        if self.space.space_list.iter_mut().any(|p| p.island_key(event.keysym.raw())) {
++            return;
++        }
+         let (seat_name, kbd) = if let Some((name, Some(kbd), last_key_pressed)) = self
+             .server_state
+             .seats
+--- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/output.rs
++++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/output.rs
+@@ -52,7 +52,13 @@
+             xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
+         };
+ 
+-        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref()) {
++        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
++            || space
++                .config
++                .config_list
++                .iter()
++                .any(|c| crate::islands::load_settings(&c.name).is_ok_and(|s| s.enabled))
++        {
+             // construct a surface for an output if possible
+             let s_output = c_output_as_s_output(display_handle, &info);
+ 
+@@ -71,6 +77,7 @@
+                 warn!("{}", err);
+             }
+         }
++        crate::islands::reconcile_outputs(self);
+     }
+ 
+     fn update_output(
+@@ -104,7 +111,12 @@
+             xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
+         };
+ 
+-        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
++        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
++            || space
++                .config
++                .config_list
++                .iter()
++                .any(|c| crate::islands::load_settings(&c.name).is_ok_and(|s| s.enabled)))
+             && let Some(saved_output) = self.client_state.outputs.iter_mut().find(|o| o.0 == output)
+         {
+             let res = space.update_output(output.clone(), saved_output.1.clone(), info.clone());
+@@ -128,6 +140,7 @@
+                 }
+             }
+         }
++        crate::islands::reconcile_outputs(self);
+     }
+ 
+     fn output_destroyed(
+@@ -152,7 +165,12 @@
+ 
+         info!("configured outputs {:?}", &configured_outputs);
+ 
+-        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
++        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
++            || space
++                .config
++                .config_list
++                .iter()
++                .any(|c| crate::islands::load_settings(&c.name).is_ok_and(|s| s.enabled)))
+             && let Some(saved_output) = self.client_state.outputs.iter().position(|o| o.0 == output)
+         {
+             let (c, s, _) = self.client_state.outputs.remove(saved_output);
+@@ -160,6 +178,7 @@
+                 warn!("{}", err);
+             }
+         }
++        crate::islands::reconcile_outputs(self);
+     }
+ }
+ 
+--- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
++++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
+@@ -71,6 +71,9 @@
+         let ptr = self.server_state.seats[seat_index].server.seat.get_pointer().unwrap();
+         let kbd = self.server_state.seats[seat_index].server.seat.get_keyboard().unwrap();
+         for e in events {
++            if self.space.space_list.iter_mut().any(|p| p.island_pointer(e)) {
++                continue;
++            }
+             let seat = &mut self.server_state.seats[seat_index];
+             match e.kind {
+                 sctk::seat::pointer::PointerEventKind::Leave { .. } => {
+--- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/touch.rs
++++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/touch.rs
+@@ -36,6 +36,10 @@
+         id: i32,
+         location: (f64, f64),
+     ) {
++        if self.space.space_list.iter_mut().any(|p| p.island_touch(&surface, id, location, 0)) {
++            self.client_state.touch_surfaces.insert(id, surface);
++            return;
++        }
+         let seat_index = self
+             .server_state
+             .seats
+@@ -76,6 +80,10 @@
+         time: u32,
+         id: i32,
+     ) {
++        if self.space.space_list.iter_mut().any(|p| p.island_touch_up(id)) {
++            self.client_state.touch_surfaces.remove(&id);
++            return;
++        }
+         let (_, touch) = get_touch_handle(self, touch);
+ 
+         touch.up(
+@@ -97,6 +105,11 @@
+         id: i32,
+         location: (f64, f64),
+     ) {
++        if let Some(surface) = self.client_state.touch_surfaces.get(&id).cloned()
++            && self.space.space_list.iter_mut().any(|p| p.island_touch(&surface, id, location, 1))
++        {
++            return;
++        }
+         let (seat_name, touch) = get_touch_handle(self, touch);
+ 
+         if let Some(surface) = self.client_state.touch_surfaces.get(&id)
+@@ -143,6 +156,12 @@
+     }
+ 
+     fn cancel(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, touch: &WlTouch) {
++        for panel in &mut self.space.space_list {
++            if panel.islands.touch.take().is_some() {
++                panel.cancel_island_drag();
++            }
++        }
++        self.client_state.touch_surfaces.clear();
+         let (_, touch) = get_touch_handle(self, touch);
+         touch.cancel(self);
+     }
+--- /dev/null
++++ b/dock-islands-core/Cargo.toml
+@@ -0,0 +1,10 @@
++[package]
++name = "dock-islands-core"
++version = "0.1.0"
++edition = "2024"
++license = "GPL-3.0-or-later"
++
++[dependencies]
++serde = { version = "1", features = ["derive"] }
++serde_json = "1"
++
+--- /dev/null
++++ b/dock-islands-core/rustfmt.toml
+@@ -0,0 +1,2 @@
++edition = "2024"
++use_small_heuristics = "Default"
+--- /dev/null
++++ b/dock-islands-core/src/lib.rs
+@@ -0,0 +1,592 @@
++//! Versioned settings, wire contract and logical geometry shared by the two
++//! native applications. This crate has no toolkit or compositor dependencies.
++use serde::{Deserialize, Serialize};
++use std::collections::BTreeMap;
++
++pub const NAMESPACE: &str = "io.github.desktopcards.DockIslands";
++pub const VERSION: u32 = 1;
++pub const BASIS: u16 = 10_000;
++pub const MAX_WIRE_BYTES: usize = 64 * 1024;
++pub const UPSTREAM: &str = "3ce6ce1cec97669f91e809962d9446aaefe8a06e";
++pub const HANDLE: f64 = 18.;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
++pub enum Section {
++    Start,
++    Center,
++    End,
++}
++impl Section {
++    pub const ALL: [Self; 3] = [Self::Start, Self::Center, Self::End];
++    pub fn index(self) -> usize {
++        match self {
++            Self::Start => 0,
++            Self::Center => 1,
++            Self::End => 2,
++        }
++    }
++}
++
++#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
++pub enum Placement {
++    #[default]
++    Together,
++    Separate,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Together {
++    pub order: [Section; 3],
++    /// Fraction of the legal travel interval, in basis points.
++    pub position: u16,
++}
++impl Default for Together {
++    fn default() -> Self {
++        Self {
++            order: Section::ALL,
++            position: BASIS / 2,
++        }
++    }
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Separate {
++    pub order: [Section; 3],
++    pub positions: [u16; 3],
++}
++impl Default for Separate {
++    fn default() -> Self {
++        Self {
++            order: Section::ALL,
++            positions: [0, BASIS / 2, BASIS],
++        }
++    }
++}
++
++#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Arrangement {
++    pub together: Together,
++    pub separate: Separate,
++}
++
++#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Settings {
++    pub version: u32,
++    pub enabled: bool,
++    pub placement: Placement,
++    pub gap: u16,
++    pub default_layout: Arrangement,
++    /// Connector names are local. Portable presets use only default_layout.
++    pub outputs: BTreeMap<String, Arrangement>,
++}
++impl Default for Settings {
++    fn default() -> Self {
++        Self {
++            version: VERSION,
++            enabled: false,
++            placement: Placement::Together,
++            gap: 14,
++            default_layout: Arrangement::default(),
++            outputs: BTreeMap::new(),
++        }
++    }
++}
++impl Settings {
++    pub fn validate(&self) -> Result<(), String> {
++        if self.version != VERSION {
++            return Err("Unsupported Dock Islands version".into());
++        }
++        if self.gap > 64 {
++            return Err("Island gap must be 0-64 pixels".into());
++        }
++        if self.outputs.len() > 32 {
++            return Err("Too many saved displays".into());
++        }
++        for (name, layout) in &self.outputs {
++            if name.is_empty() || name.len() > 128 || name.chars().any(char::is_control) {
++                return Err("Invalid display name".into());
++            }
++            layout.validate()?;
++        }
++        self.default_layout.validate()
++    }
++    pub fn layout(&self, output: &str) -> &Arrangement {
++        self.outputs.get(output).unwrap_or(&self.default_layout)
++    }
++    pub fn layout_mut(&mut self, output: &str) -> &mut Arrangement {
++        if output.is_empty() {
++            return &mut self.default_layout;
++        }
++        self.outputs
++            .entry(output.into())
++            .or_insert_with(|| self.default_layout.clone())
++    }
++    pub fn portable(&self) -> Self {
++        let mut copy = self.clone();
++        copy.outputs.clear();
++        copy
++    }
++}
++impl Arrangement {
++    pub fn validate(&self) -> Result<(), String> {
++        for order in [&self.together.order, &self.separate.order] {
++            if Section::ALL.iter().any(|id| !order.contains(id)) {
++                return Err("Island order must contain each section once".into());
++            }
++        }
++        if self.together.position > BASIS || self.separate.positions.iter().any(|p| *p > BASIS) {
++            return Err("Island position is outside its display".into());
++        }
++        Ok(())
++    }
++    pub fn order(&self, mode: Placement) -> &[Section; 3] {
++        match mode {
++            Placement::Together => &self.together.order,
++            Placement::Separate => &self.separate.order,
++        }
++    }
++    /// Move by visible islands, retaining the positions of empty sections.
++    pub fn reorder_visible(&mut self, mode: Placement, id: Section, present: [bool; 3], steps: i8) {
++        let order = match mode {
++            Placement::Together => &mut self.together.order,
++            Placement::Separate => &mut self.separate.order,
++        };
++        let slots: Vec<_> = (0..3).filter(|i| present[order[*i].index()]).collect();
++        let Some(from) = slots.iter().position(|i| order[*i] == id) else {
++            return;
++        };
++        let to = (from as isize + steps as isize).clamp(0, slots.len() as isize - 1) as usize;
++        if from < to {
++            for i in from..to {
++                order[slots[i]] = order[slots[i + 1]];
++            }
++        } else {
++            for i in (to + 1..=from).rev() {
++                order[slots[i]] = order[slots[i - 1]];
++            }
++        }
++        order[slots[to]] = id;
++    }
++    pub fn reorder(&mut self, mode: Placement, id: Section, at: usize) {
++        let order = match mode {
++            Placement::Together => &mut self.together.order,
++            Placement::Separate => &mut self.separate.order,
++        };
++        let from = order.iter().position(|s| *s == id).unwrap();
++        let at = at.min(2);
++        if from < at {
++            order[from..=at].rotate_left(1);
++        } else {
++            order[at..=from].rotate_right(1);
++        }
++    }
++}
++
++#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct Span {
++    pub start: f64,
++    pub length: f64,
++}
++impl Span {
++    pub fn end(self) -> f64 {
++        self.start + self.length
++    }
++    pub fn center(self) -> f64 {
++        self.start + self.length / 2.
++    }
++    pub fn contains(self, p: f64) -> bool {
++        p >= self.start && p < self.end()
++    }
++}
++
++#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
++pub struct Layout {
++    pub spans: [Option<Span>; 3],
++    pub gap: f64,
++    pub bounds: Span,
++    pub group: Span,
++    /// Native applet layout must use these budgets for its existing overflow.
++    pub budgets: [f64; 3],
++    pub natural: [f64; 3],
++}
++
++fn sane(n: f64) -> f64 {
++    if n.is_finite() { n.max(0.) } else { 0. }
++}
++
++/// Resolve without mutating preferences. Water filling makes long applet
++/// sections overflow before a short, unrelated section loses its allocation.
++pub fn resolve(
++    settings: &Settings,
++    output: &str,
++    bounds: Span,
++    natural: [f64; 3],
++    minimum: f64,
++) -> Layout {
++    let bounds = Span {
++        start: sane(bounds.start),
++        length: sane(bounds.length),
++    };
++    let a = settings.layout(output);
++    let order: Vec<_> = a
++        .order(settings.placement)
++        .iter()
++        .copied()
++        .filter(|s| sane(natural[s.index()]) > 0.)
++        .collect();
++    let n = order.len();
++    if n == 0 {
++        return Layout {
++            bounds,
++            ..Layout::default()
++        };
++    }
++    let minimum = sane(minimum).min(bounds.length / n as f64);
++    let minimum_sum: f64 = order
++        .iter()
++        .map(|s| sane(natural[s.index()]).min(minimum))
++        .sum();
++    let gap = if n > 1 {
++        (settings.gap.min(64) as f64).min((bounds.length - minimum_sum).max(0.) / (n - 1) as f64)
++    } else {
++        0.
++    };
++    let room = (bounds.length - gap * (n - 1) as f64).max(0.);
++    let mut lengths = [0.; 3];
++    let mut remaining = room;
++    let mut pending = order.clone();
++    while !pending.is_empty() {
++        let share = remaining / pending.len() as f64;
++        let short: Vec<_> = pending
++            .iter()
++            .copied()
++            .filter(|s| sane(natural[s.index()]) <= share)
++            .collect();
++        if short.is_empty() {
++            for s in pending {
++                lengths[s.index()] = share;
++            }
++            break;
++        }
++        for s in short {
++            lengths[s.index()] = sane(natural[s.index()]);
++            remaining -= lengths[s.index()];
++            pending.retain(|id| *id != s);
++        }
++    }
++    let total = lengths.iter().sum::<f64>() + gap * (n - 1) as f64;
++    let mut starts = [0.; 3];
++    match settings.placement {
++        Placement::Together => {
++            let mut at = bounds.start
++                + (bounds.length - total).max(0.) * a.together.position.min(BASIS) as f64
++                    / BASIS as f64;
++            for s in &order {
++                starts[s.index()] = at;
++                at += lengths[s.index()] + gap;
++            }
++        }
++        Placement::Separate => {
++            let mut at = bounds.start;
++            for s in &order {
++                let i = s.index();
++                let wanted = bounds.start
++                    + (bounds.length - lengths[i]).max(0.)
++                        * a.separate.positions[i].min(BASIS) as f64
++                        / BASIS as f64;
++                starts[i] = wanted.max(at);
++                at = starts[i] + lengths[i] + gap;
++            }
++            let mut end = bounds.end();
++            for s in order.iter().rev() {
++                let i = s.index();
++                starts[i] = starts[i].min(end - lengths[i]);
++                end = starts[i] - gap;
++            }
++        }
++    }
++    let mut spans = [None; 3];
++    for s in &order {
++        let i = s.index();
++        spans[i] = Some(Span {
++            start: starts[i],
++            length: lengths[i],
++        });
++    }
++    let first = spans[order[0].index()].unwrap();
++    let last = spans[order[n - 1].index()].unwrap();
++    Layout {
++        spans,
++        gap,
++        bounds,
++        budgets: lengths,
++        natural,
++        group: Span {
++            start: first.start,
++            length: last.end() - first.start,
++        },
++    }
++}
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++pub enum Handle {
++    Group,
++    Island(Section),
++}
++
++pub fn fraction(start: f64, travel: f64) -> u16 {
++    if travel <= 0. {
++        BASIS / 2
++    } else {
++        ((start / travel).clamp(0., 1.) * BASIS as f64).round() as u16
++    }
++}
++
++/// Move with optional magnetic targets, retaining both placement modes.
++pub fn move_handle(
++    settings: &mut Settings,
++    output: &str,
++    layout: &Layout,
++    handle: Handle,
++    wanted: f64,
++    snap: bool,
++) {
++    let mode = settings.placement;
++    if !wanted.is_finite() {
++        return;
++    }
++    let span = match handle {
++        Handle::Group => Some(layout.group),
++        Handle::Island(s) => layout.spans[s.index()],
++    };
++    let Some(span) = span else {
++        return;
++    };
++    let travel = (layout.bounds.length - span.length).max(0.);
++    let mut target = wanted.clamp(layout.bounds.start, layout.bounds.start + travel);
++    if snap {
++        let mut targets = vec![
++            layout.bounds.start,
++            layout.bounds.start + travel / 2.,
++            layout.bounds.start + travel,
++        ];
++        if let Handle::Island(id) = handle {
++            for s in Section::ALL {
++                if s != id
++                    && let Some(other) = layout.spans[s.index()]
++                {
++                    targets.extend([
++                        other.end() + layout.gap,
++                        other.start - layout.gap - span.length,
++                    ]);
++                }
++            }
++        }
++        if let Some(t) = targets
++            .into_iter()
++            .filter(|t| *t >= layout.bounds.start && *t <= layout.bounds.start + travel)
++            .min_by(|a, b| (a - target).abs().total_cmp(&(b - target).abs()))
++            .filter(|t| (t - target).abs() <= 8.)
++        {
++            target = t;
++        }
++    }
++    let a = settings.layout_mut(output);
++    match (mode, handle) {
++        (Placement::Together, Handle::Group) => {
++            a.together.position = fraction(target - layout.bounds.start, travel)
++        }
++        (Placement::Separate, Handle::Island(s)) => {
++            a.separate.positions[s.index()] = fraction(target - layout.bounds.start, travel);
++            let center = wanted + span.length / 2.;
++            let mut order = a.separate.order;
++            order.sort_by(|x, y| {
++                let pos = |id: Section| {
++                    if id == s {
++                        center
++                    } else {
++                        layout.spans[id.index()].map_or(
++                            a.separate.positions[id.index()] as f64 / BASIS as f64
++                                * layout.bounds.length
++                                + layout.bounds.start,
++                            Span::center,
++                        )
++                    }
++                };
++                pos(*x).total_cmp(&pos(*y))
++            });
++            a.separate.order = order;
++        }
++        (Placement::Together, Handle::Island(s)) => {
++            let center = wanted + span.length / 2.;
++            let mut order = a.together.order;
++            order.sort_by(|x, y| {
++                let pos = |id: Section| {
++                    if id == s {
++                        center
++                    } else {
++                        layout.spans[id.index()].map_or(f64::MAX, Span::center)
++                    }
++                };
++                pos(*x).total_cmp(&pos(*y))
++            });
++            a.together.order = order;
++        }
++        _ => {}
++    }
++}
++
++#[derive(Clone, Debug)]
++pub struct Drag {
++    pub handle: Handle,
++    pub before: Settings,
++    pub origin: f64,
++    pub span_start: f64,
++    pub started: bool,
++}
++impl Drag {
++    pub fn new(settings: &Settings, layout: &Layout, handle: Handle, pointer: f64) -> Option<Self> {
++        let span = match handle {
++            Handle::Group => Some(layout.group),
++            Handle::Island(id) => layout.spans[id.index()],
++        }?;
++        Some(Self {
++            handle,
++            before: settings.clone(),
++            origin: pointer,
++            span_start: span.start,
++            started: false,
++        })
++    }
++    pub fn motion(
++        &mut self,
++        settings: &mut Settings,
++        output: &str,
++        layout: &Layout,
++        pointer: f64,
++    ) -> bool {
++        if !pointer.is_finite() {
++            return false;
++        }
++        let delta = pointer - self.origin;
++        if !self.started && delta.abs() < 4. {
++            return false;
++        }
++        self.started = true;
++        move_handle(
++            settings,
++            output,
++            layout,
++            self.handle,
++            self.span_start + delta,
++            true,
++        );
++        true
++    }
++    pub fn cancel(self, settings: &mut Settings) {
++        *settings = self.before;
++    }
++}
++
++#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Capabilities {
++    pub protocol: u32,
++    pub upstream: String,
++    pub together: bool,
++    pub separate: bool,
++    pub rounded_blur: bool,
++}
++impl Default for Capabilities {
++    fn default() -> Self {
++        Self {
++            protocol: VERSION,
++            upstream: UPSTREAM.into(),
++            together: true,
++            separate: true,
++            rounded_blur: false,
++        }
++    }
++}
++impl Capabilities {
++    pub fn compatible(&self) -> bool {
++        self.protocol == VERSION && self.upstream == UPSTREAM && self.together && self.separate
++    }
++}
++
++/// Each connection owns at most one lease. Disconnect cancels it. Tokens
++/// identify that lease and revisions reject delayed or duplicated edits.
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub enum Request {
++    Capabilities,
++    Inspect {
++        panel: String,
++        output: String,
++    },
++    Begin {
++        panel: String,
++        output: String,
++        base: Settings,
++        draft: Settings,
++    },
++    Update {
++        token: u64,
++        revision: u64,
++        draft: Settings,
++    },
++    Read {
++        token: u64,
++    },
++    Select {
++        token: u64,
++        handle: Handle,
++    },
++    Done {
++        token: u64,
++    },
++    Cancel {
++        token: u64,
++    },
++    Activate {
++        panel: String,
++        expected: Settings,
++    },
++}
++#[derive(Clone, Debug, Default, Serialize, Deserialize)]
++pub struct View {
++    #[serde(default)]
++    pub output: String,
++    pub selected: Option<Handle>,
++    pub visible: bool,
++    pub popups: usize,
++    pub overflow: [usize; 3],
++    pub horizontal: bool,
++    pub origin: [f64; 2],
++    pub scale: f64,
++    pub handles: Vec<(Handle, Span, Span)>,
++}
++#[derive(Clone, Debug, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub enum Response {
++    Capabilities(Capabilities),
++    Draft {
++        token: u64,
++        revision: u64,
++        settings: Settings,
++        layout: Layout,
++        view: View,
++    },
++    Applied {
++        settings: Settings,
++    },
++    Cancelled,
++    Error(String),
++}
++
++#[cfg(test)]
++mod tests;
+--- /dev/null
++++ b/dock-islands-core/src/tests.rs
+@@ -0,0 +1,148 @@
++use super::*;
++
++fn settings(mode: Placement, gap: u16) -> Settings {
++    Settings {
++        enabled: true,
++        placement: mode,
++        gap,
++        ..Settings::default()
++    }
++}
++fn layout(s: &Settings, width: f64, sizes: [f64; 3]) -> Layout {
++    resolve(
++        s,
++        "DP-1",
++        Span {
++            start: 7.,
++            length: width,
++        },
++        sizes,
++        32.,
++    )
++}
++
++#[test]
++fn all_sizes_and_positions_stay_in_bounds_without_overlap() {
++    for mode in [Placement::Together, Placement::Separate] {
++        for gap in [0, 14, 64] {
++            for width in [1., 32., 70., 110., 320., 820., 1920.] {
++                for sizes in [
++                    [0.; 3],
++                    [80., 0., 0.],
++                    [0., 90., 55.],
++                    [90., 380., 150.],
++                    [1500., 80., 90.],
++                ] {
++                    for pos in [[0, 0, 0], [10000, 10000, 10000], [9000, 500, 4000]] {
++                        let mut s = settings(mode, gap);
++                        s.default_layout.separate.positions = pos;
++                        let original = s.clone();
++                        let l = layout(&s, width, sizes);
++                        let mut spans: Vec<_> = l.spans.iter().flatten().collect();
++                        spans.sort_by(|a, b| a.start.total_cmp(&b.start));
++                        for span in &spans {
++                            assert!(span.start >= 7. - 1e-6);
++                            assert!(span.end() <= 7. + width + 1e-6);
++                        }
++                        for pair in spans.windows(2) {
++                            assert!(pair[0].end() + l.gap <= pair[1].start + 1e-6);
++                        }
++                        assert_eq!(
++                            s, original,
++                            "temporary resolution must not change preferences"
++                        );
++                    }
++                }
++            }
++        }
++    }
++}
++#[test]
++fn compact_group_has_exact_gap_and_can_move_to_both_ends() {
++    let mut s = settings(Placement::Together, 14);
++    let l = layout(&s, 820., [60., 140., 80.]);
++    assert_eq!(l.group.length, 308.);
++    assert_eq!(l.spans[0].unwrap().end() + 14., l.spans[1].unwrap().start);
++    move_handle(&mut s, "DP-1", &l, Handle::Group, -500., true);
++    assert_eq!(layout(&s, 820., [60., 140., 80.]).group.start, 7.);
++    move_handle(&mut s, "DP-1", &l, Handle::Group, 2000., true);
++    assert_eq!(layout(&s, 820., [60., 140., 80.]).group.end(), 827.);
++}
++#[test]
++fn empty_sections_occupy_no_gap_or_background() {
++    let l = layout(&settings(Placement::Together, 64), 800., [0., 90., 0.]);
++    assert_eq!(l.group.length, 90.);
++    assert_eq!(l.gap, 0.);
++    assert!(l.spans[0].is_none());
++}
++#[test]
++fn content_overflows_before_short_sections_shrink() {
++    let l = layout(&settings(Placement::Separate, 14), 500., [60., 900., 70.]);
++    assert_eq!(l.budgets, [60., 342., 70.]);
++    assert_eq!(l.gap, 14.);
++}
++#[test]
++fn monitor_and_mode_switches_preserve_both_layouts() {
++    let mut s = settings(Placement::Separate, 14);
++    s.layout_mut("DP-1").separate.positions = [900, 4000, 9500];
++    s.layout_mut("HDMI-A-1").together.position = 10000;
++    let first = layout(&s, 1920., [60., 180., 70.]);
++    s.placement = Placement::Together;
++    let _ = layout(&s, 700., [60., 180., 70.]);
++    s.placement = Placement::Separate;
++    assert_eq!(first, layout(&s, 1920., [60., 180., 70.]));
++    assert_eq!(s.layout("HDMI-A-1").together.position, 10000);
++    assert!(s.portable().outputs.is_empty());
++}
++#[test]
++fn drag_threshold_cancel_and_separate_reordering() {
++    let mut s = settings(Placement::Separate, 14);
++    let before = s.clone();
++    let l = layout(&s, 800., [80.; 3]);
++    let mut drag = Drag::new(&s, &l, Handle::Island(Section::Start), 9.).unwrap();
++    assert!(!drag.motion(&mut s, "DP-1", &l, 12.));
++    assert_eq!(s, before);
++    assert!(drag.motion(&mut s, "DP-1", &l, 799.));
++    assert_eq!(
++        s.layout("DP-1").separate.order,
++        [Section::Center, Section::End, Section::Start]
++    );
++    drag.cancel(&mut s);
++    assert_eq!(s, before);
++}
++#[test]
++fn malformed_or_newer_data_is_rejected() {
++    let mut s = Settings::default();
++    s.version = 2;
++    assert!(s.validate().is_err());
++    s.version = 1;
++    s.gap = 65;
++    assert!(s.validate().is_err());
++    s.gap = 14;
++    s.default_layout.together.order = [Section::Start; 3];
++    assert!(s.validate().is_err());
++    let mut json = serde_json::to_value(Settings::default()).unwrap();
++    json["future"] = true.into();
++    assert!(serde_json::from_value::<Settings>(json).is_err());
++}
++
++#[test]
++fn keyboard_reordering_skips_empty_sections_and_preserves_their_slot() {
++    let mut a = Arrangement::default();
++    let present = [true, false, true];
++    a.reorder_visible(Placement::Together, Section::Start, present, 1);
++    assert_eq!(
++        a.together.order,
++        [Section::End, Section::Center, Section::Start]
++    );
++    a.reorder_visible(Placement::Together, Section::Start, present, -1);
++    assert_eq!(a.together.order, Section::ALL);
++    a.reorder_visible(Placement::Together, Section::End, present, -3);
++    assert_eq!(
++        a.together.order,
++        [Section::End, Section::Center, Section::Start]
++    );
++    let saved = a.clone();
++    a.reorder_visible(Placement::Together, Section::Center, present, 1);
++    assert_eq!(a, saved);
++}

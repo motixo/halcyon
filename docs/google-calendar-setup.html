@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Google Calendar setup · Desktop Cards</title>
+<style>body{color:#e7e6ed;background:#17171d;font:16px/1.65 system-ui,sans-serif;margin:0}main{max-width:760px;margin:48px auto;padding:0 24px 56px}h1,h2{line-height:1.2}h1{font-size:36px}h2{margin-top:36px;font-size:23px}a{color:#a9dcce}code{background:#25252e;padding:3px 5px;border-radius:4px;overflow-wrap:anywhere}li{margin:12px 0}.note{padding:18px 22px;background:#25252e;border-radius:14px}small{color:#b8b6c6}</style>
+<main><small>DESKTOP CARDS · CONNECTIONS</small><h1>Your calendar, on your desktop.</h1>
+<p>In a configured release, open <b>Settings → Widgets → Calendar</b>, click <b>Connect Google Calendar</b> and approve access in your browser. Choose the calendar to display. You can switch accounts or disconnect from the same page.</p>
+<p>Desktop Cards reads events and meeting links; it cannot create, change or delete events. Your Google password is entered only on Google's website. The app stores its connection in your system keyring and caches event titles, times and links in private local files.</p>
+<div class="note"><b>If this build says sign-in is unavailable</b><br>The publisher must register a Google app before sharing the release. Ordinary users should not need to create a Google Cloud project. For your own personal build, you can perform the registration below yourself.</div>
+<h2>One-time publisher setup</h2>
+<ol><li>Open the <a href="https://console.cloud.google.com/">Google Cloud console</a>. Create or select a project owned by the publisher. Enable the <b>Google Calendar API</b>.</li>
+<li>Configure Google Auth Platform: app name, support contact, audience and consent information. Choose an audience that includes your intended users. An internal Workspace app is limited to its organization; an external app can support users outside it. During testing, add the intended accounts as test users.</li>
+<li>Request these scopes: <code>openid</code>, <code>email</code>, <code>https://www.googleapis.com/auth/calendar.events.readonly</code> and <code>https://www.googleapis.com/auth/calendar.calendarlist.readonly</code>. Follow Google's publishing and verification requirements for your audience and requested scopes before a public release.</li>
+<li>Create an OAuth client with application type <b>Desktop app</b>. Download its JSON file. A Web application or service-account JSON file will not work.</li>
+<li>For a local build, open Calendar settings, expand <b>Advanced → Google sign-in setup…</b> and select <b>Import Google app JSON…</b>. For a packaged release, pass <code>--google-oauth-client /path/to/desktop-client.json</code> to <code>scripts/install.py</code>. This installs the publisher configuration beside the app; users then get the Connect button.</li>
+<li>Test sign-in and reconnect with an ordinary user account. A Workspace administrator may restrict third-party apps even when Google's consent screen is configured correctly.</li></ol>
+<p>The desktop client configuration identifies the publisher; it is not a user's access token. The app uses a system-browser sign-in, a random localhost callback port, state validation and PKCE. It never uses an embedded login browser.</p>
+<h2>If connection fails</h2><ul>
+<li><b>Browser did not open:</b> choose Open sign-in page or Copy sign-in link, then use Firefox, Chrome, Edge, Zen or another normal browser on this computer. Finish before the five-minute timeout.</li>
+<li><b>Keyring unavailable or locked:</b> start or unlock a Secret Service-compatible keyring, such as GNOME Keyring or KWallet. Desktop Cards does not fall back to saving tokens in plain text.</li>
+<li><b>Access denied:</b> approve both Calendar permissions. For a test release, confirm the account is an allowed test user. For work accounts, ask the administrator whether this app is allowed.</li>
+<li><b>Expired connection:</b> select Reconnect. Offline updates keep the last saved agenda and show that it is saved data.</li>
+<li><b>Disconnect:</b> removes this app's saved connection and cached events on this computer. Your Google events remain unchanged. To remove the app's Google grant as well, use <a href="https://myaccount.google.com/connections">Google account connections</a>.</li></ul>
+<h2>Existing installations</h2><p>An installation that already used the local Workspace integration keeps that connection during the upgrade. A fresh installation does not borrow another app's Google credentials. Disconnecting an existing Workspace connection removes Desktop Cards' access to it without modifying the other app's credentials.</p>
+<p><a href="https://developers.google.com/identity/protocols/oauth2/native-app">Google: OAuth for desktop apps</a> · <a href="https://developers.google.com/workspace/calendar/api/auth">Calendar authorization scopes</a></p></main></html>

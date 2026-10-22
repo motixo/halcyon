@@ -1,0 +1,224 @@
+[
+ {
+  "name": "halcyon",
+  "wallpaper": "assets/wallpapers/halcyon-night-1080p.png",
+  "config": {
+   "appearance": {
+    "family": "frosted"
+   },
+   "enabled_widgets": [
+    "devbox"
+   ],
+   "glance": {
+    "enabled": true,
+    "initialized": true,
+    "show_clock": true,
+    "show_weather": true,
+    "show_calendar": false,
+    "style": "transparent",
+    "own_background": true,
+    "density": "comfortable"
+   },
+   "devbox": {
+    "cpu": true,
+    "gpu": true,
+    "memory": true,
+    "disk": true,
+    "network": true,
+    "uptime": true,
+    "swap": false,
+    "services": false
+   }
+  },
+  "bars": {
+   "panel": "islands",
+   "placement": "together",
+   "shape": "pill"
+  }
+ },
+ {
+  "name": "calm",
+  "wallpaper": "assets/wallpapers/halcyon-calm-1080p.png",
+  "config": {
+   "appearance": {
+    "family": "soft"
+   },
+   "enabled_widgets": [
+    "devbox"
+   ],
+   "glance": {
+    "enabled": true,
+    "initialized": true,
+    "show_clock": true,
+    "show_weather": true,
+    "show_calendar": false,
+    "style": "transparent",
+    "own_background": true,
+    "density": "comfortable"
+   },
+   "devbox": {
+    "cpu": true,
+    "gpu": true,
+    "memory": true,
+    "disk": true,
+    "network": true,
+    "uptime": true,
+    "swap": false,
+    "services": false
+   }
+  },
+  "bars": {
+   "panel": "islands",
+   "placement": "together",
+   "shape": "pill"
+  }
+ },
+ {
+  "name": "evening",
+  "wallpaper": "assets/wallpapers/halcyon-evening-1080p.png",
+  "config": {
+   "appearance": {
+    "family": "soft"
+   },
+   "enabled_widgets": [
+    "devbox"
+   ],
+   "glance": {
+    "enabled": true,
+    "initialized": true,
+    "show_clock": true,
+    "show_weather": true,
+    "show_calendar": false,
+    "style": "transparent",
+    "own_background": true,
+    "density": "comfortable"
+   },
+   "devbox": {
+    "cpu": true,
+    "gpu": true,
+    "memory": true,
+    "disk": true,
+    "network": true,
+    "uptime": true,
+    "swap": false,
+    "services": false
+   }
+  },
+  "bars": {
+   "panel": "islands",
+   "placement": "together",
+   "shape": "pill"
+  }
+ },
+ {
+  "name": "focus",
+  "wallpaper": "assets/wallpapers/halcyon-focus-1080p.png",
+  "config": {
+   "appearance": {
+    "family": "bare"
+   },
+   "enabled_widgets": [
+    "devbox"
+   ],
+   "glance": {
+    "enabled": true,
+    "initialized": true,
+    "show_clock": true,
+    "show_weather": true,
+    "show_calendar": false,
+    "style": "transparent",
+    "own_background": true,
+    "density": "comfortable"
+   },
+   "devbox": {
+    "cpu": true,
+    "gpu": true,
+    "memory": true,
+    "disk": true,
+    "network": true,
+    "uptime": true,
+    "swap": false,
+    "services": false
+   }
+  },
+  "bars": {
+   "panel": "islands",
+   "placement": "together",
+   "shape": "pill"
+  }
+ },
+ {
+  "name": "paper",
+  "wallpaper": "assets/wallpapers/halcyon-paper-1080p.png",
+  "config": {
+   "appearance": {
+    "family": "paper"
+   },
+   "enabled_widgets": [
+    "devbox"
+   ],
+   "glance": {
+    "enabled": true,
+    "initialized": true,
+    "show_clock": true,
+    "show_weather": true,
+    "show_calendar": false,
+    "style": "panel",
+    "own_background": true,
+    "density": "comfortable"
+   },
+   "devbox": {
+    "cpu": true,
+    "gpu": true,
+    "memory": true,
+    "disk": true,
+    "network": true,
+    "uptime": true,
+    "swap": false,
+    "services": false
+   }
+  },
+  "bars": {
+   "panel": "islands",
+   "placement": "together",
+   "shape": "pill"
+  }
+ },
+ {
+  "name": "rose",
+  "wallpaper": "assets/wallpapers/halcyon-rose-1080p.png",
+  "config": {
+   "appearance": {
+    "family": "glass"
+   },
+   "enabled_widgets": [
+    "devbox"
+   ],
+   "glance": {
+    "enabled": true,
+    "initialized": true,
+    "show_clock": true,
+    "show_weather": true,
+    "show_calendar": false,
+    "style": "transparent",
+    "own_background": true,
+    "density": "comfortable"
+   },
+   "devbox": {
+    "cpu": true,
+    "gpu": true,
+    "memory": true,
+    "disk": true,
+    "network": true,
+    "uptime": true,
+    "swap": false,
+    "services": false
+   }
+  },
+  "bars": {
+   "panel": "islands",
+   "placement": "together",
+   "shape": "pill"
+  }
+ }
+]

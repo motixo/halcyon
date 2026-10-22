@@ -1,0 +1,1854 @@
+use super::*;
+use cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface;
+use cosmic::iced::widget::{opaque, pin, stack};
+use cosmic::iced::{Point, keyboard, mouse};
+use std::collections::BTreeMap;
+
+/// Where a widget waits when the desktop has no room for it.
+const OFF_DESKTOP: [f32; 2] = [-10000., 0.];
+
+/// Who keeps their spot when two widgets would overlap: earlier ones stay,
+/// later ones move clear.
+const PLACEMENT_ORDER: [Widget; 9] = [
+    Widget::Glance,
+    Widget::Clock,
+    Widget::Weather,
+    Widget::Calendar,
+    Widget::Devbox,
+    Widget::Projects,
+    Widget::Focus,
+    Widget::Notes,
+    Widget::Music,
+];
+
+#[derive(PartialEq, Eq)]
+pub(super) struct SurfaceGeometry {
+    custom: bool,
+    sizes: [[u32; 2]; 6],
+    glance_input: Vec<[u32; 4]>,
+}
+
+#[derive(Clone, PartialEq)]
+struct LayoutState {
+    positions: BTreeMap<String, [f32; 2]>,
+    sizes: BTreeMap<String, [f32; 2]>,
+    reset: bool,
+}
+struct LayoutDrag {
+    widget: Widget,
+    offset: [f32; 2],
+    start: [f32; 2],
+    size: [f32; 2],
+    resize: bool,
+    before: LayoutState,
+}
+#[derive(Default)]
+pub(super) struct LayoutEditor {
+    pub active: bool,
+    pub grid: crate::config::PlacementPreferences,
+    saved_grid: crate::config::PlacementPreferences,
+    baseline: BTreeMap<String, [f32; 2]>,
+    implicit_positions: BTreeMap<String, [f32; 2]>,
+    draft: BTreeMap<String, [f32; 2]>,
+    sizes: BTreeMap<String, [f32; 2]>,
+    baseline_sizes: BTreeMap<String, [f32; 2]>,
+    reset: bool,
+    pointer: Point,
+    drag: Option<LayoutDrag>,
+    history: Vec<LayoutState>,
+    session_actions: Vec<crate::desktop::LatestChange>,
+    guard: Option<serde_json::Value>,
+    resize_mode: bool,
+    pub(super) selected: Option<Widget>,
+    error: Option<String>,
+}
+
+impl LayoutEditor {
+    fn state(&self) -> LayoutState {
+        LayoutState {
+            positions: self.draft.clone(),
+            sizes: self.sizes.clone(),
+            reset: self.reset,
+        }
+    }
+    fn restore(&mut self, state: LayoutState) {
+        self.draft = state.positions;
+        self.sizes = state.sizes;
+        self.reset = state.reset;
+    }
+    fn remember(&mut self, before: LayoutState) {
+        if self.state() != before {
+            if self.history.len() == 50 {
+                self.history.remove(0);
+            }
+            self.history.push(before);
+        }
+    }
+
+    pub(super) fn positions(&self) -> &BTreeMap<String, [f32; 2]> {
+        &self.draft
+    }
+}
+
+impl Cards {
+    pub(super) fn layout_probe(id: window::Id, editing: bool) -> Task<Message> {
+        get_layer_surface(SctkLayerSurfaceSettings {
+            id,
+            layer: if editing {
+                Layer::Overlay
+            } else {
+                Layer::Bottom
+            },
+            keyboard_interactivity: if editing {
+                KeyboardInteractivity::Exclusive
+            } else {
+                KeyboardInteractivity::None
+            },
+            anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT,
+            size: Some((Some(0), Some(0))),
+            exclusive_zone: 0,
+            input_zone: if editing { None } else { Some(Vec::new()) },
+            namespace: "desktop-cards-arrange".into(),
+            ..Default::default()
+        })
+    }
+    pub(super) fn custom_layout(&self) -> bool {
+        self.config.has_custom_positions()
+    }
+    pub(super) fn widget_id(&self, widget: Widget) -> window::Id {
+        self.ids[match widget {
+            Widget::Clock => 0,
+            Widget::Weather => 1,
+            Widget::Calendar => 4,
+            Widget::Devbox => 6,
+            Widget::Projects => 7,
+            Widget::Glance => 8,
+            Widget::Music => 9,
+            Widget::Notes => 10,
+            Widget::Focus => 11,
+        }]
+    }
+    pub(super) fn explicit_size(&self, widget: Widget) -> Option<[f32; 2]> {
+        let sizes = if self.layout_editor.active {
+            &self.layout_editor.sizes
+        } else {
+            &self.config.widget_sizes
+        };
+        sizes
+            .get(widget.key())
+            .copied()
+            .map(|size| crate::layout::sized(widget, size, self.screen_size))
+    }
+    pub(super) fn widget_size(&self, widget: Widget) -> [f32; 2] {
+        if let Some(mut size) = self.explicit_size(widget) {
+            // A widget grows to fit what it shows instead of scrolling
+            // inside a smaller saved size, up to the screen's height.
+            if let Some(content) = self.content_height(widget) {
+                size[1] = size[1].max(content.min((self.screen_size[1] - 96.).max(1.)));
+            }
+            return size;
+        }
+        if widget == Widget::Glance {
+            self.glance_size()
+        } else {
+            self.automatic_size(widget)
+        }
+    }
+    /// The height a card's content needs, for cards that list readings or
+    /// items; the others lay out within any size.
+    fn content_height(&self, widget: Widget) -> Option<f32> {
+        match widget {
+            Widget::Devbox => Some(self.devbox_natural_height()),
+            Widget::Projects => Some(self.projects_natural_height()),
+            Widget::Calendar => Some(self.calendar_natural_height()),
+            _ => None,
+        }
+    }
+    pub(super) fn automatic_size(&self, widget: Widget) -> [f32; 2] {
+        if widget == Widget::Glance {
+            return [
+                self.glance_auto_width(),
+                self.glance_automatic_height()
+                    .min((self.screen_size[1] - 96.).max(1.)),
+            ];
+        }
+        if widget.is_tool() {
+            let [width, height] = crate::tools::cards::size(widget, &self.config);
+            return [
+                width.min((self.screen_size[0] - 48.).max(1.)),
+                height.min((self.screen_size[1] - 96.).max(1.)),
+            ];
+        }
+        let width: f32 = if widget == Widget::Clock { 490. } else { 360. };
+        let mut height = match widget {
+            Widget::Clock => 200.,
+            Widget::Weather => 180.,
+            Widget::Calendar => self.calendar_natural_height(),
+            Widget::Projects => self.projects_natural_height(),
+            Widget::Devbox => self.devbox_natural_height(),
+            _ => unreachable!(),
+        };
+        if matches!(widget, Widget::Weather | Widget::Devbox | Widget::Projects) {
+            let widgets: Vec<_> = self
+                .config
+                .ordered_right_cards()
+                .into_iter()
+                .filter(|w| self.config.widget_visible(*w))
+                .collect();
+            if let Some((_, scaled)) = drawer::card_layout_with_devbox(
+                &widgets,
+                (self.screen_size[1] - 96.).max(1.),
+                self.devbox_natural_height(),
+            )
+            .into_iter()
+            .find(|(w, _)| *w == widget)
+            {
+                height = height.min(scaled);
+            }
+        }
+        [
+            width.min((self.screen_size[0] - 48.).max(1.)),
+            height.min((self.screen_size[1] - 96.).max(1.)),
+        ]
+    }
+    fn default_position(&self, widget: Widget) -> [f32; 2] {
+        let size = self.widget_size(widget);
+        if widget.is_tool() {
+            return crate::layout::tool_position(
+                widget,
+                size,
+                self.widget_size(Widget::Focus)[1],
+                self.screen_size,
+            );
+        }
+        let position = match widget {
+            Widget::Clock | Widget::Glance => [82., 88.],
+            Widget::Calendar => [42., (self.screen_size[1] - size[1]) / 2.],
+            _ => {
+                let widgets: Vec<_> = self
+                    .config
+                    .ordered_right_cards()
+                    .into_iter()
+                    .filter(|w| self.config.widget_visible(*w))
+                    .collect();
+                let total: f32 = widgets.iter().map(|w| self.widget_size(*w)[1]).sum::<f32>()
+                    + widgets.len().saturating_sub(1) as f32 * drawer::CARD_GAP;
+                let before: f32 = widgets
+                    .iter()
+                    .take_while(|w| **w != widget)
+                    .map(|w| self.widget_size(*w)[1] + drawer::CARD_GAP)
+                    .sum();
+                [
+                    self.screen_size[0] - size[0] - 42.,
+                    (self.screen_size[1] - total) / 2. + before,
+                ]
+            }
+        };
+        crate::layout::clamp(position, size, self.screen_size)
+    }
+    /// Where `widget` sits on the desktop: its saved or automatic place,
+    /// moved to the nearest free spot when it would cover a widget placed
+    /// before it (`PLACEMENT_ORDER`). Cards held by the default columns stay
+    /// where the column puts them; everything else can move.
+    pub(super) fn placed_position(&self, widget: Widget) -> [f32; 2] {
+        let mut placed: Vec<[f32; 4]> = Vec::new();
+        for candidate in PLACEMENT_ORDER {
+            let shown = if candidate.is_tool() {
+                self.tool_shown(candidate)
+            } else {
+                self.config.widget_visible(candidate)
+            };
+            if !shown && candidate != widget {
+                continue;
+            }
+            let size = self.widget_size(candidate);
+            let mut at = self.position_from(candidate, &self.config.widget_positions);
+            let movable =
+                self.custom_layout() || candidate.is_tool() || candidate == Widget::Glance;
+            if shown && movable {
+                match crate::layout::free_spot(at, size, &placed, self.screen_size) {
+                    Some(free) => at = free,
+                    // No room left: off the desktop rather than on top of
+                    // another widget, until there is space again.
+                    None if candidate == widget => return OFF_DESKTOP,
+                    None => continue,
+                }
+            }
+            if candidate == widget {
+                return at;
+            }
+            placed.push([at[0], at[1], size[0], size[1]]);
+        }
+        self.position_from(widget, &self.config.widget_positions)
+    }
+    pub(super) fn position_from(
+        &self,
+        widget: Widget,
+        positions: &BTreeMap<String, [f32; 2]>,
+    ) -> [f32; 2] {
+        if widget == Widget::Glance {
+            return self.glance_position(positions);
+        }
+        positions
+            .get(widget.key())
+            .map(|p| crate::layout::decode(*p, self.widget_size(widget), self.screen_size))
+            .unwrap_or_else(|| self.default_position(widget))
+    }
+    /// Compositor blur behind each visible card of a frosted style: the
+    /// card's rounded rectangle inside the surface (not the shadow margin);
+    /// off for every other surface.
+    pub(super) fn blur_surfaces(&self) -> Task<Message> {
+        use cosmic::iced::platform_specific::shell::commands::blur::blur;
+        let frosted = self.config.theme_roles().is_some_and(|roles| roles.frosted);
+        let m = crate::widget_style::shadow_margin(&self.config);
+        let radius = f32::from(self.config.appearance.corner_radius.min(32));
+        Task::batch(Widget::ALL.map(|widget| {
+            let filled = match widget {
+                Widget::Clock => false,
+                Widget::Glance => self.config.glance_panel(),
+                _ => !self.config.transparent_widgets(),
+            };
+            let rects = (frosted && filled && self.config.widget_visible(widget)).then(|| {
+                let [width, height] = self.widget_size(widget);
+                crate::widget_style::rounded_rects(m, m, width, height, radius)
+            });
+            blur(self.widget_id(widget), rects).discard()
+        }))
+    }
+    /// The style's shadow margin around every widget surface, in pixels:
+    /// (each side, both sides).
+    /// Where a card surface takes clicks, in surface coordinates: its cards
+    /// only. The transparent shadow margin and a column's empty space pass
+    /// clicks through, so they never cover a tool or another card.
+    pub(super) fn card_input_rects(&self, widget: Widget) -> Vec<[u32; 4]> {
+        let m = crate::widget_style::shadow_margin(&self.config);
+        let (mi, mu) = self.shadow_px();
+        let mi = mi.max(0) as u32;
+        match widget {
+            Widget::Clock => Vec::new(),
+            Widget::Glance => self
+                .glance_input_rects()
+                .into_iter()
+                .map(|r| [r[0] + m.round() as u32, r[1] + m.round() as u32, r[2], r[3]])
+                .collect(),
+            _ if self.custom_layout() => {
+                if self.config.widget_visible(widget) {
+                    let size = self.widget_size(widget);
+                    vec![[mi, mi, size[0].ceil() as u32, size[1].ceil() as u32]]
+                } else {
+                    Vec::new()
+                }
+            }
+            Widget::Weather | Widget::Calendar => {
+                // The column centers its cards; a little slack keeps a card
+                // that is a few pixels taller than its estimate clickable.
+                let cards = if widget == Widget::Weather {
+                    self.visible_cards()
+                } else if self.config.widget_visible(Widget::Calendar) {
+                    vec![Widget::Calendar]
+                } else {
+                    Vec::new()
+                };
+                if cards.is_empty() {
+                    return Vec::new();
+                }
+                // A card is as tall as its content, up to its share of the
+                // column (the agenda shrinks to its events).
+                let height_of = |card: Widget| {
+                    let share = self.card_height(card);
+                    if card == Widget::Calendar {
+                        self.calendar_natural_height().min(share)
+                    } else {
+                        share
+                    }
+                };
+                let total: f32 = cards.iter().map(|card| height_of(*card)).sum::<f32>()
+                    + cards.len().saturating_sub(1) as f32 * drawer::CARD_GAP;
+                let height = (self.screen_size[1] - 96. + mu as f32).max(1.);
+                let slack = 24.;
+                let top = ((height - total) / 2. - slack).max(0.);
+                let bottom = ((height + total) / 2. + slack).min(height);
+                vec![[0, top.floor() as u32, 360 + mu, (bottom - top).ceil() as u32]]
+            }
+            _ => Vec::new(),
+        }
+    }
+    pub(super) fn shadow_px(&self) -> (i32, u32) {
+        let m = crate::widget_style::shadow_margin(&self.config);
+        (m.round() as i32, (2. * m).round() as u32)
+    }
+    pub(super) fn surface_geometry(&self) -> SurfaceGeometry {
+        // The margin is part of each size, so a style with another shadow
+        // recreates the surfaces.
+        let (_, mu) = self.shadow_px();
+        SurfaceGeometry {
+            custom: self.custom_layout(),
+            sizes: Widget::BASE.map(|widget| {
+                if self.custom_layout() || widget == Widget::Glance {
+                    self.widget_size(widget).map(|value| value.ceil() as u32 + mu)
+                } else {
+                    match widget {
+                        Widget::Clock => [490 + mu, 250 + mu],
+                        Widget::Weather | Widget::Calendar => [360 + mu, 0],
+                        _ => [16, 16],
+                    }
+                }
+            }),
+            glance_input: self.glance_input_rects(),
+        }
+    }
+    pub(super) fn sync_widget_surfaces(&mut self) -> Task<Message> {
+        if let Some(config) = self.seed_glance_position() {
+            return self.apply_config(config);
+        }
+        let snapshot = crate::layout_state::Snapshot {
+            screen: self.screen_size,
+            widgets: Widget::ALL
+                .into_iter()
+                .map(|widget| crate::layout_state::WidgetGeometry {
+                    natural_size: Some(self.automatic_size(widget)),
+                    key: widget.key().into(),
+                    size: self.widget_size(widget),
+                    natural_height: (widget == Widget::Glance)
+                        .then(|| self.glance_automatic_height()),
+                    position: self.placed_position(widget),
+                })
+                .collect(),
+        };
+        let generation = crate::layout_state::next_generation();
+        let publish = cosmic::iced::Task::future(async move {
+            crate::layout_state::publish(&snapshot, generation);
+        })
+        .discard();
+        if self.layout_editor.active {
+            let custom = self
+                .surface_geometry
+                .as_ref()
+                .is_some_and(|geometry| geometry.custom);
+            return publish.chain(Task::batch(Widget::ALL.map(|widget| {
+                let id = self.widget_id(widget);
+                match (custom, widget) {
+                    (false, Widget::Weather) => set_margin(id, 48, -10000, 48, 0),
+                    (false, Widget::Calendar) => set_margin(id, 48, 0, 48, -10000),
+                    _ => set_margin(id, 0, 0, 0, -10000),
+                }
+            })));
+        }
+        // The pinned layer-shell Size action corrupts the renderer's height.
+        // Keep stable surfaces for ordinary edits; recreate only on real size
+        // or layout-mode changes, using the correct initial protocol geometry.
+        if self.surface_geometry.as_ref() != Some(&self.surface_geometry()) {
+            if self.updating {
+                // Once, at the end of this update, for its final geometry
+                // (see `update`): two rebuilds at once race each other.
+                self.rebuild_pending = true;
+                return publish;
+            }
+            return publish.chain(self.rebuild_cards());
+        }
+        let tools = Task::batch(self.sync_tool_surfaces());
+        let mut tasks = vec![tools];
+        // Cards that grew or moved inside their surface take clicks where
+        // they are now.
+        let inputs = Widget::BASE.map(|widget| self.card_input_rects(widget));
+        if self.surface_inputs.as_ref() != Some(&inputs) {
+            for (widget, rects) in Widget::BASE.into_iter().zip(inputs.iter()) {
+                if self.surface_inputs.as_ref().is_none_or(|known| {
+                    known[Widget::BASE.iter().position(|w| *w == widget).unwrap()] != *rects
+                }) {
+                    tasks.push(set_input_zone(self.widget_id(widget), rects));
+                }
+            }
+            self.surface_inputs = Some(inputs);
+        }
+        let (mi, _) = self.shadow_px();
+        if self.custom_layout() {
+            for widget in Widget::BASE {
+                let id = self.widget_id(widget);
+                let point = if !self.config.widget_visible(widget) {
+                    [-10000., 0.]
+                } else {
+                    self.placed_position(widget)
+                };
+                tasks.push(set_margin(
+                    id,
+                    point[1].round() as i32 - mi,
+                    0,
+                    0,
+                    point[0].round() as i32 - mi,
+                ));
+            }
+        } else {
+            tasks.extend([
+                set_margin(self.ids[0], 88 - mi, 0, 0, self.config.clock_margin() - mi),
+                set_margin(self.ids[1], 48 - mi, 42 - mi, 48 - mi, 0),
+                set_margin(
+                    self.ids[4],
+                    48 - mi,
+                    0,
+                    48 - mi,
+                    self.config.calendar_margin() - mi,
+                ),
+            ]);
+            let point = if self.config.widget_visible(Widget::Glance) {
+                self.placed_position(Widget::Glance)
+            } else {
+                [-10000., 0.]
+            };
+            tasks.push(set_margin(
+                self.ids[8],
+                point[1].round() as i32 - mi,
+                0,
+                0,
+                point[0].round() as i32 - mi,
+            ));
+            for id in [self.ids[6], self.ids[7]] {
+                tasks.push(set_margin(id, 0, 0, 0, -10000));
+            }
+        }
+        tasks.push(publish);
+        tasks.push(self.blur_surfaces());
+        Task::batch(tasks)
+    }
+    pub(super) fn arrange(&mut self) -> Task<Message> {
+        if self.layout_editor.active {
+            return Task::none();
+        }
+        // An open note is saved first; arranging needs the keyboard, and a
+        // draft that couldn't be saved stays paused until Resume.
+        // An unsaved note is kept, and saved only when that can't replace a
+        // newer one; a conflict waits for an explicit Save.
+        let note = self.save_note_quietly();
+        self.pause_note();
+        self.sidebar.hide();
+        let mut draft = self.config.widget_positions.clone();
+        for widget in Widget::ALL {
+            draft.entry(widget.key().into()).or_insert_with(|| {
+                crate::layout_state::encode_position(
+                    widget,
+                    self.default_position(widget),
+                    self.widget_size(widget),
+                    self.screen_size,
+                )
+            });
+        }
+        // Widgets that ended up on top of each other are shown apart, as the
+        // desktop shows them.
+        self.keep_apart(&mut draft, None, None);
+        self.layout_editor = LayoutEditor {
+            active: true,
+            guard: Config::path()
+                .and_then(|p| crate::config::read_config_text(&p).ok())
+                .and_then(|t| crate::config::parse_config_text(t.as_deref()).ok()),
+            baseline_sizes: self.config.widget_sizes.clone(),
+            sizes: self.config.widget_sizes.clone(),
+            implicit_positions: draft
+                .iter()
+                .filter(|(key, _)| {
+                    !self.config.widget_positions.contains_key(*key)
+                        && Widget::parse(key)
+                            .is_some_and(|widget| self.config.widget_visible(widget))
+                })
+                .map(|(key, point)| (key.clone(), *point))
+                .collect(),
+            baseline: draft.clone(),
+            draft,
+            grid: crate::config::PlacementPreferences {
+                snap: self.config.placement.snap,
+                columns: crate::config::PlacementPreferences::FINE_COLUMNS,
+            },
+            saved_grid: self.config.placement,
+            ..Default::default()
+        };
+        Task::batch([
+            // A draft that couldn't be saved waits, without the keyboard.
+            note.chain(self.note_surface_mode()),
+            self.sync_widget_surfaces(),
+            destroy_layer_surface(self.ids[5]).chain(Self::layout_probe(self.ids[5], true)),
+        ])
+    }
+    pub(super) fn commit_arrange(&mut self) -> bool {
+        if !self.layout_editor.active {
+            return true;
+        }
+        if !self.layout_editor.reset
+            && self.layout_editor.draft == self.layout_editor.baseline
+            && self.layout_editor.sizes == self.layout_editor.baseline_sizes
+            && self.layout_editor.grid == self.layout_editor.saved_grid
+        {
+            return true;
+        }
+        let previous = crate::desktop::actions::history_store()
+            .ok()
+            .and_then(|s| s.latest_change().ok())
+            .flatten()
+            .map(|a| a.id);
+        let mut baseline = self.layout_editor.baseline.clone();
+        if self.layout_editor.reset {
+            for widget in Widget::ALL {
+                if self.config.widget_visible(widget)
+                    && self.layout_editor.draft.contains_key(widget.key())
+                {
+                    // A move after Reset is intentional even if it happens
+                    // to return to the position from before the reset.
+                    baseline.remove(widget.key());
+                }
+            }
+        }
+        let mut size_baseline = self.layout_editor.baseline_sizes.clone();
+        if self.layout_editor.reset {
+            for widget in Widget::ALL
+                .into_iter()
+                .filter(|w| self.config.widget_visible(*w))
+            {
+                if self.layout_editor.sizes.contains_key(widget.key()) {
+                    size_baseline.remove(widget.key());
+                } else {
+                    size_baseline.entry(widget.key().into()).or_insert([1., 1.]);
+                }
+            }
+        }
+        match crate::desktop::actions::in_action("Widget arrangement", || {
+            crate::desktop::actions::guarded(self.layout_editor.guard.as_ref(), || {
+                Config::save_layout_draft(
+                    &self.layout_editor.draft,
+                    &baseline,
+                    &self.layout_editor.sizes,
+                    &size_baseline,
+                    &self.layout_editor.implicit_positions,
+                    self.layout_editor.grid,
+                    self.layout_editor.saved_grid,
+                )
+            })
+        }) {
+            Ok(config) => {
+                self.config = config;
+                self.layout_editor.baseline = self.layout_editor.draft.clone();
+                self.layout_editor.baseline_sizes = self.layout_editor.sizes.clone();
+                self.layout_editor.saved_grid = self.layout_editor.grid;
+                self.layout_editor.reset = false;
+                self.layout_editor.guard = Config::path()
+                    .and_then(|p| crate::config::read_config_text(&p).ok())
+                    .and_then(|t| crate::config::parse_config_text(t.as_deref()).ok());
+                if let Ok(store) = crate::desktop::actions::history_store() {
+                    if let Ok(Some(action)) = store.latest_change() {
+                        if previous.as_ref() != Some(&action.id) {
+                            self.layout_editor.session_actions.push(action);
+                        }
+                    }
+                }
+            }
+            Err(error) => {
+                self.layout_editor.error = Some(format!("Could not save: {error}"));
+                return false;
+            }
+        }
+        true
+    }
+    pub(super) fn finish_arrange(&mut self, save: bool) -> Task<Message> {
+        if !self.layout_editor.active {
+            return Task::none();
+        }
+        if save {
+            if !self.commit_arrange() {
+                return Task::none();
+            }
+        } else {
+            if let Err(error) =
+                crate::desktop::actions::cancel_arrangement(&self.layout_editor.session_actions)
+            {
+                self.layout_editor.error = Some(error);
+                return Task::none();
+            }
+            if !self.layout_editor.session_actions.is_empty() {
+                if let Ok(config) = Config::try_load() {
+                    self.config = config;
+                }
+            }
+        }
+        self.layout_editor = LayoutEditor::default();
+        // Recreate the passive measuring surface before raising the individual cards.
+        let tools = Task::batch(self.sync_tool_surfaces());
+        destroy_layer_surface(self.ids[5])
+            .chain(Self::layout_probe(self.ids[5], false))
+            .chain(self.recreate_widget_surfaces())
+            .chain(tools)
+            .chain(self.note_surface_mode())
+    }
+    pub(super) fn reset_layout(&mut self) -> Task<Message> {
+        match crate::desktop::actions::in_action("Reset widget arrangement", || {
+            Config::save_changes(serde_json::json!({"widget_positions": {}, "widget_sizes": {}}))
+        }) {
+            Ok(config) => self.config = config,
+            Err(error) => {
+                eprintln!("Could not reset desktop layout: {error}");
+                return Task::none();
+            }
+        }
+        if self.layout_editor.active {
+            self.layout_editor.draft.clear();
+            self.layout_editor.sizes.clear();
+            self.layout_editor.drag = None;
+        }
+        self.sync_widget_surfaces()
+    }
+    pub(super) fn layout_press(&mut self, widget: Widget) {
+        let point = self.position_from(widget, &self.layout_editor.draft);
+        self.layout_editor.selected = Some(widget);
+        self.layout_editor.drag = Some(LayoutDrag {
+            widget,
+            offset: [
+                self.layout_editor.pointer.x - point[0],
+                self.layout_editor.pointer.y - point[1],
+            ],
+            start: [self.layout_editor.pointer.x, self.layout_editor.pointer.y],
+            size: self.widget_size(widget),
+            resize: false,
+            before: self.layout_editor.state(),
+        });
+    }
+    pub(super) fn layout_resize_press(&mut self, widget: Widget) {
+        self.layout_press(widget);
+        if let Some(drag) = &mut self.layout_editor.drag {
+            drag.resize = true;
+        }
+    }
+    fn put_layout_size(&mut self, widget: Widget, requested: [f32; 2]) {
+        let point = self.position_from(widget, &self.layout_editor.draft);
+        let size = crate::layout::resize(
+            widget,
+            point,
+            requested,
+            self.screen_size,
+            self.layout_editor.grid.snap,
+        );
+        self.layout_editor.sizes.insert(widget.key().into(), size);
+        self.layout_editor.draft.insert(
+            widget.key().into(),
+            crate::layout_state::encode_position(widget, point, size, self.screen_size),
+        );
+    }
+    pub(super) fn layout_resize(&mut self, direction: [i8; 2], large: bool) {
+        let Some(widget) = self.layout_editor.selected else {
+            return;
+        };
+        let before = self.layout_editor.state();
+        let size = self.widget_size(widget);
+        let step = (if self.layout_editor.grid.snap {
+            12.
+        } else {
+            8.
+        }) * if large { 4. } else { 1. };
+        self.put_layout_size(
+            widget,
+            [0, 1].map(|axis| size[axis] + f32::from(direction[axis]) * step),
+        );
+        self.layout_editor.remember(before);
+    }
+    pub(super) fn layout_automatic(&mut self) {
+        let Some(widget) = self.layout_editor.selected else {
+            return;
+        };
+        let before = self.layout_editor.state();
+        let point = self.position_from(widget, &self.layout_editor.draft);
+        self.layout_editor.sizes.remove(widget.key());
+        self.layout_editor.draft.insert(
+            widget.key().into(),
+            crate::layout_state::encode_position(
+                widget,
+                point,
+                self.widget_size(widget),
+                self.screen_size,
+            ),
+        );
+        self.layout_editor.remember(before);
+    }
+    pub(super) fn layout_undo(&mut self) {
+        self.cancel_layout_drag();
+        if let Some(state) = self.layout_editor.history.pop() {
+            self.layout_editor.restore(state);
+        }
+    }
+    pub(super) fn layout_resize_mode(&mut self) {
+        self.layout_editor.resize_mode = !self.layout_editor.resize_mode;
+    }
+
+    /// Moves widgets in `positions` clear of each other. With `moving`, only
+    /// that widget moves (the one just dropped). Otherwise later widgets in
+    /// `PLACEMENT_ORDER` give way to earlier ones, and to `first` (one just
+    /// grown) before all of them.
+    fn keep_apart(
+        &self,
+        positions: &mut BTreeMap<String, [f32; 2]>,
+        moving: Option<Widget>,
+        first: Option<Widget>,
+    ) {
+        let rect = |widget: Widget, positions: &BTreeMap<String, [f32; 2]>| {
+            let size = self.widget_size(widget);
+            let at = self.position_from(widget, positions);
+            [at[0], at[1], size[0], size[1]]
+        };
+        let visible: Vec<Widget> = PLACEMENT_ORDER
+            .into_iter()
+            .filter(|widget| self.config.widget_visible(*widget))
+            .collect();
+        let place = |widget: Widget, others: &[[f32; 4]], positions: &mut BTreeMap<String, [f32; 2]>| {
+            let size = self.widget_size(widget);
+            let at = self.position_from(widget, positions);
+            // No room: it stays where it was put; the desktop keeps it off
+            // screen until there is.
+            let free = crate::layout::free_spot(at, size, others, self.screen_size).unwrap_or(at);
+            if free != at && positions.contains_key(widget.key()) {
+                positions.insert(
+                    widget.key().into(),
+                    crate::layout_state::encode_position(widget, free, size, self.screen_size),
+                );
+            }
+        };
+        match moving {
+            Some(widget) => {
+                let others: Vec<[f32; 4]> = visible
+                    .iter()
+                    .filter(|other| **other != widget)
+                    .map(|other| rect(*other, positions))
+                    .collect();
+                place(widget, &others, positions);
+            }
+            None => {
+                let mut placed = Vec::new();
+                let order = first
+                    .into_iter()
+                    .chain(visible.iter().copied().filter(|widget| Some(*widget) != first));
+                for widget in order {
+                    if Some(widget) != first {
+                        place(widget, &placed, positions);
+                    }
+                    placed.push(rect(widget, positions));
+                }
+            }
+        }
+    }
+    fn put_layout_point(&mut self, widget: Widget, point: [f32; 2]) {
+        let point = if self.layout_editor.grid.snap {
+            crate::layout::snap(
+                point,
+                if self.explicit_size(widget).is_some() {
+                    self.widget_size(widget)
+                } else {
+                    crate::layout_state::placement_size(widget, self.widget_size(widget))
+                },
+                self.screen_size,
+                self.layout_editor.grid.columns,
+            )
+        } else {
+            point
+        };
+        let point = crate::layout_state::encode_position(
+            widget,
+            point,
+            self.widget_size(widget),
+            self.screen_size,
+        );
+        self.layout_editor.draft.insert(widget.key().into(), point);
+        self.layout_editor.error = None;
+    }
+    pub(super) fn layout_pointer(&mut self, event: mouse::Event) -> Task<Message> {
+        match event {
+            mouse::Event::CursorMoved { position } => {
+                self.layout_editor.pointer = position;
+                if let Some(drag) = &self.layout_editor.drag {
+                    let widget = drag.widget;
+                    if drag.resize {
+                        let size = [
+                            drag.size[0] + position.x - drag.start[0],
+                            drag.size[1] + position.y - drag.start[1],
+                        ];
+                        self.put_layout_size(widget, size);
+                    } else {
+                        let size = self.widget_size(widget);
+                        let placement = if self.explicit_size(widget).is_some() {
+                            size
+                        } else {
+                            crate::layout_state::placement_size(widget, size)
+                        };
+                        let point = crate::layout::drag(
+                            [position.x, position.y],
+                            drag.offset,
+                            placement,
+                            self.screen_size,
+                        );
+                        self.put_layout_point(widget, point);
+                    }
+                }
+            }
+            mouse::Event::CursorLeft => self.cancel_layout_drag(),
+            mouse::Event::ButtonReleased(mouse::Button::Left) => {
+                if let Some(drag) = self.layout_editor.drag.take() {
+                    // A widget dropped or grown onto another moves to the
+                    // nearest free spot; widgets never stack.
+                    // A grown one keeps its place and pushes neighbors aside.
+                    let mut draft = std::mem::take(&mut self.layout_editor.draft);
+                    self.keep_apart(
+                        &mut draft,
+                        Some(drag.widget).filter(|_| !drag.resize),
+                        Some(drag.widget).filter(|_| drag.resize),
+                    );
+                    self.layout_editor.draft = draft;
+                    self.layout_editor.remember(drag.before);
+                    self.commit_arrange();
+                }
+            }
+            _ => {}
+        }
+        Task::none()
+    }
+    pub(super) fn cancel_layout_drag(&mut self) {
+        if let Some(drag) = self.layout_editor.drag.take() {
+            self.layout_editor.restore(drag.before);
+        }
+    }
+    /// Every card surface again, then every tool surface: new card surfaces
+    /// stack above older ones, and the tools belong on top, clickable.
+    pub(super) fn rebuild_cards(&mut self) -> Task<Message> {
+        let rebuild = self.recreate_widget_surfaces();
+        self.forget_tool_surfaces();
+        let tools = Task::batch(self.sync_tool_surfaces());
+        rebuild.chain(tools)
+    }
+    fn recreate_widget_surfaces(&mut self) -> Task<Message> {
+        self.surface_geometry = Some(self.surface_geometry());
+        self.surface_inputs = Some(Widget::BASE.map(|widget| self.card_input_rects(widget)));
+        let mut create = Vec::new();
+        for widget in [
+            Widget::Calendar,
+            Widget::Weather,
+            Widget::Devbox,
+            Widget::Projects,
+            Widget::Glance,
+            Widget::Clock,
+        ] {
+            let id = self.widget_id(widget);
+            let size = self.widget_size(widget);
+            // The surface reaches past the card by the style's shadow margin
+            // so a shadow isn't clipped; the card keeps its size and place.
+            let (mi, mu) = self.shadow_px();
+            let mut surface = SctkLayerSurfaceSettings {
+                id,
+                layer: Layer::Bottom,
+                keyboard_interactivity: KeyboardInteractivity::None,
+                anchor: Anchor::TOP | Anchor::LEFT,
+                exclusive_zone: 0,
+                input_zone: Some(zone(&self.card_input_rects(widget))),
+                namespace: format!("desktop-cards-{}", widget.key()),
+                size: Some((
+                    Some(size[0].ceil() as u32 + mu),
+                    Some(size[1].ceil() as u32 + mu),
+                )),
+                ..Default::default()
+            };
+            if self.custom_layout() || widget == Widget::Glance {
+                let position = if self.config.widget_visible(widget) {
+                    self.placed_position(widget)
+                } else {
+                    [-10000., 0.]
+                };
+                surface.margin = IcedMargin {
+                    top: position[1].round() as i32 - mi,
+                    left: position[0].round() as i32 - mi,
+                    ..Default::default()
+                };
+            } else {
+                match widget {
+                    Widget::Clock => {
+                        surface.size = Some((Some(490 + mu), Some(250 + mu)));
+                        surface.margin = IcedMargin {
+                            top: 88 - mi,
+                            left: self.config.clock_margin() - mi,
+                            ..Default::default()
+                        };
+                    }
+                    Widget::Weather => {
+                        surface.anchor = Anchor::TOP | Anchor::BOTTOM | Anchor::RIGHT;
+                        surface.size = Some((Some(360 + mu), Some(0)));
+                        surface.margin = IcedMargin {
+                            top: 48 - mi,
+                            bottom: 48 - mi,
+                            right: 42 - mi,
+                            ..Default::default()
+                        };
+                    }
+                    Widget::Calendar => {
+                        surface.anchor = Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT;
+                        surface.size = Some((Some(360 + mu), Some(0)));
+                        surface.margin = IcedMargin {
+                            top: 48 - mi,
+                            bottom: 48 - mi,
+                            left: self.config.calendar_margin() - mi,
+                            ..Default::default()
+                        };
+                    }
+                    _ => {
+                        surface.size = Some((Some(16), Some(16)));
+                        surface.margin = IcedMargin {
+                            left: -10000,
+                            ..Default::default()
+                        };
+                    }
+                }
+            }
+            create.push(get_layer_surface(surface));
+        }
+        let clock = create.pop().unwrap();
+        let destroy =
+            Task::batch([0, 1, 4, 6, 7, 8].map(|index| destroy_layer_surface(self.ids[index])));
+        destroy
+            .chain(Task::batch(create))
+            .chain(clock)
+            .chain(self.blur_surfaces())
+    }
+    pub(super) fn layout_key(&mut self, key: keyboard::Key, shift: bool) -> Task<Message> {
+        if !self.layout_editor.active {
+            return Task::none();
+        }
+        use keyboard::key::Named;
+        match key {
+            keyboard::Key::Named(Named::Escape) if self.layout_editor.drag.is_some() => {
+                self.cancel_layout_drag()
+            }
+            keyboard::Key::Named(Named::Escape) => return self.finish_arrange(false),
+            keyboard::Key::Character(ref value) if value.as_str() == "r" => {
+                self.layout_resize_mode()
+            }
+            keyboard::Key::Character(ref value) if value.as_str() == "z" => self.layout_undo(),
+            keyboard::Key::Named(Named::Tab) => {
+                let widgets: Vec<_> = Widget::ALL
+                    .into_iter()
+                    .filter(|w| self.config.widget_visible(*w))
+                    .collect();
+                if !widgets.is_empty() {
+                    let index = self
+                        .layout_editor
+                        .selected
+                        .and_then(|w| widgets.iter().position(|x| *x == w))
+                        .map_or(0, |i| (i + 1) % widgets.len());
+                    self.layout_editor.selected = Some(widgets[index]);
+                }
+            }
+            keyboard::Key::Named(Named::Enter) => return self.finish_arrange(true),
+            keyboard::Key::Named(named) => {
+                if let Some(widget) = self.layout_editor.selected {
+                    if self.layout_editor.resize_mode {
+                        let direction = match named {
+                            Named::ArrowLeft => [-1, 0],
+                            Named::ArrowRight => [1, 0],
+                            Named::ArrowUp => [0, -1],
+                            Named::ArrowDown => [0, 1],
+                            _ => return Task::none(),
+                        };
+                        self.layout_resize(direction, shift);
+                        self.commit_arrange();
+                        return Task::none();
+                    }
+                    let before = self.layout_editor.state();
+                    let mut point = self.position_from(widget, &self.layout_editor.draft);
+                    let step = if self.layout_editor.grid.snap {
+                        crate::layout::grid_step(self.screen_size, self.layout_editor.grid.columns)
+                            .map(|value| value * if shift { 4. } else { 1. })
+                    } else {
+                        [if shift { 32. } else { 8. }; 2]
+                    };
+                    match named {
+                        Named::ArrowLeft => point[0] -= step[0],
+                        Named::ArrowRight => point[0] += step[0],
+                        Named::ArrowUp => point[1] -= step[1],
+                        Named::ArrowDown => point[1] += step[1],
+                        _ => return Task::none(),
+                    }
+                    self.put_layout_point(widget, point);
+                    self.layout_editor.remember(before);
+                    self.commit_arrange();
+                }
+            }
+            _ => {}
+        }
+        Task::none()
+    }
+    pub(super) fn individual_widget(&self, widget: Widget) -> Element<'_, Message> {
+        if !self.config.widget_visible(widget) {
+            return empty_surface();
+        }
+        let card = match widget {
+            Widget::Clock => self.clock(),
+            Widget::Weather => self.weather_card(),
+            Widget::Devbox => self.devbox(),
+            Widget::Projects => self.projects_card(),
+            Widget::Calendar => self.calendar_card(),
+            Widget::Glance => self.glance(),
+            Widget::Music | Widget::Notes | Widget::Focus => self.tool_card(widget),
+        };
+        // Matches the surface's shadow margin (see the layer surface sizes).
+        let m = crate::widget_style::shadow_margin(&self.config);
+        if m > 0. {
+            container(card).padding(m).into()
+        } else {
+            card
+        }
+    }
+    pub(super) fn layout_view(&self) -> Element<'_, Message> {
+        if !self.layout_editor.active {
+            return empty_surface();
+        }
+        let p = self.config.surface_palette();
+        let background = container(text::body(""))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .class(cosmic::theme::Container::custom(|_| {
+                cosmic::iced::widget::container::Style {
+                    background: Some(Background::Color(Color::from_rgba(0.04, 0.04, 0.06, 0.82))),
+                    ..Default::default()
+                }
+            }));
+        let mut layers: Vec<Element<'_, Message>> = vec![background.into()];
+        if self.layout_editor.grid.snap {
+            let guides = crate::layout::grid_lines(self.screen_size);
+            for (axis, lines) in guides.iter().enumerate() {
+                for &coordinate in lines {
+                    let position = if axis == 0 {
+                        Point::new(coordinate, 48.)
+                    } else {
+                        Point::new(24., coordinate)
+                    };
+                    let line = container(text::body(""))
+                        .width(if axis == 0 {
+                            1.
+                        } else {
+                            (self.screen_size[0] - 48.).max(1.)
+                        })
+                        .height(if axis == 0 {
+                            (self.screen_size[1] - 96.).max(1.)
+                        } else {
+                            1.
+                        })
+                        .class(cosmic::theme::Container::custom(move |_| {
+                            cosmic::iced::widget::container::Style {
+                                background: Some(Background::Color(Color {
+                                    a: 0.12,
+                                    ..p.accent
+                                })),
+                                ..Default::default()
+                            }
+                        }));
+                    layers.push(pin(line).position(position).into());
+                }
+            }
+        }
+        for widget in Widget::ALL {
+            if !self.config.widget_visible(widget) {
+                continue;
+            }
+            let size = self.widget_size(widget);
+            let position = self.position_from(widget, &self.layout_editor.draft);
+            let selected = self.layout_editor.selected == Some(widget);
+            let drag = opaque(
+                mouse_area(
+                    container(label(format!("⠿  {}", widget.title()), 12., p.accent))
+                        .width(Length::Fill)
+                        .height(Length::Fill)
+                        .padding(8)
+                        .align_y(Alignment::End)
+                        .class(cosmic::theme::Container::custom(move |_| {
+                            cosmic::iced::widget::container::Style {
+                                border: Border {
+                                    color: Color {
+                                        a: if selected { 0.95 } else { 0.35 },
+                                        ..p.accent
+                                    },
+                                    width: if selected { 2. } else { 1. },
+                                    radius: 16.into(),
+                                },
+                                ..Default::default()
+                            }
+                        })),
+                )
+                .on_press(Message::LayoutPress(widget))
+                .interaction(mouse::Interaction::Grab),
+            );
+            let mut card_layers = vec![self.individual_widget(widget), drag.into()];
+            let grip = opaque(
+                mouse_area(
+                    container(label("◢", 23., p.accent))
+                        .width(32)
+                        .height(32)
+                        .align_x(Alignment::End)
+                        .align_y(Alignment::End),
+                )
+                .on_press(Message::LayoutResizePress(widget))
+                .interaction(mouse::Interaction::ResizingDiagonallyDown),
+            );
+            card_layers.push(
+                pin(grip)
+                    .position(Point::new((size[0] - 32.).max(0.), (size[1] - 32.).max(0.)))
+                    .into(),
+            );
+            let content = stack(card_layers).width(size[0]).height(size[1]);
+            layers.push(
+                pin(content)
+                    .position(Point::new(position[0], position[1]))
+                    .into(),
+            );
+        }
+        let title = column::with_children(vec![
+            label("Arrange widgets", 17., p.foreground),
+            label(
+                self.layout_editor
+                    .error
+                    .as_deref()
+                    .unwrap_or("Drag to move · corner to resize · R: resize with arrows"),
+                11.,
+                p.muted,
+            ),
+        ])
+        .spacing(3);
+        let toolbar = container(
+            row::with_children(vec![
+                container(title).width(Length::Fill).into(),
+                row::with_children(vec![
+                    label("Snap to grid", 12., p.muted),
+                    cosmic::widget::toggler(self.layout_editor.grid.snap)
+                        .on_toggle(Message::LayoutSnap)
+                        .into(),
+                ])
+                .spacing(8)
+                .align_y(Alignment::Center)
+                .into(),
+                cosmic::widget::button::text("Undo")
+                    .on_press_maybe(
+                        (!self.layout_editor.history.is_empty()).then_some(Message::LayoutUndo),
+                    )
+                    .into(),
+                cosmic::widget::button::text("Reset")
+                    .on_press(Message::LayoutDefaults)
+                    .into(),
+                cosmic::widget::button::text("Cancel")
+                    .on_press(Message::LayoutFinish(false))
+                    .into(),
+                cosmic::widget::button::suggested("Done")
+                    .on_press(Message::LayoutFinish(true))
+                    .into(),
+            ])
+            .spacing(10)
+            .align_y(Alignment::Center),
+        )
+        .padding([12, 18])
+        .width(820_f32.min(self.screen_size[0]))
+        .class(cosmic::theme::Container::custom(move |_| {
+            cosmic::iced::widget::container::Style {
+                background: Some(Background::Color(Color {
+                    a: 1.,
+                    ..p.background
+                })),
+                border: Border {
+                    radius: 16.into(),
+                    color: Color { a: 0.3, ..p.accent },
+                    width: 1.,
+                },
+                ..Default::default()
+            }
+        }));
+        layers.push(
+            pin(opaque(toolbar))
+                .position(Point::new(((self.screen_size[0] - 820.) / 2.).max(0.), 8.))
+                .into(),
+        );
+        let inspector: Element<'_, Message> = if let Some(widget) = self.layout_editor.selected {
+            let size = self.widget_size(widget);
+            row::with_children(vec![
+                label(
+                    format!(
+                        "{} · {} × {}",
+                        widget.title(),
+                        size[0].round() as u32,
+                        size[1].round() as u32
+                    ),
+                    13.,
+                    p.foreground,
+                ),
+                cosmic::widget::button::text(if self.layout_editor.resize_mode {
+                    "Arrows: resize"
+                } else {
+                    "Arrows: move"
+                })
+                .on_press(Message::LayoutResizeMode)
+                .into(),
+                cosmic::widget::button::text("W −")
+                    .on_press(Message::LayoutResize([-1, 0]))
+                    .into(),
+                cosmic::widget::button::text("W +")
+                    .on_press(Message::LayoutResize([1, 0]))
+                    .into(),
+                cosmic::widget::button::text("H −")
+                    .on_press(Message::LayoutResize([0, -1]))
+                    .into(),
+                cosmic::widget::button::text("H +")
+                    .on_press(Message::LayoutResize([0, 1]))
+                    .into(),
+                cosmic::widget::button::text("Automatic")
+                    .on_press(Message::LayoutAutomatic)
+                    .into(),
+            ])
+            .spacing(6)
+            .align_y(Alignment::Center)
+            .into()
+        } else {
+            row::with_children(
+                Widget::ALL
+                    .into_iter()
+                    .filter(|w| self.config.widget_visible(*w))
+                    .map(|w| {
+                        cosmic::widget::button::text(w.title())
+                            .on_press(Message::LayoutSelect(w))
+                            .into()
+                    })
+                    .collect::<Vec<_>>(),
+            )
+            .spacing(4)
+            .into()
+        };
+        layers.push(
+            pin(opaque(container(inspector).padding(8).class(
+                cosmic::theme::Container::custom(move |_| cosmic::iced::widget::container::Style {
+                    background: Some(Background::Color(Color {
+                        a: 1.,
+                        ..p.background
+                    })),
+                    border: Border {
+                        radius: 12.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }),
+            )))
+            .position(Point::new(24., (self.screen_size[1] - 48.).max(0.)))
+            .into(),
+        );
+        stack(layers)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
+    pub(super) fn layout_defaults(&mut self) {
+        self.cancel_layout_drag();
+        let before = self.layout_editor.state();
+        self.layout_editor
+            .sizes
+            .retain(|key, _| Widget::parse(key).is_none_or(|w| !self.config.widget_visible(w)));
+        self.layout_editor.draft.retain(|key, _| {
+            Widget::parse(key).is_none_or(|widget| !self.config.widget_visible(widget))
+        });
+        if self.config.widget_visible(Widget::Glance) {
+            // Keep an explicit default so a later sync cannot mistake Reset
+            // for Glance's first enable and copy the hidden Clock again.
+            let point = crate::layout_state::encode_position(
+                Widget::Glance,
+                self.default_position(Widget::Glance),
+                self.widget_size(Widget::Glance),
+                self.screen_size,
+            );
+            self.layout_editor.draft.insert("glance".into(), point);
+        }
+        self.layout_editor.reset = true;
+        self.layout_editor.drag = None;
+        self.layout_editor.selected = None;
+        self.layout_editor.remember(before);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmic::Application;
+    #[test]
+    fn sized_native_cards_fill_their_surface_and_keep_busy_agendas_scrollable() {
+        use crate::native_test::Native;
+        use cosmic::iced::{Event, Size};
+        let mut config = Config::default();
+        config.music.enabled = true;
+        config.notes.enabled = true;
+        config.focus.enabled = true;
+        config.glance.enabled = true;
+        config.glance.style = crate::config::GlanceStyle::Panel;
+        config.glance.initialized = true;
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        cards.screen_size = [1920., 1080.];
+        let today = Local::now().date_naive();
+        let calendar = CalendarData {
+            month: today.format("%Y-%m").to_string(),
+            events: (0..24)
+                .map(|n| CalendarEvent {
+                    title: format!(
+                        "Fixture event {n:02} · A long agenda entry wraps at the chosen width"
+                    ),
+                    start: today.to_string(),
+                    end: (today + Days::days(1)).to_string(),
+                    all_day: true,
+                    url: String::new(),
+                    meeting_url: None,
+                })
+                .collect(),
+            ..CalendarData::default()
+        };
+        cards.calendar = Some(calendar.clone());
+        cards.calendar_today = Some(calendar);
+        cards.config.focus.long_break_every = 12;
+        cards.tools.focus.phase = crate::tools::focus::Phase::LongBreak;
+        cards.tools.focus.status = crate::tools::focus::Status::Paused { remaining: 600_000 };
+        cards.tools.focus.rounds = 12;
+        cards.tools.focus.day = today.to_string();
+        let theme = cosmic::Theme::dark();
+        for widget in [
+            Widget::Weather,
+            Widget::Devbox,
+            Widget::Projects,
+            Widget::Calendar,
+            Widget::Music,
+            Widget::Notes,
+            Widget::Focus,
+            Widget::Glance,
+        ] {
+            cards.config.glance.enabled = widget == Widget::Glance;
+            for (name, size) in [
+                ("minimum", crate::layout::minimum_size(widget)),
+                ("large", [480., 360.]),
+            ] {
+                cards.config.widget_sizes.insert(widget.key().into(), size);
+                let mut native = Native::new(Size::new(size[0], size[1]));
+                let pixels = native.render(cards.individual_widget(widget), &theme);
+                let index =
+                    (((size[1] as usize - 6) * size[0] as usize) + size[0] as usize / 2) * 4;
+                assert!(
+                    pixels[index + 3] > 150,
+                    "{widget:?} {name}: frame must fill its native surface"
+                );
+                native.capture(
+                    cards.individual_widget(widget),
+                    &theme,
+                    &format!("card-{}-{name}", widget.key()),
+                );
+                if matches!(widget, Widget::Calendar | Widget::Glance) {
+                    assert_eq!(cards.calendar.as_ref().unwrap().events.len(), 24);
+                    let point = Point::new(size[0] / 2., size[1] - 80.);
+                    let _ = native.event(
+                        cards.individual_widget(widget),
+                        Event::Mouse(mouse::Event::WheelScrolled {
+                            delta: mouse::ScrollDelta::Pixels { x: 0., y: -10000. },
+                        }),
+                        point,
+                    );
+                    let scrolled = native.render(cards.individual_widget(widget), &theme);
+                    assert!(
+                        pixels != scrolled,
+                        "{widget:?} {name}: agenda remains scrollable"
+                    );
+                    native.capture(
+                        cards.individual_widget(widget),
+                        &theme,
+                        &format!("card-{}-{name}-last-events", widget.key()),
+                    );
+                }
+            }
+        }
+        cards.config.widget_sizes.remove("glance");
+        cards.config.glance.enabled = true;
+        assert!(
+            cards.glance_size()[1] > 360.,
+            "Automatic restores downward growth"
+        );
+    }
+
+    #[test]
+    fn native_desktop_resize_moves_real_content_and_roundtrips_sizes() {
+        use crate::native_test::Native;
+        use cosmic::iced::{Event, Size};
+        if std::env::var_os("DESKTOP_CARDS_NATIVE_LAYOUT_CHILD").is_none() {
+            let root =
+                std::env::temp_dir().join(format!("cards-native-layout-{}", std::process::id()));
+            for part in ["config", "data", "cache", "state", "desktop/config/cosmic"] {
+                std::fs::create_dir_all(root.join(part)).unwrap();
+            }
+            std::fs::write(root.join("config.json"), r#"{"enabled_widgets":["weather"],"music":{"enabled":true},"focus":{"enabled":true},"notes":{"enabled":true},"placement":{"snap":false},"widget_positions":{"weather":[0.05,0.1],"music":[0.5,0.45],"focus":[0.8,0.1],"notes":[0.1,0.85]}}"#).unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", "app::layout::tests::native_desktop_resize_moves_real_content_and_roundtrips_sizes", "--nocapture"])
+                .env("DESKTOP_CARDS_NATIVE_LAYOUT_CHILD", "1").env("DESKTOP_CARDS_CONFIG", root.join("config.json"))
+                .env("DESKTOP_CARDS_DESKTOP_ROOT", root.join("desktop"))
+                .env("XDG_CONFIG_HOME", root.join("config")).env("XDG_DATA_HOME", root.join("data"))
+                .env("XDG_CACHE_HOME", root.join("cache")).env("XDG_STATE_HOME", root.join("state"))
+                .status().unwrap();
+            let _ = std::fs::remove_dir_all(root);
+            assert!(result.success());
+            return;
+        }
+        fn pointer(cards: &mut Cards, native: &mut Native, point: Point, press: Option<bool>) {
+            let event = match press {
+                Some(true) => mouse::Event::ButtonPressed(mouse::Button::Left),
+                Some(false) => mouse::Event::ButtonReleased(mouse::Button::Left),
+                None => mouse::Event::CursorMoved { position: point },
+            };
+            let (messages, _) = native.event(cards.layout_view(), Event::Mouse(event), point);
+            for message in messages {
+                let _ = cards.update(message);
+            }
+            let _ = cards.layout_pointer(event);
+        }
+        let initial = std::fs::read(Config::path().unwrap()).unwrap();
+        let (mut cards, _) = Cards::init(Core::default(), Config::load());
+        cards.screen_size = [1280., 800.];
+        let mut native = Native::new(Size::new(1280., 800.));
+        let theme = cosmic::Theme::dark();
+        let notes_before = cards.position_from(Widget::Notes, &cards.config.widget_positions);
+        let _ = cards.arrange();
+        for widget in [Widget::Weather, Widget::Music, Widget::Focus] {
+            let position = cards.position_from(widget, &cards.layout_editor.draft);
+            let size = cards.widget_size(widget);
+            let grip = Point::new(position[0] + size[0] - 5., position[1] + size[1] - 5.);
+            pointer(&mut cards, &mut native, grip, None);
+            pointer(&mut cards, &mut native, grip, Some(true));
+            assert!(
+                cards.layout_editor.drag.as_ref().unwrap().resize,
+                "native grip, {widget:?}"
+            );
+            let target = Point::new(grip.x + 24., grip.y + 80.);
+            pointer(&mut cards, &mut native, target, None);
+            pointer(&mut cards, &mut native, target, Some(false));
+            assert_eq!(cards.widget_size(widget), [size[0] + 24., size[1] + 80.]);
+            assert_eq!(
+                cards.config.widget_sizes.get(widget.key()),
+                Some(&[size[0] + 24., size[1] + 80.])
+            );
+            let top = cards.position_from(widget, &cards.layout_editor.draft);
+            assert!((top[0] - position[0]).abs() < 0.001 && (top[1] - position[1]).abs() < 0.001);
+        }
+        native.capture(cards.layout_view(), &theme, "desktop-arranging-resized");
+        assert_ne!(std::fs::read(Config::path().unwrap()).unwrap(), initial);
+        let wanted = cards.layout_editor.sizes.clone();
+        let _ = cards.finish_arrange(true);
+        assert_eq!(Config::load().widget_sizes, wanted);
+        let notes_after = cards.position_from(Widget::Notes, &cards.config.widget_positions);
+        assert!((0..2).all(|axis| (notes_before[axis] - notes_after[axis]).abs() < 0.01));
+        for widget in [Widget::Weather, Widget::Music, Widget::Focus] {
+            let size = cards.widget_size(widget);
+            let mut card = Native::new(Size::new(size[0], size[1]));
+            card.capture(
+                cards.individual_widget(widget),
+                &theme,
+                &format!("desktop-{}-resized", widget.key()),
+            );
+        }
+        let _ = cards.arrange();
+        cards.layout_editor.selected = Some(Widget::Music);
+        cards.layout_resize_mode();
+        let _ = cards.layout_key(keyboard::Key::Named(keyboard::key::Named::ArrowDown), false);
+        assert_eq!(cards.widget_size(Widget::Music)[1], wanted["music"][1] + 8.);
+        let _ = cards.layout_key(keyboard::Key::Named(keyboard::key::Named::Escape), false);
+        assert_eq!(Config::load().widget_sizes, wanted);
+        let _ = cards.arrange();
+        cards.layout_defaults();
+        assert!(cards.layout_editor.sizes.is_empty());
+        let _ = cards.finish_arrange(true);
+        assert!(Config::load().widget_sizes.is_empty());
+    }
+
+    #[test]
+    fn a_display_change_rebuilds_every_surface_once_settled() {
+        let mut config = Config::default();
+        config.notes.enabled = true;
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        cards.screen_size = [1920., 1080.];
+        let _ = cards.sync_widget_surfaces();
+        assert!(cards.surface_geometry.is_some());
+        // Display events right after startup are the startup burst.
+        let _ = cards.update(Message::DisplaysChanged);
+        assert_eq!(cards.display_generation, 0);
+        cards.started = std::time::Instant::now() - std::time::Duration::from_secs(10);
+        let _ = cards.update(Message::DisplaysChanged);
+        let _ = cards.update(Message::DisplaysChanged);
+        assert_eq!(cards.display_generation, 2);
+        // Only the latest change rebuilds; it starts from nothing cached.
+        let _ = cards.update(Message::RebuildSurfaces(1));
+        assert!(cards.surface_geometry.is_some());
+        let _ = cards.update(Message::RebuildSurfaces(2));
+        assert!(cards.surface_geometry.is_some() && cards.surface_inputs.is_some());
+        assert!(cards.tool_geometry_known(Widget::Notes));
+    }
+
+    #[test]
+    fn widgets_on_the_desktop_never_stack() {
+        // The reported layout: Focus saved almost exactly on top of Notes,
+        // Projects across the system monitor.
+        let mut config = Config::default();
+        config.notes.enabled = true;
+        config.focus.enabled = true;
+        config.enabled_widgets = vec!["devbox".into(), "projects".into()];
+        for (key, at) in [
+            ("devbox", [1.0, 0.0]),
+            ("projects", [0.984, 0.214]),
+            ("notes", [1.0, 0.584]),
+            ("focus", [1.0, 0.585]),
+        ] {
+            config.widget_positions.insert(key.into(), at);
+        }
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        cards.screen_size = [1920., 1039.];
+        assert!(cards.custom_layout());
+        let shown = [Widget::Devbox, Widget::Projects, Widget::Focus, Widget::Notes];
+        let rects: Vec<[f32; 4]> = shown
+            .iter()
+            .map(|widget| {
+                let at = cards.placed_position(*widget);
+                let size = cards.widget_size(*widget);
+                [at[0], at[1], size[0], size[1]]
+            })
+            .collect();
+        for (i, a) in rects.iter().enumerate() {
+            for b in &rects[i + 1..] {
+                let apart = a[0] + a[2] <= b[0]
+                    || b[0] + b[2] <= a[0]
+                    || a[1] + a[3] <= b[1]
+                    || b[1] + b[3] <= a[1];
+                assert!(apart, "{a:?} overlaps {b:?}");
+            }
+            assert!(a[0] >= 0. && a[1] >= 0. && a[0] + a[2] <= 1920. && a[1] + a[3] <= 1039.);
+        }
+        // The first-placed keeps its spot.
+        assert_eq!(
+            cards.placed_position(Widget::Devbox),
+            cards.position_from(Widget::Devbox, &cards.config.widget_positions)
+        );
+    }
+
+    #[test]
+    fn cards_take_clicks_only_where_they_are_drawn() {
+        // A placed card: its own rectangle, not the shadow margin around it.
+        let mut config = Config::default();
+        config.widget_sizes.insert("weather".into(), [480., 320.]);
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        cards.screen_size = [1920., 1080.];
+        assert!(cards.custom_layout());
+        let (mi, mu) = cards.shadow_px();
+        let rects = cards.card_input_rects(Widget::Weather);
+        assert_eq!(rects, vec![[mi.max(0) as u32, mi.max(0) as u32, 480, 320]]);
+        assert!(rects[0][2] < 480 + mu || mu == 0);
+        assert!(cards.card_input_rects(Widget::Clock).is_empty());
+        // The default right column: only the band its cards fill, so the
+        // rest of the full-height surface passes clicks to the tools.
+        let (mut cards, _) = Cards::init(Core::default(), Config::default());
+        cards.screen_size = [1920., 1080.];
+        assert!(!cards.custom_layout());
+        let column = cards.card_input_rects(Widget::Weather);
+        assert_eq!(column.len(), 1);
+        let height = 1080. - 96. + mu as f32;
+        assert!((column[0][3] as f32) < height, "{column:?}");
+        let visible = cards.visible_cards();
+        let total: f32 = visible.iter().map(|w| cards.card_height(*w)).sum();
+        assert!(column[0][3] as f32 >= total, "every card stays clickable");
+        // Hidden or offscreen surfaces take no clicks at all.
+        assert!(cards.card_input_rects(Widget::Devbox).is_empty());
+    }
+
+    #[test]
+    fn explicit_geometry_drives_cards_surfaces_and_desktop_resize_cancel() {
+        let mut config = Config::default();
+        config.music.enabled = true;
+        config.focus.enabled = true;
+        config.widget_sizes.insert("weather".into(), [480., 320.]);
+        config.widget_sizes.insert("music".into(), [480., 320.]);
+        config.widget_sizes.insert("focus".into(), [480., 320.]);
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        cards.screen_size = [1920., 1080.];
+        assert!(cards.custom_layout());
+        for widget in [Widget::Weather, Widget::Music, Widget::Focus] {
+            assert_eq!(cards.widget_size(widget), [480., 320.]);
+            assert_eq!(cards.card_height(widget), 320.);
+        }
+        let _ = cards.arrange();
+        cards.layout_editor.selected = Some(Widget::Focus);
+        let point = cards.position_from(Widget::Focus, &cards.layout_editor.draft);
+        cards.layout_resize([0, 1], true);
+        assert_eq!(cards.widget_size(Widget::Focus), [480., 372.]);
+        let after = cards.position_from(Widget::Focus, &cards.layout_editor.draft);
+        assert!((point[0] - after[0]).abs() < 0.001 && (point[1] - after[1]).abs() < 0.001);
+        cards.layout_undo();
+        assert_eq!(cards.widget_size(Widget::Focus), [480., 320.]);
+        cards.layout_automatic();
+        assert_eq!(cards.widget_size(Widget::Focus), [280., 160.]);
+        let _ = cards.finish_arrange(false);
+        assert_eq!(cards.widget_size(Widget::Focus), [480., 320.]);
+        assert_eq!(cards.config.widget_sizes["focus"], [480., 320.]);
+    }
+
+    #[test]
+    fn reset_glance_keeps_an_explicit_default_without_reseeding_from_hidden_clock() {
+        let mut config = Config::default();
+        config.glance.enabled = true;
+        config.glance.initialized = true;
+        config.widget_positions.insert("clock".into(), [0.7, 0.7]);
+        config.widget_positions.insert("glance".into(), [0.3, 0.4]);
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        let _ = cards.arrange();
+        cards.layout_defaults();
+        assert_eq!(cards.layout_editor.draft["clock"], [0.7, 0.7]);
+        assert!(cards.layout_editor.draft.contains_key("glance"));
+        assert_eq!(
+            cards.glance_position(&cards.layout_editor.draft),
+            [82., 88.]
+        );
+    }
+    #[test]
+    fn desktop_layout_preserves_concurrent_changes_and_resets_visible_cards() {
+        if std::env::var_os("DESKTOP_CARDS_LAYOUT_MERGE_TEST").is_none() {
+            let dir = std::env::temp_dir()
+                .join(format!("desktop-cards-layout-merge-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("config.json");
+            std::fs::write(&path, r#"{"enabled_widgets":["weather","clock"],"placement":{"snap":false},"widget_positions":{"weather":[0.2,0.2],"clock":[0.3,0.3],"devbox":[0.4,0.4]}}"#).unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "app::layout::tests::desktop_layout_preserves_concurrent_changes_and_resets_visible_cards"])
+                .env("DESKTOP_CARDS_LAYOUT_MERGE_TEST", "1").env("DESKTOP_CARDS_CONFIG", &path).status().unwrap();
+            let _ = std::fs::remove_dir_all(dir);
+            assert!(result.success());
+            return;
+        }
+        let (mut app, _) = Cards::init(Core::default(), Config::load());
+        let _ = app.arrange();
+        app.put_layout_point(Widget::Weather, [600., 300.]);
+        let moved = app.layout_editor.draft["weather"];
+        Config::save_changes(serde_json::json!({
+            "widget_positions":{"weather":[0.2,0.2],"clock":[0.8,0.8],"devbox":[0.7,0.7],"projects":[0.6,0.6]},
+            "placement":{"snap":true,"columns":24,"future_option":42},"theme":"ocean"
+        })).unwrap();
+        let _ = app.finish_arrange(true);
+        let saved = Config::load();
+        assert_eq!(saved.widget_positions["weather"], moved);
+        assert_eq!(saved.widget_positions["clock"], [0.8, 0.8]);
+        assert_eq!(saved.widget_positions["devbox"], [0.7, 0.7]);
+        assert_eq!(saved.widget_positions["projects"], [0.6, 0.6]);
+        assert_eq!(saved.widget_positions.len(), 4);
+        assert!(saved.placement.snap);
+        assert_eq!(saved.placement.columns, 24);
+        assert_eq!(saved.theme, "ocean");
+
+        let _ = app.arrange();
+        app.layout_defaults();
+        Config::save_changes(serde_json::json!({"widget_positions":{
+            "weather":[0.9,0.9],"clock":[0.7,0.7],"devbox":[0.2,0.2],"projects":[0.4,0.4]
+        }}))
+        .unwrap();
+        let _ = app.finish_arrange(true);
+        let saved = Config::load();
+        assert_eq!(saved.widget_positions["weather"], [0.9, 0.9]);
+        assert_eq!(saved.widget_positions["clock"], [0.7, 0.7]);
+        assert_eq!(saved.widget_positions["devbox"], [0.2, 0.2]);
+        assert_eq!(saved.widget_positions["projects"], [0.4, 0.4]);
+        let _ = app.arrange();
+        let _ = app.finish_arrange(true);
+        assert_eq!(Config::load().widget_positions, saved.widget_positions);
+    }
+    #[test]
+    fn desktop_drag_cancel_save_and_reset_preserve_unrelated_preferences() {
+        if std::env::var_os("DESKTOP_CARDS_LAYOUT_TEST").is_none() {
+            let dir =
+                std::env::temp_dir().join(format!("desktop-cards-layout-{}", std::process::id()));
+            std::fs::create_dir_all(&dir).unwrap();
+            let path = dir.join("config.json");
+            std::fs::write(
+                &path,
+                r#"{"theme":"teal","devbox":{"network":false},"placement":{"snap":false},"future_option":42}"#,
+            )
+            .unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap()).args(["--exact", "app::layout::tests::desktop_drag_cancel_save_and_reset_preserve_unrelated_preferences", "--nocapture"]).env("DESKTOP_CARDS_LAYOUT_TEST", "1").env("DESKTOP_CARDS_CONFIG", &path).status().unwrap();
+            let _ = std::fs::remove_dir_all(dir);
+            assert!(result.success());
+            return;
+        }
+        let path = Config::path().unwrap();
+        let before = std::fs::read(&path).unwrap();
+        let (mut app, _) = Cards::init(Core::default(), Config::load());
+        for save in [false, true] {
+            let _ = app.update(Message::Arrange);
+            let start = app.position_from(Widget::Weather, &app.layout_editor.draft);
+            let _ = app.update(Message::Pointer(
+                app.ids[5],
+                mouse::Event::CursorMoved {
+                    position: Point::new(start[0] + 50., start[1] + 30.),
+                },
+            ));
+            let _ = app.update(Message::LayoutPress(Widget::Weather));
+            let _ = app.update(Message::Pointer(
+                app.ids[5],
+                mouse::Event::CursorMoved {
+                    position: Point::new(650., 330.),
+                },
+            ));
+            let _ = app.update(Message::Pointer(
+                app.ids[5],
+                mouse::Event::ButtonReleased(mouse::Button::Left),
+            ));
+            let point = app.position_from(Widget::Weather, &app.layout_editor.draft);
+            assert!((point[0] - 600.).abs() < 0.001 && (point[1] - 300.).abs() < 0.001);
+            assert_ne!(
+                std::fs::read(&path).unwrap(),
+                before,
+                "release completes the gesture"
+            );
+            let _ = app.update(Message::LayoutFinish(save));
+            assert!(!app.layout_editor.active);
+            if !save {
+                let mut restored: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+                if restored.get("widget_positions") == Some(&serde_json::json!({})) {
+                    restored.as_object_mut().unwrap().remove("widget_positions");
+                }
+                assert_eq!(
+                    restored,
+                    serde_json::from_slice::<serde_json::Value>(&before).unwrap()
+                );
+            }
+        }
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["theme"], "teal");
+        assert_eq!(saved["devbox"]["network"], false);
+        assert_eq!(saved["future_option"], 42);
+        let restored = Config::load();
+        assert!(!restored.widget_positions.is_empty());
+        let _ = app.update(Message::ResetLayout);
+        assert!(Config::load().widget_positions.is_empty());
+        let raw: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(raw["future_option"], 42);
+    }
+}
+
+/// Rectangles for a layer surface's input region.
+fn zone(rects: &[[u32; 4]]) -> Vec<cosmic::iced::Rectangle> {
+    rects
+        .iter()
+        .map(|r| cosmic::iced::Rectangle {
+            x: r[0] as f32,
+            y: r[1] as f32,
+            width: r[2] as f32,
+            height: r[3] as f32,
+        })
+        .collect()
+}
+
+/// Changes where a layer surface takes clicks, without recreating it.
+pub(super) fn set_input_zone<M>(id: window::Id, rects: &[[u32; 4]]) -> Task<M> {
+    use cosmic::iced::runtime::platform_specific::{self, wayland};
+    cosmic::iced::runtime::task::effect(cosmic::iced::runtime::Action::PlatformSpecific(
+        platform_specific::Action::Wayland(wayland::Action::LayerSurface(
+            wayland::layer_surface::Action::InputZone {
+                id,
+                zone: Some(zone(rects)),
+            },
+        )),
+    ))
+}

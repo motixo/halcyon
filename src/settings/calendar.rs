@@ -1,0 +1,428 @@
+//! Account setup is separate from widget appearance and saved profiles.
+use super::*;
+use crate::calendar as account;
+
+#[derive(Clone, Debug)]
+pub enum Message {
+    Connect,
+    Begun(u64, Result<account::Authorization, account::Problem>),
+    Finished(u64, Result<account::Connection, account::Problem>),
+    Browser(Result<(), String>),
+    Cancel,
+    OpenBrowser,
+    CopyLink,
+    Check,
+    Loaded(
+        String,
+        Result<Vec<account::CalendarChoice>, account::Problem>,
+    ),
+    Select(usize),
+    ConfirmDisconnect(bool),
+    Disconnect,
+    Disconnected(Result<account::Connection, account::Problem>),
+    ImportClient,
+    Picked(Result<Option<PathBuf>, String>),
+    PublisherHelp(bool),
+    OpenGuide,
+}
+pub struct Editor {
+    pub connection: account::Connection,
+    pub client_ready: bool,
+    pub choices: Vec<account::CalendarChoice>,
+    pub labels: Vec<String>,
+    pub selected: Option<usize>,
+    pub pending: Option<account::Authorization>,
+    pub busy: bool,
+    pub connecting: bool,
+    pub loading: bool,
+    pub error: Option<String>,
+    pub confirm_disconnect: bool,
+    pub publisher_help: bool,
+    attempt: u64,
+}
+impl Default for Editor {
+    fn default() -> Self {
+        Self {
+            connection: account::load_connection(),
+            client_ready: account::load_client().is_ok(),
+            choices: vec![],
+            labels: vec![],
+            selected: None,
+            pending: None,
+            busy: false,
+            connecting: false,
+            loading: false,
+            error: None,
+            confirm_disconnect: false,
+            publisher_help: false,
+            attempt: 0,
+        }
+    }
+}
+impl Drop for Editor {
+    fn drop(&mut self) {
+        if let Some(pending) = &self.pending {
+            pending.cancel();
+        }
+    }
+}
+impl Editor {
+    pub fn refresh(&mut self) {
+        let connection = account::load_connection();
+        if self.connection != connection {
+            self.connection = connection;
+            self.choices.clear();
+            self.labels.clear();
+            self.selected = None;
+            self.loading = false;
+            self.confirm_disconnect = false;
+        }
+        self.client_ready = account::load_client().is_ok();
+    }
+    pub fn check(&mut self, unlock: bool) -> Task<super::Message> {
+        if !self.connection.connected() || self.loading {
+            return Task::none();
+        }
+        self.loading = true;
+        self.error = None;
+        let connection = self.connection.clone();
+        cosmic::task::future(async move {
+            let revision = connection.revision.clone();
+            super::Message::Calendar(Message::Loaded(
+                revision,
+                account::calendars(connection, unlock).await,
+            ))
+        })
+    }
+}
+fn wrap(message: Message) -> super::Message {
+    super::Message::Calendar(message)
+}
+async fn open_url(url: String) -> Result<(), String> {
+    use std::process::Stdio;
+    let mut child = tokio::process::Command::new("xdg-open")
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|_| "Could not open your browser. Try Open sign-in page again.".to_string())?;
+    let status = tokio::time::timeout(Duration::from_secs(8), child.wait())
+        .await
+        .map_err(|_| "Your browser did not respond. Try Open sign-in page again.".to_string())?
+        .map_err(|_| "Could not open your browser.".to_string())?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Could not open your browser. Try Open sign-in page again.".into())
+    }
+}
+impl Settings {
+    pub(super) fn update_calendar(&mut self, message: Message) -> Task<super::Message> {
+        match message {
+            Message::Connect => {
+                if self.calendar.busy || self.calendar.connection.cleanup_pending() {
+                    return Task::none();
+                }
+                self.calendar.error = None;
+                self.calendar.busy = true;
+                self.calendar.connecting = true;
+                self.calendar.attempt = self.calendar.attempt.wrapping_add(1);
+                let attempt = self.calendar.attempt;
+                return cosmic::task::future(async move {
+                    wrap(Message::Begun(attempt, account::begin_sign_in().await))
+                });
+            }
+            Message::Begun(attempt, result) => {
+                if attempt != self.calendar.attempt {
+                    if let Ok(pending) = result {
+                        pending.cancel();
+                    }
+                    return Task::none();
+                }
+                match result {
+                    Ok(pending) => {
+                        self.calendar.pending = Some(pending.clone());
+                        let url = pending.url().to_string();
+                        return Task::batch([
+                            cosmic::task::future(async move {
+                                wrap(Message::Browser(open_url(url).await))
+                            }),
+                            cosmic::task::future(async move {
+                                wrap(Message::Finished(
+                                    attempt,
+                                    account::finish_sign_in(pending).await,
+                                ))
+                            }),
+                        ]);
+                    }
+                    Err(problem) => {
+                        self.calendar.busy = false;
+                        self.calendar.connecting = false;
+                        self.calendar.error = Some(problem.to_string());
+                    }
+                }
+            }
+            Message::Finished(attempt, result) => {
+                if attempt != self.calendar.attempt {
+                    return Task::none();
+                }
+                self.calendar.pending = None;
+                self.calendar.busy = false;
+                self.calendar.connecting = false;
+                self.calendar.refresh();
+                match result {
+                    Ok(connection) => {
+                        self.calendar.connection = connection;
+                        self.calendar.error = None;
+                        return self.calendar.check(false);
+                    }
+                    Err(problem) => self.calendar.error = Some(problem.to_string()),
+                }
+            }
+            Message::Browser(result) => {
+                if self.calendar.pending.is_some() {
+                    if let Err(error) = result {
+                        self.calendar.error = Some(error);
+                    }
+                }
+            }
+            Message::Cancel => {
+                if !self.calendar.connecting {
+                    return Task::none();
+                }
+                if let Some(pending) = self.calendar.pending.take() {
+                    pending.cancel();
+                }
+                self.calendar.attempt = self.calendar.attempt.wrapping_add(1);
+                self.calendar.busy = false;
+                self.calendar.connecting = false;
+                self.calendar.error = None;
+            }
+            Message::CopyLink => {
+                if let Some(pending) = &self.calendar.pending {
+                    return cosmic::iced::clipboard::write(pending.url().to_string());
+                }
+            }
+            Message::OpenBrowser => {
+                if let Some(pending) = &self.calendar.pending {
+                    let url = pending.url().to_string();
+                    return cosmic::task::future(async move {
+                        wrap(Message::Browser(open_url(url).await))
+                    });
+                }
+            }
+            Message::Check => return self.calendar.check(true),
+            Message::Loaded(revision, result) => {
+                if revision != self.calendar.connection.revision {
+                    return Task::none();
+                }
+                self.calendar.loading = false;
+                match result {
+                    Ok(choices) => {
+                        self.calendar.selected = choices
+                            .iter()
+                            .position(|choice| choice.id == self.calendar.connection.calendar_id);
+                        self.calendar.labels =
+                            choices.iter().map(|choice| choice.name.clone()).collect();
+                        self.calendar.choices = choices;
+                        self.calendar.error = self.calendar.selected.is_none().then(||
+                            "The selected calendar is no longer available. Choose another calendar.".into());
+                    }
+                    Err(problem) => self.calendar.error = Some(problem.to_string()),
+                }
+            }
+            Message::Select(index) => {
+                if self.calendar.busy {
+                    return Task::none();
+                }
+                if let Some(choice) = self.calendar.choices.get(index) {
+                    match account::save_selection(&self.calendar.connection, choice) {
+                        Ok(connection) => {
+                            self.calendar.connection = connection;
+                            self.calendar.selected = Some(index);
+                            // The revision change fences the earlier check's
+                            // response, so it must also release that check.
+                            self.calendar.loading = false;
+                            self.calendar.error = None;
+                        }
+                        Err(problem) => self.calendar.error = Some(problem.to_string()),
+                    }
+                }
+            }
+            Message::ConfirmDisconnect(on) => self.calendar.confirm_disconnect = on,
+            Message::Disconnect => {
+                if (!self.calendar.confirm_disconnect
+                    && !self.calendar.connection.cleanup_pending())
+                    || self.calendar.busy
+                {
+                    return Task::none();
+                }
+                self.calendar.busy = true;
+                self.calendar.error = None;
+                let connection = self.calendar.connection.clone();
+                return cosmic::task::future(async move {
+                    wrap(Message::Disconnected(account::disconnect(connection).await))
+                });
+            }
+            Message::Disconnected(result) => {
+                self.calendar.busy = false;
+                self.calendar.confirm_disconnect = false;
+                self.calendar.refresh();
+                if let Err(problem) = result {
+                    self.calendar.error = Some(problem.to_string());
+                }
+            }
+            Message::ImportClient => {
+                if self.calendar.busy {
+                    return Task::none();
+                }
+                self.calendar.busy = true;
+                return cosmic::task::future(async {
+                    use cosmic::dialog::file_chooser::{self, FileFilter, open::Dialog};
+                    let result = match Dialog::new()
+                        .title("Google Desktop app credentials")
+                        .filter(FileFilter::new("Google OAuth JSON").glob("*.json"))
+                        .open_file()
+                        .await
+                    {
+                        Ok(response) => response
+                            .url()
+                            .to_file_path()
+                            .map(Some)
+                            .map_err(|_| "Choose a local JSON file.".to_string()),
+                        Err(file_chooser::Error::Cancelled) => Ok(None),
+                        Err(_) => Err("Could not open the file chooser.".into()),
+                    };
+                    wrap(Message::Picked(result))
+                });
+            }
+            Message::Picked(result) => {
+                self.calendar.busy = false;
+                match result {
+                    Ok(Some(path)) => match account::import_client(&path) {
+                        Ok(()) => {
+                            self.calendar.client_ready = true;
+                            self.calendar.error = None;
+                            self.calendar.publisher_help = false;
+                        }
+                        Err(problem) => self.calendar.error = Some(problem.to_string()),
+                    },
+                    Ok(None) => {}
+                    Err(error) => self.calendar.error = Some(error),
+                }
+            }
+            Message::PublisherHelp(on) => self.calendar.publisher_help = on,
+            Message::OpenGuide => {
+                let path = dirs::data_local_dir()
+                    .unwrap_or_default()
+                    .join("cosmic-desktop-cards/source/docs/google-calendar-setup.html");
+                return run_command(
+                    "/usr/bin/xdg-open".into(),
+                    vec![path.to_string_lossy().into_owned()],
+                    "Calendar setup guide opened",
+                );
+            }
+        }
+        Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn selecting_a_calendar_during_a_check_allows_another_check() {
+        const CHILD: &str = "DESKTOP_CARDS_CALENDAR_SELECTION_TEST";
+        if std::env::var_os(CHILD).is_none() {
+            let root = std::env::temp_dir()
+                .join(format!("cards-calendar-selection-{}", std::process::id()));
+            for dir in ["config", "data", "cache", "state", "desktop"] {
+                std::fs::create_dir_all(root.join(dir)).unwrap();
+            }
+            std::fs::write(root.join("dconf-profile"), "").unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "settings::calendar::tests::selecting_a_calendar_during_a_check_allows_another_check",
+                ])
+                .env(CHILD, "1")
+                .env("DESKTOP_CARDS_CONFIG", root.join("config.json"))
+                .env("DESKTOP_CARDS_DESKTOP_ROOT", root.join("desktop"))
+                .env("XDG_CONFIG_HOME", root.join("config"))
+                .env("XDG_DATA_HOME", root.join("data"))
+                .env("XDG_CACHE_HOME", root.join("cache"))
+                .env("XDG_STATE_HOME", root.join("state"))
+                .env("DCONF_PROFILE", root.join("dconf-profile"))
+                .output()
+                .unwrap();
+            std::fs::remove_dir_all(root).unwrap();
+            assert!(
+                result.status.success(),
+                "{}\n{}",
+                String::from_utf8_lossy(&result.stdout),
+                String::from_utf8_lossy(&result.stderr)
+            );
+            return;
+        }
+        let connection = account::Connection {
+            backend: account::Backend::Google,
+            account: "alex@example.com".into(),
+            calendar_id: "primary".into(),
+            calendar_name: "Personal".into(),
+            revision: "before-selection".into(),
+            credential: "fixture".into(),
+        };
+        std::fs::write(
+            account::account_path().unwrap(),
+            serde_json::to_vec(&connection).unwrap(),
+        )
+        .unwrap();
+        let (mut settings, _) = Settings::init(Core::default(), Page::Overview);
+        let choices = vec![
+            account::CalendarChoice {
+                id: "primary".into(),
+                name: "Personal".into(),
+                primary: true,
+            },
+            account::CalendarChoice {
+                id: "team".into(),
+                name: "Team".into(),
+                primary: false,
+            },
+        ];
+        let _ = settings.update_calendar(Message::Loaded(
+            connection.revision.clone(),
+            Ok(choices.clone()),
+        ));
+        // Dropping the returned task leaves the request pending without using
+        // the network or a keyring. Its response is delivered explicitly below.
+        let _ = settings.update_calendar(Message::Check);
+        assert!(settings.calendar.loading);
+        let _ = settings.update_calendar(Message::Select(1));
+        assert_eq!(account::load_connection().calendar_id, "team");
+        assert!(
+            !settings.calendar.loading,
+            "the superseded check must not block retry"
+        );
+        let _ = settings.update_calendar(Message::Check);
+        assert!(settings.calendar.loading);
+        let _ = settings.update_calendar(Message::Loaded(
+            connection.revision,
+            Err(account::Problem::SignIn),
+        ));
+        assert!(
+            settings.calendar.loading,
+            "a stale result must not finish the new check"
+        );
+        assert!(settings.calendar.error.is_none());
+        let _ = settings.update_calendar(Message::Loaded(
+            settings.calendar.connection.revision.clone(),
+            Ok(choices),
+        ));
+        assert!(!settings.calendar.loading);
+        assert_eq!(settings.calendar.selected, Some(1));
+    }
+}

@@ -1,0 +1,631 @@
+//! Automation subpage: a status card with the master switch and pause
+//! choices, the ordered rules (each row on/off, up/down, edit, delete; one
+//! row opens into its editor), and the recent switches.
+use super::desktop::{ERROR, WARN, banner, line};
+use super::pages::{group_label, section};
+use super::windows::store_pill;
+use super::*;
+use crate::automation::status::{self as words, Tone};
+use crate::automation::{Change, Days, Effect, ProfileRef, Rule, Trigger};
+use crate::settings::automation::{DraftEdit, Kind, Message as Edit, PauseFor, RuleDraft};
+use chrono::Local;
+
+fn edit(message: Edit) -> Message {
+    Message::Automation(message)
+}
+
+pub fn time_id() -> cosmic::widget::Id {
+    cosmic::widget::Id::new("automation-time")
+}
+
+/// A labelled row in the rule editor.
+fn field<'a>(title: &'static str, control: Element<'a, Message>) -> Element<'a, Message> {
+    row::with_children(vec![
+        container(label(title, 12., MUTED)).width(64).into(),
+        container(control).width(Length::Fill).into(),
+    ])
+    .spacing(12)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn chip<'a>(title: String, on: bool, accent: Color, message: Message) -> Element<'a, Message> {
+    button::custom(label(title, 12., if on { FG } else { MUTED }))
+        .class(chip_style(on, accent))
+        .selected(on)
+        .padding([5, 11])
+        .on_press(message)
+        .into()
+}
+
+fn small_icon<'a>(name: &'static str, message: Option<Message>) -> Element<'a, Message> {
+    button::icon(icon::from_name(name))
+        .extra_small()
+        .on_press_maybe(message)
+        .into()
+}
+
+impl Settings {
+    fn h24(&self) -> bool {
+        self.config.clock.format_24h
+    }
+
+    pub(super) fn automation_page(&self) -> Element<'_, Message> {
+        let editor = &self.automation;
+        let accent = self.settings_accent();
+        let mut items = vec![split(
+            column::with_children(vec![
+                heading("Schedules", ""),
+                label(
+                    "Switch setups on a schedule or when displays change.",
+                    12.,
+                    MUTED,
+                ),
+            ])
+            .spacing(4)
+            .into(),
+            store_pill(editor.store(), accent),
+        )];
+        if let Some(problem) = editor.unavailable() {
+            items.push(banner(
+                format!("Desktop settings unavailable: {problem}"),
+                ERROR,
+                Vec::new(),
+            ));
+            return column::with_children(items).spacing(16).into();
+        }
+        let settings = match editor.settings() {
+            Ok(settings) => settings.clone(),
+            Err(problem) if !problem.is_empty() => {
+                items.push(banner(
+                    format!("{problem} Automation is off until this is fixed."),
+                    ERROR,
+                    vec![
+                        button::standard("Start over")
+                            .on_press_maybe(editor.writable().then_some(edit(Edit::StartOver)))
+                            .into(),
+                    ],
+                ));
+                return column::with_children(items).spacing(16).into();
+            }
+            Err(_) => return label("Reading automation…", 12., MUTED),
+        };
+        items.push(self.automation_status(&settings));
+        items.push(self.automation_rules(&settings));
+        if !editor.state.recent.is_empty() {
+            items.push(group_label("RECENT"));
+            items.push(self.automation_recent());
+        }
+        column::with_children(items).spacing(16).into()
+    }
+
+    fn automation_status(&self, settings: &crate::automation::Automation) -> Element<'_, Message> {
+        let editor = &self.automation;
+        let accent = self.settings_accent();
+        let now = chrono::Utc::now();
+        let status = words::status(
+            settings,
+            &editor.state,
+            &Local,
+            now,
+            editor.manual_at,
+            self.h24(),
+        );
+        let (symbol, tone) = match status.tone {
+            Tone::Quiet => ("media-playback-stop-symbolic", MUTED),
+            Tone::Active => ("emblem-synchronizing-symbolic", accent),
+            Tone::Paused => ("media-playback-pause-symbolic", WARN),
+            Tone::Attention => ("dialog-warning-symbolic", WARN),
+        };
+        let mut text = vec![label(status.headline, 15., FG)];
+        if let Some(detail) = status.detail {
+            text.push(label(detail, 12., MUTED));
+        }
+        let mut toggle = toggler(settings.enabled);
+        if editor.writable() {
+            toggle = toggle.on_toggle(|on| edit(Edit::Enable(on)));
+        }
+        let head = split(
+            row::with_children(vec![
+                container(icon::from_name(symbol).size(20).icon())
+                    .class(cosmic::theme::Container::custom(move |_| {
+                        cosmic::iced::widget::container::Style {
+                            icon_color: Some(tone),
+                            ..Default::default()
+                        }
+                    }))
+                    .into(),
+                column::with_children(text).spacing(3).into(),
+            ])
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .into(),
+            toggle.into(),
+        );
+        let mut rows = vec![head];
+        if editor.undoable
+            && editor
+                .state
+                .last()
+                .is_some_and(|last| matches!(last.effect, Effect::Applied { .. }))
+        {
+            rows.push(
+                row::with_children(vec![
+                    container(label(
+                        "Not what you wanted? The last switch can be undone like any profile.",
+                        12.,
+                        MUTED,
+                    ))
+                    .width(Length::Fill)
+                    .into(),
+                    button::text("Undo in Setups")
+                        .leading_icon(icon::from_name("edit-undo-symbolic").size(14))
+                        .on_press(Message::Page(Page::DesktopProfiles))
+                        .into(),
+                ])
+                .spacing(12)
+                .align_y(Alignment::Center)
+                .into(),
+            );
+        }
+        let now_unix = now.timestamp();
+        if settings.running() && editor.writable() {
+            if settings.skipping_at(now_unix).is_some() {
+                rows.push(separator());
+                rows.push(
+                    row::with_children(vec![
+                        container(label(
+                            "Only that switch is skipped. Everything else keeps working.",
+                            12.,
+                            MUTED,
+                        ))
+                        .width(Length::Fill)
+                        .into(),
+                        button::standard("Don’t skip")
+                            .leading_icon(icon::from_name("edit-undo-symbolic").size(14))
+                            .on_press(edit(Edit::Resume))
+                            .into(),
+                    ])
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .into(),
+                );
+            } else if settings.paused_at(now_unix).is_some() {
+                rows.push(separator());
+                rows.push(
+                    row::with_children(vec![
+                        container(label(
+                            "Rules don’t act while paused, and nothing is caught up afterwards.",
+                            12.,
+                            MUTED,
+                        ))
+                        .width(Length::Fill)
+                        .into(),
+                        button::standard("Resume")
+                            .leading_icon(icon::from_name("media-playback-start-symbolic").size(14))
+                            .on_press(edit(Edit::Resume))
+                            .into(),
+                    ])
+                    .spacing(12)
+                    .align_y(Alignment::Center)
+                    .into(),
+                );
+            } else {
+                let next =
+                    crate::automation::next_switch(settings, &editor.state, &Local, now).is_some();
+                let mut choices = vec![label("Pause", 12., MUTED)];
+                let mut options = Vec::new();
+                if next {
+                    options.push(("Skip next", PauseFor::Next));
+                }
+                options.extend([
+                    ("1 hour", PauseFor::Hour),
+                    ("Until tomorrow", PauseFor::Today),
+                    ("Until I resume", PauseFor::Resume),
+                ]);
+                for (title, choice) in options {
+                    choices.push(
+                        button::custom(label(title, 12., FG))
+                            .class(chip_style(false, accent))
+                            .padding([5, 11])
+                            .on_press(edit(Edit::Pause(choice)))
+                            .into(),
+                    );
+                }
+                rows.push(separator());
+                rows.push(
+                    row::with_children(choices)
+                        .spacing(6)
+                        .align_y(Alignment::Center)
+                        .wrap()
+                        .into(),
+                );
+            }
+        }
+        section(rows)
+    }
+
+    fn automation_rules(&self, settings: &crate::automation::Automation) -> Element<'_, Message> {
+        let editor = &self.automation;
+        let accent = self.settings_accent();
+        let writable = editor.writable();
+        let mut rows: Vec<Element<'_, Message>> = Vec::new();
+        let count = settings.rules.len();
+        for (index, rule) in settings.rules.iter().enumerate() {
+            if !rows.is_empty() {
+                rows.push(separator());
+            }
+            let editing = editor
+                .draft
+                .as_ref()
+                .is_some_and(|draft| draft.id.as_deref() == Some(rule.id.as_str()));
+            if editing {
+                rows.push(self.automation_rule_editor(editor.draft.as_ref().unwrap()));
+                continue;
+            }
+            rows.push(self.automation_rule_row(rule, index, count, writable));
+            if editor.confirm_delete.as_deref() == Some(rule.id.as_str()) {
+                rows.push(banner(
+                    format!("Remove the rule for {}?", rule.name),
+                    WARN,
+                    vec![
+                        button::text("Keep")
+                            .on_press(edit(Edit::Delete(rule.id.clone(), false)))
+                            .into(),
+                        button::destructive("Remove")
+                            .on_press(edit(Edit::Delete(rule.id.clone(), true)))
+                            .into(),
+                    ],
+                ));
+            }
+        }
+        if let Some(draft) = editor.draft.as_ref().filter(|draft| draft.id.is_none()) {
+            if !rows.is_empty() {
+                rows.push(separator());
+            }
+            rows.push(self.automation_rule_editor(draft));
+        }
+        if rows.is_empty() {
+            rows.push(label(
+                "No rules yet. A rule applies one of your profiles at a time of day or when a display connects.",
+                12.,
+                MUTED,
+            ));
+        }
+        let adding =
+            editor.draft.is_none() && writable && count < crate::automation::rules::MAX_RULES;
+        rows.push(
+            row::with_children(vec![
+                button::standard("Schedule")
+                    .leading_icon(icon::from_name("list-add-symbolic").size(14))
+                    .on_press_maybe(adding.then_some(edit(Edit::New(Kind::Schedule))))
+                    .into(),
+                button::standard("Display")
+                    .leading_icon(icon::from_name("list-add-symbolic").size(14))
+                    .on_press_maybe(adding.then_some(edit(Edit::New(Kind::Display))))
+                    .into(),
+                container(label(
+                    "Higher rules win when two happen at once",
+                    11.,
+                    MUTED,
+                ))
+                .width(Length::Fill)
+                .align_x(cosmic::iced::alignment::Horizontal::Right)
+                .into(),
+            ])
+            .spacing(8)
+            .align_y(Alignment::Center)
+            .into(),
+        );
+        let _ = accent;
+        column::with_children(vec![
+            group_label("RULES"),
+            section(rows),
+            label(
+                "Your own changes stay until the next switch. Missed times catch up once, after sleep or a restart.",
+                11.,
+                MUTED,
+            ),
+        ])
+        .spacing(8)
+        .into()
+    }
+
+    fn automation_rule_row(
+        &self,
+        rule: &Rule,
+        index: usize,
+        count: usize,
+        writable: bool,
+    ) -> Element<'_, Message> {
+        let editor = &self.automation;
+        let free = writable && editor.draft.is_none();
+        let symbol = match rule.when {
+            Trigger::Schedule { .. } => "alarm-symbolic",
+            Trigger::Display(_) => "video-display-symbolic",
+        };
+        let name = editor.profile_name(&rule.profile, &rule.name);
+        let target: Element<'_, Message> = match editor.rule_problem(rule) {
+            Some(problem) => line(format!("→ {name} · {problem}"), 12., WARN),
+            None => line(format!("→ {name}"), 12., MUTED),
+        };
+        let tone = if rule.enabled { FG } else { MUTED };
+        let mut toggle = toggler(rule.enabled);
+        if free {
+            let id = rule.id.clone();
+            toggle = toggle.on_toggle(move |on| edit(Edit::Rule(id.clone(), on)));
+        }
+        row::with_children(vec![
+            icon::from_name(symbol).size(18).icon().into(),
+            container(
+                column::with_children(vec![line(rule.when.summary(self.h24()), 14., tone), target])
+                    .spacing(2),
+            )
+            .width(Length::Fill)
+            .into(),
+            small_icon(
+                "go-up-symbolic",
+                (free && index > 0).then(|| edit(Edit::Move(rule.id.clone(), -1))),
+            ),
+            small_icon(
+                "go-down-symbolic",
+                (free && index + 1 < count).then(|| edit(Edit::Move(rule.id.clone(), 1))),
+            ),
+            button::text("Edit")
+                .on_press_maybe(free.then(|| edit(Edit::Edit(rule.id.clone()))))
+                .into(),
+            small_icon(
+                "edit-delete-symbolic",
+                free.then(|| edit(Edit::Delete(rule.id.clone(), false))),
+            ),
+            toggle.into(),
+        ])
+        .spacing(8)
+        .align_y(Alignment::Center)
+        .into()
+    }
+
+    fn automation_rule_editor(&self, draft: &RuleDraft) -> Element<'_, Message> {
+        let editor = &self.automation;
+        let accent = self.settings_accent();
+        let title = match (draft.kind, draft.id.is_some()) {
+            (Kind::Schedule, false) => "New schedule",
+            (Kind::Schedule, true) => "Edit schedule",
+            (Kind::Display, false) => "New display rule",
+            (Kind::Display, true) => "Edit display rule",
+        };
+        let mut items = vec![label(title, 14., FG)];
+        match draft.kind {
+            Kind::Schedule => {
+                let hint: Element<'_, Message> = match draft.parsed_time() {
+                    // Shows how a loosely typed time was read.
+                    Some(time) if time.format(self.h24()) != draft.time.trim() => label(
+                        format!("{} · local time", time.format(self.h24())),
+                        11.,
+                        MUTED,
+                    ),
+                    Some(_) => label("Local time", 11., MUTED),
+                    None if draft.time.trim().is_empty() => label("e.g. 19:00", 11., MUTED),
+                    None => label("Use a time like 19:00 or 7 pm", 11., WARN),
+                };
+                items.push(field(
+                    "At",
+                    row::with_children(vec![
+                        text_input("19:00", draft.time.clone())
+                            .id(time_id())
+                            .on_input(|text| edit(Edit::Draft(DraftEdit::Time(text))))
+                            .on_submit(|_| edit(Edit::Save))
+                            .width(96)
+                            .into(),
+                        hint,
+                    ])
+                    .spacing(10)
+                    .align_y(Alignment::Center)
+                    .into(),
+                ));
+                let days: Vec<Element<'_, Message>> = (0..7)
+                    .map(|index| {
+                        chip(
+                            Days::short(index).into(),
+                            draft.days.has(index),
+                            accent,
+                            edit(Edit::Draft(DraftEdit::Day(index))),
+                        )
+                    })
+                    .collect();
+                let presets = segmented(
+                    [
+                        ("Every day", Days::EVERY),
+                        ("Weekdays", Days::WEEKDAYS),
+                        ("Weekends", Days::WEEKEND),
+                    ]
+                    .into_iter()
+                    .map(|(title, preset)| {
+                        (
+                            title.to_string(),
+                            draft.days == preset,
+                            Some(edit(Edit::Draft(DraftEdit::Days(preset)))),
+                        )
+                    })
+                    .collect(),
+                    accent,
+                );
+                items.push(field(
+                    "On",
+                    column::with_children(vec![
+                        row::with_children(days).spacing(4).wrap().into(),
+                        presets,
+                    ])
+                    .spacing(8)
+                    .into(),
+                ));
+            }
+            Kind::Display => {
+                items.push(field(
+                    "When",
+                    segmented(
+                        [
+                            ("Connects", Change::Connect),
+                            ("Disconnects", Change::Disconnect),
+                        ]
+                        .into_iter()
+                        .map(|(title, change)| {
+                            (
+                                title.to_string(),
+                                draft.change == change,
+                                Some(edit(Edit::Draft(DraftEdit::Change(change)))),
+                            )
+                        })
+                        .collect(),
+                        accent,
+                    ),
+                ));
+                let group = match draft.change {
+                    Change::Connect => "First external display",
+                    Change::Disconnect => "Last external display",
+                };
+                let mut choices = vec![chip(
+                    group.into(),
+                    draft.display.is_none(),
+                    accent,
+                    edit(Edit::Draft(DraftEdit::Display(None))),
+                )];
+                for (name, title, connected) in editor.display_choices() {
+                    let on = draft.display.as_deref() == Some(name.as_str());
+                    let title = if connected {
+                        title
+                    } else {
+                        format!("{title} · not connected")
+                    };
+                    choices.push(chip(
+                        title,
+                        on,
+                        accent,
+                        edit(Edit::Draft(DraftEdit::Display(Some(name)))),
+                    ));
+                }
+                items.push(field(
+                    "Display",
+                    row::with_children(choices).spacing(6).wrap().into(),
+                ));
+            }
+        }
+        let mut profiles: Vec<Element<'_, Message>> = Vec::new();
+        for (profile, name) in &editor.profiles {
+            let on = draft.profile.as_ref() == Some(profile);
+            profiles.push(chip(
+                name.clone(),
+                on,
+                accent,
+                edit(Edit::Draft(DraftEdit::Profile(profile.clone()))),
+            ));
+        }
+        if let Some(ProfileRef::Saved(_)) = &draft.profile
+            && !editor
+                .profiles
+                .iter()
+                .any(|(known, _)| Some(known) == draft.profile.as_ref())
+        {
+            profiles.push(label("The chosen profile was deleted", 12., WARN));
+        }
+        items.push(field(
+            "Apply",
+            row::with_children(profiles).spacing(6).wrap().into(),
+        ));
+        let missing = draft.missing();
+        let enables_automation = editor
+            .settings()
+            .is_ok_and(|settings| draft.enables_automation(settings));
+        let save_label = if enables_automation {
+            "Save & enable"
+        } else {
+            "Save rule"
+        };
+        items.push(
+            row::with_children(vec![
+                container(match missing {
+                    Some(missing) => label(missing, 11., MUTED),
+                    None => label(
+                        match draft.kind {
+                            Kind::Schedule => {
+                                "Applies at that time, once a day on the chosen days."
+                            }
+                            Kind::Display => "Applies once each time this happens.",
+                        },
+                        11.,
+                        MUTED,
+                    ),
+                })
+                .width(Length::Fill)
+                .into(),
+                button::text("Cancel").on_press(edit(Edit::Cancel)).into(),
+                button::suggested(save_label)
+                    .on_press_maybe(
+                        (missing.is_none() && editor.writable()).then_some(edit(Edit::Save)),
+                    )
+                    .into(),
+            ])
+            .spacing(10)
+            .align_y(Alignment::Center)
+            .into(),
+        );
+        container(column::with_children(items).spacing(12))
+            .padding([12, 14])
+            .width(Length::Fill)
+            .class(cosmic::theme::Container::custom(move |theme| {
+                cosmic::iced::widget::container::Style {
+                    background: Some(Background::Color(surface_color(theme, BASE))),
+                    border: Border {
+                        color: Color { a: 0.5, ..accent },
+                        width: 1.,
+                        radius: 12.into(),
+                    },
+                    ..Default::default()
+                }
+            }))
+            .into()
+    }
+
+    fn automation_recent(&self) -> Element<'_, Message> {
+        let editor = &self.automation;
+        let accent = self.settings_accent();
+        let now = chrono::Utc::now();
+        let now_local = crate::automation::clock::local(&Local, now);
+        let mut rows = Vec::new();
+        for outcome in editor.state.recent.iter().take(4) {
+            if !rows.is_empty() {
+                rows.push(separator());
+            }
+            let words::Line { what, cause, why } = words::outcome_line(outcome, self.h24());
+            let (symbol, tone) = match &outcome.effect {
+                Effect::Applied { skipped } if skipped.is_empty() => ("✓", accent),
+                Effect::Applied { .. } | Effect::Waiting { .. } => ("!", WARN),
+                Effect::AlreadySet | Effect::KeptManual { .. } | Effect::Replaced { .. } => {
+                    ("•", MUTED)
+                }
+                Effect::Failed { .. } => ("!", ERROR),
+            };
+            let at = crate::automation::clock::local(
+                &Local,
+                crate::automation::clock::from_unix(outcome.at),
+            );
+            let mut lines = vec![line(what, 13., FG), line(cause, 11., MUTED)];
+            if let Some(why) = why {
+                lines.push(label(why, 11., if tone == ERROR { ERROR } else { WARN }));
+            }
+            rows.push(
+                row::with_children(vec![
+                    container(label(symbol, 13., tone)).width(14).into(),
+                    container(column::with_children(lines).spacing(2))
+                        .width(Length::Fill)
+                        .into(),
+                    label(words::stamp(at, now_local, self.h24()), 11., MUTED),
+                ])
+                .spacing(10)
+                .align_y(Alignment::Center)
+                .into(),
+            );
+        }
+        section(rows)
+    }
+}

@@ -1,0 +1,26 @@
+# Build output
+/target/
+/companion/dock-islands-core/target/
+__pycache__/
+*.pyc
+*.tmp
+
+# Local working material, kept on the maintainer's machine only.
+/private/
+/docs/audit/
+/docs/superpowers/
+/docs/plans/*
+!/docs/plans/looks-shipped.json
+# Brand explorations, drafts and references (some are third-party and
+# must not be redistributed). The final art lives in assets/ and below.
+/docs/brand/icons/
+/docs/brand/looks/round*/
+/docs/brand/wallpapers/
+/docs/brand/welcome/
+/docs/brand/wizard/*.png
+/docs/brand/wizard/generation-prompts.txt
+
+# Credentials and local configuration never belong in the repository.
+google-calendar-client.json
+*.secret
+.env

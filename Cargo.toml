@@ -1,0 +1,46 @@
+[package]
+name = "cosmic-desktop-cards"
+version = "0.1.0"
+description = "Coordinated clock, weather and system cards for the COSMIC desktop"
+edition = "2024"
+rust-version = "1.93"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+dock-islands-core = { path = "companion/dock-islands-core" }
+cosmic = { package = "libcosmic", git = "https://github.com/pop-os/libcosmic", default-features = false, features = [
+    "autosize",
+    "multi-window",
+    "tokio",
+    "wayland",
+    "winit",
+    "xdg-portal",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+tokio = { version = "1", features = ["time", "macros", "sync", "net"] }
+dirs = "5"
+chrono = { version = "0.4", features = ["clock"] }
+libc = "0.2"
+notify = "8.2"
+ron = "0.12"
+# Floating-app rules are Rust regexes in the compositor; same version as
+# cosmic-comp 4d14528. Shortcut keys use xkbcommon's keysym names.
+regex = "=1.12.3"
+xkbcommon = "=0.8.0"
+# Wallpaper thumbnails and colour suggestions: PNG and JPEG only, the
+# version libcosmic already locks.
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
+# Music controls talk MPRIS on the session bus; the same zbus libcosmic
+# already builds (with its tokio support), so no new crates are compiled.
+zbus = { version = "=5.17.0", default-features = false, features = ["tokio"] }
+# Calendar authorization uses the system keyring and Google's native-app PKCE flow.
+secret-service = { version = "=5.2.0", features = ["rt-tokio-crypto-rust"] }
+base64 = "=0.22.1"
+sha2 = "=0.11.0"
+getrandom = "=0.4.3"
+
+[profile.release]
+strip = "debuginfo"

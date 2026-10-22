@@ -1,0 +1,378 @@
+//! The desktop's side of automation, without the UI: it follows the
+//! settings file, settles display changes, asks `decide` what is due, hands
+//! switches to a blocking job and records what became of them. The desktop
+//! app only feeds it the clock and events and runs its jobs.
+//!
+//! Display changes are confirmed only after the set of connected displays
+//! has stayed the same for `SETTLE`, so a monitor that reconnects while it
+//! wakes, or a dock that brings up its displays one by one, makes one
+//! change, not several.
+use super::decide::{self, Due, Effect, Outcome, State};
+use super::rules::Automation;
+use super::run::{Ran, run};
+use crate::desktop::DesktopStore;
+use crate::desktop::profiles::{Domain, Installed};
+use chrono::{DateTime, Local, TimeZone, Utc};
+use std::collections::BTreeSet;
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+pub const SETTLE: Duration = Duration::from_secs(5);
+/// Displays are looked at this often while a display rule is on (an
+/// output event from the compositor looks sooner).
+pub const DISPLAY_POLL: Duration = Duration::from_secs(60);
+/// While a switch waits for a Settings window, the window is looked for
+/// this often, so a hold left by one that crashed is released.
+pub const HOLD_CHECK: Duration = Duration::from_secs(15);
+
+/// Switches for the blocking job, in order, with the Settings hold.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Job {
+    pub due: Vec<Due>,
+    pub held: BTreeSet<Domain>,
+}
+
+impl Job {
+    /// Runs every switch in order (blocking), oldest first. A later switch
+    /// replaces an earlier one that waits (`Automator::finished`), so a
+    /// waiting switch never runs over a newer one afterwards.
+    pub fn run(self, store: &DesktopStore) -> Vec<(Due, Ran)> {
+        let installed = Installed::discover(store);
+        let mut results = Vec::new();
+        for due in self.due {
+            let expected = store.manual_at();
+            let manual = manual_at(store, None);
+            let ran = if let Some(at) = manual.filter(|at| at.timestamp() >= due.at) {
+                Ran::KeptManual(at.timestamp())
+            } else {
+                crate::desktop::actions::scheduled(expected, || {
+                    run(
+                        store,
+                        &installed,
+                        &due.profile,
+                        &due.name,
+                        &super::read_hold(store),
+                    )
+                })
+            };
+            results.push((due, ran));
+        }
+        results
+    }
+}
+
+pub struct Automator {
+    store: Option<DesktopStore>,
+    settings: Option<Automation>,
+    raw: Option<Vec<u8>>,
+    problem: Option<String>,
+    pub state: State,
+    displays: Option<Vec<String>>,
+    settling: Option<(Vec<String>, Instant)>,
+    next_display_check: Option<Instant>,
+    wake: Option<Instant>,
+    busy: bool,
+    again: bool,
+    retry_pending: bool,
+    held: BTreeSet<Domain>,
+}
+
+impl Automator {
+    /// The desktop's store; automation stays inactive in preview mode or
+    /// when the store can't be used.
+    pub fn from_env() -> Self {
+        let store = DesktopStore::from_env().ok().filter(DesktopStore::writable);
+        Self::with_store(store)
+    }
+    pub fn with_store(store: Option<DesktopStore>) -> Self {
+        let mut automator = Self {
+            state: store.as_ref().map(super::load_state).unwrap_or_default(),
+            store,
+            settings: None,
+            raw: None,
+            problem: None,
+            displays: None,
+            settling: None,
+            next_display_check: None,
+            wake: None,
+            busy: false,
+            again: false,
+            // A switch left waiting by the previous session is tried again.
+            retry_pending: true,
+            held: BTreeSet::new(),
+        };
+        automator.reload();
+        automator
+    }
+    /// Files to watch: the settings and the Settings hold.
+    pub fn paths(&self) -> Vec<PathBuf> {
+        self.store
+            .as_ref()
+            .map(|store| {
+                vec![
+                    super::path(store, super::FILE),
+                    super::path(store, super::HOLD_FILE),
+                ]
+            })
+            .unwrap_or_default()
+    }
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub fn problem(&self) -> Option<&str> {
+        self.problem.as_deref()
+    }
+    /// Re-reads the settings and the hold. `true` when either changed, so
+    /// the caller evaluates now.
+    pub fn reload(&mut self) -> bool {
+        let Some(store) = &self.store else {
+            return false;
+        };
+        let mut changed = false;
+        let raw = std::fs::read(super::path(store, super::FILE)).ok();
+        if raw != self.raw || (self.settings.is_none() && self.problem.is_none()) {
+            changed = true;
+            match super::load(store) {
+                Ok(settings) => {
+                    self.settings = Some(settings);
+                    self.problem = None;
+                }
+                Err(problem) => {
+                    if self.problem.as_ref() != Some(&problem) {
+                        eprintln!("Automation: {problem}");
+                    }
+                    self.settings = None;
+                    self.problem = Some(problem);
+                }
+            }
+            self.raw = raw;
+            // Look now: new rules start from the displays as they are.
+            self.wake = Some(Instant::now());
+            if !self.watching_displays() {
+                self.displays = None;
+                self.settling = None;
+                self.next_display_check = None;
+            }
+        }
+        let held = super::read_hold(store);
+        if held != self.held {
+            self.held = held;
+            self.retry_pending = true;
+            self.wake = Some(Instant::now());
+            changed = true;
+        }
+        changed
+    }
+    fn running(&self) -> bool {
+        self.store.is_some() && self.settings.as_ref().is_some_and(Automation::running)
+    }
+    fn watching_displays(&self) -> bool {
+        self.settings
+            .as_ref()
+            .is_some_and(Automation::watches_displays)
+    }
+    /// When to evaluate next (`None`: nothing to do until a file changes).
+    pub fn wake(&self) -> Option<Instant> {
+        if self.busy {
+            return None;
+        }
+        self.wake
+    }
+    /// A display may have changed: look again soon.
+    pub fn displays_changed(&mut self, now: Instant) {
+        if self.watching_displays() {
+            self.next_display_check = Some(now);
+            self.wake = Some(self.wake.map_or(now, |wake| wake.min(now)));
+        }
+    }
+    /// `lost` passed while the monotonic clock stood still (suspend): the
+    /// next look comes that much sooner, and displays are read again, since
+    /// they may have changed while asleep.
+    pub fn resumed(&mut self, lost: Duration, now: Instant) {
+        self.wake = self.wake.map(|wake| wake.checked_sub(lost).unwrap_or(now));
+        if self.watching_displays() {
+            self.displays_changed(now);
+        }
+    }
+    /// Whether it is time to evaluate.
+    pub fn due(&self, now: Instant) -> bool {
+        self.wake().is_some_and(|wake| wake <= now)
+    }
+
+    /// Evaluates with the local time zone and the real displays.
+    pub fn evaluate(&mut self, now: DateTime<Utc>, instant: Instant) -> Option<Job> {
+        // Read only when a display rule is on and a look is due.
+        let read = self
+            .store
+            .as_ref()
+            .filter(|_| {
+                self.watching_displays() && self.next_display_check.is_none_or(|at| at <= instant)
+            })
+            .map(super::displays::connected);
+        self.evaluate_with(&Local, now, instant, move || read.unwrap_or_default())
+    }
+
+    /// One evaluation: settles displays, decides, saves the state when it
+    /// matters, and returns the switches to run (if not already running).
+    pub fn evaluate_with<Tz: TimeZone>(
+        &mut self,
+        tz: &Tz,
+        now: DateTime<Utc>,
+        instant: Instant,
+        connected: impl FnOnce() -> Vec<String>,
+    ) -> Option<Job> {
+        self.wake = None;
+        if !self.running() {
+            return None;
+        }
+        if self.busy {
+            self.again = true;
+            return None;
+        }
+        let settings = self.settings.clone()?;
+        let store = self.store.as_ref()?;
+        // A Settings window that ended without releasing its hold (killed or
+        // crashed) leaves the file unchanged: look whether it still runs.
+        if !self.held.is_empty() {
+            let held = super::read_hold(store);
+            if held != self.held {
+                self.held = held;
+                self.retry_pending = true;
+            }
+        }
+        let mut wakes = Vec::new();
+        if settings.watches_displays() {
+            if self.next_display_check.is_none_or(|at| at <= instant) {
+                let mut read = connected();
+                read.sort();
+                read.dedup();
+                if self.displays.as_ref() == Some(&read) {
+                    self.settling = None;
+                } else {
+                    match &self.settling {
+                        Some((pending, since))
+                            if *pending == read && instant.duration_since(*since) >= SETTLE =>
+                        {
+                            self.displays = Some(read);
+                            self.settling = None;
+                        }
+                        Some((pending, _)) if *pending == read => {}
+                        _ => self.settling = Some((read, instant)),
+                    }
+                }
+                self.next_display_check = Some(match &self.settling {
+                    Some((_, since)) => *since + SETTLE,
+                    None => instant + DISPLAY_POLL,
+                });
+            }
+            wakes.extend(self.next_display_check);
+        }
+        let applied = self.state.applied.clone();
+        let manual_at = || manual_at(store, applied.as_deref());
+        let decision = decide::decide(
+            &settings,
+            &mut self.state,
+            tz,
+            now,
+            self.displays.as_deref(),
+            &manual_at,
+        );
+        let mut persist = decision.persist || decision.kept > 0;
+        let mut due = decision.due;
+        if due.is_empty() && self.retry_pending {
+            if let Some(pending) = self.state.pending.clone() {
+                match decide::still_due(&pending, manual_at(), now.timestamp()) {
+                    Ok(()) => due.push(pending),
+                    Err(outcome) => {
+                        self.state.record(outcome);
+                        self.state.pending = None;
+                        persist = true;
+                    }
+                }
+            }
+        }
+        self.retry_pending = false;
+        if persist && let Err(error) = super::save_state(store, &self.state) {
+            eprintln!("Automation: could not save its state: {error}");
+        }
+        if let Some(at) = decide::next_check(&settings, &self.state, tz, now) {
+            let wait = (at - now).to_std().unwrap_or_default();
+            wakes.push(instant + wait.max(Duration::from_millis(200)));
+        }
+        if self.state.pending.is_some() && !self.held.is_empty() {
+            wakes.push(instant + HOLD_CHECK);
+        }
+        self.wake = wakes.into_iter().min();
+        if due.is_empty() {
+            return None;
+        }
+        self.busy = true;
+        Some(Job {
+            due,
+            held: self.held.clone(),
+        })
+    }
+
+    /// Records what a job did. Returns `true` when another evaluation was
+    /// asked for meanwhile.
+    pub fn finished(&mut self, results: Vec<(Due, Ran)>, now: i64, instant: Instant) -> bool {
+        self.busy = false;
+        for (due, ran) in results {
+            let was_pending = self.state.pending.as_ref() == Some(&due);
+            if was_pending && matches!(ran, Ran::Waiting(_)) {
+                // Still waiting: one history line is enough.
+                continue;
+            }
+            if was_pending {
+                self.state.pending = None;
+            } else {
+                // Newer than anything waiting (a job runs oldest first, and
+                // a waiting switch is tried only on its own): it replaces
+                // it, whatever becomes of it.
+                self.state.replace_pending(&due, now);
+            }
+            match &ran {
+                Ran::Applied { change, .. } => {
+                    self.state.applied = Some(change.clone());
+                }
+                Ran::Waiting(_) => self.state.pending = Some(due.clone()),
+                _ => {}
+            }
+            let outcome = Outcome {
+                at: now,
+                due,
+                effect: ran.effect(),
+            };
+            if let Effect::Failed { reason } = &outcome.effect {
+                eprintln!("Automation: {} not applied: {reason}", outcome.due.name);
+            }
+            self.state.record(outcome);
+        }
+        if let Some(store) = &self.store
+            && let Err(error) = super::save_state(store, &self.state)
+        {
+            eprintln!("Automation: could not save its state: {error}");
+        }
+        let again = std::mem::take(&mut self.again);
+        if again {
+            self.wake = Some(instant);
+        } else if self.wake.is_none() {
+            self.wake = Some(instant + Duration::from_secs(1));
+        }
+        again
+    }
+}
+
+/// When someone last changed the desktop through Desktop Cards, as far as
+/// can be seen: the store's latest-change record (an Apply on a Pop!_OS
+/// page or a profile Apply), unless it is automation's own, and a widget
+/// layout Settings saved while a switch waited for it (the hold says so).
+/// An Undo removes the record, so it isn't seen; neither are changes made
+/// outside Desktop Cards.
+fn manual_at(store: &DesktopStore, applied: Option<&str>) -> Option<DateTime<Utc>> {
+    let _ = applied;
+    let recorded = store
+        .manual_at()
+        .and_then(|created| DateTime::parse_from_rfc3339(&created).ok())
+        .map(|at| at.with_timezone(&Utc));
+    let layout = super::hold_applied(store).and_then(|at| DateTime::from_timestamp(at, 0));
+    recorded.max(layout)
+}

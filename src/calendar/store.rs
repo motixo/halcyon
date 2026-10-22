@@ -1,0 +1,311 @@
+use super::*;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use std::os::{
+    fd::AsRawFd,
+    unix::fs::{OpenOptionsExt, PermissionsExt},
+};
+use std::path::{Path, PathBuf};
+
+pub(super) fn preview() -> bool {
+    std::env::var_os("DESKTOP_CARDS_CONFIG").is_some()
+}
+fn directory() -> Option<PathBuf> {
+    crate::config::Config::path()?
+        .parent()
+        .map(Path::to_path_buf)
+}
+/// Keyring IDs of credentials that should be gone but couldn't be removed
+/// (the keyring was busy or locked). Only IDs, never secrets.
+fn stale_path() -> Option<PathBuf> {
+    Some(directory()?.join("calendar-stale-credentials.json"))
+}
+pub(super) fn stale_credentials() -> Vec<String> {
+    stale_path()
+        .and_then(|path| crate::tools::read_bounded(&path, 64 * 1024).ok().flatten())
+        .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
+        .unwrap_or_default()
+}
+pub(super) fn set_stale_credentials(ids: &[String]) {
+    let Some(path) = stale_path() else {
+        return;
+    };
+    let _lock = lock();
+    if ids.is_empty() {
+        let _ = std::fs::remove_file(path);
+    } else if let Ok(bytes) = serde_json::to_vec(ids) {
+        let _ = atomic(&path, &bytes);
+    }
+}
+pub fn account_path() -> Option<PathBuf> {
+    Some(directory()?.join("calendar-account.json"))
+}
+pub fn client_path() -> Option<PathBuf> {
+    Some(directory()?.join("google-calendar-client.json"))
+}
+fn cache_directory() -> Option<PathBuf> {
+    if preview() {
+        Some(directory()?.join("calendar-cache"))
+    } else {
+        Some(dirs::cache_dir()?.join("cosmic-desktop-cards"))
+    }
+}
+pub fn cache_path(month: &str) -> Option<PathBuf> {
+    valid_month(month).then_some(())?;
+    Some(cache_directory()?.join(format!("calendar-{month}.json")))
+}
+pub(super) fn valid_month(month: &str) -> bool {
+    month.len() == 7
+        && chrono::NaiveDate::parse_from_str(&format!("{month}-01"), "%Y-%m-%d").is_ok()
+}
+pub(super) fn nonce() -> Result<String, Problem> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).map_err(|_| Problem::Storage)?;
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
+}
+fn private_parent(path: &Path) -> Result<(), Problem> {
+    let parent = path.parent().ok_or(Problem::Storage)?;
+    if !parent.exists() {
+        std::fs::create_dir_all(parent).map_err(|_| Problem::Storage)?;
+        std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+            .map_err(|_| Problem::Storage)?;
+    }
+    Ok(())
+}
+pub(super) fn atomic(path: &Path, bytes: &[u8]) -> Result<(), Problem> {
+    use std::io::Write;
+    private_parent(path)?;
+    let temp = path.with_file_name(format!(".calendar-{}.tmp", nonce()?));
+    let result = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&temp)
+            .map_err(|_| Problem::Storage)?;
+        file.write_all(bytes).map_err(|_| Problem::Storage)?;
+        file.sync_all().map_err(|_| Problem::Storage)?;
+        std::fs::rename(&temp, path).map_err(|_| Problem::Storage)
+    })();
+    let _ = std::fs::remove_file(&temp);
+    result
+}
+struct Lock(std::fs::File);
+impl Drop for Lock {
+    fn drop(&mut self) {
+        unsafe {
+            libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+        }
+    }
+}
+fn lock() -> Result<Lock, Problem> {
+    let path = account_path()
+        .ok_or(Problem::Storage)?
+        .with_extension("lock");
+    private_parent(&path)?;
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|_| Problem::Storage)?;
+    // Only short, local atomic writes hold this lock. Never block the UI on a
+    // second process: ask it to retry instead.
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err(Problem::Changed);
+    }
+    Ok(Lock(file))
+}
+pub fn load_connection() -> Connection {
+    let Some(path) = account_path() else {
+        return Connection::default();
+    };
+    if path.exists() {
+        return std::fs::read(path)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .unwrap_or_default();
+    }
+    // Upgrade only: both the old helper and this app's prior cache must exist.
+    // A new installation never silently consumes another app's credentials.
+    if !preview() {
+        if let Some(home) = dirs::home_dir() {
+            if home
+                .join(".local/share/workspace-mcp/venv/bin/python")
+                .is_file()
+            {
+                if let Some(dir) = cache_directory() {
+                    let mut paths = std::fs::read_dir(dir)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(Result::ok)
+                        .map(|entry| entry.path())
+                        .filter(|path| {
+                            path.file_name()
+                                .and_then(|v| v.to_str())
+                                .is_some_and(|v| v.starts_with("calendar-") && v.ends_with(".json"))
+                        })
+                        .collect::<Vec<_>>();
+                    paths.sort();
+                    for path in paths.into_iter().rev().take(24) {
+                        let Some(data) = std::fs::read(path).ok().and_then(|bytes| {
+                            serde_json::from_slice::<crate::data::CalendarData>(&bytes).ok()
+                        }) else {
+                            continue;
+                        };
+                        if data.connection_revision.is_empty() && !data.account.is_empty() {
+                            return Connection {
+                                backend: Backend::Legacy,
+                                account: data.account.clone(),
+                                calendar_id: data.account.clone(),
+                                calendar_name: "Primary calendar".into(),
+                                revision: format!("legacy:{}", data.account),
+                                credential: String::new(),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Connection::default()
+}
+fn persist(connection: &Connection) -> Result<(), Problem> {
+    atomic(
+        &account_path().ok_or(Problem::Storage)?,
+        &serde_json::to_vec(connection).map_err(|_| Problem::Storage)?,
+    )
+}
+pub(super) fn replace(expected: &Connection, connection: &Connection) -> Result<(), Problem> {
+    let _lock = lock()?;
+    if load_connection() != *expected {
+        return Err(Problem::Changed);
+    }
+    persist(connection)?;
+    clear_cache();
+    Ok(())
+}
+pub(super) fn disconnect(expected: &Connection) -> Result<Connection, Problem> {
+    let disconnected = Connection {
+        revision: nonce()?,
+        credential: if expected.backend == Backend::Google || expected.cleanup_pending() {
+            expected.credential.clone()
+        } else {
+            String::new()
+        },
+        ..Default::default()
+    };
+    replace(expected, &disconnected)?;
+    Ok(disconnected)
+}
+pub fn save_selection(
+    expected: &Connection,
+    choice: &super::CalendarChoice,
+) -> Result<Connection, Problem> {
+    let connection = Connection {
+        calendar_id: choice.id.clone(),
+        calendar_name: choice.name.clone(),
+        revision: nonce()?,
+        ..expected.clone()
+    };
+    replace(expected, &connection)?;
+    Ok(connection)
+}
+fn clear_cache() {
+    if let Some(dir) = cache_directory() {
+        for path in std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+        {
+            if path.file_name().and_then(|v| v.to_str()).is_some_and(|v| {
+                v.strip_prefix("calendar-")
+                    .and_then(|v| v.strip_suffix(".json"))
+                    .is_some_and(valid_month)
+            }) {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+}
+pub(super) fn save_cache(
+    connection: &Connection,
+    month: &str,
+    data: &crate::data::CalendarData,
+) -> Result<(), Problem> {
+    let _lock = lock()?;
+    if load_connection() != *connection {
+        return Err(Problem::Changed);
+    }
+    // Persist legacy metadata once, before the upgraded cache replaces the
+    // old record used to recognize this existing installation.
+    if connection.backend == Backend::Legacy {
+        persist(connection)?;
+    }
+    atomic(
+        &cache_path(month).ok_or(Problem::InvalidResponse)?,
+        &serde_json::to_vec(data).map_err(|_| Problem::Storage)?,
+    )
+}
+pub fn cached(connection: &Connection, month: &str) -> Option<crate::data::CalendarData> {
+    if !connection.connected() {
+        return None;
+    }
+    let data: crate::data::CalendarData =
+        serde_json::from_slice(&std::fs::read(cache_path(month)?).ok()?).ok()?;
+    let identity = data.connection_revision == connection.revision
+        && data.calendar_id == connection.calendar_id;
+    let legacy = connection.backend == Backend::Legacy && data.connection_revision.is_empty();
+    (data.month == month && data.account == connection.account && (identity || legacy))
+        .then_some(data)
+}
+pub(super) fn parse_client(bytes: &[u8]) -> Result<GoogleClient, Problem> {
+    if bytes.len() > 64 * 1024 {
+        return Err(Problem::InvalidClient);
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(bytes).map_err(|_| Problem::InvalidClient)?;
+    let installed = value.get("installed").ok_or(Problem::InvalidClient)?;
+    let client: GoogleClient =
+        serde_json::from_value(installed.clone()).map_err(|_| Problem::InvalidClient)?;
+    if !client.client_id.ends_with(".apps.googleusercontent.com")
+        || client.client_id.len() > 512
+        || client.client_id.chars().any(char::is_whitespace)
+        || client.client_secret.is_empty()
+        || client.client_secret.len() > 512
+    {
+        return Err(Problem::InvalidClient);
+    }
+    Ok(client)
+}
+pub fn load_client() -> Result<GoogleClient, Problem> {
+    let own = client_path().ok_or(Problem::MissingClient)?;
+    if own.exists() {
+        return parse_client(&std::fs::read(own).map_err(|_| Problem::InvalidClient)?);
+    }
+    let bundled = dirs::data_local_dir()
+        .ok_or(Problem::MissingClient)?
+        .join("cosmic-desktop-cards/google-calendar-client.json");
+    if bundled.exists() && !preview() {
+        return parse_client(&std::fs::read(bundled).map_err(|_| Problem::InvalidClient)?);
+    }
+    Err(Problem::MissingClient)
+}
+pub fn import_client(path: &Path) -> Result<(), Problem> {
+    if preview() {
+        return Err(Problem::Preview);
+    }
+    let metadata = std::fs::metadata(path).map_err(|_| Problem::InvalidClient)?;
+    if !metadata.is_file() || metadata.len() > 64 * 1024 {
+        return Err(Problem::InvalidClient);
+    }
+    let bytes = std::fs::read(path).map_err(|_| Problem::InvalidClient)?;
+    let client = parse_client(&bytes)?;
+    atomic(
+        &client_path().ok_or(Problem::Storage)?,
+        &serde_json::to_vec(&serde_json::json!({"installed":client}))
+            .map_err(|_| Problem::Storage)?,
+    )
+}

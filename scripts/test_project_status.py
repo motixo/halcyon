@@ -1,0 +1,174 @@
+"""Repository scans never run helpers configured by a discovered project."""
+import importlib.util
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import tempfile
+import unittest
+from unittest.mock import patch
+
+spec = importlib.util.spec_from_file_location('projects', Path(__file__).with_name('project-status.py'))
+projects = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(projects)
+
+
+class SafeProjectStatus(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.repo = self.root / 'project'
+        self.repo.mkdir()
+        env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
+        env.update(HOME=str(self.root), XDG_CONFIG_HOME=str(self.root / 'config'),
+                   GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+        environment = patch.dict(os.environ, env, clear=True)
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.git('init', '-q', '-b', 'main')
+        (self.repo / 'tracked').write_text('original content\n')
+        self.git('add', 'tracked')
+        self.git('-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
+                 '-c', 'commit.gpgsign=false', 'commit', '-qm', 'fixture')
+        self.marker = self.root / 'executed'
+        self.helper = self.root / 'helper'
+        self.helper.write_text('#!/bin/sh\nprintf executed >> ' + shlex.quote(str(self.marker)) + '\nexit 1\n')
+        self.helper.chmod(0o755)
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.repo), *args], check=True,
+                              capture_output=True).stdout
+
+    def scan(self):
+        config = self.root / 'projects.json'
+        config.write_text(json.dumps({'project_roots': [str(self.repo)]}))
+        with patch.dict(os.environ, {'DESKTOP_CARDS_CONFIG': str(config)}), \
+                patch.object(projects, 'listeners', return_value=[]):
+            result = json.loads(json.dumps(projects.scan()))
+        self.assertIsInstance(result['updated_at'], str)
+        self.assertTrue(result['projects'])
+        for project in result['projects']:
+            for field in ['path', 'name', 'title', 'repository_id', 'group', 'branch']:
+                self.assertIsInstance(project[field], str)
+            for field in ['changed', 'untracked', 'conflicts', 'ahead', 'behind']:
+                self.assertIsInstance(project[field], int)
+            for field in ['upstream', 'error']:
+                self.assertIsInstance(project[field], bool)
+            self.assertIsInstance(project['recent'], (int, float))
+            self.assertIsInstance(project['servers'], list)
+        self.assertFalse(self.marker.exists(), 'repository helper executed')
+        return result['projects']
+
+    def configure_helpers(self):
+        hooks = self.root / 'hooks'
+        hooks.mkdir()
+        for name in ['post-index-change', 'post-checkout', 'fsmonitor-watchman']:
+            (hooks / name).symlink_to(self.helper)
+        for key, value in [('core.fsmonitor', str(self.helper)), ('core.hooksPath', str(hooks)),
+                           ('core.sshCommand', str(self.helper)), ('core.pager', str(self.helper)),
+                           ('pager.status', str(self.helper)), ('diff.external', str(self.helper)),
+                           ('diff.evil.textconv', str(self.helper))]:
+            self.git('config', key, value)
+        (self.repo / '.gitattributes').write_text('tracked filter=evil diff=evil\n')
+        (self.repo / 'tracked').write_text('dirty working tree content\n')
+
+    def test_clean_and_process_filters_are_never_executed(self):
+        self.configure_helpers()
+        for drivers in [('clean',), ('process',), ('clean', 'process')]:
+            with self.subTest(drivers=drivers):
+                for driver in drivers:
+                    self.git('config', 'filter.evil.' + driver, str(self.helper))
+                self.git('config', 'filter.evil.required', 'true')
+                result = self.scan()[0]
+                self.assertTrue(result['error'])
+                self.assertEqual(result['branch'], 'Unknown')
+                self.git('config', '--remove-section', 'filter.evil')
+
+    def test_helpers_and_unconfigured_attributes_do_not_block_normal_status(self):
+        self.configure_helpers()
+        index = self.repo / '.git/index'
+        before = (index.read_bytes(), index.stat().st_mtime_ns)
+        result = self.scan()[0]
+        self.assertFalse(result['error'])
+        self.assertEqual(result['branch'], 'main')
+        self.assertEqual(result['changed'], 1)
+        self.assertEqual(result['untracked'], 1)
+        self.assertEqual((index.read_bytes(), index.stat().st_mtime_ns), before)
+
+    def test_config_change_after_snapshot_cannot_enable_a_filter(self):
+        self.configure_helpers()
+        real = projects.git_command
+        def command(path, args):
+            if 'status' in args:
+                self.git('config', 'filter.evil.process', str(self.helper))
+                self.git('config', 'filter.evil.clean', str(self.helper))
+            return real(path, args)
+        with patch.object(projects, 'git_command', command):
+            result = self.scan()[0]
+        self.assertFalse(result['error'])
+        self.assertEqual(result['changed'], 1)
+
+    def test_global_and_environment_config_cannot_enable_helpers(self):
+        self.configure_helpers()
+        (self.root / '.gitconfig').write_text('[filter "evil"]\n\tprocess = ' + str(self.helper) + '\n')
+        with patch.dict(os.environ, {'GIT_CONFIG_COUNT': '1', 'GIT_CONFIG_KEY_0': 'filter.evil.process',
+                                     'GIT_CONFIG_VALUE_0': str(self.helper), 'GIT_EXTERNAL_DIFF': str(self.helper)}):
+            result = self.scan()[0]
+        self.assertFalse(result['error'])
+        self.assertEqual(result['changed'], 1)
+
+    def test_included_worktree_filter_config_is_unavailable(self):
+        checkout = self.root / 'linked'
+        self.git('worktree', 'add', '-qb', 'linked', str(checkout))
+        self.git('config', 'extensions.worktreeConfig', 'true')
+        included = self.root / 'included'
+        included.write_text('[filter "evil"]\n\tclean = ' + str(self.helper) + '\n')
+        self.git('config', '--worktree', 'include.path', str(included))
+        self.configure_helpers()
+        rows = {row['path']: row for row in self.scan()}
+        self.assertTrue(rows[str(self.repo)]['error'])
+        self.assertFalse(rows[str(checkout)]['error'])
+
+    def test_dirty_submodule_helpers_are_not_executed(self):
+        submodule = self.repo / 'sub'
+        submodule.mkdir()
+        subprocess.run(['git', 'init', '-q', str(submodule)], check=True, capture_output=True)
+        (submodule / 'tracked').write_text('original submodule content\n')
+        subprocess.run(['git', '-C', str(submodule), 'add', 'tracked'], check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(submodule), '-c', 'user.name=Test',
+                        '-c', 'user.email=test@example.invalid', '-c', 'commit.gpgsign=false',
+                        'commit', '-qm', 'submodule fixture'], check=True, capture_output=True)
+        commit = subprocess.run(['git', '-C', str(submodule), 'rev-parse', 'HEAD'],
+                                check=True, capture_output=True).stdout.decode().strip()
+        self.git('update-index', '--add', '--cacheinfo', '160000,' + commit + ',sub')
+        subprocess.run(['git', '-C', str(submodule), 'config', 'core.fsmonitor', str(self.helper)],
+                       check=True, capture_output=True)
+        subprocess.run(['git', '-C', str(submodule), 'config', 'filter.evil.process', str(self.helper)],
+                       check=True, capture_output=True)
+        (submodule / '.gitattributes').write_text('* filter=evil\n')
+        (submodule / 'tracked').write_text('dirty submodule work\n')
+        self.configure_helpers()
+        result = self.scan()[0]
+        self.assertFalse(result['error'])
+        self.assertGreaterEqual(result['changed'], 1)
+
+    def test_split_index_and_upstream_tracking_are_preserved(self):
+        commit = self.git('rev-parse', 'HEAD').decode().strip()
+        self.git('config', 'remote.origin.url', 'https://example.invalid/project')
+        self.git('config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*')
+        self.git('update-ref', 'refs/remotes/origin/main', commit)
+        self.git('config', 'branch.main.remote', 'origin')
+        self.git('config', 'branch.main.merge', 'refs/heads/main')
+        self.git('update-index', '--split-index')
+        (self.repo / 'tracked').write_text('dirty content\n')
+        result = self.scan()[0]
+        self.assertFalse(result['error'])
+        self.assertTrue(result['upstream'])
+        self.assertEqual((result['ahead'], result['behind']), (0, 0))
+        self.assertEqual(result['changed'], 1)
+
+
+if __name__ == '__main__':
+    unittest.main()
