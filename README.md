@@ -1,70 +1,150 @@
-# Halcyon
+<p align="center">
+  <img src="docs/presentation/hero.png" alt="Halcyon — Make COSMIC your own." width="100%">
+</p>
 
-Desktop widgets and themes for COSMIC.
+<h1 align="center">Halcyon</h1>
 
-![Halcyon look: frosted cards over a night sea](docs/screenshots/halcyon-look.jpg)
+<p align="center">
+  Desktop widgets, coordinated looks, and a workspace that feels like yours.<br>
+  Built for <strong>COSMIC on Pop!_OS</strong>.
+</p>
 
-Halcyon puts a small set of widgets on your COSMIC desktop and gives the whole
-desktop a coordinated look: wallpaper, colors, windows, dock and panel.
+<p align="center">
+  <a href="https://github.com/profilaz3/halcyon/releases/latest"><strong>Download</strong></a> ·
+  <a href="#install">Install</a> ·
+  <a href="docs/DEVELOPMENT.md">Build from source</a> ·
+  <a href="https://github.com/profilaz3/halcyon/issues">Report an issue</a>
+</p>
 
-- **Starter looks.** Six complete looks, each with its own wallpaper. Colors
-  follow the wallpaper.
-- **Widgets.** At a glance (clock, date, weather), system monitor, calendar,
-  projects, music, notes and a focus timer. Widgets never overlap; music shows
-  while something is playing or paused.
-- **Styles.** Thirteen widget styles, from soft cards and frosted glass to
-  outlines, paper and terminal, with matching dock and panel.
-- **Gentle on your setup.** A look changes what it owns (wallpaper, colors,
-  dock and panel appearance, the widgets it places). Your applets, their
-  order, your panel position and the widgets you set up stay yours. Every
-  change can be undone.
+Halcyon brings your wallpaper, colors, widgets, windows, dock and panel together.
+Start with a complete look, then adjust the parts that matter to you. Keep the
+weather nearby, see what your system is doing, control your music, or leave
+yourself a note.
 
-| First run | Choosing a look |
-|---|---|
-| ![Welcome](docs/screenshots/setup-welcome.jpg) | ![Looks](docs/screenshots/setup-looks.jpg) |
+**Free and open source · Native Rust + libcosmic · No Halcyon account required**
+
+## A desktop that belongs together
+
+Choose one of six starter looks, or build your own. Let the accent follow your
+wallpaper, choose another color from it, or set a color yourself. Thirteen widget
+styles range from frosted cards to paper, outlines and plain text.
+
+![Six coordinated looks: Halcyon, Calm, Evening, Focus, Paper and Rosé](docs/presentation/looks.png)
+
+*Halcyon's built-in appearance previews. Window, dock and panel illustrations
+are simplified; widget content uses sample data.*
+
+## Useful at a glance
+
+Show only what you need. Combine clock, weather and calendar in one overview,
+or keep them separate.
+
+![Native weather, system monitor, music and notes widgets with sample data](docs/presentation/widgets.png)
+
+- **Your day:** clock, local weather and an optional Google Calendar agenda.
+- **Your system:** CPU, memory, disk, network and GPU readings, with optional
+  history graphs and reorderable rows.
+- **Your work:** Git project status, notes and checklists, and a focus timer.
+- **Your music:** playback controls and seeking through your player's MPRIS
+  interface. Available controls depend on the player.
+
+## Put things where they work for you
+
+Drag widgets around a preview of your desktop. Resize them, snap them to a
+fine grid, or arrange them directly on the desktop. Save setups to return
+to a layout you like.
+
+<p align="center">
+  <img src="docs/presentation/layout.png" alt="Halcyon's Layout editor, with a weather widget selected for resizing" width="820">
+</p>
+
+Appearance changes apply as you make them, with Undo. Choosing a shared style
+keeps your applets and their order. Dock, panel, window and shortcut controls
+stay available when you want to go further.
+
+**Optional: Islands.** Split the native dock or panel into floating groups.
+This uses a separate, version-matched companion package; it is not required
+for Halcyon's widgets or themes.
+[See compatibility and setup →](packaging/islands/README.md)
 
 ## Install
 
-- **Pop!_OS 24.04 (COSMIC):** download `cosmic-ext-halcyon_<version>_amd64.deb`
-  from the [Releases page](https://github.com/profilaz3/halcyon/releases),
-  open it, and choose Install. Or, in a terminal:
-  `sudo apt install ./cosmic-ext-halcyon_<version>_amd64.deb`
-- **From source:** build with `cargo build --release --locked`, then run
-  `python3 scripts/install.py` to install for your account under `~/.local`.
-  Details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+**Packaged for Pop!_OS 24.04 with COSMIC, on x86-64 (amd64).**
+This is an early release; please report problems with your Halcyon and COSMIC
+versions.
 
-To update this first release, download and install the newer `.deb` from
-GitHub Releases. A system update repository is planned but is not yet active.
-See [distribution and updates](docs/DISTRIBUTION.md) for the rollout plan.
+1. Download the main `cosmic-ext-halcyon_<version>_amd64.deb` from
+   [GitHub Releases](https://github.com/profilaz3/halcyon/releases/latest).
+2. Install the downloaded file. For v0.1.0:
 
-Upgrading from Desktop Cards (the earlier name) keeps your settings, notes,
-looks and calendar connection.
+   ```sh
+   sudo apt install ./cosmic-ext-halcyon_0.1.0_amd64.deb
+   ```
 
-To remove Halcyon: `sudo apt remove cosmic-ext-halcyon`. Your settings and
-notes stay in `~/.config/halcyon` and `~/.local/share/halcyon` until you delete
-them. Desktop changes made by a look (wallpaper, colors, dock and panel) stay
-too; undo them in Halcyon's Setups page before removing it if you like.
+3. Open **Halcyon** from the app launcher. The first-run setup helps you choose
+   a look, dock and panel arrangement, and weather city.
 
-After installing, open **Halcyon** from the app launcher. A short setup picks a
-look, your dock and panel, and your city for the weather.
+Installing the package alone does not change your desktop or start the widgets.
 
-**Islands** (a panel split into floating islands) is an optional, separate
-add-on, `cosmic-ext-halcyon-islands`. It only runs on the exact COSMIC versions
-it was tested with and otherwise leaves the normal panel in place. See
-[packaging/islands/README.md](packaging/islands/README.md).
+**Calendar:** Google Calendar sign-in is **not configured in the v0.1.0 package**.
+It requires publisher OAuth setup. The other widgets do not require a Google
+account. Check each release's notes for availability.
 
-## What leaves your computer
+**Updates:** download a newer `.deb` and install it the same way. Your settings
+are preserved. There is no automatic update feed or Flatpak release yet.
+[Distribution plan](docs/DISTRIBUTION.md)
 
-- **Weather:** your city search text and the chosen city's coordinates go to
-  [Open-Meteo](https://open-meteo.com).
-- **Calendar (optional):** if you connect Google Calendar, Halcyon talks to
-  Google with your permission. Sign-in tokens stay in your system keyring.
-- **Album art:** artwork your music player names is downloaded from its
-  public HTTPS address.
+<details>
+<summary>Upgrading from Desktop Cards or uninstalling</summary>
 
-No analytics, no tracking, no account needed.
+Halcyon was previously called Desktop Cards. On first start, it copies your
+existing settings, notes, looks and calendar connection to the new locations
+and keeps the old folders.
+
+Remove the package with:
+
+```sh
+sudo apt remove cosmic-ext-halcyon
+```
+
+Your settings and notes stay in `~/.config/halcyon` and
+`~/.local/share/halcyon`. Wallpaper, colors, dock and panel changes stay too;
+restore the desktop changes you want to reverse in Halcyon before removing it.
+If you installed Islands, follow its
+[separate removal instructions](packaging/islands/README.md).
+
+</details>
+
+## Under the hood
+
+Halcyon is a native **Rust + libcosmic** application. Its Wayland desktop
+surfaces sit above the wallpaper and below application windows. It integrates
+with COSMIC's settings, uses **MPRIS over D-Bus** for music, and uses a
+**systemd user service** for the widgets. Python helpers handle calendar
+synchronization and project scanning.
+
+| For | Start here |
+| --- | --- |
+| Building and contributing | [Developer reference](docs/DEVELOPMENT.md) |
+| Package layout and per-user data | [Packaging](packaging/README.md) |
+| Native panel companion | [Islands](packaging/islands/README.md) |
+| Performance and refresh behavior | [Performance](docs/PERFORMANCE.md) |
+| Release and update channels | [Distribution](docs/DISTRIBUTION.md) |
+
+Found a bug? [Open an issue](https://github.com/profilaz3/halcyon/issues) with
+steps to reproduce, your app and COSMIC versions, and a screenshot if useful.
+Code, documentation and design contributions are welcome.
+
+## Privacy
+
+No analytics or tracking. Weather queries and selected coordinates go to
+[Open-Meteo](https://open-meteo.com). Connecting Google Calendar allows Halcyon
+to fetch your calendar; sign-in tokens stay in your system keyring. Music
+artwork may be fetched from the public HTTPS URL supplied by your player.
 
 ## License
 
-GPL-3.0-or-later. See [LICENSE](LICENSE), [ASSETS.md](ASSETS.md) for the
-artwork and [THIRD_PARTY.md](THIRD_PARTY.md) for dependencies.
+[GPL-3.0-or-later](LICENSE).
+[Artwork provenance](ASSETS.md) · [Third-party notices](THIRD_PARTY.md)
+
+Halcyon is an independent project for COSMIC, not an official System76 product.

@@ -10,6 +10,9 @@ Where every picture in this repository comes from, and how it may be used.
 | `docs/brand/halcyon-icon.png` | App icon (kingfisher over calm water) | Generated for this project with an AI image model (OpenAI image generation through Codex). The COSMIC icon set (pop-os/cosmic-icons) was named as a style reference only | GPL-3.0-or-later |
 | `assets/looks/*.jpg`, `docs/brand/looks/shipped/*.png`, `docs/brand/wizard/built/*.png` | Look previews and screenshots | Rendered by this project's own code (look render tool and Settings test renderer) over the wallpapers above | GPL-3.0-or-later |
 
+GitHub presentation artwork and native UI compositions in `docs/presentation/`
+are also GPL-3.0-or-later. See their [source and generation notes](docs/presentation/README.md).
+
 No fonts are bundled: widget styles name system fonts and fall back when one isn't installed.
 
 Earlier explorations (icon rounds, wallpaper drafts, mockups) and the reference images used for them are not part of the repository.

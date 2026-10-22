@@ -106,17 +106,28 @@ jobs:
         run: |
           dpkg-parsechangelog --file packaging/debian/changelog --count 1 \
             --show-field Changes > "$RUNNER_TEMP/halcyon-release-notes.txt"
-          cat >> "$RUNNER_TEMP/halcyon-release-notes.txt" <<'NOTES'
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          from string import Template
+          import textwrap
 
-          Install the main .deb on Pop!_OS 24.04. Islands is optional and distributed separately.
-          Updates for this first release are downloaded from GitHub Releases; the APT feed is not yet active.
-          See packaging/islands/README.md for supported COSMIC versions and activation.
-          NOTES
-          if [[ "$CALENDAR_CONFIGURED" == true ]]; then
-            echo "Google Calendar sign-in is included; availability also depends on the publisher's Google consent configuration." >> "$RUNNER_TEMP/halcyon-release-notes.txt"
-          else
-            echo "Google Calendar sign-in is not configured in this build. All other widgets work without a Google account." >> "$RUNNER_TEMP/halcyon-release-notes.txt"
-          fi
+          notes = Path(os.environ["RUNNER_TEMP"]) / "halcyon-release-notes.txt"
+          # dpkg's Changes field starts with the package/version and a blank line.
+          changes = textwrap.dedent("\n".join(notes.read_text().splitlines()[2:])).strip()
+          calendar = (
+              "Sign-in is included; availability also depends on the publisher's Google consent configuration."
+              if os.environ["CALENDAR_CONFIGURED"] == "true"
+              else "Sign-in is not configured in this build. Other widgets work without a Google account."
+          )
+          notes.write_text(Template(Path(".github/RELEASE_TEMPLATE.md").read_text()).substitute(
+              REPOSITORY=os.environ["GITHUB_REPOSITORY"],
+              TAG=os.environ["GITHUB_REF_NAME"],
+              VERSION=os.environ["GITHUB_REF_NAME"].removeprefix("v"),
+              CHANGES=changes,
+              CALENDAR=calendar,
+          ))
+          PYTHON
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
