@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="docs/presentation/hero.png" alt="Halcyon — Make COSMIC your own." width="100%">
+  <img src="assets/wizard/welcome.jpg" alt="Halcyon’s original welcome artwork: a kingfisher over the sea" width="100%">
 </p>
 
 <h1 align="center">Halcyon</h1>
 
 <p align="center">
-  Desktop widgets, coordinated looks, and a workspace that feels like yours.<br>
-  Built for <strong>COSMIC on Pop!_OS</strong>.
+  Desktop widgets and themes for COSMIC.
 </p>
 
 <p align="center">

@@ -1,8 +1,7 @@
 # GitHub presentation assets
 
-- `hero.png`: AI-generated cover, made with built-in OpenAI image generation
-  through Codex on 2026-10-22. The only image reference was our
-  `assets/wizard/welcome.jpg`. Exact prompt: [hero-prompt.txt](hero-prompt.txt).
+- Cover: the original [app welcome artwork](../../assets/wizard/welcome.jpg),
+  reused without changes or a slogan. Provenance: [ASSETS.md](../../ASSETS.md).
 - `looks.png`: HTML composition of the app's existing look previews.
   Source: [looks.html](looks.html), using `docs/brand/looks/shipped/`.
   These show sample widgets and simplified native surfaces, not a live session.

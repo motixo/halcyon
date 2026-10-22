@@ -1,8 +1,8 @@
-![Halcyon — Make COSMIC your own.](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/presentation/hero.png)
+![Halcyon welcome artwork](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/assets/wizard/welcome.jpg)
 
 # Halcyon ${VERSION}
 
-Desktop widgets and coordinated looks for **COSMIC on Pop!_OS 24.04**.
+Desktop widgets and themes for **COSMIC on Pop!_OS 24.04**.
 
 **[Download for amd64](https://github.com/${REPOSITORY}/releases/download/${TAG}/cosmic-ext-halcyon_${VERSION}_amd64.deb)** ·
 [Source](https://github.com/${REPOSITORY}/tree/${TAG}) ·
