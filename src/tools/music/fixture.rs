@@ -59,6 +59,7 @@ pub(crate) struct State {
     pub track: AtomicUsize,
     pub can_skip: AtomicBool,
     pub details: AtomicBool,
+    pub broken_timing: AtomicBool,
 }
 
 impl State {
@@ -70,6 +71,7 @@ impl State {
             track: AtomicUsize::new(1),
             can_skip: AtomicBool::new(true),
             details: AtomicBool::new(true),
+            broken_timing: AtomicBool::new(false),
         })
     }
 }
@@ -126,7 +128,11 @@ impl Transport {
     }
     #[zbus(property)]
     fn position(&self) -> i64 {
+        if self.0.broken_timing.load(Ordering::SeqCst) {
+            0
+        } else {
         self.0.position.load(Ordering::SeqCst)
+    }
     }
     #[zbus(property)]
     fn rate(&self) -> f64 {
@@ -183,7 +189,7 @@ impl Transport {
             metadata.remove("xesam:title");
             metadata.remove("xesam:url");
         }
-        if length > 0 {
+        if length > 0 && !self.0.broken_timing.load(Ordering::SeqCst) {
             metadata.insert("mpris:length".into(), OwnedValue::from(length));
         }
         metadata

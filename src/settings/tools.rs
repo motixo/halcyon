@@ -320,10 +320,11 @@ impl ToolsEditor {
                     }
                 };
             }
-            Message::Players(result) => {
+            Message::Players(mut result) => {
                 self.querying = false;
-                if let Ok(players) = &result {
+                if let Ok(players) = &mut result {
                     let before = self.player_list().to_vec();
+                    music::reconcile_timing(&before, players);
                     music::remember(&mut self.recent, &before, players);
                     if self
                         .pinned
@@ -514,4 +515,30 @@ fn focus_command(command: &'static str) -> Task<crate::settings::Message> {
         .unwrap_or_else(|error| Err(error.to_string()));
         crate::settings::Message::Tools(Message::Done(result))
     })
+}
+
+#[cfg(test)]
+mod timing_tests {
+    use super::*;
+
+    #[test]
+    fn control_refresh_keeps_progress_in_settings_preview() {
+        use std::sync::atomic::Ordering;
+        let bus = music::fixture::Bus::new();
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+            let state = music::fixture::State::new();
+            state.playing.store(true, Ordering::SeqCst);
+            let _service = music::fixture::serve(&bus.address, "org.mpris.MediaPlayer2.firefox", state.clone()).await;
+            let client = zbus::connection::Builder::address(bus.address.as_str()).unwrap().build().await.unwrap();
+            let config = Config::default();
+            let mut editor = ToolsEditor::default();
+            let _ = editor.update(Message::Players(Ok(music::snapshot(&client).await.unwrap())), &config);
+            state.broken_timing.store(true, Ordering::SeqCst);
+            let _ = editor.update(Message::MediaControlDone(Ok(music::snapshot(&client).await.unwrap())), &config);
+            let player = editor.current(&config).unwrap();
+            assert_eq!(player.length_us, Some(300_000_000));
+            assert!(player.position_us.unwrap() >= 60_000_000);
+            assert_eq!(player.seek_request(0.5).unwrap().position_us, 150_000_000);
+        });
+    }
 }
