@@ -218,6 +218,65 @@ mod tests {
         assert!(result[0] < result[2], "Clock must be visible");
         result
     }
+    fn capture_alignment_failure(
+        config: &Config,
+        now: chrono::NaiveDateTime,
+        size: [f32; 2],
+        pixels: &[u8],
+    ) {
+        use cosmic::iced::advanced::graphics::text::font_system;
+        let _style = crate::widget_style::scope(config);
+        let scale = (size[0] / 490.).min(size[1] / 200.).clamp(0.1, 4.)
+            * f32::from(config.clock.scale)
+            / 100.;
+        let font_size = fit(&config.clock, size[0] - 8., 104. * scale).min((size[1] - 8.) / 1.05);
+        let (time, period) = clock_labels(now.time(), config.clock.format_24h);
+        let mut report = format!(
+            "size={size:?} clock_size={font_size} requested_clock={:?} requested_body={:?} renderer_default={:?}\n",
+            font(),
+            crate::widget_style::font(),
+            cosmic::font::default(),
+        );
+        for (value, size, selected_font) in [
+            (time, font_size, font()),
+            (
+                period.unwrap_or_default(),
+                period_size(font_size),
+                crate::widget_style::font(),
+            ),
+        ] {
+            let paragraph = paragraph(&value, size, selected_font);
+            report.push_str(&format!(
+                "text={value:?} min={:?} ink={:?}\n",
+                paragraph.min_bounds(),
+                ink_edges(&value, size, selected_font)
+            ));
+            for run in paragraph.buffer().layout_runs() {
+                for glyph in run.glyphs {
+                    report.push_str(&format!("{glyph:?}\n"));
+                }
+            }
+        }
+        for face in font_system().read().unwrap().db().faces() {
+            report.push_str(&format!(
+                "font_id={:?} families={:?} weight={:?} style={:?} stretch={:?}\n",
+                face.id, face.families, face.weight, face.style, face.stretch,
+            ));
+        }
+        eprintln!("{report}");
+        let directory = std::path::Path::new("target/test-failures");
+        std::fs::create_dir_all(directory).unwrap();
+        std::fs::write(directory.join("clock-fonts.txt"), report).unwrap();
+        image::save_buffer(
+            directory.join("clock-alignment.png"),
+            pixels,
+            size[0] as u32,
+            size[1] as u32,
+            image::ColorType::Rgba8,
+        )
+        .unwrap();
+    }
+
     #[test]
     fn resized_clock_fits_and_aligns_the_actual_glyphs() {
         let now = chrono::NaiveDate::from_ymd_opt(2026, 10, 21)
@@ -242,10 +301,8 @@ mod tests {
                             config.clock.alignment = alignment;
                             config.clock.show_date = false;
                             config.clock.center_vertically = true;
-                            let bounds = ink(
-                                &native.render(view(&config, now, size), &theme),
-                                size[0] as usize,
-                            );
+                            let pixels = native.render(view(&config, now, size), &theme);
+                            let bounds = ink(&pixels, size[0] as usize);
                             assert!(
                                 bounds[0] >= 2 && bounds[2] < size[0] as usize - 2,
                                 "horizontal clipping {size:?} {format} {scale} {alignment:?} {bounds:?}"
@@ -255,9 +312,13 @@ mod tests {
                                 "vertical clipping {bounds:?}"
                             );
                             if alignment == ClockAlignment::Center {
+                                if ((bounds[0] + bounds[2]) as f32 / 2. - size[0] / 2.).abs() >= 7.
+                                {
+                                    capture_alignment_failure(&config, now, size, &pixels);
+                                }
                                 assert!(
                                     ((bounds[0] + bounds[2]) as f32 / 2. - size[0] / 2.).abs() < 7.,
-                                    "clock is not centered {size:?}/{format}/{scale}: {bounds:?}"
+                                    "clock is not centered {family:?}/{size:?}/{format}/{scale}: {bounds:?}"
                                 );
                             }
                             config.clock.show_date = true;

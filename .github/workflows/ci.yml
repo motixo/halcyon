@@ -45,6 +45,13 @@ jobs:
           python3 packaging/islands/test_islands.py
       - name: Test Rust
         run: cargo test --locked -- --test-threads=1
+      - name: Upload failed layout evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-failure-${{ github.run_number }}
+          path: target/test-failures/
+          if-no-files-found: ignore
       - name: Test Islands core
         run: cargo test --locked --manifest-path companion/dock-islands-core/Cargo.toml
       - name: Install license report generator
