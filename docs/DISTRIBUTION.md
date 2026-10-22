@@ -1,10 +1,10 @@
 # Distribution and updates
 
-Status: v0.1.0 ships as GitHub release packages. The signed APT repository,
+Status: v0.1.1 ships as GitHub release packages. The signed APT repository,
 update UI, and automatic Islands rebuilds below are the next milestone, not
 services that are already running.
 
-## v0.1.0
+## Current releases
 
 Publish two separate amd64 packages for Pop!_OS 24.04:
 
@@ -16,7 +16,7 @@ Publish two separate amd64 packages for Pop!_OS 24.04:
 
 People upgrade by downloading the newer package from GitHub and opening it,
 or with `sudo apt install ./package.deb`. This preserves user data. There is
-no automatic update feed in v0.1.0. For Islands, run `halcyon-islands enable`
+no automatic update feed in v0.1.1. For Islands, run `halcyon-islands enable`
 after upgrading, then log out and in; currently the enabled user bundle is a
 copy, so installing the new package alone does not refresh that copy.
 
@@ -32,7 +32,7 @@ AppStream and desktop-file validation, and lintian errors. Test failures must
 not be hidden by `continue-on-error`. A tag identifies immutable source.
 Do not overwrite an existing version's packages: publish a newer version.
 
-## v0.1.1: one system update channel
+## Planned: one system update channel
 
 Use a signed APT archive on GitHub Pages, proposed URL
 `https://profilaz3.github.io/halcyon/apt`, suite `noble`, component `main`,

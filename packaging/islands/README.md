@@ -117,7 +117,7 @@ PY
 python3 packaging/islands/build-deb.py \
   --binary /path/to/cosmic-panel-islands \
   --licenses /path/to/ISLANDS_THIRD_PARTY_LICENSES.txt \
-  --manifest /path/to/companion-manifest.json --version 0.1.0 --out dist
+  --manifest /path/to/companion-manifest.json --version 0.1.1 --out dist
 ```
 
 The builder needs Python 3 and dpkg tools, never invokes Cargo, and validates the

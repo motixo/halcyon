@@ -74,10 +74,10 @@ versions.
 
 1. Download the main `cosmic-ext-halcyon_<version>_amd64.deb` from
    [GitHub Releases](https://github.com/profilaz3/halcyon/releases/latest).
-2. Install the downloaded file. For v0.1.0:
+2. Install the downloaded file. For v0.1.1:
 
    ```sh
-   sudo apt install ./cosmic-ext-halcyon_0.1.0_amd64.deb
+   sudo apt install ./cosmic-ext-halcyon_0.1.1_amd64.deb
    ```
 
 3. Open **Halcyon** from the app launcher. The first-run setup helps you choose
@@ -85,9 +85,9 @@ versions.
 
 Installing the package alone does not change your desktop or start the widgets.
 
-**Calendar:** Google Calendar sign-in is **not configured in the v0.1.0 package**.
-It requires publisher OAuth setup. The other widgets do not require a Google
-account. Check each release's notes for availability.
+**Calendar:** Google Calendar sign-in requires publisher OAuth setup.
+Check the release notes for whether it is configured in your download.
+The other widgets do not require a Google account.
 
 **Updates:** download a newer `.deb` and install it the same way. Your settings
 are preserved. There is no automatic update feed or Flatpak release yet.
