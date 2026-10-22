@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """COSMIC session panel selector. One host at a time; stock on incompatibility."""
 import collections
+import errno
 import fcntl
 import hashlib
 import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -50,6 +52,29 @@ def session_identity(env=None):
 def display_identity(env):
     display=env.get('WAYLAND_DISPLAY','wayland-0')
     return display if display.startswith('/') else str(Path(env.get('XDG_RUNTIME_DIR',''))/display)
+
+def compositor_gone():
+    """A vanished compositor is session teardown, not a panel crash.
+
+    Probe a separate named socket, never the inherited WAYLAND_SOCKET or
+    notifications stream. Unknown/access-denied states retain crash handling.
+    """
+    display = os.environ.get('WAYLAND_DISPLAY')
+    if not display:
+        return False
+    if not display.startswith('/'):
+        runtime = os.environ.get('XDG_RUNTIME_DIR')
+        if not runtime:
+            return False
+        display = str(Path(runtime) / display)
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.2)
+            probe.connect(display)
+        return False
+    except OSError as error:
+        return error.errno in (errno.ENOENT, errno.ECONNREFUSED)
+
 
 def other_host():
     wanted=display_identity(os.environ)
@@ -166,7 +191,7 @@ def stock_host(binary, pass_fds=(), limit=None, env=None, keep_running=False):
         started = time.monotonic()
         code, stopping, wedged = run_host(binary, pass_fds, env)
         runs += 1
-        if stopping:
+        if stopping or compositor_gone():
             return 0
         if code == 0 and not wedged and not keep_running:
             return 0
@@ -193,7 +218,7 @@ def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False):
         _, stopping, _ = run_host(binary, pass_fds)
     except OSError:
         started, stopping = False, False
-    if stopping:
+    if stopping or (started and compositor_gone()):
         return 0
     persisted = False
     if failed:

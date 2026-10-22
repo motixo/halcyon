@@ -2,6 +2,7 @@
 import importlib.util
 import json
 import os
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -276,6 +277,48 @@ class CompanionPackaging(unittest.TestCase):
                     if rel not in result['before']:
                         self.assertFalse((home / rel).exists())
                 self.assertTrue(json.loads(record.read_text())['restored'])
+
+    def test_compositor_shutdown_does_not_disable_islands(self):
+        # The compositor disappears before the selector receives SIGTERM.
+        # A closed listener can leave its socket inode behind at logout.
+        for stale_inode in [False, True]:
+            with self.subTest(stale_inode=stale_inode):
+                path = self.root / 'wayland-shutdown'
+                server = socket.socket(socket.AF_UNIX)
+                server.bind(str(path))
+                server.listen()
+                server.close()
+                if not stale_inode:
+                    path.unlink()
+                marker = self.root / 'false-crash'
+                with patch.dict(os.environ, {'WAYLAND_DISPLAY': str(path)}):
+                    code = launcher.supervise('/bin/false', '/unreachable/fallback',
+                        failed=lambda: marker.write_text('failed'), session_socket=True)
+                self.assertEqual(code, 0)
+                self.assertFalse(marker.exists(), 'logout must not disable the next login')
+                path.unlink(missing_ok=True)
+
+    def test_panel_crash_with_live_compositor_still_persists_failure(self):
+        path = self.root / 'wayland-live'
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(str(path))
+            server.listen()
+            marker = self.root / 'real-crash'
+            with patch.dict(os.environ, {'WAYLAND_DISPLAY': str(path)}):
+                code = launcher.supervise('/bin/false', '/unreachable/fallback',
+                    failed=lambda: marker.write_text('failed'), session_socket=True)
+            self.assertEqual(code, 75)
+            self.assertEqual(marker.read_text(), 'failed')
+
+    def test_stock_panel_does_not_restart_after_compositor_shutdown(self):
+        path = self.root / 'gone-compositor'
+        runs = self.root / 'shutdown-runs'
+        child = self.fixture('shutdown', 'open(' + repr(str(runs)) + ', "a").write("run\\n")\n'
+                             'sys.exit(1)\n')
+        with patch.dict(os.environ, {'WAYLAND_DISPLAY': str(path)}), \
+                patch.object(launcher, 'RESTART_DELAYS', (0,)):
+            self.assertEqual(launcher.stock_host(child, limit=2), 0)
+        self.assertEqual(runs.read_text().splitlines(), ['run'])
 
     def test_session_socket_requires_fresh_session_restart(self):
         # A new host cannot authenticate again on a consumed notifications
