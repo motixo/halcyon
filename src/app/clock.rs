@@ -8,8 +8,8 @@ use cosmic::iced::{Point, Size};
 fn font() -> Font {
     crate::widget_style::clock_font()
 }
-fn measure(value: &str, size: f32, font: Font) -> f32 {
-    type NativeParagraph = <cosmic::Renderer as advanced_text::Renderer>::Paragraph;
+type NativeParagraph = <cosmic::Renderer as advanced_text::Renderer>::Paragraph;
+fn paragraph(value: &str, size: f32, font: Font) -> NativeParagraph {
     NativeParagraph::with_text(advanced_text::Text {
         content: value,
         bounds: Size::new(f32::INFINITY, f32::INFINITY),
@@ -22,8 +22,39 @@ fn measure(value: &str, size: f32, font: Font) -> f32 {
         wrapping: advanced_text::Wrapping::None,
         ellipsize: advanced_text::Ellipsize::None,
     })
-    .min_bounds()
-    .width
+}
+
+pub(super) fn measure(value: &str, size: f32, font: Font) -> f32 {
+    paragraph(value, size, font).min_bounds().width
+}
+
+fn ink_edges(value: &str, size: f32, font: Font) -> [f32; 2] {
+    use cosmic::iced::advanced::graphics::text::{cosmic_text::SwashCache, font_system};
+    thread_local! {
+        static INK: std::cell::RefCell<SwashCache> = std::cell::RefCell::new(SwashCache::new());
+    }
+    let paragraph = paragraph(value, size, font);
+    INK.with_borrow_mut(|cache| {
+        // Resizing must not accumulate a cache entry for every historical size.
+        if cache.image_cache.len() > 128 {
+            cache.image_cache.clear();
+        }
+        let mut system = font_system().write().expect("Write font system");
+        let mut edges = [f32::INFINITY, f32::NEG_INFINITY];
+        for glyph in paragraph.buffer().layout_runs().flat_map(|run| run.glyphs) {
+            let physical = glyph.physical((0., 0.), 1.);
+            if let Some(image) = cache.get_image(system.raw(), physical.cache_key) {
+                let left = (physical.x + image.placement.left) as f32;
+                edges[0] = edges[0].min(left);
+                edges[1] = edges[1].max(left + image.placement.width as f32);
+            }
+        }
+        if edges[0].is_finite() {
+            edges
+        } else {
+            [0., paragraph.min_bounds().width]
+        }
+    })
 }
 
 pub(super) fn ink_offset(time: &str, size: f32) -> f32 {
@@ -45,12 +76,23 @@ pub(super) fn ink_offset(time: &str, size: f32) -> f32 {
 /// frames never clip or wrap and the font does not jump on each minute tick.
 pub(super) fn fit(preferences: &ClockPreferences, width: f32, requested: f32) -> f32 {
     let width = (width - 2.).max(1.);
-    let mut needed = measure("00:00", requested, font());
+    let time_width = measure("00:00", requested, font());
+    let mut needed = time_width;
     let gap = if preferences.format_24h { 0. } else { 6. };
     if !preferences.format_24h {
-        needed += measure("PM", requested * 0.2, crate::widget_style::font());
+        needed += measure("PM", period_size(requested), crate::widget_style::font());
     }
-    (requested * ((width - gap).max(1.) / needed.max(1.)).min(1.)).max(1.)
+    let mut ratio = ((width - gap).max(1.) / needed.max(1.)).min(1.);
+    if !preferences.format_24h {
+        // The small label stops shrinking at META, even when the clock does not.
+        let minimum_period = measure("PM", crate::widget_style::META, crate::widget_style::font());
+        ratio = ratio.min((width - gap - minimum_period).max(1.) / time_width.max(1.));
+    }
+    (requested * ratio).max(1.)
+}
+
+fn period_size(clock_size: f32) -> f32 {
+    (clock_size * 0.2).max(crate::widget_style::META)
 }
 
 pub(super) fn face(
@@ -63,6 +105,13 @@ pub(super) fn face(
     let _style = crate::widget_style::scope(config);
     let (time, period) = clock_labels(time, config.clock.format_24h);
     let mut content_width = measure(&time, size, font());
+    // Center visible glyphs, not their advances: a large leading digit and a
+    // small AM/PM have very different side bearings, especially with fallbacks.
+    let mut ink = if config.clock.alignment == ClockAlignment::Center {
+        ink_edges(&time, size, font())
+    } else {
+        [0., content_width]
+    };
     let offset = if config.appearance.family.is_some() {
         0.
     } else {
@@ -78,16 +127,20 @@ pub(super) fn face(
             .into(),
     ];
     if let Some(period) = period {
-        content_width += 6. + measure(&period, size * 0.2, crate::widget_style::font());
+        if config.clock.alignment == ClockAlignment::Center {
+            let period_ink = ink_edges(&period, period_size(size), crate::widget_style::font());
+            ink[1] = ink[1].max(content_width + 6. + period_ink[1]);
+        }
+        content_width += 6. + measure(&period, period_size(size), crate::widget_style::font());
         items.push(
-            container(label(period, size * 0.2, p.muted))
+            container(label(period, period_size(size), p.muted))
                 .padding([0., 0., size * 0.08, 0.])
                 .into(),
         );
     }
     let x = match config.clock.alignment {
         ClockAlignment::Left => -offset,
-        ClockAlignment::Center => (width - content_width) / 2.,
+        ClockAlignment::Center => (width - ink[0] - ink[1]) / 2.,
         ClockAlignment::Right => width - content_width,
     };
     let content = row::with_children(items).spacing(6).align_y(Alignment::End);
@@ -173,58 +226,62 @@ mod tests {
             .unwrap();
         let theme = cosmic::Theme::dark();
         let mut config = Config::default();
-        for size in [[160., 100.], [300., 120.], [490., 200.], [620., 280.]] {
-            let mut native = Native::new(Size::new(size[0], size[1]));
-            for format in [true, false] {
-                for scale in [50, 100, 200] {
-                    config.clock.format_24h = format;
-                    config.clock.scale = scale;
-                    for alignment in [
-                        ClockAlignment::Left,
-                        ClockAlignment::Center,
-                        ClockAlignment::Right,
-                    ] {
-                        config.clock.alignment = alignment;
-                        config.clock.show_date = false;
-                        config.clock.center_vertically = true;
-                        let bounds = ink(
-                            &native.render(view(&config, now, size), &theme),
-                            size[0] as usize,
-                        );
-                        assert!(
-                            bounds[0] >= 2 && bounds[2] < size[0] as usize - 2,
-                            "horizontal clipping {size:?} {format} {scale} {alignment:?} {bounds:?}"
-                        );
-                        assert!(
-                            bounds[1] > 2 && bounds[3] < size[1] as usize - 2,
-                            "vertical clipping {bounds:?}"
-                        );
-                        if alignment == ClockAlignment::Center {
+        for family in [None, Some("DejaVu Sans")] {
+            config.widget_font = family.map(str::to_owned);
+            for size in [[160., 100.], [300., 120.], [490., 200.], [620., 280.]] {
+                let mut native = Native::new(Size::new(size[0], size[1]));
+                for format in [true, false] {
+                    for scale in [50, 100, 200] {
+                        config.clock.format_24h = format;
+                        config.clock.scale = scale;
+                        for alignment in [
+                            ClockAlignment::Left,
+                            ClockAlignment::Center,
+                            ClockAlignment::Right,
+                        ] {
+                            config.clock.alignment = alignment;
+                            config.clock.show_date = false;
+                            config.clock.center_vertically = true;
+                            let bounds = ink(
+                                &native.render(view(&config, now, size), &theme),
+                                size[0] as usize,
+                            );
                             assert!(
-                                ((bounds[0] + bounds[2]) as f32 / 2. - size[0] / 2.).abs() < 7.,
-                                "clock is not centered {bounds:?}"
+                                bounds[0] >= 2 && bounds[2] < size[0] as usize - 2,
+                                "horizontal clipping {size:?} {format} {scale} {alignment:?} {bounds:?}"
+                            );
+                            assert!(
+                                bounds[1] > 2 && bounds[3] < size[1] as usize - 2,
+                                "vertical clipping {bounds:?}"
+                            );
+                            if alignment == ClockAlignment::Center {
+                                assert!(
+                                    ((bounds[0] + bounds[2]) as f32 / 2. - size[0] / 2.).abs() < 7.,
+                                    "clock is not centered {size:?}/{format}/{scale}: {bounds:?}"
+                                );
+                            }
+                            config.clock.show_date = true;
+                            let bounds = ink(
+                                &native.render(view(&config, now, size), &theme),
+                                size[0] as usize,
+                            );
+                            assert!(
+                                bounds[3] < size[1] as usize - 2,
+                                "date must fit: {size:?} {bounds:?}"
                             );
                         }
-                        config.clock.show_date = true;
-                        let bounds = ink(
-                            &native.render(view(&config, now, size), &theme),
-                            size[0] as usize,
-                        );
-                        assert!(
-                            bounds[3] < size[1] as usize - 2,
-                            "date must fit: {size:?} {bounds:?}"
-                        );
                     }
                 }
+                config.clock.scale = 130;
+                config.clock.alignment = ClockAlignment::Center;
+                native.capture(
+                    view(&config, now, size),
+                    &theme,
+                    &format!("clock-centered-{}", size[0]),
+                );
             }
-            config.clock.scale = 130;
-            config.clock.alignment = ClockAlignment::Center;
-            native.capture(
-                view(&config, now, size),
-                &theme,
-                &format!("clock-centered-{}", size[0]),
-            );
         }
+        config.widget_font = None;
         let mut native = Native::new(Size::new(360., 148.));
         config.clock = ClockPreferences::default();
         let small = ink(

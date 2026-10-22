@@ -130,10 +130,29 @@ impl Cards {
             .and_then(|weather| weather_dew_point_degrees(&self.config, &weather.current))
     }
     fn glance_weather_width(&self) -> f32 {
-        // The dew point sits as a small number beside the temperature.
-        let dew_point = if self.glance_dew_point().is_some() { 34. } else { 0. };
-        dew_point + if self.glance_compact() { 76. } else { 94. }
+        let minimum: f32 = if self.glance_compact() { 76. } else { 94. };
+        let Some(weather) = &self.weather else {
+            return minimum;
+        };
+        // Match the rendered row, including fallback/custom font advances and
+        // negative temperatures. A fixed estimate clips the final small number.
+        let font = crate::widget_style::font();
+        let mut width = super::clock::measure(
+            data::weather_icon(weather.current.weather_code, weather.current.is_day != 0),
+            22.,
+            font,
+        ) + 6.
+            + super::clock::measure(
+                &format!("{:.0}°", weather.current.temperature_2m),
+                28.,
+                font,
+            );
+        if let Some(dew_point) = self.glance_dew_point() {
+            width += 6. + super::clock::measure(&dew_point, 28. * 0.55, font);
+        }
+        width.ceil().max(minimum)
     }
+
     fn glance_weather_block_height(&self) -> f32 {
         if self.glance_compact() { 48. } else { 65. }
     }
@@ -445,7 +464,7 @@ impl Cards {
         };
         if self.config.glance.show_weather {
             if self.glance_side_by_side() {
-                let weather_width = if self.glance_compact() { 76. } else { 94. };
+                let weather_width = self.glance_weather_width();
                 push(
                     width - padding - weather_width,
                     padding,
@@ -1156,22 +1175,25 @@ mod tests {
             "daily":{"time":[],"temperature_2m_max":[],"temperature_2m_min":[],
                 "weather_code":[],"precipitation_probability_max":[]}
         })).unwrap());
-        for style in [GlanceStyle::Transparent, GlanceStyle::Panel] {
-            cards.config.glance.style = style;
-            for density in [GlanceDensity::Compact, GlanceDensity::Comfortable] {
-                cards.config.glance.density = density;
-                for width in [260., 360.] {
-                    cards
-                        .config
-                        .widget_sizes
-                        .insert("glance".into(), [width, 300.]);
-                    for scale in [50, 100] {
-                        cards.config.clock.scale = scale;
-                        let height = cards.glance_header_height();
-                        let mut native = Native::new(Size::new(width, height));
-                        let dew = native.bounds(cards.glance_header(), "glance-dew-point");
-                        assert!(
-                            dew.x >= 0.
+        for family in [None, Some("DejaVu Sans")] {
+            cards.config.widget_font = family.map(str::to_owned);
+            let _style = crate::widget_style::scope(&cards.config);
+            for style in [GlanceStyle::Transparent, GlanceStyle::Panel] {
+                cards.config.glance.style = style;
+                for density in [GlanceDensity::Compact, GlanceDensity::Comfortable] {
+                    cards.config.glance.density = density;
+                    for width in [260., 360.] {
+                        cards
+                            .config
+                            .widget_sizes
+                            .insert("glance".into(), [width, 300.]);
+                        for scale in [50, 100] {
+                            cards.config.clock.scale = scale;
+                            let height = cards.glance_header_height();
+                            let mut native = Native::new(Size::new(width, height));
+                            let dew = native.bounds(cards.glance_header(), "glance-dew-point");
+                            assert!(
+                                dew.x >= 0.
                                 && dew.y >= 0.
                                 && dew.x + dew.width <= width + 0.5
                                 && dew.y + dew.height <= height + 0.5
@@ -1179,14 +1201,15 @@ mod tests {
                                 // wide enough for "-25°" without clipping.
                                 && dew.height < 20.
                                 && dew.width > 18.,
-                            "{style:?}/{density:?}/{width}/{scale}: {dew:?}, height={height}"
-                        );
-                        if scale == 100 {
-                            native.capture(
-                                cards.glance_header(),
-                                &cosmic::Theme::dark(),
-                                &format!("dew-point-overview-{style:?}-{density:?}-{width}"),
+                                "{style:?}/{density:?}/{width}/{scale}: {dew:?}, height={height}"
                             );
+                            if scale == 100 {
+                                native.capture(
+                                    cards.glance_header(),
+                                    &cosmic::Theme::dark(),
+                                    &format!("dew-point-overview-{style:?}-{density:?}-{width}"),
+                                );
+                            }
                         }
                     }
                 }
@@ -1513,13 +1536,19 @@ mod tests {
     #[test]
     fn clock_area_is_click_through_but_weather_and_agenda_keep_input() {
         let mut cards = app();
+        // This scenario needs an empty agenda, not the machine's cached events.
+        cards.calendar = None;
+        cards.calendar_today = None;
+        cards.weather = None;
         let padding = cards.glance_padding();
         let clock_bottom = padding + cards.glance_clock_height();
         assert!(
             cards
                 .glance_input_rects()
                 .iter()
-                .all(|r| r[1] as f32 >= clock_bottom.floor())
+                .all(|r| r[1] as f32 >= clock_bottom.floor()),
+            "clock bottom={clock_bottom}, size={:?}, header={}, rects={:?}",
+            cards.glance_size(), cards.glance_header_height(), cards.glance_input_rects()
         );
         cards.config.glance.show_calendar = false;
         cards.config.glance.show_weather = false;
