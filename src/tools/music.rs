@@ -41,6 +41,10 @@ pub struct Player {
     /// What follows the prefix, `spotify` or `firefox.instance_1_84`; the
     /// preference stores its `app_key`.
     pub key: String,
+    /// Unique DBus owner; timing never survives a player restart.
+    pub owner: Option<String>,
+    /// This sample came from an explicit seek notification, including zero.
+    pub seeked: bool,
     /// The player's own name, `Spotify`.
     pub identity: String,
     pub status: Playback,
@@ -113,6 +117,8 @@ impl Player {
         let length = self.length_us.filter(|n| *n > 0)?;
         Some(SeekRequest {
             bus: self.bus.clone(),
+            owner: self.owner.clone(),
+            length_us: length,
             track_id: self.track_id.clone()?,
             title: self.title.clone(),
             media_url: self.media_url.clone(),
@@ -175,6 +181,8 @@ pub struct TransportRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SeekRequest {
     pub bus: String,
+    owner: Option<String>,
+    length_us: i64,
     pub track_id: String,
     pub position_us: i64,
     title: String,
@@ -391,6 +399,8 @@ pub fn parse_player(
             .filter(|name| !name.trim().is_empty())
             .unwrap_or_else(|| fallback_name(&key)),
         key,
+        owner: None,
+        seeked: false,
         status,
         title: title.trim().to_string(),
         artists: artists
@@ -489,6 +499,90 @@ async fn properties(
     .map_err(|error| error.to_string())
 }
 
+async fn player_owner(connection: &zbus::Connection, bus: &str) -> Result<String, String> {
+    call(
+        connection,
+        "org.freedesktop.DBus",
+        "org.freedesktop.DBus",
+        "GetNameOwner",
+        &(bus,),
+    )
+    .await?
+    .body()
+    .deserialize()
+    .map_err(|error| error.to_string())
+}
+
+/// A browser can reuse its track ID, so require the visible media identity too.
+fn same_media(before: &Player, now: &Player) -> bool {
+    before.bus == now.bus
+        && before.owner == now.owner
+        && before.track_id.is_some()
+        && before.track_id == now.track_id
+        && !before.title.is_empty()
+        && before.title == now.title
+        && before.media_url == now.media_url
+        && before.artists == now.artists
+        && before.album == now.album
+        && now.status != Playback::Stopped
+}
+
+/// Keep timing for an identified track when Firefox withdraws it after a seek.
+/// A real Seeked(0), paused reading, track change or player restart wins.
+pub fn reconcile_timing(before: &[Player], now: &mut [Player]) {
+    for player in now {
+        let Some(old) = before.iter().find(|old| same_media(old, player)) else {
+            continue;
+        };
+        let missing_length = player.length_us.is_none();
+        if missing_length {
+            player.length_us = old.length_us;
+        }
+        let broken_zero = !player.seeked
+            && player.status == Playback::Playing
+            && player.position_us == Some(0)
+            && (missing_length || player.app() == "firefox")
+            && old.position_at(player.sampled).is_some_and(|at| at > 0);
+        if player.position_us.is_none() || broken_zero {
+            player.position_us = old.position_at(player.sampled);
+        }
+    }
+}
+
+struct SeekUpdate {
+    track: Player,
+    position: i64,
+    sampled: Instant,
+}
+
+fn remember_seek(message: &zbus::Message, players: &[Player], seeks: &mut Vec<SeekUpdate>) {
+    let header = message.header();
+    if header.interface().map(|i| i.as_str()) != Some(PLAYER)
+        || header.member().map(|m| m.as_str()) != Some("Seeked")
+    {
+        return;
+    }
+    let Some(sender) = header.sender() else {
+        return;
+    };
+    let Ok((position,)) = message.body().deserialize::<(i64,)>() else {
+        return;
+    };
+    if position < 0 {
+        return;
+    }
+    if let Some(track) = players
+        .iter()
+        .find(|p| p.owner.as_deref() == Some(sender.as_str()))
+    {
+        seeks.push(SeekUpdate {
+            track: track.clone(),
+            position,
+            sampled: Instant::now(),
+        });
+    }
+}
+
 /// Every player on `connection`, in bus-name order. A player that does not
 /// answer is left out.
 pub async fn snapshot(connection: &zbus::Connection) -> Result<Vec<Player>, String> {
@@ -509,13 +603,19 @@ pub async fn snapshot(connection: &zbus::Connection) -> Result<Vec<Player>, Stri
     });
     let mut players: Vec<Player> =
         cosmic::iced::futures::stream::iter(buses.map(|bus| async move {
+            // Address the unique owner so a process replacement cannot mix
+            // properties from two different players in the same snapshot.
+            let owner = player_owner(connection, &bus).await.ok()?;
             let (props, root) = tokio::join!(
-                properties(connection, &bus, PLAYER),
-                properties(connection, &bus, ROOT)
+                properties(connection, &owner, PLAYER),
+                properties(connection, &owner, ROOT)
             );
-            props
-                .ok()
-                .map(|props| parse_player(&bus, &root.unwrap_or_default(), &props, Instant::now()))
+            props.ok().map(|props| {
+                let mut player =
+                    parse_player(&bus, &root.unwrap_or_default(), &props, Instant::now());
+                player.owner = Some(owner);
+                player
+            })
         }))
         .buffer_unordered(4)
         .filter_map(|player| async move { player })
@@ -567,7 +667,15 @@ pub async fn seek_to(connection: &zbus::Connection, request: &SeekRequest) -> Re
     // SetPosition normally rejects stale IDs. Firefox-based browsers reuse an
     // ID, so compare the available media identity as well. Missing optional
     // metadata alone does not imply a different track.
-    let props = properties(connection, &request.bus, PLAYER).await?;
+    let owner = player_owner(connection, &request.bus).await?;
+    if request
+        .owner
+        .as_ref()
+        .is_some_and(|previous| previous != &owner)
+    {
+        return Ok(());
+    }
+    let props = properties(connection, &owner, PLAYER).await?;
     let current = parse_player(&request.bus, &HashMap::new(), &props, Instant::now());
     let title_changed =
         !request.title.is_empty() && !current.title.is_empty() && request.title != current.title;
@@ -576,13 +684,21 @@ pub async fn seek_to(connection: &zbus::Connection, request: &SeekRequest) -> Re
         .as_ref()
         .zip(current.media_url.as_ref())
         .is_some_and(|(before, now)| before != now);
+    // Firefox can lose duration after a seek. Use the captured duration only
+    // with a positively matched media URL, title and process, never ID alone.
+    let length = current.length_us.or_else(|| {
+        (request.owner.as_ref() == Some(&owner)
+            && !request.title.is_empty()
+            && request.title == current.title
+            && request.media_url.is_some()
+            && request.media_url == current.media_url)
+            .then_some(request.length_us)
+    });
     if current.track_id.as_deref() != Some(request.track_id.as_str())
         || title_changed
         || url_changed
         || !current.can_seek
-        || current
-            .length_us
-            .is_none_or(|length| request.position_us >= length)
+        || length.is_none_or(|length| request.position_us >= length)
     {
         // Match MPRIS's stale-request behavior. perform() still refreshes the
         // card, so it shows the current track/timing after an ignored click.
@@ -592,7 +708,7 @@ pub async fn seek_to(connection: &zbus::Connection, request: &SeekRequest) -> Re
         .map_err(|e| e.to_string())?;
     call(
         connection,
-        &request.bus,
+        &owner,
         PLAYER,
         "SetPosition",
         &(id, request.position_us),
@@ -653,11 +769,22 @@ async fn follow(
         .await
         .map_err(error)?;
     // Browser transitions can announce a title/status before timing settles.
-    // Brief follow-up reads recover it without retaining a previous duration
-    // (Firefox-based browsers may reuse the same track ID for different media).
+    // Brief follow-up reads recover new timing; same-media reconciliation
+    // below retains known timing only while the track and process match.
     let mut settling_reads = 3;
+    let mut previous = Vec::new();
+    let mut seeks: Vec<SeekUpdate> = Vec::new();
     loop {
-        let players = snapshot(connection).await?;
+        let mut players = snapshot(connection).await?;
+        reconcile_timing(&previous, &mut players);
+        for seek in seeks.drain(..) {
+            if let Some(player) = players.iter_mut().find(|p| same_media(&seek.track, p)) {
+                player.position_us = Some(seek.position);
+                player.sampled = seek.sampled;
+                player.seeked = true;
+            }
+        }
+        previous = players.clone();
         let playing = players
             .iter()
             .any(|player| player.status == Playback::Playing);
@@ -677,7 +804,8 @@ async fn follow(
         };
         let changed = tokio::select! {
             message = signals.next() => {
-                if message.is_none() { return Err("Lost the session bus".into()) }
+                let message = message.ok_or("Lost the session bus")?.map_err(error)?;
+                remember_seek(&message, &previous, &mut seeks);
                 true
             },
             message = owners.next() => {
@@ -691,7 +819,9 @@ async fn follow(
         }
         // A track change sends several signals at once; read them as one.
         tokio::time::sleep(Duration::from_millis(120)).await;
-        while let Some(Some(_)) = signals.next().now_or_never() {}
+        while let Some(Some(message)) = signals.next().now_or_never() {
+            remember_seek(&message.map_err(error)?, &previous, &mut seeks);
+        }
         while let Some(Some(_)) = owners.next().now_or_never() {}
     }
 }
@@ -877,6 +1007,8 @@ mod tests {
         Player {
             bus: format!("{PREFIX}{bus}"),
             key: bus.into(),
+            owner: None,
+            seeked: false,
             identity: bus.into(),
             status,
             title: title.into(),
@@ -1129,6 +1261,113 @@ mod tests {
         assert_eq!((art.width, art.height), (ART_SIZE, ART_SIZE));
         assert_eq!(art.rgba.len(), (ART_SIZE * ART_SIZE * 4) as usize);
         assert!(thumbnail(b"GIF89a....").is_err());
+    }
+
+    #[test]
+    fn timing_recovery_respects_zero_pause_track_and_process_changes() {
+        let mut old = player("firefox", Playback::Playing, "Video");
+        old.owner = Some(":1.20".into());
+        old.track_id = Some("/org/mpris/MediaPlayer2/firefox".into());
+        old.media_url = Some("https://www.youtube.com/watch?v=1".into());
+        old.length_us = Some(300_000_000);
+        old.position_us = Some(150_000_000);
+        let mut missing = old.clone();
+        missing.sampled += Duration::from_secs(2);
+        missing.position_us = Some(0);
+        missing.length_us = None;
+        for boundary in ["seek-zero", "paused", "new-track", "new-owner", "stopped", "missing-title", "missing-url", "normal"] {
+            let mut current = missing.clone();
+            match boundary {
+                "seek-zero" => current.seeked = true,
+                "paused" => current.status = Playback::Paused,
+                "new-track" => current.media_url = Some("https://www.youtube.com/watch?v=2".into()),
+                "new-owner" => current.owner = Some(":1.21".into()),
+                "stopped" => current.status = Playback::Stopped,
+                "missing-title" => current.title.clear(),
+                "missing-url" => current.media_url = None,
+                _ => {}
+            }
+            reconcile_timing(std::slice::from_ref(&old), std::slice::from_mut(&mut current));
+            let recover = matches!(boundary, "normal" | "paused" | "seek-zero");
+            assert_eq!(current.length_us, if recover { Some(300_000_000) } else { None }, "{boundary}");
+            assert_eq!(current.position_us, Some(if boundary == "normal" { 152_000_000 } else { 0 }), "{boundary}");
+        }
+    }
+
+    #[test]
+    fn seeking_again_works_when_same_browser_track_withdraws_duration() {
+        use std::sync::atomic::Ordering;
+        let bus = fixture::Bus::new();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let state = fixture::State::new();
+                let _service = fixture::serve(
+                    &bus.address,
+                    "org.mpris.MediaPlayer2.firefox",
+                    state.clone(),
+                )
+                .await;
+                let client = zbus::connection::Builder::address(bus.address.as_str())
+                    .unwrap()
+                    .build()
+                    .await
+                    .unwrap();
+                let before = snapshot(&client).await.unwrap().remove(0);
+                let request = before.seek_request(0.5).unwrap();
+                state.broken_timing.store(true, Ordering::SeqCst);
+                seek_to(&client, &request).await.unwrap();
+                assert_eq!(state.position.load(Ordering::SeqCst), 150_000_000);
+                // The fallback must still reject a new video with Firefox's constant ID.
+                state.track.store(2, Ordering::SeqCst);
+                let request = before.seek_request(0.25).unwrap();
+                seek_to(&client, &request).await.unwrap();
+                assert_eq!(state.position.load(Ordering::SeqCst), 150_000_000);
+            });
+    }
+
+    #[test]
+    fn watcher_keeps_seeked_position_when_browser_loses_timing() {
+        use std::sync::atomic::Ordering;
+        let bus = fixture::Bus::new();
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+            let state = fixture::State::new();
+            state.playing.store(true, Ordering::SeqCst);
+            let service = fixture::serve(&bus.address, "org.mpris.MediaPlayer2.firefox", state.clone()).await;
+            let client = zbus::connection::Builder::address(bus.address.as_str()).unwrap().build().await.unwrap();
+            let (mut output, mut input) = cosmic::iced::futures::channel::mpsc::channel(4);
+            let watcher = tokio::spawn(async move { follow(&client, &mut output).await });
+            let first = tokio::time::timeout(Duration::from_secs(2), input.next()).await.unwrap().unwrap();
+            assert!(matches!(first, Feed::Players(players) if players[0].length_us == Some(300_000_000)));
+            // Firefox emits the correct seek position, then returns zero and
+            // omits the duration in every GetAll while it keeps playing.
+            state.position.store(0, Ordering::SeqCst);
+            state.length.store(0, Ordering::SeqCst);
+            service.emit_signal(None::<&str>, PATH, PLAYER, "Seeked", &(150_000_000i64,)).await.unwrap();
+            for _ in 0..2 {
+                let next = tokio::time::timeout(Duration::from_secs(3), input.next()).await.unwrap().unwrap();
+                let Feed::Players(players) = next else { panic!("lost player") };
+                assert_eq!(players[0].length_us, Some(300_000_000));
+                assert!(players[0].position_us.unwrap() >= 150_000_000);
+                assert!(players[0].position_us.unwrap() < 154_000_000);
+            }
+            // Seeking to the beginning is authoritative, not a broken zero poll.
+            service.emit_signal(None::<&str>, PATH, PLAYER, "Seeked", &(0i64,)).await.unwrap();
+            let next = tokio::time::timeout(Duration::from_secs(3), input.next()).await.unwrap().unwrap();
+            let Feed::Players(players) = next else { panic!("lost player") };
+            assert_eq!(players[0].position_us, Some(0));
+            assert!(players[0].seeked);
+            // A new video reusing Firefox's ID must not inherit the old time.
+            state.track.store(2, Ordering::SeqCst);
+            service.emit_signal(None::<&str>, PATH, PLAYER, "Seeked", &(0i64,)).await.unwrap();
+            let next = tokio::time::timeout(Duration::from_secs(3), input.next()).await.unwrap().unwrap();
+            let Feed::Players(players) = next else { panic!("lost player") };
+            assert_eq!(players[0].length_us, None);
+            assert_eq!(players[0].position_us, Some(0));
+            watcher.abort();
+        });
     }
 
     #[test]

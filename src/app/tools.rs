@@ -210,9 +210,10 @@ impl Cards {
 
     /// A new list of players: remember who started playing and fetch the
     /// followed track's artwork.
-    pub(super) fn music_feed(&mut self, feed: music::Feed) -> Task<Message> {
-        if let music::Feed::Players(players) = &feed {
+    pub(super) fn music_feed(&mut self, mut feed: music::Feed) -> Task<Message> {
+        if let music::Feed::Players(players) = &mut feed {
             let before = self.tools.players().to_vec();
+            music::reconcile_timing(&before, players);
             music::remember(&mut self.tools.recent, &before, players);
             if self
                 .tools
@@ -1057,6 +1058,8 @@ mod tests {
         let player = |status| music::Player {
             bus: format!("{}spotify", music::PREFIX),
             key: "spotify".into(),
+            owner: None,
+            seeked: false,
             identity: "Spotify".into(),
             status,
             title: "Track".into(),
@@ -1112,6 +1115,8 @@ mod tests {
         let player = |key: &str, status| music::Player {
             bus: format!("{}{key}", music::PREFIX),
             key: key.into(),
+            owner: None,
+            seeked: false,
             identity: key.into(),
             status,
             title: "Track".into(),
@@ -1190,6 +1195,40 @@ mod tests {
             }
         }
         assert!(completed, "The transport request must finish");
+    }
+
+    #[test]
+    fn music_control_refresh_keeps_progress_on_desktop() {
+        music::fixture::isolated(
+            "app::tools::tests::music_control_refresh_keeps_progress_on_desktop",
+            || {
+                use std::sync::atomic::Ordering;
+                tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
+                    let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap();
+                    let state = music::fixture::State::new();
+                    state.playing.store(true, Ordering::SeqCst);
+                    let _service = music::fixture::serve(&address, "org.mpris.MediaPlayer2.firefox", state.clone()).await;
+                    let client = music::connection().await.unwrap();
+                    let mut config = Config::default();
+                    config.music.enabled = true;
+                    let (mut cards, _) = Cards::init(Core::default(), config.clone());
+                    let players = music::snapshot(&client).await.unwrap();
+                    let _ = cards.music_feed(music::Feed::Players(players.clone()));
+                    state.broken_timing.store(true, Ordering::SeqCst);
+                    let players = music::snapshot(&client).await.unwrap();
+                    let _ = cards.update(Message::MusicControlDone(Ok(players.clone())));
+                    {
+                        let player = cards.current_player().unwrap();
+                        assert_eq!(player.length_us, Some(300_000_000));
+                        assert!(player.position_us.unwrap() >= 60_000_000);
+                        assert_eq!(player.seek_request(0.5).unwrap().position_us, 150_000_000);
+                    }
+                    let messages = click_music_control(&cards, "music-progress");
+                    assert!(messages.iter().any(|m| matches!(m, Message::Tool(Action::MusicSeek(_)))),
+                        "Progress must stay interactive after a broken control refresh");
+                });
+            },
+        );
     }
 
     #[test]

@@ -1134,12 +1134,14 @@ impl cosmic::Application for Settings {
                 cosmic::iced::time::every(Duration::from_secs(30)).map(|_| Message::RefreshService),
             );
         }
-        // Players come and go; the Music page looks again every few seconds.
+        // The preview uses the same seek notifications as the desktop card.
         if self.page == Page::Music {
-            subscriptions.push(
-                cosmic::iced::time::every(Duration::from_secs(4))
-                    .map(|_| Message::Tools(tools::Message::Refresh)),
-            );
+            subscriptions.push(crate::tools::music::watch().map(|feed| {
+                Message::Tools(tools::Message::Players(match feed {
+                    crate::tools::music::Feed::Players(players) => Ok(players),
+                    crate::tools::music::Feed::Unavailable(error) => Err(error),
+                }))
+            }));
         }
         // A live preview redraws once a second while it counts.
         if (self.page == Page::Focus && self.tools.focus.running())
