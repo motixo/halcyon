@@ -37,6 +37,7 @@ pub(crate) mod session_drafts;
 mod shortcuts;
 mod system_appearance;
 mod tools;
+mod updates;
 mod view;
 mod wallpaper;
 mod window_rules;
@@ -426,6 +427,7 @@ pub enum FontTarget {
 }
 #[derive(Debug, Clone)]
 pub enum Message {
+    Updates(updates::Message),
     ShareUsage(bool),
     UsageSaved(Result<bool, String>),
     OpenPrivacy,
@@ -604,6 +606,7 @@ pub enum Message {
 }
 
 pub struct Settings {
+    updates: updates::Updates,
     usage_enabled: bool,
     usage_busy: bool,
     usage_error: Option<String>,
@@ -817,6 +820,7 @@ impl cosmic::Application for Settings {
         crate::usage::start_status();
         let usage = crate::usage::preference();
         let mut app = Self {
+            updates: updates::Updates::default(),
             usage_enabled: usage.as_ref().copied().unwrap_or(false),
             usage_error: usage.err(),
             usage_busy: false,
@@ -1312,6 +1316,7 @@ impl cosmic::Application for Settings {
             .into()
     }
     fn on_app_exit(&mut self) -> Option<Message> {
+        self.updates.cancel();
         if self.native_busy {
             return Some(Message::Window(WindowControl::Close));
         }
@@ -1329,6 +1334,12 @@ impl cosmic::Application for Settings {
         Some(Message::FlushEdits)
     }
     fn update(&mut self, message: Message) -> Task<Message> {
+        if matches!(message, Message::Window(WindowControl::Close)) {
+            self.updates.cancel();
+        }
+        if let Message::Updates(message) = message {
+            return self.update_updates(message);
+        }
         let _native = crate::desktop::islands::Installation::native_view(
             self.desktop.islands.installation.clone(),
         );
@@ -1503,6 +1514,7 @@ impl Settings {
             return task;
         }
         match message {
+            Message::Updates(message) => return self.update_updates(message),
             Message::ShareUsage(enabled) => return self.change_usage(enabled),
             Message::UsageSaved(result) => {
                 self.usage_busy = false;
@@ -2893,13 +2905,14 @@ impl Settings {
                 Err(error) => self.failed(error),
             },
             Message::RefreshInstallation => {
+                let updates = self.update_updates(updates::Message::Inspect);
                 self.desktop_recovery.refresh();
                 self.installation_generation += 1;
                 let generation = self.installation_generation;
                 self.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
                 let panel = self.desktop.selected;
                 let output = self.desktop.island_output();
-                return cosmic::task::future(async move {
+                return Task::batch([updates, cosmic::task::future(async move {
                     let (state, runtime) = tokio::task::spawn_blocking(move || {
                         let Ok(store) = crate::desktop::DesktopStore::from_env() else {
                             return (Default::default(), Default::default());
@@ -2916,7 +2929,7 @@ impl Settings {
                     .await
                     .unwrap_or_default();
                     Message::InstallationChecked(generation, state, runtime)
-                });
+                })]);
             }
             Message::InstallationReady(generation, state) => {
                 if generation != self.installation_generation {

@@ -134,3 +134,16 @@ Do not post installation tokens, credentials or private widget contents there.
   public HTTPS URL supplied by the player.
 - **Projects, notes and settings:** remain local; activity reports do not include
   their contents.
+
+## System update checks
+
+App settings reads installation and package-source information locally. It does
+not poll for updates. **Check for updates**, available only for a verified system
+installation, asks PackageKit to refresh the system's configured package sources
+and then checks for a newer Halcyon package. Those sources receive the usual
+package-manager requests and connection IP; Halcyon sends no reporting token or
+widget data. The check can be cancelled. Authentication and installation belong
+to the operating system; Halcyon never asks for a password or installs updates.
+**Open COSMIC Store** opens the Store, where you choose Updates. Release and
+installation-information links open GitHub only when selected. System update
+enrollment is unavailable until the source and bootstrap assets are verified.

@@ -22,6 +22,7 @@ mod slider_completion;
 mod system_appearance;
 mod themes;
 mod tools;
+mod updates;
 mod wallpaper;
 mod widget_text;
 mod window_rules;

@@ -585,7 +585,7 @@ mod installation_tests {
 }
 
 mod installation;
-pub use installation::Installation;
+pub use installation::{CompatibilityStatus, Installation};
 #[cfg(test)]
 pub(crate) use installation::fixture_installed;
 

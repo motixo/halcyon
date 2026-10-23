@@ -1251,6 +1251,7 @@ impl Settings {
                     button::standard("Run setup again")
                         .on_press_maybe((!self.busy).then_some(Message::OpenWizard)).into()),
             ]),
+            self.updates_section(),
             self.privacy_section(),
             section(vec![
                 split(self.help("edge-menu", "Edge menu", "Hold the pointer at the far-right screen edge for one second to open widget controls."),
