@@ -131,12 +131,23 @@ binding to a measured profile. Configuration changes do not change the catalog
 profile or require a new installed package.
 
 Every profile declares `configuration` with `resolver:
-"cosmic-panel-ca20ce3-native-v1"`, a qualified `max_outputs` bound, and `applets`.
+"cosmic-panel-ca20ce3-islands-v2"`, a qualified `max_outputs` bound, `native_source` and `applets`.
 `applets` maps desktop file stems to `{process, args}`: a declared panel-child
 executable and its exact allowed argument vector. Multiple desktop IDs can map
 to one executable; all child executables must have a binding. Even an empty
 child policy must measure the real configuration and reject configured applets;
 there is no core-only escape from configuration checks.
+
+`native_source` must equal `bundle_contract.CONFIGURATION_SOURCE`: the pinned
+upstream revision and exact SHA256s of the reviewed companion patch, core
+`lib.rs` and resulting patched `islands.rs`. Bundle verification also checks the
+manifest's upstream against this contract. These assumptions enter the runtime
+profile ID, catalog digest and frozen qualification request; existing manifest,
+payload and ELF hashes bind that target to exact bundle bytes. This is a source
+contract, not proof that the ELF was compiled from those inputs. Final build
+provenance and independent native qualification must establish that relationship.
+The source-pin regression checks tracked patch/core bytes and reconstructs the
+added `islands.rs` bytes without compiling or editing them.
 
 `panel_configuration.py` implements a bounded supported subset of the pinned
 panel's no-argument startup path, read-only:
@@ -152,8 +163,25 @@ panel's no-argument startup path, read-only:
 - Count all three plugin regions per effective bar. Query actual `wl_output` v4
   names over a separate bounded registry connection, never inherited session
   descriptors, DRM guesses or a second host. `All` multiplies by live outputs,
-  `Name` by matching outputs, and `Active` creates one bar. Output count must fit
-  the qualified scope; implementation support is not native multi-display proof.
+  and `Active` creates one bar. Native `Name` creates a bar only on a matching
+  output, **except** for valid enabled Islands on `Dock` or `Panel`: the patched
+  `islands.rs::reconcile_outputs` keeps one bar on the preferred output or one
+  deterministic fallback (built-in eDP/LVDS/DSI first, then lexical name). Its
+  configured plugins remain required. Output count must fit the qualified scope;
+  implementation support is not native multi-display proof.
+- Read/watch/fingerprint each supported bar's
+  `XDG_CONFIG_HOME/cosmic/io.github.desktopcards.DockIslands/v1/{Dock,Panel}`
+  (HOME/.config only if XDG_CONFIG_HOME is unset; no system-data fallback).
+  Missing means default-disabled. The complete canonical Settings RON schema is
+  validated: required/unknown/duplicate fields, bool and enum types, version 1,
+  gap 0–64, both three-section permutations, positions 0–10000, at most 32 saved
+  output layouts, and nonempty output names of at most 128 UTF-8 bytes without
+  control characters. Recognized invalid/oversized/unreadable sidecars disable
+  **Islands fallback**, leaving native All/Active/present Name behavior intact.
+  Noncanonical RON extensions outside this bounded reader reject the snapshot
+  rather than guessing disabled; this prevents an enabled native extension from
+  silently being counted as zero. Other entry names have no Islands fallback.
+  All/Active still watch sidecar edits even though their count is unchanged.
 - Mirror pinned desktop search order: XDG application roots, sorted direct
   files, then queued nested directories; match file stems, selecting the first
   matching path for each unique plugin on a bar. Malformed higher-priority
@@ -172,7 +200,8 @@ panel's no-argument startup path, read-only:
 Snapshot dependencies are watched with bounded inotify coverage **before** they
 are read, including absent higher-priority entries and directory replacements.
 The launch guard retains that snapshot across preflight and readiness; changed
-then restored files still invalidate it. Output names are also rechecked.
+then restored files still invalidate it. This includes existing, newly created,
+replaced, deleted or change-and-restored Islands sidecars. Output names are also rechecked.
 A startup configuration race tears down/falls back without a persistent crash
 latch. A boot/login-scoped `fallback-session` marker preserves the existing
 fresh-notification-descriptor restart route while preventing same-login retry

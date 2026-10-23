@@ -12,7 +12,7 @@ import tempfile
 import time
 import unittest
 
-from bundle_contract import canonical, cohort_id, digest, identity, runtime_id, valid_catalog
+from bundle_contract import CONFIGURATION_SOURCE, canonical, cohort_id, digest, identity, runtime_id, valid_catalog
 import install
 import refresh
 import runtime_identity
@@ -62,6 +62,10 @@ def observed_wait(child,done,wedged,admission=None):
         config=Path(cfg['config_center']);old=config.read_bytes()
         config.write_text('Some([])')
         if cfg['mode']=='config-aba':config.write_bytes(old)
+    if cfg['mode'] in ('sidecar-change','sidecar-aba'):
+        path=Path(cfg['sidecar']);old=path.read_bytes()
+        path.write_bytes(old.replace(b'enabled:true',b'enabled:false'))
+        if cfg['mode']=='sidecar-aba':path.write_bytes(old)
     Path(os.environ['FIXTURE_ALLOW_SPAWN']).touch()
     ready=real_wait(child,done,wedged,admission)
     if ready:
@@ -139,7 +143,7 @@ class LaunchLifecycle(unittest.TestCase):
         self.library=self.root/'library'
         self.manifest,_=bundle_fixture(self.library,'0.2.1~lifecycle')
         shutil.copy2(self.binary,self.library/'cosmic-panel-islands')
-        self.row['runtime']['configuration']=dict(resolver='cosmic-panel-ca20ce3-native-v1',max_outputs=1,
+        self.row['runtime']['configuration']=dict(native_source=CONFIGURATION_SOURCE,resolver='cosmic-panel-ca20ce3-islands-v2',max_outputs=1,
             applets={'com.test.Audio':dict(process='cosmic-applet-audio',args=['90'])})
         self.env['XDG_DATA_DIRS']=str(self.root/'system-data')
         self.config_center=self.home/'.config/cosmic/com.system76.CosmicPanel.Panel/v1/plugins_center'
@@ -207,7 +211,7 @@ class LaunchLifecycle(unittest.TestCase):
             staged=refresh.stage_locked(self.home,self.library,fixture=True,enable=True,session='previous-login')
         self.assertIn(staged['state'],('staged','unchanged'));self.assertEqual(staged['runtime_readiness'],'not_measured')
         bundle,_,_,pointer=refresh.selected_generation(self.home)
-        cfg=dict(mode=mode,config_center=str(self.config_center),core_pid=self.children[0].pid,installed_root=str(self.installed_root),versions=self.versions,system=self.system,
+        cfg=dict(mode=mode,sidecar=str(self.home/'.config/cosmic/io.github.desktopcards.DockIslands/v1/Panel'),config_center=str(self.config_center),core_pid=self.children[0].pid,installed_root=str(self.installed_root),versions=self.versions,system=self.system,
             stock=str(self.stock),catalog=self.catalog,home=str(self.home),library=str(self.library),bundle=str(bundle),pointer=pointer,
             binary_sha256=self.manifest['binary_sha256'],applet=str(self.applet),observations=str(self.root/'observations'),exit=str(self.root/'exit'))
         config=self.root/'runner.json';config.write_bytes(canonical(cfg));runner=self.root/'runner.py';runner.write_text(RUNNER)
@@ -337,6 +341,33 @@ class LaunchLifecycle(unittest.TestCase):
         self.assertEqual(child.wait(timeout=6),0)
         self.assertTrue((self.home/'.local/state/desktop-cards-panel/failed').exists())
         self.assertEqual(len(self.events_named('stock')),1);self.assert_reaped()
+
+    def configure_named_fallback(self, enabled=True):
+        from test_islands_configuration import settings
+        self.config_center.with_name('output').write_text('Name("DP-9")')
+        sidecar=self.home/'.config/cosmic/io.github.desktopcards.DockIslands/v1/Panel'
+        sidecar.parent.mkdir(parents=True,exist_ok=True);sidecar.write_text(settings(enabled))
+
+    def test_enabled_islands_absent_name_admits_actual_fallback_child(self):
+        self.configure_named_fallback();self.successful_login()
+
+    def test_disabled_islands_absent_name_remains_zero_native_children(self):
+        self.configure_named_fallback(False);self.successful_login('missing',0)
+
+    def test_enabled_fallback_still_requires_configured_child(self):
+        self.configure_named_fallback();self.failure('missing')
+
+    def test_enabled_fallback_rejects_foreign_child(self):
+        self.configure_named_fallback();self.failure('foreign')
+
+    def test_enabled_fallback_rejects_excess_children(self):
+        self.configure_named_fallback();self.failure('excess')
+
+    def test_sidecar_change_during_fallback_startup_uses_session_latch(self):
+        self.configure_named_fallback();self.config_race('sidecar-change')
+
+    def test_sidecar_aba_during_fallback_startup_uses_session_latch(self):
+        self.configure_named_fallback();self.config_race('sidecar-aba')
 
     def test_required_core_exit_after_launch_is_not_ignored(self):self.failure('core-exit')
 

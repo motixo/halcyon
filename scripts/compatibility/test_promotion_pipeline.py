@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import qualify
 import release_gate
-from bundle_contract import canonical,digest,identity,verify_bundle
+from bundle_contract import CONFIGURATION_SOURCE, canonical,digest,identity,verify_bundle
 from test_generation_contract import catalog_fixture
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -25,7 +25,7 @@ class Pipeline(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('islands_builder',ROOT/'packaging/islands/build-deb.py')
         builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
         binary=self.root/'binary';binary.write_text('#!/bin/sh\nexit 99\n')
-        manifest=self.root/'manifest.json';manifest.write_bytes(canonical(dict(protocol=1,upstream='c'*40,binary_sha256=digest(binary))))
+        manifest=self.root/'manifest.json';manifest.write_bytes(canonical(dict(protocol=1,upstream=CONFIGURATION_SOURCE['upstream'],binary_sha256=digest(binary))))
         licenses=None
         if os.environ.get('HALCYON_RELEASED_020'):
             released=Path(os.environ['HALCYON_RELEASED_020'])

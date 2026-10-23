@@ -15,7 +15,7 @@ def runtime_fixture(row):
     files = runtime_identity.inventory(row)
     profile = dict(version=3, processes={name: dict(executable=path, sha256=files[path],
                    mapped=files.copy(), count=1, lifecycle='session') for name, path in row['processes'].items()},
-                   configuration=dict(resolver='cosmic-panel-ca20ce3-native-v1',max_outputs=1,applets={}),
+                   configuration=dict(native_source=CONFIGURATION_SOURCE,resolver='cosmic-panel-ca20ce3-islands-v2',max_outputs=1,applets={}),
                    constraints={}, unmeasured=['previously-read-resources', 'kernel-bytes', 'driver-firmware', 'anonymous-code'])
     row['runtime'] = profile
     row['runtime_compatibility'] = [dict(id=runtime_id(profile), evidence_id=row['evidence']['id'],
@@ -50,7 +50,7 @@ def bundle_fixture(path, version='0.2.1', catalog=True):
     cat=catalog_fixture(payload) if catalog else dict(format=CATALOG,version=1,cohorts=[])
     (path/'catalog.json').write_bytes(canonical(cat));(path/'catalog.json').chmod(0o644)
     files['catalog.json']=dict(sha256=digest(path/'catalog.json'),mode=0o644)
-    manifest=dict(format=FORMAT,version=2,protocol=1,upstream='c'*40,runtime_probe=1,package_version=version,
+    manifest=dict(format=FORMAT,version=2,protocol=1,upstream=CONFIGURATION_SOURCE['upstream'],runtime_probe=1,package_version=version,
                   binary_sha256=files['cosmic-panel-islands']['sha256'],payload_sha256=payload,files=files)
     (path/'companion-manifest.json').write_bytes(canonical(manifest));(path/'companion-manifest.json').chmod(0o644)
     return manifest,cat
@@ -59,7 +59,7 @@ def bundle_fixture(path, version='0.2.1', catalog=True):
 class Contract(unittest.TestCase):
     def setUp(self):
         self.catalog=catalog_fixture();self.cohort=self.catalog['cohorts'][0]['id']
-        self.manifest=dict(format=FORMAT,version=2,verified=True,payload_sha256='a'*64)
+        self.manifest=dict(upstream=CONFIGURATION_SOURCE['upstream'],format=FORMAT,version=2,verified=True,payload_sha256='a'*64)
         self.known=dict(verified=True,cohort=self.cohort)
     def classify(self, installed=None,running=None,manifest=None,catalog=None):
         return classify_compatibility(installed if installed is not None else self.known,

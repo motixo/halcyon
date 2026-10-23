@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 
-from bundle_contract import cohort_id, classify_compatibility, runtime_id
+from bundle_contract import CONFIGURATION_SOURCE, cohort_id, classify_compatibility, runtime_id
 from runtime_identity import _process, running_identity
 from test_generation_contract import catalog_fixture
 
@@ -38,7 +38,7 @@ class Procfs(unittest.TestCase):
             measured.update(count=1, lifecycle='session')
             self.profile['processes'][name] = measured
         self.bind(self.row)
-        self.manifest = dict(format='halcyon-islands-bundle',version=2,verified=True,payload_sha256='a'*64)
+        self.manifest = dict(upstream=CONFIGURATION_SOURCE['upstream'],format='halcyon-islands-bundle',version=2,verified=True,payload_sha256='a'*64)
 
     def start(self, name):
         child = subprocess.Popen([str(self.root/name), '90'], env={**os.environ,'XDG_SESSION_ID':'procfs-test'})

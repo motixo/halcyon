@@ -170,11 +170,12 @@
                 "required": [
                   "resolver",
                   "max_outputs",
-                  "applets"
+                  "applets",
+                  "native_source"
                 ],
                 "properties": {
                   "resolver": {
-                    "const": "cosmic-panel-ca20ce3-native-v1"
+                    "const": "cosmic-panel-ca20ce3-islands-v2"
                   },
                   "max_outputs": {
                     "type": "integer",
@@ -200,6 +201,14 @@
                           }
                         }
                       }
+                    }
+                  },
+                  "native_source": {
+                    "const": {
+                      "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
+                      "patch_sha256": "1db4db7cdffa9a7c0eb72489519958d4287360d9f74a61c94dd20f0037ab7b61",
+                      "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
+                      "islands_sha256": "4463dcb07dcb1c304bd35c0949e63bb428367d93cd36e6351a5e500865068eea"
                     }
                   }
                 }

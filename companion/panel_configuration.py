@@ -16,9 +16,9 @@ import struct
 import time
 from collections import deque
 
-from bundle_contract import identity
+from bundle_contract import identity, CONFIGURATION_RESOLVER, CONFIGURATION_SOURCE
 
-RESOLVER = 'cosmic-panel-ca20ce3-native-v1'
+RESOLVER = CONFIGURATION_RESOLVER
 PREFIX = 'com.system76.CosmicPanel'
 ID = re.compile(r'[A-Za-z0-9_.-]{1,200}')
 
@@ -216,7 +216,7 @@ class Snapshot:
             self.outputs = output_names(self.env)
             if len(self.outputs) > policy['max_outputs']: raise ValueError('unqualified_output_count')
             self.counts, bars = self._inventory()
-            self.identity = identity(dict(resolver=RESOLVER, outputs=self.outputs, bars=bars, files=self.records,
+            self.identity = identity(dict(resolver=RESOLVER, native_source=CONFIGURATION_SOURCE, outputs=self.outputs, bars=bars, files=self.records,
                                           counts=self.counts, path=self.env.get('PATH')))
             if self.watch.changed() or output_names(self.env) != self.outputs: raise Changed('configuration_changed')
         except BaseException:
@@ -234,6 +234,36 @@ class Snapshot:
         if not path.is_file() or path.stat().st_size > 65536: raise ValueError('configuration_file')
         data = path.read_bytes(); self.records[str(path)] = hashlib.sha256(data).hexdigest()
         return data.decode()
+
+    def islands_enabled(self, name):
+        # islands.rs::settings_path accepts exactly these two names and does
+        # not use XDG data/system defaults for its sidecar.
+        if name not in ('Dock', 'Panel'): return False
+        config = Path(self.env['XDG_CONFIG_HOME']) if 'XDG_CONFIG_HOME' in self.env else Path(self.env['HOME'])/'.config'
+        if not config.is_absolute(): raise ValueError('islands_relative_config_root')
+        path = config/'cosmic/io.github.desktopcards.DockIslands/v1'/name
+        self.watch.add(path)
+        try:
+            stat = path.stat()
+            if not path.is_file(): raise OSError('not a settings file')
+            if stat.st_size > 65536:
+                # Native rejects >MAX_WIRE_BYTES; no need to read an unbounded
+                # invalid file. Metadata and the watch bind that invalid state.
+                self.records[str(path)] = dict(invalid='oversized', size=stat.st_size,
+                    mtime=stat.st_mtime_ns, inode=stat.st_ino)
+                return False
+            data = path.read_bytes()
+        except FileNotFoundError:
+            self.records[str(path)] = None
+            return False  # Settings::default().enabled
+        except OSError:
+            self.records[str(path)] = dict(invalid='unreadable')
+            return False  # load_settings returned Err, no Islands fallback
+        self.records[str(path)] = hashlib.sha256(data).hexdigest()
+        if len(data) > 65536: return False
+        try: text = data.decode('utf-8')
+        except UnicodeDecodeError: return False
+        return islands_settings_enabled(text)
 
     def directory(self, path):
         self.watch.add(path, directory=True)
@@ -330,16 +360,127 @@ class Snapshot:
             if str(exe.resolve()) != self.policy['processes'][qualified['process']]: raise ValueError('desktop_exec_unqualified')
         normalized = []
         for name,output,plugins in bars:
+            enabled = self.islands_enabled(name)
+            selected = None
             if len(set(plugins)) != len(plugins): raise ValueError('duplicate_plugin_on_bar_unsupported')
             if output == ('variant','All'): multiplier = len(self.outputs)
             elif output == ('variant','Active'): multiplier = 1
-            elif isinstance(output,tuple) and len(output)==3 and output[:2]==('variant','Name') and isinstance(output[2],str): multiplier = int(output[2] in self.outputs)
+            elif isinstance(output,tuple) and len(output)==3 and output[:2]==('variant','Name') and isinstance(output[2],str):
+                selected = output[2] if output[2] in self.outputs else (
+                    min(self.outputs, key=lambda n: (not n.startswith(('eDP','LVDS','DSI')), n)) if enabled and self.outputs else None)
+                multiplier = int(selected is not None)
             else: raise ValueError('configuration_output')
             for plugin in plugins:
                 process = self.policy['applets'][plugin]['process']; counts[process] += multiplier
                 if counts[process] > 64: raise ValueError('configured_count_limit')
-            normalized.append(dict(name=name,output=output,plugins=plugins,multiplier=multiplier))
+            normalized.append(dict(name=name,output=output,plugins=plugins,multiplier=multiplier,
+                                   islands_enabled=enabled,selected_output=selected))
         return counts, normalized
+
+
+class UnsupportedSettings(ValueError):
+    """Outside the bounded parser scope: reject admission, never guess disabled."""
+
+
+def islands_settings_enabled(text):
+    """Deserialize/validate Settings' canonical RON subset, as the patched core.
+
+    Known malformed/schema-invalid input returns False like load_settings Err.
+    RON extensions outside this reader's scope reject the snapshot, so a valid
+    enabled extension can never accidentally be counted as disabled.
+    """
+    class Struct(dict): pass
+    class Map(dict): pass
+    tokens = []; i = 0
+    try:
+        while i < len(text):
+            if text[i].isspace(): i += 1; continue
+            if text.startswith('//', i):
+                end=text.find('\n',i); i=len(text) if end<0 else end+1; continue
+            if text.startswith('/*', i):
+                depth=1; i+=2
+                while i<len(text) and depth:
+                    if text.startswith('/*',i): depth+=1; i+=2
+                    elif text.startswith('*/',i): depth-=1; i+=2
+                    else:i+=1
+                if depth: return False
+                continue
+            if text[i]=='"':
+                literal=re.match(r'"(?:\\.|[^"\\])*"',text[i:],re.S)
+                if literal and any(e not in ('\\','"','n','r','t') for e in re.findall(r'\\(.)',literal[0],re.S)):
+                    raise UnsupportedSettings('islands_ron_string_extension')
+                value,length=json.JSONDecoder().raw_decode(text[i:])
+                if any(e not in ('\\','"','n','r','t') for e in re.findall(r'\\(.)',text[i:i+length])):
+                    raise UnsupportedSettings('islands_ron_string_extension')
+                if any(0xD800<=ord(c)<=0xDFFF for c in value):return False
+                tokens.append(('string',value));i+=length;continue
+            match=re.match(r'[A-Za-z_][A-Za-z_0-9]*|[+-]?[0-9]+|[{}\[\]():,]',text[i:])
+            if not match:raise UnsupportedSettings('islands_ron_extension')
+            tokens.append(match[0]);i+=len(match[0])
+        at=0
+        def value(depth=0):
+            nonlocal at
+            if depth>16 or at>=len(tokens):raise ValueError('islands_ron_end')
+            token=tokens[at];at+=1
+            if isinstance(token,tuple):return token[1]
+            if token in ('(', '{', '['):
+                end={'(':')','{':'}','[':']'}[token]
+                result=[] if token=='[' else Struct() if token=='(' else Map()
+                while at<len(tokens) and tokens[at]!=end:
+                    if token=='[':result.append(value(depth+1))
+                    else:
+                        key=tokens[at];at+=1
+                        if token=='{':
+                            if not isinstance(key,tuple):raise UnsupportedSettings('islands_map_key_extension')
+                            key=key[1]
+                        elif not isinstance(key,str) or not re.fullmatch('[A-Za-z_][A-Za-z_0-9]*',key):
+                            raise UnsupportedSettings('islands_tuple_extension')
+                        if at>=len(tokens) or tokens[at]!=':':raise ValueError('islands_ron_colon')
+                        at+=1
+                        if token=='(' and key in result:raise ValueError('islands_duplicate_field')
+                        result[key]=value(depth+1)
+                    if at<len(tokens) and tokens[at]==',':at+=1
+                    elif at>=len(tokens) or tokens[at]!=end:raise ValueError('islands_ron_comma')
+                if at>=len(tokens):raise ValueError('islands_ron_end')
+                at+=1;return result
+            if at<len(tokens) and tokens[at]=='(':raise UnsupportedSettings('islands_named_or_tuple_extension')
+            if token in ('true','false'):return token=='true'
+            if re.fullmatch('[+-]?[0-9]+',token):
+                if at<len(tokens) and isinstance(tokens[at],str) and re.match('[A-Za-z_]',tokens[at]):
+                    raise UnsupportedSettings('islands_number_extension')
+                return int(token)
+            if re.fullmatch('[A-Za-z_][A-Za-z_0-9]*',token):return ('enum',token)
+            raise ValueError('islands_ron_token')
+        settings=value()
+        if at!=len(tokens):return False
+        def fields(record, names):
+            if type(record) is not Struct or set(record)!=set(names):raise ValueError('islands_fields')
+        def uint(n,limit):
+            if type(n) is not int or not 0<=n<=limit:raise ValueError('islands_number')
+        def order(items):
+            if not isinstance(items,list) or len(items)!=3 or set(items)!={('enum','Start'),('enum','Center'),('enum','End')}:
+                raise ValueError('islands_order')
+        def arrangement(layout):
+            fields(layout,('together','separate'))
+            together,separate=layout['together'],layout['separate']
+            fields(together,('order','position'));fields(separate,('order','positions'))
+            order(together['order']);order(separate['order']);uint(together['position'],10000)
+            if not isinstance(separate['positions'],list) or len(separate['positions'])!=3:raise ValueError('islands_positions')
+            for n in separate['positions']:uint(n,10000)
+        fields(settings,('version','enabled','placement','gap','default_layout','outputs'))
+        if type(settings['version']) is not int or settings['version']!=1 or type(settings['enabled']) is not bool: return False
+        if settings['placement'] not in (('enum','Together'),('enum','Separate')):return False
+        uint(settings['gap'],64);arrangement(settings['default_layout'])
+        outputs=settings['outputs']
+        if type(outputs) is not Map or len(outputs)>32:return False
+        for name,layout in outputs.items():
+            if not isinstance(name,str) or not 1<=len(name.encode('utf-8'))<=128 or any(ord(c)<32 or 127<=ord(c)<=159 for c in name):return False
+            arrangement(layout)
+        return settings['enabled']
+    except UnsupportedSettings:
+        raise
+    except (ValueError,TypeError,KeyError):
+        return False
 
 
 def desktop(text):

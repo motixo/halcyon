@@ -16,6 +16,15 @@ HELPERS = ('panel_launcher.py', 'bundle_contract.py', 'runtime_identity.py',
            'install_status.py', 'install.py', 'refresh.py', 'selector.py', 'panel_configuration.py')
 FILES = (*HELPERS, 'cosmic-panel-islands', 'catalog.json')
 HEX = re.compile(r'[0-9a-f]{64}')
+CONFIGURATION_RESOLVER = 'cosmic-panel-ca20ce3-islands-v2'
+# Reviewed resolver dependencies, not a claim that any ELF was built from them.
+# Final native build provenance/qualification must establish that relationship.
+CONFIGURATION_SOURCE = {
+    "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
+    "patch_sha256": "1db4db7cdffa9a7c0eb72489519958d4287360d9f74a61c94dd20f0037ab7b61",
+    "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
+    "islands_sha256": "4463dcb07dcb1c304bd35c0949e63bb428367d93cd36e6351a5e500865068eea"
+}
 
 
 def canonical(value):
@@ -86,10 +95,12 @@ def valid_runtime(profile):
                 raise ValueError('runtime_mapping')
     children = {n for n,p in profile['processes'].items() if p['lifecycle'] == 'panel-child'}
     config = profile.get('configuration', {})
-    if (config.get('resolver') != 'cosmic-panel-ca20ce3-native-v1'
+    if (config.get('resolver') != CONFIGURATION_RESOLVER
             or type(config.get('max_outputs')) is not int or not 1 <= config['max_outputs'] <= 32
             or not isinstance(config.get('applets'), dict)):
         raise ValueError('runtime_configuration')
+    if config.get('native_source') != CONFIGURATION_SOURCE:
+        raise ValueError('configuration_native_source_mismatch')
     for desktop, entry in config['applets'].items():
         if (not re.fullmatch(r'[A-Za-z0-9_.-]{1,200}', desktop) or entry['process'] not in children
                 or not isinstance(entry.get('args'), list) or len(entry['args']) > 64
@@ -198,6 +209,8 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
     if identity(payload) != manifest['payload_sha256'] or manifest['binary_sha256'] != payload['cosmic-panel-islands']['sha256']:
         raise ValueError('bundle_payload_mismatch')
     catalog = valid_catalog(read_json(bundle / 'catalog.json'))
+    if any(r['qualification']=='native-session' for r in catalog['cohorts']) and manifest.get('upstream') != CONFIGURATION_SOURCE['upstream']:
+        raise ValueError('configuration_native_source_mismatch')
     return manifest, catalog
 
 
@@ -222,6 +235,8 @@ def classify_compatibility(installed, running, manifest, catalog, *, phase='runn
             return result('invalid_bundle', 'bundle_not_verified')
         admitted = {r['id']: r for r in catalog['cohorts'] if r['qualification'] == 'native-session'
                     and r['payload_sha256'] == manifest['payload_sha256']}
+        if admitted and manifest.get('upstream') != CONFIGURATION_SOURCE['upstream']:
+            return result('invalid_bundle', 'configuration_native_source_mismatch')
         current = installed.get('cohort') if installed.get('verified') is True else None
         active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 3 and running.get('phase') == phase and phase in ('prelaunch', 'running') else None
         if current not in admitted:
