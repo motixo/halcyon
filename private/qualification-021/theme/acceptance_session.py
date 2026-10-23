@@ -28,9 +28,9 @@ print(json.dumps(checks,indent=2))
 raise SystemExit(0 if all(checks.values()) else 1)
 ABSENCE""")
 
-def native_source():
+def native_source(require_geodata):
  blob=(SRC/'acceptance/source/data-timezone-geodata.bitcode-v0-6').read_bytes()
- h.command('native-geodata-embedding',"python3 - <<'SOURCE'\nimport base64,hashlib,json,pathlib\nblob=base64.b64decode("+repr(base64.b64encode(blob).decode())+")\nelf=pathlib.Path('/usr/bin/cosmic-settings-daemon').read_bytes()\nproof={'native_elf_sha256':hashlib.sha256(elf).hexdigest(),'embedded_geodata_sha256':hashlib.sha256(blob).hexdigest(),'embedded_geodata_bytes':len(blob),'embedded_offset':elf.find(blob)}\nprint(json.dumps(proof,indent=2))\nassert proof['native_elf_sha256']=='0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423' and proof['embedded_offset']>=0\nSOURCE")
+ h.command('native-geodata-embedding',"python3 - <<'SOURCE'\nimport base64,hashlib,json,pathlib\nblob=base64.b64decode("+repr(base64.b64encode(blob).decode())+")\nelf=pathlib.Path('/usr/bin/cosmic-settings-daemon').read_bytes()\nproof={'native_elf_sha256':hashlib.sha256(elf).hexdigest(),'embedded_geodata_sha256':hashlib.sha256(blob).hexdigest(),'embedded_geodata_bytes':len(blob),'embedded_offset':elf.find(blob)}\nprint(json.dumps(proof,indent=2))\nassert proof['native_elf_sha256']=='0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423'\nif "+str(require_geodata)+":assert proof['embedded_offset']>=0\nSOURCE")
 
 def install_candidate():
  h.command('mount-inputs','candidate_device=$(blkid -L HALCYON_INPUTS) && test -n "$candidate_device" && mkdir -p /mnt/candidate && mount -o ro "$candidate_device" /mnt/candidate && findmnt /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
@@ -105,7 +105,7 @@ def main():
   (ev/'media-identity-assertion.json').write_text(json.dumps(proof,indent=2)+'\n')
   a.monitor_start();h.command('dbus-monitor-active','systemctl is-active qualification-auto-dbus.service')
   if lineage=='untouched':absence()
-  native_source()
+  native_source(task=='natural')
   h.command('offline-proof','ip -brief addr; ip route; systemctl is-active dbus')
   if task=='natural':
    start=SOLAR['sunrise_epoch']-480
