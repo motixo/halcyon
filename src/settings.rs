@@ -4854,7 +4854,8 @@ mod tests {
     /// Opens the editor and checks that its store reads and writes only
     /// below the test root before anything else happens.
     fn open_isolated_editor(root: &std::path::Path) -> Settings {
-        let (app, _) = Settings::init(Core::default(), Page::DesktopDock);
+        let (mut app, task) = Settings::init(Core::default(), Page::DesktopDock);
+        settle_settings(&mut app, task);
         let store = app.desktop.store().expect("desktop store");
         assert!(store.user_path(&dock_key("anchor")).starts_with(root));
         app
@@ -5898,7 +5899,7 @@ mod tests {
             serde_json::to_vec(&command).unwrap(),
         )
         .unwrap();
-        let _ = app.update(Message::Tick);
+        send_settings(app, Message::Tick);
     }
 
     #[test]
@@ -5969,18 +5970,19 @@ mod tests {
         let dock = app.desktop.current().expect("the seeded Dock resolves");
         assert_eq!(dock.anchor(), Setting::Known(Anchor::Right));
         assert_eq!(dock.size(), Setting::Known(PanelSize::L));
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Opacity(37)));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Opacity(37)));
         assert!(!app.desktop.can_apply());
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Apply));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Apply));
         assert!(app.desktop.dirty(), "a refused Apply keeps the draft");
         assert!(matches!(
             &app.desktop.notice,
             Some(desktop::Notice::Error(text)) if text.starts_with("Preview mode")
         ));
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Recover));
-        let _ = app.update(Message::DesktopEditor(desktop::Message::KeepRecovery));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Recover));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::KeepRecovery));
         let mut tree = Tree::new(app.settings_view().as_widget());
         tree.diff(app.settings_view().as_widget_mut());
+        assert!(!app.native_busy && app.native_deferred.is_empty());
         // Byte-identical, and no lock or journal appeared.
         assert_eq!(live_tree(&root), live);
         assert!(!root.join("home/.local/share/cosmic-desktop-cards").exists());
@@ -6584,6 +6586,7 @@ mod tests {
         // Ignored before reaching the store: no read-only refusal either.
         assert_eq!(app.desktop.notice, None);
         assert_eq!(app.system_appearance.notice, None);
+        assert!(!app.native_busy && app.native_deferred.is_empty());
         assert_eq!(live_tree(&root), live);
         assert!(!root.join("home/.local/share/cosmic-desktop-cards").exists());
     }
