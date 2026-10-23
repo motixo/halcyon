@@ -27,6 +27,9 @@ mod native_jobs;
 mod navigation;
 mod placement;
 mod preference_undo;
+mod privacy;
+#[cfg(test)]
+mod privacy_tests;
 mod profiles;
 mod recovery;
 mod reorder;
@@ -423,6 +426,9 @@ pub enum FontTarget {
 }
 #[derive(Debug, Clone)]
 pub enum Message {
+    ShareUsage(bool),
+    UsageSaved(Result<bool, String>),
+    OpenPrivacy,
     WidgetDisplay(Option<String>),
     DisplayOutput(crate::displays::OutputEvent, crate::displays::WlOutput),
     Wizard(wizard::Message),
@@ -598,6 +604,9 @@ pub enum Message {
 }
 
 pub struct Settings {
+    usage_enabled: bool,
+    usage_busy: bool,
+    usage_error: Option<String>,
     displays: crate::displays::Registry,
     core: Core,
     page: Page,
@@ -805,7 +814,12 @@ impl cosmic::Application for Settings {
         let wizard = OPEN_WIZARD
             .swap(false, std::sync::atomic::Ordering::Relaxed)
             .then(open_wizard);
+        crate::usage::start_status();
+        let usage = crate::usage::preference();
         let mut app = Self {
+            usage_enabled: usage.as_ref().copied().unwrap_or(false),
+            usage_error: usage.err(),
+            usage_busy: false,
             displays: Default::default(),
             core,
             page,
@@ -959,6 +973,7 @@ impl cosmic::Application for Settings {
         let paths = Config::path()
             .into_iter()
             .chain(settings_command_path())
+            .chain(crate::usage::path())
             .chain(crate::layout_state::path())
             .chain(crate::tools::notes::path())
             .chain(crate::calendar::account_path())
@@ -1488,6 +1503,16 @@ impl Settings {
             return task;
         }
         match message {
+            Message::ShareUsage(enabled) => return self.change_usage(enabled),
+            Message::UsageSaved(result) => {
+                self.usage_busy = false;
+                self.usage_error = result.err();
+                self.refresh_usage();
+            }
+            Message::OpenPrivacy => {
+                return run_command("/usr/bin/xdg-open".into(),
+                    vec!["https://github.com/profilaz3/halcyon/blob/main/docs/PRIVACY.md".into()], "Privacy details opened");
+            }
             Message::DisplayOutput(event, handle) => {
                 self.displays.update(event, handle);
             }
@@ -1820,6 +1845,7 @@ impl Settings {
             Message::Automation(message) => return self.update_automation(message),
             Message::Resized(size) => self.window = size,
             Message::Tick => {
+                self.refresh_usage();
                 self.calendar.refresh();
                 if let Ok(config) = Config::try_load() {
                     self.config = config;

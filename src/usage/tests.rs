@@ -12,7 +12,8 @@ fn first_report_persists_a_random_private_identity_and_reserves_retry() {
     let path = fixture();
     let token = claim(&path, "2026-10-23", 1000)
         .unwrap()
-        .expect("first daily report");
+        .expect("first daily report")
+        .0;
     assert_eq!(token.len(), 64);
     assert!(token.bytes().all(|b| b.is_ascii_hexdigit()));
     assert_eq!(
@@ -20,15 +21,15 @@ fn first_report_persists_a_random_private_identity_and_reserves_retry() {
         0o600
     );
     assert!(claim(&path, "2026-10-23", 1001).unwrap().is_none());
-    assert_eq!(claim(&path, "2026-10-23", 22600).unwrap(), Some(token));
+    assert_eq!(claim(&path, "2026-10-23", 22600).unwrap(), Some((token, 0)));
 }
 #[test]
 fn success_survives_restart_and_next_day_keeps_the_same_identity() {
     let path = fixture();
-    let token = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
-    complete(&path, &token, "2026-10-23").unwrap();
+    let token = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
+    complete(&path, &token, 0, "2026-10-23").unwrap();
     assert!(claim(&path, "2026-10-23", 24000).unwrap().is_none());
-    assert_eq!(claim(&path, "2026-10-24", 90000).unwrap(), Some(token));
+    assert_eq!(claim(&path, "2026-10-24", 90000).unwrap(), Some((token, 0)));
 }
 #[test]
 fn concurrent_claims_only_schedule_one_request() {
@@ -62,8 +63,8 @@ fn corrupted_state_does_not_silently_register_another_installation() {
 #[test]
 fn late_response_cannot_replace_a_new_identity() {
     let path = fixture();
-    let token = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
-    complete(&path, &"a".repeat(64), "2026-10-23").unwrap();
+    let token = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
+    complete(&path, &"a".repeat(64), 0, "2026-10-23").unwrap();
     let state: State = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     assert_eq!(state.installation, token);
     assert!(state.last_success.is_none());
@@ -88,14 +89,16 @@ fn endpoint_is_limited_to_a_production_google_deployment() {
 #[test]
 fn report_contains_only_the_documented_fields() {
     let report = serde_json::to_value(Report {
-        schema: 2,
+        schema: 3,
+        kind: "activity",
+        revision: 0,
         installation: &"a".repeat(64),
         version: "0.2.0",
         country: Some("HR"),
     })
     .unwrap();
-    assert_eq!(report.as_object().unwrap().len(), 4);
-    assert_eq!(report["schema"], 2);
+    assert_eq!(report.as_object().unwrap().len(), 6);
+    assert_eq!(report["schema"], 3);
     assert_eq!(report["version"], "0.2.0");
     assert_eq!(report["country"], "HR");
     assert!(report.get("installation").is_some());
@@ -120,6 +123,7 @@ async fn reply(response: &'static str) -> Result<String, String> {
         &client().unwrap(),
         reqwest::Url::parse(&format!("http://{address}/")).unwrap(),
         &"a".repeat(64),
+        0,
         None,
     )
     .await;
@@ -145,7 +149,7 @@ async fn only_an_explicit_success_with_a_valid_day_completes_a_report() {
 #[test]
 fn country_state_round_trips_without_replacing_the_existing_identity() {
     let path = fixture();
-    let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
     let mut json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     json["country"] = serde_json::json!("HR");
@@ -165,19 +169,22 @@ fn legacy_state_migrates_and_a_late_lookup_cannot_change_identity_or_first_count
     )
     .unwrap();
     assert_eq!(
-        claim(&path, "2026-10-23", 1000).unwrap().as_deref(),
+        claim(&path, "2026-10-23", 1000)
+            .unwrap()
+            .map(|t| t.0)
+            .as_deref(),
         Some(id.as_str())
     );
     assert_eq!(
-        remember_country(&path, &id, "HR").unwrap().as_deref(),
+        remember_country(&path, &id, 0, "HR").unwrap().as_deref(),
         Some("HR")
     );
     assert_eq!(
-        remember_country(&path, &id, "US").unwrap().as_deref(),
+        remember_country(&path, &id, 0, "US").unwrap().as_deref(),
         Some("HR")
     );
     assert_eq!(
-        remember_country(&path, &"c".repeat(64), "DE").unwrap(),
+        remember_country(&path, &"c".repeat(64), 0, "DE").unwrap(),
         None
     );
     assert_eq!(load(&path).unwrap().country.as_deref(), Some("HR"));
@@ -237,9 +244,12 @@ fn local_server(status: &str, body: &str) -> (String, std::thread::JoinHandle<St
 #[tokio::test]
 async fn country_lookup_discards_ip_caches_first_country_and_never_sends_identity() {
     let path = fixture();
-    let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
     let (url, request) = local_server("200 OK", r#"{"ip":"192.0.2.1","country":"HR"}"#);
-    assert_eq!(country_for(&path, &id, &url).await.as_deref(), Some("HR"));
+    assert_eq!(
+        country_for(&path, &id, 0, &url).await.as_deref(),
+        Some("HR")
+    );
     let request = request.join().unwrap();
     assert!(request.starts_with("GET / HTTP/1.1"));
     assert!(!request.contains(&id));
@@ -249,13 +259,16 @@ async fn country_lookup_discards_ip_caches_first_country_and_never_sends_identit
             .contains("192.0.2.1")
     );
     // The server has gone away; this must use the persisted cache after a restart.
-    assert_eq!(country_for(&path, &id, &url).await.as_deref(), Some("HR"));
+    assert_eq!(
+        country_for(&path, &id, 0, &url).await.as_deref(),
+        Some("HR")
+    );
 }
 
 #[tokio::test]
 async fn failed_country_lookup_still_sends_activity_with_unknown_country() {
     let path = fixture();
-    let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
     let (country_url, country_request) = local_server("503 Unavailable", "unavailable");
     let (report_url, report_request) = local_server("200 OK", r#"{"ok":true,"day":"2026-10-23"}"#);
     assert_eq!(
@@ -264,6 +277,7 @@ async fn failed_country_lookup_still_sends_activity_with_unknown_country() {
             &client().unwrap(),
             reqwest::Url::parse(&report_url).unwrap(),
             &id,
+            0,
             &country_url
         )
         .await
@@ -274,14 +288,17 @@ async fn failed_country_lookup_still_sends_activity_with_unknown_country() {
     let request = report_request.join().unwrap();
     let report: serde_json::Value =
         serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
-    assert_eq!(report.as_object().unwrap().len(), 4);
-    assert_eq!(report["schema"], 2);
+    assert_eq!(report.as_object().unwrap().len(), 6);
+    assert_eq!(report["schema"], 3);
     assert_eq!(report["installation"], id);
     assert!(report["country"].is_null());
     assert!(load(&path).unwrap().country.is_none());
     // Failure was not cached: a later report can acquire a country.
     let (url, request) = local_server("200 OK", r#"{"country":"DE"}"#);
-    assert_eq!(country_for(&path, &id, &url).await.as_deref(), Some("DE"));
+    assert_eq!(
+        country_for(&path, &id, 0, &url).await.as_deref(),
+        Some("DE")
+    );
     request.join().unwrap();
 }
 
@@ -294,10 +311,399 @@ async fn invalid_or_oversized_country_responses_never_enter_state() {
         format!(r#"{{"country":"US","extra":"{}"}}"#, "x".repeat(1024)),
     ] {
         let path = fixture();
-        let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+        let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
         let (url, request) = local_server("200 OK", &body);
-        assert!(country_for(&path, &id, &url).await.is_none());
+        assert!(country_for(&path, &id, 0, &url).await.is_none());
         request.join().unwrap();
         assert!(load(&path).unwrap().country.is_none());
     }
+}
+
+#[test]
+fn choice_is_durable_minimal_and_latest_only_with_monotonic_revision() {
+    let path = fixture();
+    assert!(load(&path).unwrap().enabled);
+    change(&path, false, 1000).unwrap();
+    let first = load(&path).unwrap();
+    assert!(!first.enabled);
+    assert!(valid_token(&first.installation));
+    assert!(first.country.is_none());
+    assert!(first.last_success.is_none());
+    assert_eq!(first.revision, 1);
+    assert!(claim(&path, "2026-10-23", 1001).unwrap().is_none());
+    change(&path, false, 1001).unwrap();
+    assert_eq!(load(&path).unwrap().revision, 1);
+    change(&path, true, 900).unwrap(); // clock skew cannot reorder preference
+    let enabled = load(&path).unwrap();
+    assert_eq!(enabled.revision, 2);
+    assert_eq!(enabled.opted_out_at, Some(1000));
+    assert_eq!(enabled.installation, first.installation);
+    assert_eq!(enabled.pending.unwrap().attempts, 0);
+    change(&path, false, 1002).unwrap();
+    assert_eq!(load(&path).unwrap().revision, 3);
+    let state = claim_status(&path, 1002).unwrap().unwrap();
+    let body = serde_json::to_value(StatusReport {
+        schema: 3,
+        kind: "status",
+        installation: &state.installation,
+        revision: state.revision,
+        enabled: state.enabled,
+        changed_at: state.changed_at.unwrap(),
+    })
+    .unwrap();
+    assert_eq!(body.as_object().unwrap().len(), 6);
+    for forbidden in ["country", "version", "ip", "last_success", "opted_out_at"] {
+        assert!(body.get(forbidden).is_none());
+    }
+}
+
+#[test]
+fn queue_bounds_survive_restart_expiry_and_clock_rollback_without_reenabling() {
+    let path = fixture();
+    change(&path, false, 1000).unwrap();
+    for attempt in 0..MAX_ATTEMPTS {
+        let now = 1000 + i64::from(attempt) * RETRY_SECONDS;
+        assert!(claim_status(&path, now).unwrap().is_some());
+        assert!(claim_status(&path, now + 1).unwrap().is_none());
+    }
+    assert!(
+        claim_status(&path, 1000 + STATUS_LIFETIME)
+            .unwrap()
+            .is_none()
+    );
+    let state = load(&path).unwrap();
+    assert!(!state.enabled);
+    assert!(state.pending.is_none());
+    assert!(
+        claim(&path, "2026-10-24", 1000 + STATUS_LIFETIME)
+            .unwrap()
+            .is_none()
+    );
+    change(&path, true, 1000 + STATUS_LIFETIME).unwrap();
+    change(&path, false, 1001 + STATUS_LIFETIME).unwrap();
+    assert!(claim_status(&path, 900).unwrap().is_none());
+    assert!(!load(&path).unwrap().enabled);
+}
+
+#[test]
+fn damaged_new_preferences_fail_closed_and_legacy_identity_migrates() {
+    let path = fixture();
+    let id = "c".repeat(64);
+    std::fs::write(
+        &path,
+        format!(r#"{{"installation":"{id}","last_success":null,"retry_after":0}}"#),
+    )
+    .unwrap();
+    change(&path, false, 1000).unwrap();
+    let saved = std::fs::read(&path).unwrap();
+    assert_eq!(load(&path).unwrap().installation, id);
+    for key in [
+        "state_version",
+        "enabled",
+        "revision",
+        "changed_at",
+        "opted_out_at",
+        "pending",
+    ] {
+        let mut value: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        value.as_object_mut().unwrap().remove(key);
+        let bytes = serde_json::to_vec(&value).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(load(&path).is_err(), "{key}");
+        assert!(change(&path, true, 1001).is_err(), "{key}");
+        assert!(claim(&path, "2026-10-23", 1001).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+}
+
+#[tokio::test]
+async fn disabled_before_warmup_and_first_country_only_sends_status() {
+    let path = fixture();
+    change(&path, false, 1000).unwrap();
+    let country = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    country.set_nonblocking(true).unwrap();
+    let (url, request) = local_server("200 OK", r#"{"ok":true,"revision":1,"enabled":false}"#);
+    let url = reqwest::Url::parse(&url).unwrap();
+    let country_url = format!("http://{}/", country.local_addr().unwrap());
+    cycle(
+        &path,
+        &client().unwrap(),
+        url.clone(),
+        &country_url,
+        false,
+        1000,
+    )
+    .await;
+    let sent = request.join().unwrap();
+    assert!(sent.contains("\"kind\":\"status\""));
+    assert!(!sent.contains("country"));
+    assert!(!sent.contains("version"));
+    assert!(load(&path).unwrap().pending.is_none());
+    for now in [1001, 99999, 999999] {
+        cycle(
+            &path,
+            &client().unwrap(),
+            url.clone(),
+            &country_url,
+            true,
+            now,
+        )
+        .await;
+    }
+    assert!(country.accept().is_err());
+    assert!(load(&path).unwrap().last_success.is_none());
+}
+
+#[tokio::test]
+async fn offline_status_retries_exact_identity_and_requires_matching_ack() {
+    let path = fixture();
+    change(&path, false, 1000).unwrap();
+    let original = load(&path).unwrap().installation;
+    for (attempt, body) in [
+        r#"{"ok":false}"#,
+        r#"{"ok":true,"day":"2026-10-23"}"#,
+        r#"{"ok":true,"revision":2,"enabled":false}"#,
+        r#"{"ok":true,"revision":1,"enabled":false}"#,
+    ]
+    .iter()
+    .enumerate()
+    {
+        let now = 1000 + attempt as i64 * RETRY_SECONDS;
+        let state = claim_status(&path, now).unwrap().unwrap();
+        let (url, request) = local_server("200 OK", body);
+        let result = status_once(
+            &path,
+            &client().unwrap(),
+            reqwest::Url::parse(&url).unwrap(),
+            &state,
+        )
+        .await;
+        assert_eq!(result.is_ok(), attempt == 3);
+        assert!(request.join().unwrap().contains(&original));
+        assert_eq!(load(&path).unwrap().pending.is_some(), attempt != 3);
+        assert!(!load(&path).unwrap().enabled);
+    }
+}
+
+// The server changes the preference after the request has reached it. The client
+// must drop the pending response without storing a country or starting activity.
+#[tokio::test]
+async fn optout_during_country_cancels_socket_and_never_posts_activity() {
+    let path = fixture();
+    let (id, revision) = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let country_url = format!("http://{}/", listener.local_addr().unwrap());
+    let server_path = path.clone();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut buf = [0; 4096];
+        assert!(stream.read(&mut buf).unwrap() > 0);
+        change(&server_path, false, 1001).unwrap(); // proves no network-held file lock
+        assert_eq!(
+            stream.read(&mut buf).unwrap(),
+            0,
+            "cancelled connection must close"
+        );
+    });
+    let reports = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    reports.set_nonblocking(true).unwrap();
+    let now = std::time::Instant::now();
+    assert!(
+        report_once(
+            &path,
+            &client().unwrap(),
+            reqwest::Url::parse(&format!("http://{}/", reports.local_addr().unwrap())).unwrap(),
+            &id,
+            revision,
+            &country_url
+        )
+        .await
+        .is_err()
+    );
+    assert!(now.elapsed() < Duration::from_secs(1));
+    tokio::task::spawn_blocking(move || server.join().unwrap())
+        .await
+        .unwrap();
+    assert!(reports.accept().is_err());
+    assert!(load(&path).unwrap().country.is_none());
+    complete(&path, &id, revision, "2026-10-23").unwrap();
+    assert!(load(&path).unwrap().last_success.is_none());
+}
+
+#[tokio::test]
+async fn old_activity_and_status_completions_cannot_overwrite_a_newer_choice() {
+    let path = fixture();
+    let (id, rev) = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    change(&path, false, 1001).unwrap();
+    let old_status = claim_status(&path, 1001).unwrap().unwrap();
+    change(&path, true, 1002).unwrap();
+    assert_eq!(remember_country(&path, &id, rev, "US").unwrap(), None);
+    complete(&path, &id, rev, "2026-10-23").unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let url = reqwest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+    assert!(
+        status_once(&path, &client().unwrap(), url.clone(), &old_status)
+            .await
+            .is_err()
+    );
+    assert!(
+        report_once(
+            &path,
+            &client().unwrap(),
+            url,
+            &id,
+            rev,
+            "http://127.0.0.1:1/"
+        )
+        .await
+        .is_err()
+    );
+    assert!(listener.accept().is_err());
+    let state = load(&path).unwrap();
+    assert!(state.enabled);
+    assert_eq!(state.revision, 2);
+    assert!(state.pending.is_some());
+    assert!(state.last_success.is_none());
+}
+
+#[test]
+fn multiprocess_preference_child() {
+    if let Some(path) = std::env::var_os("HALCYON_USAGE_CHILD") {
+        change(Path::new(&path), false, 1001).unwrap();
+    }
+}
+#[test]
+fn separate_process_optout_invalidates_an_already_claimed_report() {
+    let path = fixture();
+    let (id, rev) = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    assert!(
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "usage::tests::multiprocess_preference_child"])
+            .env("HALCYON_USAGE_CHILD", &path)
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(!current(&path, &id, rev, true, true));
+    assert!(claim(&path, "2026-10-24", 100000).unwrap().is_none());
+    assert_eq!(load(&path).unwrap().installation, id);
+}
+
+#[tokio::test]
+async fn optout_during_activity_cancels_without_marking_success_then_enable_resumes() {
+    let path = fixture();
+    let (id, rev) = claim(&path, "2026-10-23", 1000).unwrap().unwrap();
+    remember_country(&path, &id, rev, "HR").unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = reqwest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+    let server_path = path.clone();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut buffer = [0; 4096];
+        assert!(stream.read(&mut buffer).unwrap() > 0);
+        change(&server_path, false, 1001).unwrap();
+        // Bytes already received cannot be unsent. Only pending response work is cancelled.
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(e) => panic!("cancel failed: {e}"),
+            }
+        }
+    });
+    let started = std::time::Instant::now();
+    assert!(
+        report_once(
+            &path,
+            &client().unwrap(),
+            url,
+            &id,
+            rev,
+            "http://127.0.0.1:1/"
+        )
+        .await
+        .is_err()
+    );
+    assert!(started.elapsed() < Duration::from_secs(1));
+    tokio::task::spawn_blocking(move || server.join().unwrap())
+        .await
+        .unwrap();
+    complete(&path, &id, rev, "2026-10-23").unwrap();
+    assert!(load(&path).unwrap().last_success.is_none());
+    change(&path, true, 1002).unwrap();
+    let state = claim_status(&path, 1002).unwrap().unwrap();
+    let (url, request) = local_server("200 OK", r#"{"ok":true,"revision":2,"enabled":true}"#);
+    status_once(
+        &path,
+        &client().unwrap(),
+        reqwest::Url::parse(&url).unwrap(),
+        &state,
+    )
+    .await
+    .unwrap();
+    request.join().unwrap();
+    let (same_id, new_rev) = claim(&path, "2026-10-23", 1003).unwrap().unwrap();
+    assert_eq!(same_id, id);
+    assert_eq!(new_rev, 2);
+    let (url, request) = local_server("200 OK", r#"{"ok":true,"day":"2026-10-23"}"#);
+    report_once(
+        &path,
+        &client().unwrap(),
+        reqwest::Url::parse(&url).unwrap(),
+        &id,
+        new_rev,
+        "http://127.0.0.1:1/",
+    )
+    .await
+    .unwrap();
+    let request = request.join().unwrap();
+    assert!(request.contains("\"revision\":2"));
+    assert!(request.contains("\"country\":\"HR\""));
+    complete(&path, &id, new_rev, "2026-10-23").unwrap();
+    assert_eq!(
+        load(&path).unwrap().last_success.as_deref(),
+        Some("2026-10-23")
+    );
+}
+
+#[tokio::test]
+async fn status_response_after_a_new_choice_cannot_clear_its_queue() {
+    let path = fixture();
+    change(&path, false, 1000).unwrap();
+    let state = claim_status(&path, 1000).unwrap().unwrap();
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = reqwest::Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+    let server_path = path.clone();
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut buf = [0; 4096];
+        assert!(stream.read(&mut buf).unwrap() > 0);
+        change(&server_path, true, 1001).unwrap();
+        let body = r#"{"ok":true,"revision":1,"enabled":false}"#;
+        let _ = write!(
+            stream,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+    });
+    assert!(
+        status_once(&path, &client().unwrap(), url, &state)
+            .await
+            .is_err()
+    );
+    server.join().unwrap();
+    let latest = load(&path).unwrap();
+    assert_eq!(latest.revision, 2);
+    assert!(latest.enabled);
+    assert!(latest.pending.is_some());
 }

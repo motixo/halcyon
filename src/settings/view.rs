@@ -11,6 +11,7 @@ mod motion;
 mod navigation;
 mod pages;
 mod preview;
+mod privacy;
 pub(super) mod profiles;
 mod recovery;
 mod reveal;

@@ -9,7 +9,7 @@ remains on hold; the earlier autonomous-release instruction is superseded.
 
 ## Activity reporting: user control and opt-out counts
 
-Recorded: 2026-10-23. Status: accepted for current work; implementation pending.
+Recorded: 2026-10-23. Status: implemented locally; focused verification complete; independent review and live collector migration pending. Publication remains on hold.
 
 ### Requested experience
 
@@ -52,27 +52,43 @@ Proposed sheet additions:
   change an opted-out record back to enabled; re-enabling must be an explicit
   newer preference change.
 
-### Decisions to settle before implementation
+### Implemented decisions and verification
 
-- First-run opt-out before an installation identity exists: decide whether to
-  send an unlinked aggregate event or create an identifier solely for recording
-  that choice. Do not introduce that behavior silently.
-- Offline delivery: decide whether the single status event can be queued, its
-  bounded retry/expiry policy, and what is disclosed. Local opt-out must take
-  effect immediately even when the collector cannot be reached.
-- Re-enabling: define whether the sheet retains the previous opt-out timestamp
-  and whether metrics mean current opted-out installations or opt-out actions.
-  Avoid counting one installation repeatedly as different people.
-- Retention: define how status records expire alongside the current 90-day
-  activity retention. Do not keep identifiable opt-out records forever merely
-  to preserve an aggregate count.
-- Coordinate client schema, collector, sheet migration, onboarding, Settings
-  and the privacy notice. Existing releases must remain compatible while the
-  transition is deployed.
+- First-run opt-out creates a random pseudonymous identity solely for the
+  explicitly disclosed minimal status update. It performs no country lookup.
+- `usage.json` stores the default-on choice independently of config, themes,
+  portable setups and Undo. Existing identity migrates; damaged state fails
+  closed. Older strict state readers cannot silently re-enable it.
+- The latest preference status alone retries for at most seven days / 28
+  attempts. Off takes effect without waiting for delivery; activity is never
+  backfilled. File locks do not span networking, and Settings saves on a worker.
+- Revisions order explicit choices and reject stale responses/status/activity.
+  In-flight work is cancelled where possible; already transmitted requests
+  cannot be unsent. The latest opt-out timestamp survives re-enable locally and
+  in retained collector records when that opt-out was delivered.
+- Schema 3 supports activity and minimal status; schema 1/2 activity remains
+  compatible but cannot re-enable retained opted-out rows. Additive, idempotent
+  Sheet migration preserves original rows and unrelated settings. Status-only
+  records never advance activity. Current summaries and countries exclude off.
+- Identifiable opted-out rows expire within 90 days of status receipt. The
+  current opt-out count explicitly names that window; it is not lifetime users.
+  Historical aggregates are untouched. Expired identities have no permanent
+  revision tombstone. Local preference remains off after queue/record expiry.
 
-Current behavior is documented in [Privacy](PRIVACY.md): reporting is always on
-in 0.2.0. This roadmap entry does not change that behavior or claim an opt-out
-already exists. Relevant code: `src/usage.rs` and `scripts/usage/collector.gs`.
+Verification: loopback Rust client tests cover cancellation before/through
+requests, restart, another process, retry/expiry, damaged state, re-enable and
+stale completion. Native widget-tree clicks verify the Settings and onboarding
+checkbox, persistence, save failure, theme/setup import and Undo isolation;
+actual captures cover 820×600 and 1024×760. Node fake-Sheet tests cover schemas,
+ordering, deduplication, retention and interrupted additive migration. Release
+health tests are mocked and require schema 3. Local release-build evidence and
+exact commands/hashes are in the usage-optout implementation handoff.
+
+[Privacy](PRIVACY.md) explains the new behavior and its pending-release status;
+[scripts/usage/README.md](../scripts/usage/README.md) documents client/collector
+compatibility, deployment order and rollback that preserves accepted opt-outs.
+No live collector/Sheet operation, publication or host installation was done.
+The parent owns independent review and actual deployment. 0.2.1 remains on hold.
 
 ## Reliability report: windows stop responding
 

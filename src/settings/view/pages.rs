@@ -1251,6 +1251,7 @@ impl Settings {
                     button::standard("Run setup again")
                         .on_press_maybe((!self.busy).then_some(Message::OpenWizard)).into()),
             ]),
+            self.privacy_section(),
             section(vec![
                 split(self.help("edge-menu", "Edge menu", "Hold the pointer at the far-right screen edge for one second to open widget controls."),
                     button::standard("Show menu")
@@ -1265,11 +1266,6 @@ impl Settings {
             ]),
             self.desktop_recovery_section(),
             self.addons_section(),
-            section(vec![
-                heading("Privacy", ""),
-                detail("Daily activity report", crate::usage::DISCLOSURE),
-                label("Reports are automatic. Inactive records expire after 90 days.", 12., MUTED),
-            ]),
             section(vec![
                 // Recovered work waits here instead of on every page.
                 split(

@@ -811,10 +811,10 @@ impl Settings {
             .into()
         };
         column::with_children(vec![
-            words(crate::usage::DISCLOSURE, 12., SOFT),
             summary("Look", look, Screen::Look),
             summary("Dock & panel", panel, Screen::Bars),
             summary("Weather", city, Screen::Weather),
+            self.usage_control(),
             fill_box(
                 row::with_children(vec![
                     container(words("Start at sign-in", 14., INK))
