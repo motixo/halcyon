@@ -23,6 +23,6 @@ for item in response['artifacts']:
    assert not p.is_absolute() and '..' not in p.parts and not stat.S_ISLNK(f.external_attr>>16)
   z.extractall(dest)
  marker.write_text(json.dumps({k:item[k] for k in ['id','name','digest','size_in_bytes','expires_at']},indent=2)+'\n')
- archive.unlink()
+ # Preserve the authenticated original ZIP alongside its extracted evidence.
  r=json.loads((dest/'theme-results.json').read_text())
  print(json.dumps({'artifact':item['id'],'name':item['name'],'frames':len(r['frames']),'scenarios':len(r['scenarios']),'errors':r['errors'],'automatic':r['automatic']}),flush=True)
