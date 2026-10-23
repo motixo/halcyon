@@ -15,16 +15,28 @@ struct Families {
     clock: Option<&'static str>,
 }
 thread_local! {
+    static ASSIST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static MOTION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static MATERIAL: std::cell::Cell<Option<crate::materials::Finish>> = const { std::cell::Cell::new(None) };
     static CONTEXT: std::cell::Cell<Option<crate::desktop_theme::Roles>> = const { std::cell::Cell::new(None) };
     static FAMILIES: std::cell::Cell<Families> = const { std::cell::Cell::new(Families { body: None, clock: None }) };
 }
 /// A lexical rendering/measurement context. The guard restores the prior
 /// context, so a widget preview cannot recolor or change Settings typography.
-pub struct Scope(Option<crate::desktop_theme::Roles>, Families);
+pub struct Scope(
+    Option<crate::desktop_theme::Roles>,
+    Families,
+    Option<crate::materials::Finish>,
+    bool,
+    bool,
+);
 impl Drop for Scope {
     fn drop(&mut self) {
         CONTEXT.set(self.0);
         FAMILIES.set(self.1);
+        MATERIAL.set(self.2);
+        MOTION.set(self.3);
+        ASSIST.set(self.4);
     }
 }
 pub fn scope(config: &crate::config::Config) -> Scope {
@@ -35,6 +47,9 @@ pub fn scope(config: &crate::config::Config) -> Scope {
     Scope(
         CONTEXT.replace(config.theme_roles()),
         FAMILIES.replace(families),
+        MATERIAL.replace(config.materials.widgets()),
+        MOTION.replace(config.material_motion),
+        ASSIST.replace(config.appearance.contrast_assist),
     )
 }
 /// One widget's own families over the widget fonts; None keeps the current.
@@ -55,6 +70,16 @@ pub fn fonts(body: Option<&str>, clock: Option<&str>) -> Fonts {
 /// palette `p` (no shadow without a background).
 pub fn edge(p: Palette) -> (f32, cosmic::iced::Shadow) {
     use crate::desktop_theme::Shadow;
+    if MATERIAL.get().is_some() && p.background.a > 0. {
+        return (
+            1.,
+            cosmic::iced::Shadow {
+                color: Color::from_rgba(0., 0., 0., 0.22),
+                offset: cosmic::iced::Vector::new(0., 3.),
+                blur_radius: 9.,
+            },
+        );
+    }
     let (width, kind) = CONTEXT
         .get()
         .map_or((1., Shadow::None), |r| (r.border_width, r.shadow));
@@ -80,35 +105,37 @@ pub fn edge(p: Palette) -> (f32, cosmic::iced::Shadow) {
     (width, shadow)
 }
 /// A rounded rectangle as plain rectangles, for a compositor blur region:
-/// the middle band plus a few stepped strips in each corner.
-pub fn rounded_rects(x: f32, y: f32, width: f32, height: f32, radius: f32) -> Vec<cosmic::iced::Rectangle> {
-    use cosmic::iced::Rectangle;
-    let r = radius.min(width / 2.).min(height / 2.).max(0.);
-    let mut rects = vec![Rectangle::new(
-        cosmic::iced::Point::new(x, y + r),
-        cosmic::iced::Size::new(width, (height - 2. * r).max(0.)),
-    )];
-    const STEPS: usize = 4;
-    for step in 0..STEPS {
-        if r < 1. {
-            break;
-        }
-        let band = r / STEPS as f32;
-        // Inset at the strip's outer edge, where the curve is narrowest,
-        // so no blur shows outside it.
-        let dy = r - band * step as f32;
-        let inset = r - (r * r - dy * dy).max(0.).sqrt();
-        let size = cosmic::iced::Size::new((width - 2. * inset).max(0.), band);
-        let top = y + band * step as f32;
-        let bottom = y + height - band * (step as f32 + 1.);
-        rects.push(Rectangle::new(cosmic::iced::Point::new(x + inset, top), size));
-        rects.push(Rectangle::new(cosmic::iced::Point::new(x + inset, bottom), size));
-    }
-    rects
+/// the same coalesced logical-pixel mask used by native Islands.
+pub fn rounded_rects(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    radius: f32,
+) -> Vec<cosmic::iced::Rectangle> {
+    dock_islands_core::rounded_region(
+        x.ceil() as i32,
+        y.ceil() as i32,
+        width.floor() as i32,
+        height.floor() as i32,
+        radius as f64,
+    )
+    .into_iter()
+    .map(|[x, y, w, h]| cosmic::iced::Rectangle {
+        x: x as f32,
+        y: y as f32,
+        width: w as f32,
+        height: h as f32,
+    })
+    .collect()
 }
 /// Room every widget surface keeps around its card for the style's shadow.
 pub fn shadow_margin(config: &crate::config::Config) -> f32 {
-    config.theme_roles().map_or(0., |r| r.shadow.margin())
+    if config.materials.widgets().is_some() {
+        12.
+    } else {
+        config.theme_roles().map_or(0., |r| r.shadow.margin())
+    }
 }
 /// Font names live for the program: a few chosen families, kept once each.
 pub(crate) fn intern(name: &str) -> &'static str {
@@ -307,10 +334,10 @@ mod edge_tests {
             assert!(rect.x + rect.width <= x + w + 0.01 && rect.y + rect.height <= y + h + 0.01);
             // Every corner of every rectangle is inside the rounded shape.
             for (px, py) in [
-                (rect.x, rect.y),
-                (rect.x + rect.width, rect.y),
-                (rect.x, rect.y + rect.height),
-                (rect.x + rect.width, rect.y + rect.height),
+                (rect.x + 0.5, rect.y + 0.5),
+                (rect.x + rect.width - 0.5, rect.y + 0.5),
+                (rect.x + 0.5, rect.y + rect.height - 0.5),
+                (rect.x + rect.width - 0.5, rect.y + rect.height - 0.5),
             ] {
                 let cx = px.clamp(x + r, x + w - r);
                 let cy = py.clamp(y + r, y + h - r);
@@ -360,4 +387,51 @@ mod font_tests {
         assert_eq!(font(), theme.0);
         assert_eq!(clock_font(), theme.1);
     }
+}
+
+/// Capture while the widget's lexical style scope is active.
+pub fn background(color: Color) -> cosmic::iced::Background {
+    crate::materials::background(color, if ASSIST.get() { None } else { MATERIAL.get() })
+}
+pub fn border(color: Color) -> Color {
+    MATERIAL.get().map_or(color, |f| {
+        Color::from_rgba(
+            1.,
+            1.,
+            1.,
+            color.a
+                * match f.kind {
+                    crate::materials::Kind::Liquid => 1.6,
+                    crate::materials::Kind::Clear => 1.2,
+                    _ => 0.6,
+                },
+        )
+    })
+}
+
+pub fn surface<'a, M: 'a>(content: cosmic::Element<'a, M>, p: Palette) -> cosmic::Element<'a, M> {
+    crate::materials::sheen(
+        content,
+        p.background.a > 0.
+            && MOTION.get()
+            && MATERIAL
+                .get()
+                .is_some_and(|f| f.kind == crate::materials::Kind::Liquid),
+    )
+}
+
+pub fn radius(value: u16) -> f32 {
+    let radius = f32::from(value.min(32));
+    if MATERIAL
+        .get()
+        .is_some_and(|f| f.kind == crate::materials::Kind::Liquid)
+    {
+        radius.max(24.)
+    } else {
+        radius
+    }
+}
+pub fn corner_radius(config: &crate::config::Config) -> f32 {
+    let _scope = scope(config);
+    radius(config.appearance.corner_radius)
 }

@@ -142,7 +142,12 @@ macro_rules! fields {
 }
 
 /// Every member a profile, its Undo or its recovery may write.
-pub static FIELDS: [WidgetField; 78] = fields![
+pub static FIELDS: [WidgetField; 83] = fields![
+    "/material_motion", "Surface motion", Style, boolean;
+    "/materials/shared", "Shared material", Style, material;
+    "/materials/widgets", "Widget material", Style, material;
+    "/materials/dock", "Dock material", Style, material;
+    "/materials/panel", "Panel material", Style, material;
     "/appearance/color_policy", "Color source", Style, |v| v.is_null() || matches!(v.as_str(), Some("wallpaper" | "theme" | "custom"));
     "/appearance/overrides", "Custom properties", Style, |v| v.as_u64().is_some();
 
@@ -553,4 +558,9 @@ impl WidgetChange {
             .map(|change| label(&change.pointer))
             .collect()
     }
+}
+
+fn material(value: &Value) -> bool {
+    serde_json::from_value::<Option<crate::materials::Finish>>(value.clone())
+        .is_ok_and(|f| f.is_none_or(|f| f.validate().is_ok()))
 }

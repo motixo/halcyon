@@ -375,6 +375,9 @@ fn capture_widgets(
 ) -> Value {
     let mut section = Value::Object(Default::default());
     for field in widget::fields(group) {
+        // Defaults alone must not raise an older setup's format version.
+        if field.pointer.starts_with("/materials/") && raw.get("materials").is_none_or(|v| v.as_object().is_none_or(|members| members.values().all(Value::is_null))) { continue; }
+        if field.pointer == "/material_motion" && effective.pointer(field.pointer).and_then(Value::as_bool) != Some(false) { continue; }
         if [
             "/appearance/family",
             "/appearance/surface",

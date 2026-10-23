@@ -250,3 +250,43 @@ fn unset_window_surfaces_follow_the_style_and_wallpaper_tint() {
     assert!(!kept.edited(Control::Color(ThemeVariant::Dark, ColorRole::Background)));
     drop(installed);
 }
+
+#[test]
+fn material_survives_theme_apply_and_captured_setup_restores_native_bars() {
+    use crate::materials::{Finish, Kind, Target};
+    let (_fixture, store, installed) = reported("material-profile", true);
+    crate::desktop::materials::apply(&store, Target::Shared, Some(Finish::new(Kind::Liquid)))
+        .unwrap();
+    let theme = record(Family::Soft);
+    let proposal = plan(
+        &store,
+        &installed,
+        &theme,
+        &theme.domains().into_iter().collect(),
+    );
+    assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
+    apply(&store, &proposal).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.materials.shared.unwrap().kind, Kind::Liquid);
+    let captured = crate::desktop::profiles::capture(&store, "Material setup")
+        .unwrap()
+        .profile;
+    assert_eq!(captured.written_version(), 8);
+    crate::desktop::materials::apply(&store, Target::Shared, Some(Finish::new(Kind::Smoked)))
+        .unwrap();
+    let proposal = plan(&store, &installed, &captured, &[Domain::WidgetStyle].into());
+    assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
+    let change = apply(&store, &proposal).unwrap();
+    for bar in ["Dock", "Panel"] {
+        let material = store
+            .read_user(&crate::desktop::materials::key(bar))
+            .unwrap()
+            .unwrap()
+            .decode::<dock_islands_core::material::BarMaterial>()
+            .unwrap();
+        assert_eq!(material.finish.kind, Kind::Liquid);
+    }
+    store.undo_latest(&change.id).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.materials.shared.unwrap().kind, Kind::Smoked);
+}

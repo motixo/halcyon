@@ -17,6 +17,7 @@ mod system_theme;
 mod tools;
 mod watch;
 mod widget_style;
+mod materials;
 
 fn main() -> cosmic::iced::Result {
     // Settings from before the rename move to the new folders, once.

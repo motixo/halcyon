@@ -26,11 +26,11 @@ pub(crate) use settings_preview::{
     SettingsSamples, settings_devbox_preview, settings_weather_preview,
 };
 #[cfg(test)]
+mod look_render_tests;
+#[cfg(test)]
 mod theme_desktop_tests;
 #[cfg(test)]
 mod theme_tests;
-#[cfg(test)]
-mod look_render_tests;
 mod tools;
 #[cfg(test)]
 mod utility_tests;
@@ -975,7 +975,9 @@ impl Cards {
                 Task::none()
             }
             Message::Settings => self.launch(crate::paths::CONTROLLER, vec!["settings".into()]),
-            Message::WeatherSettings => self.launch(crate::paths::CONTROLLER, vec!["weather-picker".into()]),
+            Message::WeatherSettings => {
+                self.launch(crate::paths::CONTROLLER, vec!["weather-picker".into()])
+            }
             Message::CalendarSettings => self.launch(
                 crate::paths::CONTROLLER,
                 vec!["settings".into(), "--page".into(), "calendar".into()],
@@ -1201,7 +1203,13 @@ fn card_frame<'a>(
     // identical so switching between an agenda and a scroller reconciles state
     // through Tree::diff instead of reusing a different widget's state.
     let edge = crate::widget_style::edge(p);
-    container(
+    let radius = crate::widget_style::radius(appearance.corner_radius);
+    let background = crate::widget_style::background(p.background);
+    let material_border = crate::widget_style::border(Color {
+        a: f32::from(appearance.border_opacity.min(50)) / 100.,
+        ..p.accent
+    });
+    let content = container(
         column::with_children(vec![content])
             .width(Length::Fill)
             .height(if height == Length::Shrink {
@@ -1217,24 +1225,22 @@ fn card_frame<'a>(
         cosmic::iced::widget::container::Style {
             text_color: Some(p.foreground),
             icon_color: Some(p.foreground),
-            background: Some(Background::Color(p.background)),
+            background: Some(background),
             border: Border {
-                color: Color {
-                    a: if p.background.a == 0. {
-                        0.
-                    } else {
-                        f32::from(appearance.border_opacity.min(50)) / 100.
-                    },
-                    ..p.accent
+                color: if p.background.a == 0. {
+                    Color::TRANSPARENT
+                } else {
+                    material_border
                 },
                 width: edge.0,
-                radius: f32::from(appearance.corner_radius.min(32)).into(),
+                radius: radius.into(),
             },
             shadow: edge.1,
             ..Default::default()
         }
     }))
-    .into()
+    .into();
+    crate::widget_style::surface(content, p)
 }
 fn mix(a: Color, b: Color, amount: f32) -> Color {
     crate::widget_style::tint(a, b, amount)

@@ -6,6 +6,7 @@ mod desktop;
 mod desktop_icons;
 pub(super) mod home;
 mod layered;
+mod materials;
 mod motion;
 mod navigation;
 mod pages;
@@ -665,7 +666,7 @@ impl Settings {
         .into()
     }
 
-    fn appearance_page(&self) -> Element<'_, Message> {
+    fn legacy_widget_style(&self) -> Element<'_, Message> {
         let appearance = &self.appearance_draft;
         let p = self.config.palette();
         // Finish presets; "Rounded" so it never reads as the Soft theme.
@@ -691,7 +692,34 @@ impl Settings {
         let changed = appearance.opacity != 92
             || appearance.corner_radius != 24
             || appearance.border_opacity != 20;
-        let controls = pages::section(vec![
+        let controls = if self.config.materials.widgets().is_some() {
+            pages::section(vec![
+                if self
+                    .config
+                    .materials
+                    .widgets()
+                    .is_some_and(|f| f.kind == crate::materials::Kind::Liquid)
+                {
+                    label("Liquid uses softly rounded corners", 12., MUTED)
+                } else {
+                    self.style_slider(
+                        "Corners",
+                        format!("{} px", appearance.corner_radius),
+                        0..=32,
+                        appearance.corner_radius,
+                        AppearanceControl::Corners,
+                    )
+                },
+                self.style_slider(
+                    "Outline",
+                    format!("{}%", appearance.border_opacity),
+                    0..=50,
+                    appearance.border_opacity as u16,
+                    AppearanceControl::Border,
+                ),
+            ])
+        } else {
+            pages::section(vec![
             split(label("Card finish", 14., FG), button::text("Reset")
                 .on_press_maybe(if appearance.family.is_some() {self.config.widget_custom().then_some(Message::ResetThemeSurface(crate::desktop::profiles::Domain::WidgetStyle))} else {changed.then_some(Message::AppearancePreset(92, 24, 20))}).into()),
             presets,
@@ -706,7 +734,8 @@ impl Settings {
                 "Increases card background opacity to keep text readable over bright or busy wallpapers. Turning this off restores your chosen opacity."),
                 container(toggler(appearance.contrast_assist).on_toggle(Message::ContrastAssist))
                     .id(cosmic::widget::Id::new("contrast-assist")).into()),
-        ]);
+        ])
+        };
         let preview_choice = segmented(
             [Widget::Weather, Widget::Devbox, Widget::Clock]
                 .into_iter()
@@ -806,6 +835,9 @@ impl Settings {
     fn card_preview(&self) -> Element<'static, Message> {
         let mut config = self.config.clone();
         config.appearance = self.appearance_draft;
+        if let Some(finish) = self.material_draft {
+            config.materials.set(self.material_target, Some(finish));
+        }
         config.desktop_palette = Some(self.wallpaper.preview_palette(&self.config));
         config.appearance.color_source = crate::config::ColorSource::Desktop;
         match self.appearance_preview {

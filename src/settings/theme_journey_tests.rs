@@ -331,3 +331,161 @@ fn journey_apply_customize_and_follow_other_wallpapers() {
         capture_page(&app, small, &cosmic::Theme::light(), "themes-light-mode", 1);
     }
 }
+
+#[test]
+fn material_native_chooser_adjust_reset_and_undo() {
+    if child("material_native_chooser_adjust_reset_and_undo", REPORTED) {
+        return;
+    }
+    use crate::materials::{Kind, Target};
+    use cosmic::iced::{Event, mouse};
+    wallpaper(&amber());
+    let click = |native: &mut Native, app: &mut Settings, id: &str| {
+        let b = native.bounds(app.settings_view(), id);
+        assert!(
+            b.y >= 0. && b.y + b.height <= native.size.height,
+            "{id} {b:?}"
+        );
+        let point = b.center();
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            point,
+        );
+        let (messages, _) = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            point,
+        );
+        assert!(!messages.is_empty(), "{id} emits an input message");
+        for message in messages {
+            let _ = app.update(message);
+        }
+        assert!(!app.error, "{}", app.status);
+    };
+    let original = Config::load();
+    for size in [Size::new(820., 600.), Size::new(1280., 900.)] {
+        let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
+        let _ = app.update(Message::Resized(size));
+        goto(&mut app, Page::Appearance);
+        // libcosmic reserves a 48 px native window header outside settings_view.
+        let mut native = Native::new(Size::new(size.width, size.height - 48.));
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("materials-before-{}", size.width),
+        );
+        for kind in Kind::ALL {
+            click(&mut native, &mut app, &format!("material-{}", kind.key()));
+            assert_eq!(Config::load().materials.shared.unwrap().kind, kind);
+            native.capture(
+                app.settings_view(),
+                &cosmic::Theme::dark(),
+                &format!("materials-{}-{}", kind.key(), size.width),
+            );
+        }
+        assert_eq!(Config::load().appearance, original.appearance);
+        assert_eq!(Config::load().glance, original.glance);
+        click(&mut native, &mut app, "material-adjust");
+        let readability = native.bounds(app.settings_view(), "material-readability");
+        assert!(readability.y + readability.height <= native.size.height - 48., "Adjust fits above the footer: {readability:?}");
+        let b = native.bounds(app.settings_view(), "material-transparency");
+        let p = cosmic::iced::Point::new(b.x + b.width * 0.4, b.center_y());
+        let (messages, _) = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            p,
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, Message::MaterialValue(true, _)))
+        );
+        for m in messages {
+            let _ = app.update(m);
+        }
+        let (messages, _) = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            p,
+        );
+        assert!(messages.iter().any(|m| matches!(m, Message::MaterialSave)));
+        for m in messages {
+            let _ = app.update(m);
+        }
+        assert!(Config::load().materials.shared.unwrap().opacity.is_some());
+        let before_key = Config::load().materials.shared.unwrap();
+        use cosmic::iced::keyboard::{self, key};
+        let event = |pressed| {
+            Event::Keyboard(if pressed {
+                keyboard::Event::KeyPressed {
+                    key: keyboard::Key::Named(key::Named::ArrowUp),
+                    modified_key: keyboard::Key::Named(key::Named::ArrowUp),
+                    physical_key: key::Physical::Code(key::Code::ArrowUp),
+                    location: keyboard::Location::Standard,
+                    modifiers: keyboard::Modifiers::empty(),
+                    text: None,
+                    repeat: false,
+                }
+            } else {
+                keyboard::Event::KeyReleased {
+                    modified_key: keyboard::Key::Named(key::Named::ArrowUp),
+                    key: keyboard::Key::Named(key::Named::ArrowUp),
+                    physical_key: key::Physical::Code(key::Code::ArrowUp),
+                    location: keyboard::Location::Standard,
+                    modifiers: keyboard::Modifiers::empty(),
+                }
+            })
+        };
+        for m in native.event(app.settings_view(), event(true), p).0 {
+            let _ = app.update(m);
+        }
+        assert_eq!(
+            Config::load().materials.shared.unwrap(),
+            before_key,
+            "held key does not commit"
+        );
+        for m in native.event(app.settings_view(), event(false), p).0 {
+            let _ = app.update(m);
+        }
+        assert_ne!(
+            Config::load().materials.shared.unwrap(),
+            before_key,
+            "keyboard release commits"
+        );
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("materials-adjust-{}", size.width),
+        );
+        click(&mut native, &mut app, "material-reset");
+        assert_eq!(Config::load().materials.shared, None);
+        let _ = app.update(Message::UndoPreferences);
+        assert!(Config::load().materials.shared.unwrap().opacity.is_some());
+        // Real scope tabs, real chooser; a new shared choice keeps the Dock override.
+        let bounds = native.text_bounds(app.settings_view(), "Dock");
+        let p = bounds.center();
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            p,
+        );
+        let (messages, _) = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            p,
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, Message::MaterialTarget(Target::Dock)))
+        );
+        for m in messages {
+            let _ = app.update(m);
+        }
+        click(&mut native, &mut app, "material-smoked");
+        assert_eq!(Config::load().materials.dock.unwrap().kind, Kind::Smoked);
+        click(&mut native, &mut app, "material-reset");
+        assert!(Config::load().materials.dock.is_none());
+    }
+}

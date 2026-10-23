@@ -35,6 +35,9 @@ pub struct Config {
     pub project_roots: Vec<String>,
     pub refresh_intervals: RefreshIntervals,
     pub appearance: Appearance,
+    pub materials: crate::materials::Materials,
+    #[serde(default = "yes")]
+    pub material_motion: bool,
     /// Widget text font family; `None` uses the widget style's own.
     pub widget_font: Option<String>,
     /// The clock's font family; `None` follows `widget_font`, then the style.
@@ -81,6 +84,8 @@ impl Default for Config {
             project_roots: vec![],
             refresh_intervals: RefreshIntervals::default(),
             appearance: Appearance::default(),
+            materials: Default::default(),
+            material_motion: true,
             widget_font: None,
             clock_font: None,
             clock: ClockPreferences::default(),
@@ -185,6 +190,7 @@ impl Config {
                 "Widget sizes must contain two finite dimensions between 1 and 32768 pixels".into(),
             );
         }
+        self.materials.validate()?;
         self.music.validate()?;
         self.focus.validate()?;
         for widget in Widget::ALL.into_iter().filter(|widget| !widget.is_tool()) {
@@ -215,7 +221,11 @@ impl Config {
         if self.appearance.contrast_assist {
             palette = crate::widget_style::readable(palette);
         }
-        palette
+        crate::materials::palette(
+            palette,
+            self.materials.widgets(),
+            self.appearance.contrast_assist,
+        )
     }
     pub fn widget_visible(&self, widget: Widget) -> bool {
         if !self.widgets_visible {
@@ -2498,4 +2508,20 @@ mod tests {
         assert_eq!(saved["appearance"]["wallpaper_colors"], true);
         assert_eq!(saved["appearance"]["wallpaper_color_stamp"], 42);
     }
+}
+
+#[cfg(test)]
+mod material_migration_tests {
+    #[test]
+    fn material_preferences_round_trip_without_changing_legacy_appearance() {
+        let original = serde_json::json!({"appearance":{"opacity":83,"family":"paper"},"materials":{"shared":{"kind":"liquid","opacity":null,"tint":35},"widgets":null,"dock":null,"panel":null}});
+        let config: super::Config = serde_json::from_value(original.clone()).unwrap();
+        let saved = serde_json::to_value(config).unwrap();
+        assert_eq!(saved["materials"], original["materials"]);
+        assert_eq!(saved["appearance"]["opacity"], 83);
+    }
+}
+
+fn yes() -> bool {
+    true
 }

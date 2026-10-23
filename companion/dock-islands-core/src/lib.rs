@@ -1,5 +1,6 @@
 //! Versioned settings, wire contract and logical geometry shared by the two
 //! native applications. This crate has no toolkit or compositor dependencies.
+pub mod material;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -525,6 +526,7 @@ impl Capabilities {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Request {
+    MaterialSupport,
     Capabilities,
     Inspect {
         panel: String,
@@ -575,6 +577,9 @@ pub struct View {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub enum Response {
+    MaterialSupport {
+        version: u32,
+    },
     Capabilities(Capabilities),
     Draft {
         token: u64,

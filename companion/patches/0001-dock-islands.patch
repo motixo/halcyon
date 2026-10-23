@@ -35,7 +35,7 @@
 + "serde",
 + "serde_json",
  ]
-
+ 
  [[package]]
 --- a/Cargo.toml
 +++ b/Cargo.toml
@@ -51,7 +51,7 @@
 +++ b/cosmic-panel-bin/Cargo.toml
 @@ -9,6 +9,9 @@
  path = "src/main.rs"
-
+ 
  [dependencies]
 +dock-islands-core = { path = "../dock-islands-core" }
 +serde_json = "1"
@@ -87,7 +87,12 @@
      /// single line on the side facing away from the anchored edge
      Side(PanelAnchor),
  }
-@@ -41,6 +42,7 @@
+@@ -37,10 +38,12 @@
+     scale: f64,
+     border: PanelBorder,
+     border_width: f32,
++    material: Option<dock_islands_core::material::Finish>,
+ ) -> BackgroundElement {
      IcedElement::new(
          Background {
              id,
@@ -95,17 +100,44 @@
              logical_width,
              logical_height,
              radius,
-@@ -59,6 +61,7 @@
+@@ -49,6 +52,7 @@
+             scale,
+             border,
+             border_width,
++            material,
+         },
+         (logical_width, logical_height),
+         loop_handle,
+@@ -59,6 +63,7 @@
  }
-
+ 
  pub struct Background {
 +    pub label: Option<String>,
      pub id: id::Id,
      pub logical_width: i32,
      pub logical_height: i32,
-@@ -81,8 +84,16 @@
-
+@@ -68,6 +73,7 @@
+     pub scale: f64,
+     pub border: PanelBorder,
+     pub border_width: f32,
++    pub material: Option<dock_islands_core::material::Finish>,
+ }
+ 
+ impl Program for Background {
+@@ -80,9 +86,27 @@
+         let [top_left, top_right, bottom_right, bottom_left] = radius_arr;
+ 
          let color = self.color;
++        let material = self.material;
++        let background: cosmic::iced::Background = if let Some(finish) = material {
++            let base = Color::from(color);
++            let mix = |a: f32| Color::from_rgba(base.r + (1. - base.r) * a, base.g + (1. - base.g) * a, base.b + (1. - base.b) * a, base.a);
++            cosmic::iced::gradient::Linear::new(std::f32::consts::FRAC_PI_2)
++                .add_stop(0., mix(finish.kind.highlight()))
++                .add_stop(0.25, mix(finish.kind.highlight() * 0.25))
++                .add_stop(0.7, base)
++                .add_stop(1., mix(finish.kind.highlight() * 0.35)).into()
++        } else { Color::from(color).into() };
          // no border when panel is fully transparent
 -        let border = if color[3] < 0.01 { PanelBorder::None } else { self.border };
 -        let border_width = if matches!(border, PanelBorder::Full) { self.border_width } else { 0. };
@@ -119,10 +151,10 @@
 +        } else {
 +            0.
 +        };
-
+ 
          // for a single edge, avoide the corner radius (panel won't have curved corner in this mode
          // anyways)
-@@ -94,7 +105,15 @@
+@@ -94,7 +118,15 @@
              _ => (true, (0., 0.)),
          };
          let line = self.border_width;
@@ -139,20 +171,28 @@
              let fill_mode = rule::FillMode::AsymmetricPadding(inset.0 as u16, inset.1 as u16);
              Element::from(
                  if line_horizontal { rule::horizontal(line) } else { rule::vertical(line) }.class(
-@@ -122,7 +141,11 @@
+@@ -118,11 +150,17 @@
+ 
+                 container::Style {
+                     text_color: Some(cosmic.background(theme.transparent).on.into()),
+-                    background: Some(Color::from(color).into()),
++                    background: Some(background),
                      border: cosmic::iced::Border {
                          radius: radius_arr.into(),
-                         width: border_width,
+-                        width: border_width,
 -                        color: cosmic.bg_divider().into(),
++                        width: if material.is_some() && color[3] > 0.01 { border_width.max(1.) } else { border_width },
 +                        color: if border == PanelBorder::Accent {
 +                            cosmic.accent.base.into()
++                        } else if let Some(finish) = material {
++                            Color::from_rgba(1., 1., 1., if finish.kind == dock_islands_core::material::Kind::Liquid { 0.32 } else { 0.15 })
 +                        } else {
 +                            cosmic.bg_divider().into()
 +                        },
                      },
                      shadow: Shadow::default(),
                      snap: true,
-@@ -139,3 +162,41 @@
+@@ -139,3 +177,42 @@
          Element::from(bg)
      }
  }
@@ -186,6 +226,7 @@
 +            scale,
 +            border: PanelBorder::Full,
 +            border_width: if active { 2. } else { 1. },
++            material: None,
 +        },
 +        (width, height),
 +        loop_handle,
@@ -196,7 +237,7 @@
 +}
 --- /dev/null
 +++ b/cosmic-panel-bin/src/islands.rs
-@@ -0,0 +1,1050 @@
+@@ -0,0 +1,1079 @@
 +//! Desktop Cards companion extension. Stock panel schemas remain unchanged.
 +use crate::iced::elements::CosmicMappedInternal;
 +use crate::iced::elements::background::{BackgroundElement, PanelBorder, background_element};
@@ -211,6 +252,7 @@
 +#[derive(Debug, Default)]
 +pub struct IslandState {
 +    pub settings: Settings,
++    pub material: Option<dock_islands_core::material::Finish>,
 +    pub geometry: Layout,
 +    pub backgrounds: Vec<BackgroundElement>,
 +    pub overflow_sizes: Vec<(smithay::desktop::Window, f64)>,
@@ -232,6 +274,7 @@
 +    radius: u32,
 +    color: [f32; 4],
 +    frosting: bool,
++    material: Option<dock_islands_core::material::Finish>,
 +    lease: Option<(u64, u64, bool)>,
 +}
 +
@@ -259,9 +302,10 @@
 +}
 +impl IslandState {
 +    pub fn load(panel: &str) -> Self {
++        let material = load_material(panel);
 +        match load_settings(panel) {
-+            Ok(settings) => Self { settings, ..Self::default() },
-+            Err(error) => Self { error: Some(error), ..Self::default() },
++            Ok(settings) => Self { settings, material, ..Self::default() },
++            Err(error) => Self { error: Some(error), material, ..Self::default() },
 +        }
 +    }
 +}
@@ -274,7 +318,7 @@
 +    ) -> anyhow::Result<()> {
 +        // Native theme owns hue, opacity and its frosted alpha mapping.
 +        let color = self.bg_color();
-+        let frosting = self.blur_surface.is_some() && self.colors.panel_blur(self.config.opacity);
++        let frosting = self.blur_surface.is_some() && self.material_blur();
 +        let stamp = BackgroundStamp {
 +            layout: self.islands.geometry.clone(),
 +            dimensions: (width, height),
@@ -283,6 +327,7 @@
 +            radius: self.border_radius(),
 +            color,
 +            frosting,
++            material: self.islands.material,
 +            lease: self
 +                .islands
 +                .lease
@@ -364,6 +409,7 @@
 +                self.scale,
 +                if dragging { PanelBorder::Accent } else { PanelBorder::Full },
 +                if dragging { 2. } else { self.config.border_width },
++                self.islands.material,
 +            );
 +            bg.output_enter(output, Rectangle::default());
 +            self.space.map_element(CosmicMappedInternal::Background(bg.clone()), (x, y), false);
@@ -557,7 +603,7 @@
 +                    | notify::EventKind::Remove(_)
 +            )
 +            && e.paths.iter().any(|p| {
-+                p.components().any(|part| part.as_os_str() == dock_islands_core::NAMESPACE)
++                p.components().any(|part| part.as_os_str() == dock_islands_core::NAMESPACE || part.as_os_str() == dock_islands_core::material::NAMESPACE)
 +            })
 +        {
 +            let _ = watch_tx.send(crate::PanelCalloopMsg::Islands(Event::Reload));
@@ -654,6 +700,13 @@
 +        Event::Reload => {
 +            reconcile_outputs(state);
 +            for panel in &mut state.space.space_list {
++                let material = load_material(&panel.config.name);
++                if material != panel.islands.material {
++                    panel.islands.material = material;
++                    panel.is_background_dirty = true;
++                    panel.is_dirty = true;
++                    panel.needs_layout = true;
++                }
 +                if let Ok(settings) = load_settings(&panel.config.name) {
 +                    if panel.islands.lease.is_none() && settings != panel.islands.settings {
 +                        panel.set_islands(settings);
@@ -702,6 +755,7 @@
 +    request: Request,
 +) -> Response {
 +    match request {
++        Request::MaterialSupport => Response::MaterialSupport { version: 1 },
 +        Request::Capabilities => Response::Capabilities(Capabilities {
 +            // Capability, not the user's current frosting preference. No active
 +            // surfaces means no claim yet; the app can ask again after startup.
@@ -1247,6 +1301,22 @@
 +        self.island_touch(&surface, id, point, 2)
 +    }
 +}
++
++// A separate, optional record. Old companions ignore it and retain v1 layout support.
++fn load_material(panel: &str) -> Option<dock_islands_core::material::Finish> {
++    let layout = settings_path(panel).ok()?;
++    let root = layout.parent()?.parent()?.parent()?;
++    let data = fs::read(root.join(dock_islands_core::material::NAMESPACE).join("v1").join(panel)).ok()?;
++    if data.len() > 4096 { return None; }
++    let record: dock_islands_core::material::BarMaterial = ron::de::from_bytes(&data).ok()?;
++    record.validate().ok()?;
++    Some(record.finish)
++}
++impl PanelSpace {
++    pub(crate) fn material_blur(&self) -> bool {
++        self.islands.material.is_some() && self.config.opacity > 0.001 || self.colors.panel_blur(self.config.opacity)
++    }
++}
 --- /dev/null
 +++ b/cosmic-panel-bin/src/islands_probe.rs
 @@ -0,0 +1,37 @@
@@ -1298,7 +1368,7 @@
  mod notifications;
  mod space;
 @@ -37,6 +39,7 @@
-
+ 
  #[derive(Debug)]
  pub enum PanelCalloopMsg {
 +    Islands(islands::Event),
@@ -1307,7 +1377,7 @@
      MinimizeRect { output: String, applet_info: MinimizeApplet },
 @@ -70,6 +73,10 @@
  }
-
+ 
  fn main() -> Result<()> {
 +    // Before logger/config loading: this path must never write native defaults.
 +    if std::env::args().nth(1).as_deref() == Some("--islands-probe") {
@@ -1319,7 +1389,7 @@
 @@ -114,6 +121,7 @@
      let (applet_tx, mut applet_rx) = mpsc::channel(200);
      let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
-
+ 
 +    islands::serve(calloop_tx.clone())?;
      let event_loop = calloop::EventLoop::try_new()?;
      let handle = event_loop.handle();
@@ -1347,12 +1417,12 @@
 +        }
 +        self.islands.last_major = major;
          self.remap_attempts = self.remap_attempts.saturating_sub(1);
-
+ 
          let make_indices_contiguous =
 @@ -199,7 +207,7 @@
          let is_dock = !self.config.expand_to_edges()
              || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
-
+ 
 -        if is_dock {
 +        if is_dock && !self.islands.settings.enabled {
              windows_center = windows_left
@@ -1370,7 +1440,7 @@
 @@ -419,7 +427,13 @@
          .to_logical(self.scale)
          .to_i32_round();
-
+ 
 -        let actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
 +        let mut actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
 +        let arrange_extra = self.arrange_extra();
@@ -1383,9 +1453,9 @@
              self.actual_size.h = actual_size_constrained.h;
          } else {
 @@ -474,7 +488,7 @@
-
+ 
          let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
-
+ 
 -        let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
 +        let mut left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
          let mut right_pos = new_list_dim_length as f64
@@ -1403,7 +1473,7 @@
 @@ -512,7 +526,7 @@
          }
          .min(layer_major as f64);
-
+ 
 -        let target_right_len = if !has_center {
 +        let mut target_right_len = if !has_center {
              (layer_major as f64
@@ -1528,7 +1598,7 @@
              self.is_dirty = true;
              self.needs_layout = true;
 @@ -546,7 +661,9 @@
-
+ 
              if left_overflow < suggested_size {
                  self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
 -            } else if left_overflow > 0 {
@@ -1552,7 +1622,7 @@
 @@ -570,6 +689,10 @@
              }
          }
-
+ 
 +        if let Some(geometry) = island_geometry {
 +            self.islands.geometry = geometry;
 +            self.normalize_island_selection();
@@ -1567,7 +1637,7 @@
 -            PanelAnchor::Bottom | PanelAnchor::Right => 0,
 +            PanelAnchor::Bottom | PanelAnchor::Right => arrange_extra as u16,
          } as i32;
-
+ 
          if let Some(right_button) = right_overflow_button {
              let size = right_button.geometry().size.to_f64();
              let crosswise_pos = if self.config.is_horizontal() {
@@ -1585,7 +1655,7 @@
 +                        size.w as u32,
 +                    )
              };
-
+ 
              let loc = if self.config().is_horizontal() {
 @@ -614,17 +743,27 @@
              layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
@@ -1677,7 +1747,7 @@
 @@ -791,6 +942,16 @@
          }
          self.space.refresh();
-
+ 
 +        if self.islands.settings.enabled {
 +            self.layout_island_backgrounds(new_dim.w, new_dim.h, new_logical_crosswise_dim)?;
 +            self.reorder_overflow_space(OverflowSection::Left);
@@ -1691,7 +1761,23 @@
          let mut panel_size = self.actual_size.to_f64().to_physical(self.scale);
          let container_length_scaled = self.container_length as f64 * self.scale;
          if self.config.is_horizontal() {
-@@ -1207,7 +1368,7 @@
+@@ -846,6 +1007,7 @@
+                     && self.bg_color() == p.color
+                     && p.scale == self.scale
+                     && p.border == border
++                    && p.material == self.islands.material
+             })
+         }) || self.animate_state.as_ref().is_some()
+             || self.transitioning
+@@ -920,6 +1082,7 @@
+                 self.scale,
+                 border,
+                 self.config.border_width,
++                self.islands.material,
+             );
+             bg.output_enter(&output, Rectangle::default());
+             self.background_element = Some(bg.clone());
+@@ -1207,7 +1370,7 @@
                      shrink_size: shrink_min_size,
                      padding_overlap: 0.0,
                  });
@@ -1700,7 +1786,7 @@
                  let p = weighted_priority(&w);
                  overflow_partition.movable.push((w.0, p));
              } else {
-@@ -1238,11 +1399,12 @@
+@@ -1238,11 +1401,12 @@
          let g = self.clients_center.lock().unwrap();
          let left_g = self.clients_left.lock().unwrap();
          let right_g = self.clients_right.lock().unwrap();
@@ -1718,7 +1804,7 @@
          let mut clients = self.shrinkable_clients(center.into_iter());
          drop(g);
          drop(left_g);
-@@ -1366,7 +1528,9 @@
+@@ -1366,7 +1530,9 @@
          clients: OverflowClientPartition,
          section: OverflowSection,
      ) -> u32 {
@@ -1729,7 +1815,7 @@
              tracing::info!("Needs at least 2 movable clients to move to overflow space.");
              return overflow;
          }
-@@ -1417,6 +1581,10 @@
+@@ -1417,6 +1583,10 @@
                  continue;
              }
              let diff = if is_horizontal { bbox.size.w as u32 } else { bbox.size.h as u32 };
@@ -1738,7 +1824,7 @@
 +                self.islands.overflow_sizes.push((w.0.clone(), diff as f64));
 +            }
              overflow = overflow.saturating_sub(diff);
-
+ 
              let x_i = overflow_cnt % 8;
 --- a/cosmic-panel-bin/src/space/panel_space.rs
 +++ b/cosmic-panel-bin/src/space/panel_space.rs
@@ -1767,10 +1853,42 @@
              is_background_dirty: false,
              last_minimize_update: Instant::now() - Duration::from_secs(1),
              anchor_gap: 0,
-@@ -794,6 +796,26 @@
+@@ -717,19 +719,25 @@
+     }
+ 
+     pub fn bg_color(&self) -> [f32; 4] {
+-        if let Some(animatable_state) = self.animate_state.as_ref() {
++        let native = if let Some(animatable_state) = self.animate_state.as_ref() {
+             animatable_state.cur.bg_color
+         } else {
+             self.colors.bg_color(self.config.opacity, self.maximized)
+-        }
++        };
++        self.islands.material.map_or(native, |finish| {
++            let accent = self.colors.theme.cosmic().accent.base;
++            let mut color = finish.color(native, [accent.red, accent.green, accent.blue]);
++            // Existing native opacity and maximization remain effective.
++            color[3] = if self.maximized { 1. } else { color[3] * self.config.opacity };
++            color
++        })
+     }
+ 
+     pub fn border_radius(&self) -> u32 {
+-        if let Some(animatable_state) = self.animate_state.as_ref() {
++        let radius = if let Some(animatable_state) = self.animate_state.as_ref() {
+             animatable_state.cur.border_radius
+-        } else {
+-            self.config.border_radius
+-        }
++        } else { self.config.border_radius };
++        if self.islands.material.is_some_and(|f| f.kind == dock_islands_core::material::Kind::Liquid) { radius.max(24) } else { radius }
+     }
+ 
+     pub fn gap(&self) -> u16 {
+@@ -794,6 +802,26 @@
              return;
          };
-
+ 
 +        if self.islands.lease.is_some()
 +            || (self.islands.settings.enabled
 +                && (!self.popups.is_empty() || self.overflow_popup.is_some()))
@@ -1794,18 +1912,18 @@
          let intellihide =
              matches!(self.config.autohide, AutoHide::OnOverlap) && self.overlap_notify.is_some();
          let intellihide_no_toplevel = intellihide && !self.has_toplevel_overlap();
-@@ -1098,7 +1120,7 @@
+@@ -1098,7 +1126,7 @@
          }
      }
-
+ 
 -    fn set_margin(
 +    pub(crate) fn set_margin(
          anchor: PanelAnchor,
          margin: i32,
          additional_gap: i32,
-@@ -1138,6 +1160,29 @@
+@@ -1138,6 +1166,29 @@
          }
-
+ 
          (w, h).into()
 +    }
 +
@@ -1831,27 +1949,27 @@
 +        }
 +        dim
      }
-
+ 
      fn apply_animation_state(&mut self) {
-@@ -1377,7 +1422,7 @@
+@@ -1377,7 +1428,7 @@
                      if height <= 0 {
                          height = 1;
                      }
 -                    let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 +                    let dim = self.constrain_layer_dim((width, height).into(), Some(self.gap() as u32));
-
+ 
                      if first {
                          if self.additional_gap != 0 {
-@@ -1519,7 +1564,7 @@
+@@ -1519,7 +1570,7 @@
                  if height == 0 {
                      height = 1;
                  }
 -                let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 +                let dim = self.constrain_layer_dim((width, height).into(), Some(self.gap() as u32));
-
+ 
                  if let (Some(renderer), Some(egl_surface)) =
                      (renderer.as_mut(), self.egl_surface.as_mut())
-@@ -1888,6 +1933,9 @@
+@@ -1888,6 +1939,9 @@
              {
                  t.with_pending_state(|s| {
                      s.size = None;
@@ -1861,6 +1979,15 @@
                  });
                  t.send_pending_configure();
              }
+@@ -2106,7 +2160,7 @@
+         rect: smithay::utils::Rectangle<i32, Logical>,
+         mut corners: [u32; 4],
+     ) {
+-        if self.colors.panel_blur(self.config.opacity) {
++        if self.material_blur() {
+             if let Some(corner_radius_wlr) = self.corner_radius_wlr.as_ref() {
+                 let gap =
+                     (self.gap() as u32).min(rect.size.h as u32 / 2).min(rect.size.w as u32 / 2);
 --- a/cosmic-panel-bin/src/space/render.rs
 +++ b/cosmic-panel-bin/src/space/render.rs
 @@ -136,7 +136,11 @@
@@ -1878,7 +2005,7 @@
              let not_visible = self.config.autohide_enabled()
 @@ -212,7 +216,7 @@
                          }
-
+ 
                          w.toplevel().map(|t| {
 -                            let configured_size = t
 +                            let mut configured_size = t
@@ -1888,7 +2015,7 @@
 @@ -232,6 +236,42 @@
                                      r
                                  });
-
+ 
 +                            if self.islands.settings.enabled {
 +                                let client = t.wl_surface().client();
 +                                let section =
@@ -1931,7 +2058,7 @@
 @@ -259,24 +299,25 @@
                      .flatten()
                      .collect_vec();
-
+ 
 -                if let Some(bg) = self.background_element.as_ref().map(|e| {
 -                    let pos = e.with_program(|p| p.logical_pos);
 -                    e.render_elements(
@@ -1968,14 +2095,14 @@
                      elements.extend(bg);
 -                };
 +                }
-
+ 
                  let _res =
                      my_renderer.render_output(renderer, &mut f, age, &elements, clear_color)?;
 --- a/cosmic-panel-bin/src/space/wrapper_space.rs
 +++ b/cosmic-panel-bin/src/space/wrapper_space.rs
 @@ -460,9 +460,9 @@
              let locales = freedesktop_desktop_entry::get_languages_from_env();
-
+ 
              for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
 -                // This way each applet is at most started once,
 -                // even if multiple desktop files in different directories match
@@ -2003,7 +2130,7 @@
 @@ -52,7 +52,13 @@
              xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
          };
-
+ 
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref()) {
 +        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +            || space
@@ -2014,19 +2141,19 @@
 +        {
              // construct a surface for an output if possible
              let s_output = c_output_as_s_output(display_handle, &info);
-
+ 
 @@ -71,6 +77,7 @@
                  warn!("{}", err);
              }
          }
 +        crate::islands::reconcile_outputs(self);
      }
-
+ 
      fn update_output(
 @@ -104,7 +111,12 @@
              xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
          };
-
+ 
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +            || space
@@ -2043,12 +2170,12 @@
          }
 +        crate::islands::reconcile_outputs(self);
      }
-
+ 
      fn output_destroyed(
 @@ -152,7 +165,12 @@
-
+ 
          info!("configured outputs {:?}", &configured_outputs);
-
+ 
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +            || space
@@ -2066,7 +2193,7 @@
 +        crate::islands::reconcile_outputs(self);
      }
  }
-
+ 
 --- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
 +++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
 @@ -71,6 +71,9 @@
@@ -2101,7 +2228,7 @@
 +            return;
 +        }
          let (_, touch) = get_touch_handle(self, touch);
-
+ 
          touch.up(
 @@ -97,6 +105,11 @@
          id: i32,
@@ -2113,11 +2240,11 @@
 +            return;
 +        }
          let (seat_name, touch) = get_touch_handle(self, touch);
-
+ 
          if let Some(surface) = self.client_state.touch_surfaces.get(&id)
 @@ -143,6 +156,12 @@
      }
-
+ 
      fn cancel(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, touch: &WlTouch) {
 +        for panel in &mut self.space.space_list {
 +            if panel.islands.touch.take().is_some() {
@@ -2148,9 +2275,10 @@
 +use_small_heuristics = "Default"
 --- /dev/null
 +++ b/dock-islands-core/src/lib.rs
-@@ -0,0 +1,635 @@
+@@ -0,0 +1,640 @@
 +//! Versioned settings, wire contract and logical geometry shared by the two
 +//! native applications. This crate has no toolkit or compositor dependencies.
++pub mod material;
 +use serde::{Deserialize, Serialize};
 +use std::collections::BTreeMap;
 +
@@ -2676,6 +2804,7 @@
 +#[derive(Clone, Debug, Serialize, Deserialize)]
 +#[serde(deny_unknown_fields)]
 +pub enum Request {
++    MaterialSupport,
 +    Capabilities,
 +    Inspect {
 +        panel: String,
@@ -2726,6 +2855,9 @@
 +#[derive(Clone, Debug, Serialize, Deserialize)]
 +#[serde(deny_unknown_fields)]
 +pub enum Response {
++    MaterialSupport {
++        version: u32,
++    },
 +    Capabilities(Capabilities),
 +    Draft {
 +        token: u64,
@@ -2783,6 +2915,144 @@
 +        rects.push([x + inset, y + row, w, 1]);
 +    }
 +    rects
++}
+--- /dev/null
++++ b/dock-islands-core/src/material.rs
+@@ -0,0 +1,135 @@
++//! Color-independent finishes. Separate namespace leaves version-1 layouts readable.
++use serde::{Deserialize, Serialize};
++pub const NAMESPACE: &str = "io.github.profilaz3.Halcyon.Materials";
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(rename_all = "snake_case")]
++pub enum Kind {
++    Frosted,
++    Clear,
++    Smoked,
++    Liquid,
++}
++impl Kind {
++    pub const ALL: [Self; 4] = [Self::Frosted, Self::Clear, Self::Smoked, Self::Liquid];
++    pub fn title(self) -> &'static str {
++        match self {
++            Self::Frosted => "Frosted",
++            Self::Clear => "Clear glass",
++            Self::Smoked => "Smoked glass",
++            Self::Liquid => "Liquid",
++        }
++    }
++    pub fn key(self) -> &'static str {
++        match self {
++            Self::Frosted => "frosted",
++            Self::Clear => "clear",
++            Self::Smoked => "smoked",
++            Self::Liquid => "liquid",
++        }
++    }
++    pub fn opacity(self) -> u8 {
++        match self {
++            Self::Frosted => 82,
++            Self::Clear => 62,
++            Self::Smoked => 94,
++            Self::Liquid => 76,
++        }
++    }
++    pub fn highlight(self) -> f32 {
++        match self {
++            Self::Frosted => 0.035,
++            Self::Clear => 0.06,
++            Self::Smoked => 0.025,
++            Self::Liquid => 0.13,
++        }
++    }
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct Finish {
++    pub kind: Kind,
++    pub opacity: Option<u8>,
++    pub tint: u8,
++}
++impl Finish {
++    pub fn new(kind: Kind) -> Self {
++        Self {
++            kind,
++            opacity: None,
++            tint: 35,
++        }
++    }
++    pub fn opacity(self) -> u8 {
++        self.opacity.unwrap_or(self.kind.opacity()).clamp(45, 100)
++    }
++    pub fn validate(self) -> Result<(), String> {
++        if self.opacity.is_some_and(|v| !(45..=100).contains(&v)) || self.tint > 100 {
++            Err("Material opacity must be 45–100 and tint 0–100".into())
++        } else {
++            Ok(())
++        }
++    }
++    /// Native/app palette remains the color owner; only its accent's surface contribution changes.
++    pub fn color(self, mut color: [f32; 4], accent: [f32; 3]) -> [f32; 4] {
++        let amount = self.tint.min(100) as f32 / 100. * 0.16;
++        for (c, accent) in color[..3].iter_mut().zip(accent) {
++            *c = (*c * (1. - amount) + accent * amount).clamp(0., 1.);
++        }
++        color[3] = self.opacity() as f32 / 100.;
++        color
++    }
++}
++/// Versioned independent per-bar record; unknown versions are preserved, ignored by renderer.
++#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
++#[serde(deny_unknown_fields)]
++pub struct BarMaterial {
++    pub version: u32,
++    pub finish: Finish,
++}
++impl BarMaterial {
++    pub fn validate(self) -> Result<(), String> {
++        if self.version != 1 {
++            return Err("Unsupported material version".into());
++        }
++        self.finish.validate()
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn four_finishes_and_tint_work_even_on_a_neutral_native_theme() {
++        let base = [0.13, 0.13, 0.13, 1.];
++        let accent = [0.2, 0.7, 0.8];
++        let mut alphas = Vec::new();
++        for kind in Kind::ALL {
++            let mut f = Finish::new(kind);
++            assert!(f.validate().is_ok());
++            let tinted = f.color(base, accent);
++            f.tint = 0;
++            let neutral = f.color(base, accent);
++            assert_ne!(neutral, tinted);
++            assert_eq!(&neutral[..3], &base[..3]);
++            assert!(!alphas.contains(&neutral[3]));
++            alphas.push(neutral[3]);
++            f.opacity = Some(45);
++            assert_eq!(f.color(base, accent)[3], 0.45);
++        }
++    }
++    #[test]
++    fn material_schema_rejects_unknown_versions_and_out_of_range_values() {
++        let mut record = BarMaterial {
++            version: 1,
++            finish: Finish::new(Kind::Liquid),
++        };
++        record.version = 2;
++        assert!(record.validate().is_err());
++        record.version = 1;
++        record.finish.tint = 101;
++        assert!(record.validate().is_err());
++        record.finish.tint = 35;
++        record.finish.opacity = Some(44);
++        assert!(record.validate().is_err());
++    }
 +}
 --- /dev/null
 +++ b/dock-islands-core/src/tests.rs
