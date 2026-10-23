@@ -170,3 +170,21 @@ as an ordinary sandboxed app is the host-panel replacement itself.
 - [APT signature verification](https://manpages.debian.org/stable/apt/apt-secure.8.en.html)
 - [APT source configuration](https://manpages.debian.org/stable/apt/sources.list.5.en.html)
 - [AppStream collection metadata](https://www.freedesktop.org/software/appstream/docs/chap-CollectionData.html)
+
+## Implemented group 3 artifact boundary
+
+The companion's final strip/package step now precedes native acceptance. Its v2
+manifest binds helper/selector/catalog/ELF bytes, and its content-addressed user
+generation preserves the existing reverse installation/Disable chain. A
+package-owned XDG autostart independently bootstraps enabled actual 0.2.0 users;
+activation is next login after successful staging, without root home edits or
+live replacement. New/disabled/manual users are not auto-enabled.
+
+[COMPATIBILITY.md](COMPATIBILITY.md) specifies signed official discovery, complete
+cohort locks, read-only status, evidence schemas and the exact native-driver
+handoff. The catalog currently admits no new native cohort. Final package native
+acceptance, complete 1.10 inputs and group 4 system-update acceptance remain gates.
+The previous tag-triggered rebuild/publish workflow is replaced with verification
+of an explicitly reviewed immutable release artifact set. Publication is still
+parent-owned; group 4 must consume the same bytes, add its acceptance and perform
+restricted signing/promotion. No current APT enrollment or hosting is implied.

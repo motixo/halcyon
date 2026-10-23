@@ -575,6 +575,7 @@ pub enum Message {
     ExportRecovery,
     RecoveryExported(Result<Option<PathBuf>, String>),
     OpenIslandsGuide,
+    CopyIslandsDiagnostics,
     NativeDone(native_jobs::Delivery),
     InstallationChecked(
         u64,
@@ -2882,6 +2883,11 @@ impl Settings {
                 }
                 if let Some(wizard) = &mut self.wizard {
                     wizard.islands_available = self.desktop.islands.installation.installed();
+                }
+            }
+            Message::CopyIslandsDiagnostics => {
+                if let Some(diagnostics) = self.desktop.islands.installation.diagnostics() {
+                    return cosmic::iced::clipboard::write(diagnostics.to_owned());
                 }
             }
             Message::OpenIslandsGuide => {

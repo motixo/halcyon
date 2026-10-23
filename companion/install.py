@@ -62,6 +62,11 @@ def install(root, binary, manifest, enable=False, defer_session=None, record_own
         '.local/bin/cosmic-panel': (Path(__file__).with_name('panel_launcher.py').read_bytes(), 0o755),
         prefix + 'selection.json': ((json.dumps(selection) + '\n').encode(), 0o600),
     }
+    return install_contents(root, contents, record_owner)
+
+
+def install_contents(root, contents, record_owner=None):
+    """Journal a guarded layer; used by both legacy install and generation switch."""
     paths = {rel: safe_path(root, rel) for rel in contents}
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
     backup = safe_path(root, '.local/share/cosmic-desktop-cards/backups/panel-' + stamp)

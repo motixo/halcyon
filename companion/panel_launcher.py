@@ -83,15 +83,25 @@ def installed_versions():
 def compatible(bundle, versions=None, manifest_name='manifest.json'):
     try:
         manifest=json.loads((bundle/manifest_name).read_text())
+        if isinstance(manifest, dict) and manifest.get('version') == 2:
+            from bundle_contract import verify_bundle, classify_compatibility
+            from runtime_identity import installed_identity, running_identity
+            manifest, catalog = verify_bundle(bundle, manifest_name)
+            manifest = {**manifest, 'verified': True}
+            installed = installed_identity(catalog)
+            running = running_identity(catalog)
+            return classify_compatibility(installed, running, manifest, catalog)['state'] == 'ready'
         if not isinstance(manifest, dict):return False
         if manifest['upstream']!='ca20ce3185b3b4404f429d59d429c40b58a2ddef' or manifest['protocol']!=1:return False
         if digest(bundle/'cosmic-panel-islands')!=manifest['binary_sha256']:return False
         if versions is None:
-            versions=installed_versions()
+            # New launches require v2 measured cohort admission. Legacy source
+            # metadata remains readable for migration/explicit diagnostics only.
+            return False
         return supported_system(versions) and (
             any(versions == row for row in SUPPORTED_SYSTEMS)
             or manifest.get('runtime_probe') == 1)
-    except (OSError,ValueError,KeyError,subprocess.SubprocessError):return False
+    except (OSError,ValueError,KeyError,TypeError,AttributeError,subprocess.SubprocessError):return False
 
 def runtime_compatible(bundle):
     """Execute the checksummed binary with no inherited session descriptors.
@@ -367,11 +377,11 @@ def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False):
         return stock_host(fallback, pass_fds, env=env, keep_running=True)
     return stock_host(fallback, pass_fds)
 
-def main():
+def main(bundle=None, pointer=None):
     data=Path(os.environ.get('XDG_DATA_HOME',Path.home()/'.local/share'))
     state=Path(os.environ.get('XDG_STATE_HOME',Path.home()/'.local/state'))/'desktop-cards-panel'
-    bundle=data/'cosmic-desktop-cards/companion'
-    selection=bundle/'selection.json'
+    bundle=bundle or data/'cosmic-desktop-cards/companion'
+    selection=data/'cosmic-desktop-cards/companion/selection.json'
     try:
         selected=json.loads(selection.read_text())
         enabled=isinstance(selected, dict) and selected.get('enabled') is True
@@ -379,6 +389,9 @@ def main():
             current=session_identity()
             enabled=current is not None and current != selected['defer_session']
     except (OSError,ValueError):enabled=False
+    if enabled and pointer is not None:
+        current=session_identity()
+        enabled=current is not None and current != pointer.get('defer_session')
     # A manual launch must never duplicate the session's existing host.
     if other_host() is not None:return 0
     runtime=Path(os.environ['XDG_RUNTIME_DIR']);lockpath=runtime/'desktop-cards-panel.lock'

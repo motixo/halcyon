@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "halcyon-islands-catalog-v1",
+  "type": "object",
+  "required": ["format", "version", "cohorts"],
+  "properties": {
+    "format": {"const": "halcyon-islands-catalog"},
+    "version": {"const": 1},
+    "cohorts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "distribution", "suite", "architecture", "packages", "processes", "payload_sha256", "qualification", "evidence"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "distribution": {"type": "string"},
+          "suite": {"type": "string"},
+          "architecture": {"type": "string"},
+          "packages": {"type": "object", "minProperties": 4},
+          "processes": {"type": "object", "minProperties": 3},
+          "payload_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "qualification": {"enum": ["native-session", "development", "source-only"]},
+          "evidence": {"type": "object", "required": ["id", "image_sha256", "scope"]}
+        }
+      }
+    }
+  },
+  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet."
+}

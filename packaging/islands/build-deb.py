@@ -18,6 +18,7 @@ HERE = Path(__file__).resolve().parent
 COMPANION = HERE.parent.parent / 'companion'
 sys.path.insert(0, str(COMPANION))
 import panel_launcher
+from bundle_contract import HELPERS, canonical, identity, verify_bundle, valid_catalog
 
 PACKAGE = 'cosmic-ext-halcyon-islands'
 MAINTAINER = 'profilaz3 <261673162+profilaz3@users.noreply.github.com>'
@@ -29,7 +30,7 @@ def stage_file(source, destination, mode=0o644):
     destination.chmod(mode)
 
 
-def build(binary, manifest, version, out, licenses=None):
+def build(binary, manifest, version, out, licenses=None, catalog=None):
     if not re.fullmatch(r'[0-9][A-Za-z0-9.+:~\-]*', version):
         raise ValueError('Invalid Debian version')
     subprocess.run(['dpkg', '--validate-version', version], check=True)
@@ -42,7 +43,8 @@ def build(binary, manifest, version, out, licenses=None):
         library = staging / 'usr/lib' / PACKAGE
         stage_file(binary, library / 'cosmic-panel-islands', 0o755)
         stage_file(manifest, library / 'companion-manifest.json')
-        if not panel_launcher.compatible(library, panel_launcher.PACKAGES, 'companion-manifest.json'):
+        initial = json.loads((library / 'companion-manifest.json').read_bytes())
+        if initial.get('protocol') != 1 or not re.fullmatch('[0-9a-f]{40}', initial.get('upstream', '')) or initial.get('binary_sha256') != hashlib.sha256(binary.read_bytes()).hexdigest():
             raise ValueError('Binary or manifest fails the selector checksum, upstream or protocol checks')
         # Shipped without debug symbols. Only symbols go, so the reviewed
         # build's behavior is unchanged; the manifest records the new hash.
@@ -54,17 +56,23 @@ def build(binary, manifest, version, out, licenses=None):
             record = json.loads((library / 'companion-manifest.json').read_text())
             record['binary_sha256'] = hashlib.sha256(staged.read_bytes()).hexdigest()
             (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
-            if not panel_launcher.compatible(library, panel_launcher.PACKAGES, 'companion-manifest.json'):
-                raise ValueError('The stripped binary fails the selector checks')
         record = json.loads((library / 'companion-manifest.json').read_text())
-        record['packages'] = panel_launcher.PACKAGES
-        record['supported_packages'] = panel_launcher.SUPPORTED_SYSTEMS
-        if record.get('runtime_probe') == 1:
-            record['source_policy'] = panel_launcher.SOURCE_POLICY
-        (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
-        for name in ('install.py', 'panel_launcher.py'):
-            stage_file(COMPANION / name, library / name, 0o755)
-        stage_file(COMPANION / 'install_status.py', library / 'install_status.py')
+        for name in HELPERS:
+            stage_file(COMPANION / name, library / name, 0o755 if name in ('install.py', 'panel_launcher.py', 'selector.py') else 0o644)
+        stage_file(catalog or COMPANION / 'compatibility/catalog.json', library / 'catalog.json')
+        files = {p.name: {'sha256': hashlib.sha256(p.read_bytes()).hexdigest(), 'mode': p.stat().st_mode & 0o777}
+                 for p in library.iterdir() if p.name != 'companion-manifest.json'}
+        payload = identity({k: v for k, v in files.items() if k != 'catalog.json'})
+        admitted = valid_catalog(json.loads((library / 'catalog.json').read_bytes()))
+        if any(r['payload_sha256'] != payload for r in admitted['cohorts']):
+            raise ValueError('Catalog belongs to a different finalized payload; retain a separate immutable package for that cohort')
+        record.update(format='halcyon-islands-bundle', version=2, package_version=version,
+                      files=files, payload_sha256=payload)
+        for key in ('packages', 'supported_packages', 'source_policy'):
+            record.pop(key, None)
+        (library / 'companion-manifest.json').write_bytes(canonical(record) + b'\n')
+        verify_bundle(library, 'companion-manifest.json')
+        stage_file(HERE / 'halcyon-islands-bootstrap.desktop', staging / 'etc/xdg/autostart/halcyon-islands-bootstrap.desktop')
         stage_file(HERE / 'halcyon-islands', staging / 'usr/bin/halcyon-islands', 0o755)
         docs = staging / 'usr/share/doc' / PACKAGE
         stage_file(HERE / 'copyright', docs / 'copyright')
@@ -98,6 +106,7 @@ def build(binary, manifest, version, out, licenses=None):
         size = sum(path.stat().st_size for path in staging.rglob('*') if path.is_file())
         control = staging / 'DEBIAN/control'
         control.parent.mkdir()
+        (control.parent / 'conffiles').write_text('/etc/xdg/autostart/halcyon-islands-bootstrap.desktop\n')
         control.write_text(
             f'Package: {PACKAGE}\nVersion: {version}\nArchitecture: amd64\n'
             f'Maintainer: {MAINTAINER}\nSection: utils\nPriority: optional\n'
@@ -115,7 +124,7 @@ def build(binary, manifest, version, out, licenses=None):
             if path.is_dir():
                 path.chmod(0o755)
             elif path not in (library / 'cosmic-panel-islands', library / 'install.py',
-                              library / 'panel_launcher.py', staging / 'usr/bin/halcyon-islands'):
+                              library / 'panel_launcher.py', library / 'selector.py', staging / 'usr/bin/halcyon-islands'):
                 path.chmod(0o644)
             os.utime(path, (epoch, epoch))
         os.utime(staging, (epoch, epoch))
@@ -124,6 +133,8 @@ def build(binary, manifest, version, out, licenses=None):
                        env={**os.environ, 'SOURCE_DATE_EPOCH': str(epoch)}, check=True)
         checksum = hashlib.sha256(artifact.read_bytes()).hexdigest()
         destination = out / filename
+        if destination.exists() and hashlib.sha256(destination.read_bytes()).hexdigest() != checksum:
+            raise ValueError('Refusing to replace immutable package version with different bytes')
         artifact.replace(destination)
         destination.with_suffix('.deb.sha256').write_text(f'{checksum}  {filename}\n')
     return destination
@@ -134,11 +145,12 @@ def main():
     parser.add_argument('--binary', type=Path, required=True, help='prebuilt cosmic-panel-islands')
     parser.add_argument('--manifest', type=Path, required=True, help='reviewed companion-manifest.json')
     parser.add_argument('--version', required=True)
+    parser.add_argument('--catalog', type=Path, help='reviewed local cohort catalog; default has no new admissions')
     parser.add_argument('--licenses', type=Path, help='dependency license report (required for native binaries)')
     parser.add_argument('--out', type=Path, required=True, help='output directory')
     args = parser.parse_args()
     try:
-        print(build(args.binary, args.manifest, args.version, args.out, args.licenses))
+        print(build(args.binary, args.manifest, args.version, args.out, args.licenses, args.catalog))
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         parser.exit(1, f'Cannot build Islands package: {error}\n')
 

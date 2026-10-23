@@ -76,4 +76,30 @@ class InstallationStatus(unittest.TestCase):
         record['restored'] = True; path.write_text(json.dumps(record))
         self.assertEqual(self.status.detect(*args)['installation'], 'absent')
 
+
+class GenerationStatus(unittest.TestCase):
+    def test_unknown_running_and_diagnostics_are_read_only_and_redacted(self):
+        from test_generation_contract import bundle_fixture
+        import install_status, refresh
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);home=root/'private-home';home.mkdir();library=root/'library'
+            manifest,catalog=bundle_fixture(library)
+            known=dict(verified=True,cohort=catalog['cohorts'][0]['id'])
+            (home/'installed-identity.json').write_text(json.dumps(known))
+            with refresh.locked(home):
+                refresh.stage_locked(home,library,fixture=True,session='old',enable=True)
+            before={p:p.read_bytes() for p in home.rglob('*') if p.is_file()}
+            from unittest.mock import patch
+            with patch.object(panel_launcher,'session_identity',return_value='new'):
+                status=install_status.detect(home,library,True,{},installed=known,running={})
+                self.assertEqual(status['status'],'Log out to activate')
+                self.assertNotIn(str(home),json.dumps(status))
+                status=install_status.detect(home,library,True,{},installed=known,running=known,host=True)
+                self.assertEqual(status['status'],'Ready')
+            self.assertEqual({p:p.read_bytes() for p in before},before)
+            (library/'catalog.json').write_text('{}')
+            status=install_status.detect(home,library,True,{})
+            self.assertEqual(status['installation'],'installed');self.assertFalse(status['healthy'])
+            self.assertEqual(status['status'],'Compatibility update needed')
+
 if __name__ == '__main__': unittest.main()

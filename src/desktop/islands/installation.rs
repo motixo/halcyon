@@ -10,6 +10,8 @@ pub enum Installation {
         provenance: Provenance,
         enabled: bool,
         compatible: Option<bool>,
+        status: Option<CompatibilityStatus>,
+        diagnostics: String,
     },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
@@ -17,6 +19,27 @@ pub enum Installation {
 pub enum Provenance {
     Package,
     Manual,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub enum CompatibilityStatus {
+    #[serde(rename = "Ready")]
+    Ready,
+    #[serde(rename = "Log out to activate")]
+    LogoutRequired,
+    #[serde(rename = "Using standard panel")]
+    Standard,
+    #[serde(rename = "Compatibility update needed")]
+    UpdateNeeded,
+}
+impl CompatibilityStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "Ready",
+            Self::LogoutRequired => "Log out to activate",
+            Self::Standard => "Using standard panel",
+            Self::UpdateNeeded => "Compatibility update needed",
+        }
+    }
 }
 #[derive(Deserialize)]
 struct Status {
@@ -26,6 +49,18 @@ struct Status {
     provenance: Option<Provenance>,
     enabled: bool,
     compatible: Option<bool>,
+    #[serde(default)]
+    status_version: Option<u32>,
+    #[serde(default)]
+    status: Option<CompatibilityStatus>,
+    #[serde(default)]
+    reason: Option<String>,
+    #[serde(default)]
+    installed_generation: Option<String>,
+    #[serde(default)]
+    active_generation: Option<String>,
+    #[serde(default)]
+    package_versions: std::collections::BTreeMap<String, String>,
 }
 thread_local! {
     static NATIVE_VIEW: std::cell::RefCell<Option<Installation>> = const { std::cell::RefCell::new(None) };
@@ -73,6 +108,21 @@ impl Installation {
     pub fn installed(&self) -> bool {
         matches!(self, Self::Installed { .. })
     }
+    pub fn status_label(&self) -> &'static str {
+        match self {
+            Self::Installed {
+                status: Some(status),
+                ..
+            } => status.label(),
+            _ => "Using standard panel",
+        }
+    }
+    pub fn diagnostics(&self) -> Option<&str> {
+        match self {
+            Self::Installed { diagnostics, .. } => Some(diagnostics),
+            _ => None,
+        }
+    }
     fn parse(bytes: &[u8]) -> Self {
         if bytes.len() > 65536 {
             return Self::Pending;
@@ -83,12 +133,48 @@ impl Installation {
         if status.format != "halcyon-islands-installation" || status.version != 1 {
             return Self::Pending;
         }
+        if status.status_version.is_some_and(|v| v != 1)
+            || (status.status.is_some() && status.status_version != Some(1))
+        {
+            return Self::Pending;
+        }
+        let safe_hash = |s: &Option<String>| {
+            s.as_ref()
+                .filter(|v| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit()))
+                .cloned()
+        };
+        let reason = status
+            .reason
+            .as_ref()
+            .filter(|v| v.len() <= 80 && v.bytes().all(|b| b.is_ascii_lowercase() || b == b'_'));
+        let packages: std::collections::BTreeMap<_, _> = status
+            .package_versions
+            .iter()
+            .filter(|(name, value)| {
+                matches!(
+                    name.as_str(),
+                    "cosmic-panel" | "cosmic-comp" | "cosmic-session" | "cosmic-settings-daemon"
+                ) && value.len() <= 128
+                    && value
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b".+:~_-".contains(&b))
+            })
+            .collect();
+        let diagnostics = serde_json::json!({
+            "version": 1, "enabled": status.enabled, "compatible": status.compatible,
+            "status": status.status.map(CompatibilityStatus::label), "reason": reason,
+            "installed_generation": safe_hash(&status.installed_generation),
+            "active_generation": safe_hash(&status.active_generation), "package_versions": packages,
+        })
+        .to_string();
         match (status.installation.as_str(), status.provenance) {
             ("absent", None) => Self::Absent,
             ("installed", Some(provenance)) => Self::Installed {
                 provenance,
                 enabled: status.enabled,
                 compatible: status.compatible,
+                status: status.status,
+                diagnostics,
             },
             _ => Self::Pending,
         }
@@ -161,6 +247,23 @@ pub(crate) fn fixture_installed(root: &std::path::Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn task3_status_is_versioned_and_copy_diagnostics_excludes_untrusted_paths() {
+        let data = br#"{"format":"halcyon-islands-installation","version":1,"installation":"installed","provenance":"package","enabled":true,"compatible":true,"status_version":1,"status":"Log out to activate","reason":"installed_running_differ","installed_generation":"/home/private/token","package_versions":{"cosmic-panel":"1.11.0~24.04~ca20ce3","private":"/home/private"}}"#;
+        let status = Installation::parse(data);
+        assert_eq!(status.status_label(), "Log out to activate");
+        let diagnostic = status.diagnostics().unwrap();
+        assert!(!diagnostic.contains("/home"));
+        assert!(!diagnostic.contains("private"));
+        assert!(diagnostic.contains("ca20ce3"));
+        let unknown = String::from_utf8(data.to_vec())
+            .unwrap()
+            .replace("status_version\":1", "status_version\":2");
+        assert_eq!(
+            Installation::parse(unknown.as_bytes()),
+            Installation::Pending
+        );
+    }
     #[test]
     fn task2_installed_disabled_incompatible_and_unknown_are_distinct() {
         let f = crate::desktop::store::tests::Fixture::new("installed-contract");

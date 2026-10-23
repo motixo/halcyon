@@ -11,11 +11,18 @@ impl Settings {
                     .into(),
             )]),
             Installation::Installed { .. } => pages::section(vec![split(
-                label("Add-ons", 14., FG),
-                button::text("Islands")
-                    .id("manage-islands".into())
-                    .on_press(Message::Page(Page::DesktopDock))
-                    .into(),
+                detail("Islands", self.desktop.islands.installation.status_label()),
+                row::with_children(vec![
+                    button::text("Copy diagnostics")
+                        .on_press(Message::CopyIslandsDiagnostics)
+                        .into(),
+                    button::text("Islands")
+                        .id("manage-islands".into())
+                        .on_press(Message::Page(Page::DesktopDock))
+                        .into(),
+                ])
+                .spacing(8)
+                .into(),
             )]),
             Installation::Pending => cosmic::widget::space().height(0).into(),
         }

@@ -1,0 +1,9 @@
+{
+  "format": "halcyon-islands-catalog",
+  "version": 1,
+  "cohorts": [],
+  "observations": [
+    {"scope": "source-only", "series": "1.10", "admitted": false, "reason": "Complete 1.10 session inputs unavailable; previous compositor test used newer libraries and applets."},
+    {"scope": "development", "series": "1.11", "admitted": false, "reason": "Complete software-rendered guest observations used released 0.2.0 Islands and frozen development Halcyon. Final generation package has no native acceptance yet."}
+  ]
+}

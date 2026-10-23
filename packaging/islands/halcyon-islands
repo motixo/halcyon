@@ -167,14 +167,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog='Run as your desktop user, without sudo.')
     parser.add_argument('--root', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--json', action='store_true', help='Versioned installation capability (status only)')
-    parser.add_argument('command', choices=['status', 'enable', 'disable'])
+    parser.add_argument('command', choices=['status', 'diagnostics', 'refresh', 'enable', 'disable'])
     args = parser.parse_args()
     home = (args.root or Path.home()).resolve()
     if args.root:
         # Fixture mode keeps even inherited XDG paths inside the fixture.
         os.environ.update(HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'),
                           XDG_STATE_HOME=str(home / '.local/state'), XDG_CONFIG_HOME=str(home / '.config'))
-    if args.command == 'status' and args.json:
+    if args.command in ('status', 'diagnostics') and (args.json or args.command == 'diagnostics'):
         helper = LIBRARY / 'install_status.py'
         if not helper.is_file():
             helper = Path('/usr/lib/cosmic-ext-halcyon/islands-status.py')
@@ -194,6 +194,26 @@ def main():
     import panel_launcher as launcher
     import install as installer
     try:
+        if args.command == 'refresh':
+            import refresh
+            print(json.dumps(refresh.stage_installed_update(home, LIBRARY, fixture=args.root is not None)))
+            return 0
+        import install_status
+        try:
+            modern = read_json(LIBRARY / 'companion-manifest.json').get('version') == 2
+        except (OSError, ValueError):
+            modern = False
+        if modern and args.command == 'status':
+            return subprocess.run([sys.executable, '-B', str(LIBRARY / 'install_status.py'),
+                *(['--root', str(home), '--library', str(LIBRARY)] if args.root else [])], timeout=8).returncode
+        if modern and args.command == 'enable':
+            import refresh
+            with refresh.locked(home):
+                if (home / '.local/state/desktop-cards-panel/failed').exists():
+                    raise ValueError('A previous Islands failure selects the stock panel. Activation was not changed.')
+                result = refresh.stage_locked(home, LIBRARY, fixture=args.root is not None, enable=True)
+            print(json.dumps(result))
+            return 0 if result['state'] in ('staged', 'unchanged') else 1
         if args.command == 'status':
             return status(home, launcher, installer)
         return change(args.command, home, args.root is not None, launcher, installer)

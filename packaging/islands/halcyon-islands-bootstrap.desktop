@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Halcyon Islands activation
+Comment=Stage verified installed Islands updates for a later login
+Exec=/usr/bin/python3 -B /usr/lib/cosmic-ext-halcyon-islands/refresh.py
+TryExec=/usr/bin/cosmic-session
+NoDisplay=true
+X-GNOME-Autostart-enabled=true
