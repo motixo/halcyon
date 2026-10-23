@@ -38,7 +38,7 @@ jobs:
           retention-days: 7
           compression-level: 0
   session:
-    if: ${{ always() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
+    if: ${{ !cancelled() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
     needs: package
     strategy:
       fail-fast: false

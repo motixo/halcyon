@@ -180,7 +180,7 @@ def cycle(look):
 
 def install(which):
  package='cosmic-ext-halcyon_0.2.0_amd64.deb' if which=='public' else 'cosmic-ext-halcyon_0.2.1~dev.0b688c8_amd64.deb'
- command('install-'+which,'apt-get --no-download --allow-downgrades -y install /mnt/candidate/'+package+' && dpkg --audit && apt-get check',timeout=120)
+ command('install-'+which,'dpkg --install /mnt/candidate/'+package+' && dpkg --audit && apt-get check',timeout=120)
  # Match every installed payload to the finalized independent builder manifest.
  manifest=json.loads((ev/'package-build'/(package[:-4]+'-payload.json')).read_text())
  checks='\n'.join(v+'  /'+k for k,v in manifest.items())+'\n'
@@ -198,7 +198,7 @@ try:
  command('independent-input-check',checks)
  install(lineage)
  if host=='islands':
-  command('install-islands','apt-get --no-download -y install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb',timeout=120)
+  command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
   command('enable-islands','halcyon-islands enable',True)
   c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
   time.sleep(15);c.login('islands-login')
