@@ -38,6 +38,10 @@ def install_candidate():
  h.command('independent-input-check',"cd /mnt/candidate && sha256sum -c /dev/stdin <<'INPUTS'\n"+approved+'INPUTS\n');h.install('candidate')
  if host=='islands':
   h.command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
+  manifest=json.loads((ev/'package-build/cosmic-ext-halcyon-islands_0.2.0_amd64-payload.json').read_text())
+  checks='\n'.join(digest+'  /'+name for name,digest in manifest.items())+'\n'
+  encoded=base64.b64encode(checks.encode()).decode()
+  h.command('payload-islands','echo '+shlex.quote(encoded)+' | base64 -d | sha256sum -c -',timeout=120)
   h.command('enable-islands','halcyon-islands enable',True)
   c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
   time.sleep(15);c.login('released-islands-login')

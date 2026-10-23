@@ -1,0 +1,7 @@
+{
+  "old_candidate_run": 39987753102,
+  "old_executed_infra": "db6d3c44ce940eca55675ed6a8dff5fab68ad994",
+  "new_untouched_run": 39994497276,
+  "automatic_function_ast_identical": true,
+  "scope": "actual real UI Auto / timedated sequence; no candidate clock-step rerun"
+}
