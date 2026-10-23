@@ -12,7 +12,7 @@ class Phase:
  def media(self):return self.lineage=='candidate'
 def plan(host):
  if host=='stock':return [Phase('untouched-clock','untouched','stock','clock'),Phase('untouched-natural','untouched','stock','natural'),Phase('candidate-stock-natural','candidate','stock','natural')]
- if host=='islands':return [Phase('candidate-islands-manual','candidate','islands','manual'),Phase('candidate-islands-natural','candidate','islands','natural')]
+ if host=='islands':return [Phase('untouched-clock','untouched','stock','clock'),Phase('untouched-natural','untouched','stock','natural'),Phase('candidate-islands-manual','candidate','islands','manual'),Phase('candidate-islands-natural','candidate','islands','natural')]
  raise ValueError('One selected standard runner host is required')
 def inputs():
  return ['acceptance_wrapper.py','acceptance_session.py','auto_session.py','followup_session.py','theme_session.py','control.py','calibrated_controls.py','prepare.sh','session.sh','followup/control-calibration.json','acceptance/solar-boundary.json','acceptance/solar-provenance.json','acceptance/source/data-timezone-geodata.bitcode-v0-6','acceptance/source/Cargo.toml','acceptance/source/Cargo.lock','acceptance/source/geonames-lib.rs','acceptance/solar-calculator/Cargo.toml','acceptance/solar-calculator/Cargo.lock','acceptance/solar-calculator/src/main.rs','upstream-daemon-time-655b14f.rs','upstream-daemon-theme-655b14f.rs','upstream-daemon-location-655b14f.rs']
@@ -45,7 +45,7 @@ def preflight(tracked=True):
    assert args[args.index('-nic')+1]=='none'
    assert 'virtio-blk-pci,drive=osdisk,addr=0x5,bootindex=0' in args
    checks.append({**dataclasses.asdict(phase),'media':phase.media,'args':args})
- assert [p.task for p in plan('islands')]==['manual','natural']
+ assert [p.task for p in plan('islands') if p.lineage=='candidate']==['manual','natural']
  return {'tracked_inputs_checked':len(paths),'launch_conditions_checked':checks,'independent_islands_manual':True}
 def run(root,host):
  preflight();ev=root/'evidence';ev.mkdir(exist_ok=True)

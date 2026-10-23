@@ -46,16 +46,24 @@ def point(path,control,calibration):
   box=[279,431,411,471]
  else:
   if control not in MODE_BOUNDS:raise ValueError('Unknown calibrated control '+control)
-  # Interior of the actual Dark and Light illustration windows, independent
-  # of native tint and OCR segmentation. No labels or wallpaper satisfy this.
-  dark=[p.rgb(x,y) for x,y in [(620,350),(730,350),(620,375),(730,375)]]
-  light=[p.rgb(x,y) for x,y in [(830,350),(950,350),(830,375),(950,375)]]
+  # Real Settings window placement differs by 6px for untouched defaults.
+  # Locate both preview rectangles using their paired antialiased top/bottom
+  # edges, not loose interior samples or OCR. Every edge must match together.
+  anchors=[(740,310,61),(740,311,27),(740,376,27),(740,377,61),
+           (950,310,149),(950,311,215),(950,376,215),(950,377,150)]
+  offsets=[]
+  for dy in range(-8,9):
+   if all(max(abs(v-gray) for v in p.rgb(x,y+dy))<=8 for x,y,gray in anchors):offsets.append(dy)
+  if not offsets:raise ValueError('Native image control pattern absent')
+  dy=min(offsets,key=lambda v:(abs(v),v))
+  dark=[p.rgb(x,y+dy) for x,y in [(620,350),(730,350),(620,375),(730,375)]]
+  light=[p.rgb(x,y+dy) for x,y in [(830,350),(950,350),(830,375),(950,375)]]
   if not all(max(c)-min(c)<12 and max(c)<65 for c in dark):raise ValueError('Dark image control pattern absent')
   if not all(max(c)-min(c)<12 and min(c)>160 for c in light):raise ValueError('Light image control pattern absent')
-  detail={'dark_image_pixels':dark,'light_image_pixels':light}
+  detail={'dark_image_pixels':dark,'light_image_pixels':light,'offset':[0,dy],'paired_edge_matches':len(anchors)}
   box=MODE_BOUNDS[control]
   if control=='Auto':
-   left=p.rgb(965,463);right=p.rgb(990,463)
+   left=p.rgb(965,463+dy);right=p.rgb(990,463+dy)
    if abs(sum(left)-sum(right))<75:raise ValueError('Automatic toggler thumb/track pattern absent')
    detail.update(toggle_left=left,toggle_right=right,enabled=sum(right)<sum(left))
  dx,dy=detail.get('offset',[0,0])

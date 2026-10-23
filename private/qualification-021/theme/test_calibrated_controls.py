@@ -31,6 +31,14 @@ class CalibrationTests(unittest.TestCase):
    self.assertEqual(result['untranslated_matches'],42)
    self.assertEqual(result['matched_samples'],47)
    self.assertEqual(result['offset'],[0,1])
+ def test_untouched_native_controls_use_paired_edges_at_actual_six_pixel_offset(self):
+  root=ROOT/'evidence-39994497276/theme-acceptance-stock-39994497276'
+  for name in ['untouched-clock/002-automatic-control-before.png','untouched-natural/002-native-auto-before.png']:
+   proof=point(root/name,'Auto',CAL)
+   self.assertEqual(proof['offset'],[0,-6])
+   self.assertEqual(proof['point'],[978,457])
+   self.assertEqual(proof['paired_edge_matches'],8)
+   self.assertFalse(proof['enabled'])
  def test_welcome_button_identified_without_sparse_ocr(self):
   self.assertEqual(point(pathlib.Path(CAL['sources']['welcome']['path']),'Start',CAL)['point'],[345,451])
  def test_wrong_screen_is_rejected_before_click(self):

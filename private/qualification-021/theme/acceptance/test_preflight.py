@@ -16,8 +16,8 @@ class PreflightTests(unittest.TestCase):
     self.assertEqual(args[args.index('-nic')+1],'none')
  def test_baseline_first_and_independent_islands_manual(self):
   self.assertEqual(w.plan('stock')[0].name,'untouched-clock')
-  self.assertEqual([p.task for p in w.plan('islands')],['manual','natural'])
-  self.assertTrue(all(p.media for p in w.plan('islands')))
+  self.assertEqual([p.task for p in w.plan('islands') if p.lineage=='candidate'],['manual','natural'])
+  self.assertTrue(all(p.media for p in w.plan('islands') if p.lineage=='candidate'))
  def test_empty_implicit_dvd_is_allowed_for_untouched(self):
   self.assertTrue(s.media_assertion([{'device':'ide2-cd0','removable':True,'tray_open':False},{'device':'osdisk','removable':False,'inserted':{'file':'trial.qcow2','ro':False}}],None)['asserted'])
  def test_inserted_media_is_rejected_for_untouched(self):
