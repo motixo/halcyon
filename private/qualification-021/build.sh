@@ -99,14 +99,14 @@ cp base-vars.fd trial-vars.fd
 qemu-img create -f qcow2 -F qcow2 -b "$WORK/base.qcow2" trial.qcow2
 qemu-system-x86_64 --version > evidence/qemu-version.txt
 sha256sum /usr/share/OVMF/OVMF_{CODE,VARS}_4M.fd > evidence/firmware-hashes.txt
-qemu-system-x86_64 -machine q35 -accel kvm -cpu host -smp 4 -m 6144 \
+qemu-system-x86_64 -machine pc-q35-8.2 -accel kvm -cpu host -smp 4 -m 6144 \
  -drive if=pflash,format=raw,readonly=on,file=retain/OVMF_CODE_4M.fd \
  -drive if=pflash,format=raw,file=trial-vars.fd \
  -drive if=virtio,format=qcow2,file=trial.qcow2 \
  -device virtio-vga,xres=1280,yres=800 -device qemu-xhci -device usb-kbd -device usb-tablet \
  -device virtio-serial -chardev socket,path="$WORK/agent.sock",server=on,wait=off,id=agent \
  -device virtserialport,chardev=agent,name=org.qemu.guest_agent.0 \
- -nic user,model=virtio-net-pci -display none -vnc unix:display.sock \
+ -nic "${GUEST_NETWORK:-none}" -display none -vnc unix:display.sock \
  -qmp unix:qmp.sock,server=on,wait=off -serial file:evidence/serial.log \
  -pidfile qemu.pid -daemonize -D evidence/qemu.log
 set +e
@@ -114,8 +114,11 @@ python3 "$SRC/exercise.py" "$WORK" 2>&1 | tee evidence/exercise.log
 RESULT=${PIPESTATUS[0]}
 set -e
 # Retain the exercised disk (including disposable user's baseline), not a preboot claim.
-kill "$(cat qemu.pid)" 2>/dev/null || true
-for i in {1..30}; do kill -0 "$(cat qemu.pid)" 2>/dev/null || break; sleep 1; done
+if [[ -f qemu.pid ]]; then
+  VM_PID=$(cat qemu.pid)
+  kill "$VM_PID" 2>/dev/null || true
+  for i in {1..30}; do kill -0 "$VM_PID" 2>/dev/null || break; sleep 1; done
+fi
 qemu-img convert -O qcow2 -c -o compression_type=zstd trial.qcow2 retain/cosmic-1.11.qcow2
 cp trial-vars.fd retain/cosmic-vars.fd
 cp base-vars.fd retain/preboot-vars.fd
@@ -123,7 +126,9 @@ cp evidence/build-api.json retain/
 cp "$SRC"/* retain/
 find retain -type f ! -name SHA256SUMS.all -print0 | sort -z | xargs -0 sha256sum > retain/SHA256SUMS.all
 # Compress signed apt indexes and package/source payloads; no release publication.
-tar --zstd -cf retain/apt-closure.tar.zst -C retain apt dpkg-status
-rm -rf retain/apt retain/dpkg-status
+if [[ -d retain/apt ]]; then
+  tar --zstd -cf retain/apt-closure.tar.zst -C retain apt dpkg-status
+  rm -rf retain/apt retain/dpkg-status
+fi
 sha256sum retain/* > evidence/retained-hashes.txt
 exit "$RESULT"

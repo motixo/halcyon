@@ -107,6 +107,7 @@ for p in os.listdir('/proc'):
 print(json.dumps(rows,indent=2))
 PY''',
         'system':'uname -a; cat /proc/cmdline; dpkg --audit; systemctl --failed; lspci -nnk; dpkg-query -W cosmic-session cosmic-comp cosmic-panel cosmic-applets cosmic-notifications cosmic-greeter cosmic-settings-daemon',
+        'graphics':"ls -l /dev/dri; lsmod | grep virtio; for p in $(pgrep -u 1000 -x cosmic-comp); do grep -E 'swrast|LLVM|libEGL|libgbm' /proc/$p/maps; done",
     }
     for label,command in commands.items():
         try:
@@ -120,7 +121,7 @@ def wait_agent():
     while time.monotonic()<deadline:
         try:
             rc,out=guest('systemctl is-active cosmic-greeter.service; cat /etc/os-release',10)
-            if 'active' in out:
+            if out.splitlines()[0] == 'active':
                 record('booted', output=out)
                 return
         except Exception:
@@ -144,6 +145,22 @@ def login(label):
     key('ret');time.sleep(2);shot(label+'-selected-user')
     text('cosmic-probe');key('ret')
     wait_session()
+    # A disposable fixture's first-login wizard is not a product scenario.
+    # Preserve distribution defaults and mark onboarding complete; do not apply
+    # themes, layouts or settings. Subsequent logins should show the stock shell.
+    rc,out=guest('''runuser -u probe -- sh -c 'mkdir -p "$HOME/.config"; touch "$HOME/.config/cosmic-initial-setup-done"'
+python3 - <<'PY'
+import os,signal
+for pid in os.listdir('/proc'):
+ if not pid.isdigit():continue
+ try:
+  if os.stat('/proc/'+pid).st_uid==1000 and os.readlink('/proc/'+pid+'/exe')=='/usr/bin/cosmic-initial-setup':
+   os.kill(int(pid),signal.SIGTERM)
+ except (OSError,ProcessLookupError):pass
+PY''')
+    record('fixture-onboarding-complete',exitcode=rc,output=out)
+    if rc:raise RuntimeError('fixture onboarding preparation failed')
+    time.sleep(3)
     shot(label+'-desktop')
 
 result = {'scope':'probe confidence only; software-rendered full OS', 'passed':False}

@@ -1,14 +1,14 @@
 name: Disposable COSMIC 1.11 guest builder
 on:
-  push:
-    branches: [ci/qualification-probe-021]
-    paths:
-      - '.github/workflows/qualification-guest-builder.yml'
-      - 'private/qualification-021/*.sh'
-      - 'private/qualification-021/*.py'
   workflow_dispatch:
+    inputs:
+      reuse_run:
+        description: 'Optional successful retained-input run to replay offline'
+        type: string
+        default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: cosmic-guest-builder-021
   cancel-in-progress: false
@@ -34,14 +34,24 @@ jobs:
           sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -q 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/runner-apt-update.log"
           sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil aria2 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/runner-tools.log"
       - name: Verify official ISO and signing inputs
+        if: inputs.reuse_run == ''
         timeout-minutes: 20
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh inputs 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/inputs.log"
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh inputs 2>&1 | sudo tee "$RUNNER_TEMP/cosmic/evidence/inputs.log"
       - name: Install full signed package cohort onto disk
+        if: inputs.reuse_run == ''
         timeout-minutes: 65
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh install 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/install.log"
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh install 2>&1 | sudo tee "$RUNNER_TEMP/cosmic/evidence/install.log"
+      - name: Restore retained image and verify every input hash
+        if: inputs.reuse_run != ''
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REUSE_RUN: ${{ inputs.reuse_run }}
+        run: bash private/qualification-021/restore.sh
       - name: Boot real greeter and exercise stock login session
         timeout-minutes: 15
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh exercise 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/boot.log"
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" GUEST_NETWORK=none bash private/qualification-021/build.sh exercise 2>&1 | sudo tee "$RUNNER_TEMP/cosmic/evidence/boot.log"
       - name: Make owned retained inputs readable for artifact upload
         if: always()
         run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/cosmic/retain"
