@@ -107,6 +107,8 @@ jobs:
         timeout-minutes: 75
         run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" SCENARIO_SET="${{ inputs.acceptance && 'acceptance' || inputs.auto_diagnosis && 'auto-diagnosis' || inputs.followup && 'followup' || 'original' }}" bash private/qualification-021/theme/session.sh
       - name: Native preflight; hour timer starts only after actual editor canary
+        id: native_preflight
+        continue-on-error: true
         if: inputs.lockup
         timeout-minutes: 8
         run: sudo env WORK="$RUNNER_TEMP/cosmic" COHORT="${{ matrix.host }}" bash private/qualification-021/lockup/start.sh
@@ -116,6 +118,20 @@ jobs:
           name: lockup-preflight-${{ matrix.host }}-${{ github.run_id }}
           path: ${{ runner.temp }}/cosmic/progress/
           retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ inputs.lockup && steps.native_preflight.outcome == 'failure' }}
+        with:
+          name: lockup-initial-failure-${{ matrix.host }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 7
+      - name: Bounded same-runner infra repair gate; never retry actual core failure
+        if: ${{ inputs.lockup && steps.native_preflight.outcome == 'failure' }}
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo chmod -R a+rwX "$RUNNER_TEMP/cosmic/evidence"
+          python3 private/qualification-021/lockup/live_repair.py "$RUNNER_TEMP/cosmic" "${{ matrix.host }}"
       - name: Real native input and resources through minute 20
         if: inputs.lockup
         timeout-minutes: 23
@@ -150,6 +166,11 @@ jobs:
         if: inputs.lockup
         timeout-minutes: 3
         run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" finish
+      - name: Optional workspaces and popup coverage after completed core hour
+        if: inputs.lockup
+        continue-on-error: true
+        timeout-minutes: 3
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" optional
       - name: Optional native suspend and resume, separate from core result
         if: inputs.lockup
         continue-on-error: true

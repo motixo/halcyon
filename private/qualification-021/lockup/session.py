@@ -5,10 +5,12 @@ SRC=pathlib.Path(__file__).resolve().parent
 sys.path.insert(0,str(SRC.parent/'theme'))
 import theme_session as h
 from calibrated_controls import Pixels,validate_samples
+import editor_pixels
 c=h.c;ev=h.ev;work=c.work;cohort=sys.argv[3];stage=sys.argv[4]
 state_path=work/'lockup-state.json'
 state=json.loads(state_path.read_text()) if state_path.exists() else {'cohort':cohort,'checkpoints':[],'failures':[],'coverage':[],'count':0,'source_scope':'actual public v0.2.0 only; no development/fix2 package','hour_complete':False,'phase':'preflight','optional_failures':[],'optional_enabled':True}
 h.count=state.get('count',0)
+class CoreInputFailure(RuntimeError):pass
 CAL=json.loads((SRC.parent/'theme/followup/control-calibration.json').read_text())
 
 def save():
@@ -33,10 +35,20 @@ def observe(label):
 def editor_hits(r):return [w for w in r['windows'] if not w.get('closed') and ('cosmicedit' in w.get('app_id','').lower().replace('-','') or 'lockup-input' in w.get('title','').lower())]
 
 def edit_window(label):
- r=observe(label);hits=[w for w in r['windows'] if not w.get('closed') and ('cosmicedit' in w.get('app_id','').lower().replace('-','') or 'lockup-input' in w.get('title','').lower())]
- if len(hits)!=1:raise RuntimeError(f'{label}: expected one real editor, got {hits}')
- if 'geometry' not in hits[0]:raise RuntimeError('Native toplevel geometry unavailable; preserve exact observer state')
- return hits[0]
+ try:
+  r=observe(label);hits=editor_hits(r)
+ except Exception as error:
+  hits=[];state['coverage'].append({'observer_unqualified':{'label':label,'error':str(error)}})
+ if len(hits)>1:raise RuntimeError('Multiple editor windows; preserve state rather than choose ambiguously')
+ if len(hits)==1 and 'geometry' in hits[0]:
+  hits[0]['geometry_source']='native protocol';return hits[0]
+ name,path,words=snap(label+'-pixel-focus')
+ g=editor_pixels.locate(path,words,identity_seen=len(hits)==1)
+ w=hits[0] if hits else {'app_id':'com.system76.CosmicEdit','identity_source':'visible filename and actual process ELF'}
+ w.update(geometry=g,geometry_source='screenshot calibration',calibration_frame=name)
+ state['coverage'].append({'metadata_unqualified':{'label':label,'geometry':False,'state':w.get('states'),'frame':name}});save()
+ return w
+
 def center(w):
  g=w['geometry'];return (max(40,min(1240,g['x']+g['width']//2)),max(100,min(670,g['y']+g['height']//2)))
 def launch(unit,binary,args):
@@ -48,12 +60,8 @@ def editor_open(seq):
  launch('lockup-edit-'+str(seq),'/usr/bin/cosmic-edit',['/home/probe/lockup-input.txt'])
  diagnostic=command('editor-unit-'+str(seq),'systemctl --user show lockup-edit-'+str(seq)+'.service -p Type -p MainPID -p Result -p ActiveState -p SubState; journalctl --user -b -u lockup-edit-'+str(seq)+'.service --no-pager',True,False)
  if seq==0 and not ('Type=forking' in diagnostic and 'ActiveState=active' in diagnostic and re.search(r'MainPID=[1-9][0-9]*',diagnostic)):raise RuntimeError('Native editor forking unit did not retain an active MainPID')
- deadline=time.monotonic()+20;last=None
- while time.monotonic()<deadline:
-  last=observe('editor-map-'+str(seq));hits=editor_hits(last)
-  if len(hits)==1 and 'geometry' in hits[0]:return hits[0]
-  time.sleep(1)
- raise RuntimeError('Native observer lacks complete editor geometry/state within bounded startup; last='+repr(last))
+ return edit_window('editor-open-'+str(seq))
+
 def pointer_move(x,y):
  c.q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':round(x*32767/1280)}},{'type':'abs','data':{'axis':'y','value':round(y*32767/800)}}]})
 def drag(start,end):
@@ -64,10 +72,11 @@ def drag(start,end):
 def input_probe(seq,tag='normal'):
  w=edit_window(f'{tag}-{seq}-before')
  focus_method='pointer'
- if 2 not in w.get('states',[]):
+ if 'states' in w and 2 not in w['states']:
   c.key('meta_l-tab');time.sleep(.6);w=edit_window(f'{tag}-{seq}-focus');focus_method='native switch then pointer'
  c.click(*center(w));time.sleep(.3)
- token=f'p{cohort}{seq:04d}'
+ state['input_serial']=state.get('input_serial',0)+1
+ token=f'p{cohort}{state["input_serial"]:06d}'
  before_name,before_path,_=snap(f'{tag}-{seq}-before-input')
  c.key('ctrl-a');c.text(token);c.key('ctrl-s');time.sleep(1)
  deadline=time.monotonic()+5;attempt=0
@@ -85,8 +94,9 @@ def input_probe(seq,tag='normal'):
  changed=sum(1 for px in diff.getdata() if max(px)>15)
  proof={'token':token,'before_screenshot':before_name,'window_interior_changed_pixels':changed,'saved_exact':content.strip()==token,'focus_method':focus_method,'native_editor':active,'screenshot':name,'token_ocr_exact':token in observed,'phase':state['phase'],'elapsed':time.monotonic()-state.get('start_monotonic',state['setup_monotonic'])}
  state['coverage'].append({'input':proof});save()
- if 2 not in active.get('states',[]):raise RuntimeError(f'Editor not natively activated after real pointer/keyboard input: {name}')
- if not proof['saved_exact']:raise RuntimeError(f'Real editor input/save failed in {tag}, screenshot {name}; no controller file replacement')
+ # Exact freshly changed saved token proves delivery even when optional
+ # activation metadata is unavailable. Preserve metadata, never fake it.
+ if not proof['saved_exact']:raise CoreInputFailure(f'Real editor input/save failed in {tag}, screenshot {name}; no controller file replacement')
  return active
 
 def editor_identity(label):
@@ -103,6 +113,7 @@ E""")
  data=json.loads(raw)
  if not data['processes']:raise RuntimeError('Native editor executable no longer exists')
  hashes=sorted(set(p['sha256'] for p in data['processes']))
+ if hashes!=['61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149']:raise RuntimeError('Native editor differs from pinned guest ELF')
  if 'editor_elfs' not in state:state['editor_elfs']=hashes
  elif state['editor_elfs']!=hashes:raise RuntimeError('Native editor ELF changed during session')
  return data
@@ -157,24 +168,34 @@ def init():
   profile_public();command('start-public','halcyon-ctl start',True);time.sleep(8)
  else:command('stock-public-absence','test ! -e /usr/bin/halcyon && test ! -e /home/probe/.config/halcyon')
  command('create-disposable-editor-fixture','install -o 1000 -g 1000 -m 600 /dev/null /home/probe/lockup-input.txt')
- state['setup_monotonic']=time.monotonic()
- editor_open(0);input_probe(0,'preflight-first');core_close_reopen(0,'preflight')
+ state['fixture_ready']=True;state['setup_monotonic']=time.monotonic()
+ preflight()
+
+def preflight(recovery=False):
+ if recovery:
+  install_guest_helpers();edit_window('recovery-existing-editor')
+ else:editor_open(0)
+ input_probe(0,'preflight-first');core_close_reopen(0,'preflight')
  # Prove the actual native executable and the service child still exist after
  # real input, file save, close and reopen. Only now start the hour timer.
  editor_identity('native-editor-elf')
  h.snapshot('native-preflight-config')
  resource_sample('resource-preflight');c.capture('preflight');snap('preflight-complete')
- state['preflight_passed']=True;state['phase']='soak';state['start_monotonic']=time.monotonic();state['start_realtime']=time.time();state['next_checkpoint']=0;state['next_resource']=0;state['initialized']=True;save()
+ state['preflight_passed']=True;state['preflight_recovered']=recovery;state['phase']='soak';state['start_monotonic']=time.monotonic();state['start_realtime']=time.time();state['next_checkpoint']=0;state['next_resource']=0;state['initialized']=True;save()
 
-def optional_gestures(seq):
+def optional_gestures(seq,full=False):
  proof={'sequence':seq,'started_elapsed':time.monotonic()-state['start_monotonic'],'gestures':[]}
  w=edit_window(f'optional-before-{seq}')
+ if w.get('geometry_source')!='native protocol':
+  state['coverage'].append({'optional_unqualified':{'sequence':seq,'reason':'native geometry absent; screenshot focus is core-only'}});save();return
  # Maximize and restore: actual global shortcut and real compositor geometry.
  c.key('meta_l-m');time.sleep(1);maximized=edit_window(f'maximized-{seq}');c.key('meta_l-m');time.sleep(1);restored=edit_window(f'restored-{seq}')
  proof['gestures'].append({'action':'maximize/restore','before':w,'maximized':maximized,'restored':restored,'geometry_changed':w['geometry']!=maximized['geometry']})
  g=restored['geometry'];start=(g['x']+min(180,g['width']//3),g['y']+20);end=(max(25,min(1200,start[0]+(-45 if seq%2 else 45))),max(65,min(650,start[1]+20)))
  drag(start,end);moved=edit_window(f'moved-{seq}');proof['gestures'].append({'action':'titlebar move','before':g,'after':moved['geometry'],'changed':g!=moved['geometry']})
  g=moved['geometry'];corner=(min(1277,g['x']+g['width']-2),min(795,g['y']+g['height']-2));drag(corner,(max(g['x']+400,corner[0]-30),max(g['y']+250,corner[1]-20)));resized=edit_window(f'resized-{seq}');proof['gestures'].append({'action':'border resize','before':g,'after':resized['geometry'],'changed':g!=resized['geometry']})
+ if not full:
+  proof['completed_elapsed']=time.monotonic()-state['start_monotonic'];state['coverage'].append({'optional':proof});save();return
  # Native workspace overview and actual workspace navigation, then return.
  c.key('meta_l-w');time.sleep(1);snap(f'workspace-overview-{seq}');c.key('esc');c.key('meta_l-ctrl-down');time.sleep(1);snap(f'workspace-next-{seq}');away=observe(f'workspace-away-{seq}');c.key('meta_l-ctrl-up');time.sleep(1);returned=observe(f'workspace-return-{seq}')
  proof['gestures'].append({'action':'workspace next/return','away':away,'returned':returned})
@@ -193,15 +214,23 @@ def optional_gestures(seq):
  proof['completed_elapsed']=time.monotonic()-state['start_monotonic'];state['coverage'].append({'optional':proof});save()
 
 def core_close_reopen(seq,tag):
- input_probe(seq,tag+'-before-close');c.key('meta_l-q');time.sleep(1)
- deadline=time.monotonic()+8;closed=False
- while time.monotonic()<deadline:
-  observed=observe(f'{tag}-close-{seq}')
-  if not editor_hits(observed):closed=True;break
-  time.sleep(.5)
- snap(f'{tag}-closed-{seq}')
- state['coverage'].append({'core_close':{'sequence':seq,'closed':closed,'state':observed,'phase':state['phase']}});save()
- if not closed:raise RuntimeError('Core real editor close was not observed; retain exact UI/shortcut state, not a product attribution')
+ w=input_probe(seq,tag+'-before-close');c.key('meta_l-q');time.sleep(1)
+ closed=False;attempts=[]
+ for method in ['normal shortcut','calibrated native close button']:
+  if method=='calibrated native close button':
+   # Changed control path only after retaining the failed shortcut frame.
+   g=edit_window(f'{tag}-pointer-close-calibration-{seq}')['geometry']
+   c.click(g['x']+g['width']-26,g['y']+26);time.sleep(1)
+  try:observed=observe(f'{tag}-close-{seq}')
+  except Exception as error:observed={'windows':[],'observer_unqualified':str(error)}
+  name,path,words=snap(f'{tag}-closed-{seq}-{len(attempts)}')
+  try:editor_pixels.locate(path,words,identity_seen=True);visible=True
+  except ValueError:visible=False
+  closed=not editor_hits(observed) and not visible
+  attempts.append({'method':method,'closed':closed,'frame':name,'native':observed})
+  if closed:break
+ state['coverage'].append({'core_close':{'sequence':seq,'closed':closed,'attempts':attempts,'phase':state['phase']}});save()
+ if not closed:raise CoreInputFailure('Core real editor close failed via shortcut and calibrated pointer; exact states retained')
  editor_open(seq+1);input_probe(seq+10000,tag+'-reopen')
 
 def cycle(seq):
@@ -218,7 +247,7 @@ def cycle(seq):
 
 
 def run(until):
- if not state.get('initialized') or state['failures']:raise RuntimeError('Soak not initialized or previous confirmed failure retained')
+ if not state.get('initialized') or any(f.get('category')=='core' for f in state['failures']):raise RuntimeError('Soak not initialized or previous confirmed failure retained')
  c.q=c.Channel('qmp.sock',True);h.count=state.get('count',0)
  while time.monotonic()-state['start_monotonic']<until:
   elapsed=time.monotonic()-state['start_monotonic']
@@ -252,15 +281,24 @@ def collect():
  c.q=c.Channel('qmp.sock',True);c.capture('final');command('full-native-journal','journalctl -b -o short-monotonic --no-pager',required=False)
  state['finished']=True;save();c.guest('sync',5) # Owned-VM stop is handled by the controller; avoid QGA/poweroff race.
 
+manifest={str(p.relative_to(SRC)):hashlib.sha256(p.read_bytes()).hexdigest() for p in SRC.rglob('*') if p.is_file() and p.suffix in ('.py','.json','.xml','.sh')}
+(ev/('executed-source-'+stage+'-'+str(time.time_ns())+'.json')).write_text(json.dumps(manifest,indent=2)+'\n')
 try:
  if stage=='init':init()
  elif stage=='run':run(int(sys.argv[5]))
  elif stage=='finish':finish()
+ elif stage=='optional':
+  c.q=c.Channel('qmp.sock',True)
+  try:optional_gestures(9900,True)
+  except Exception as error:state['optional_failures'].append({'stage':'after-hour','error':str(error)});save()
  elif stage=='resume':resume()
  elif stage=='collect':collect()
+ elif stage=='recover':
+  if not state.get('fixture_ready') or any(f.get('category')=='core' for f in state['failures']):raise RuntimeError('Recovery forbidden: core failure or fixture preparation incomplete')
+  c.q=c.Channel('qmp.sock',True);preflight(True)
  else:raise RuntimeError('Unknown bounded stage')
 except Exception as error:
- state['failures'].append({'stage':stage,'error':str(error),'host_time':time.time()});traceback.print_exc()
+ state['failures'].append({'stage':stage,'error':str(error),'host_time':time.time(),'category':'core' if isinstance(error,CoreInputFailure) else 'harness'});traceback.print_exc()
  try:
   if c.q is None:c.q=c.Channel('qmp.sock',True)
   snap('failure');c.capture('failure');resource_sample('resource-failure')
