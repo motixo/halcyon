@@ -1,0 +1,44 @@
+name: Disposable COSMIC 1.11 guest builder
+on:
+  push:
+    branches: [ci/qualification-probe-021]
+    paths:
+      - '.github/workflows/qualification-guest-builder.yml'
+      - 'private/qualification-021/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cosmic-guest-builder-021
+  cancel-in-progress: false
+jobs:
+  guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build and exercise one disposable guest
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/cosmic/retain"
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get update -q
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil
+          sudo env WORK="$RUNNER_TEMP/cosmic" timeout --signal=TERM --kill-after=60s 100m bash private/qualification-021/build.sh 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/build.log"
+      - name: Preserve bounded evidence on every outcome
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cosmic-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 7
+          compression-level: 6
+      - name: Preserve exact inputs and disposable disk
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cosmic-retained-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/retain/
+          retention-days: 7
+          compression-level: 0
