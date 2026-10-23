@@ -6,7 +6,8 @@ services that are already running.
 
 ## Current releases
 
-Publish two separate amd64 packages for Pop!_OS 24.04:
+Publish two separate amd64 packages for Pop!_OS 24.04 on 64-bit Intel and AMD
+PCs. `amd64` is the Debian name for x86-64, not an AMD-only package:
 
 - `cosmic-ext-halcyon`: the app, helpers, assets and user service. Installing it
   does not activate the service or change the desktop.

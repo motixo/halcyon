@@ -11,7 +11,11 @@ Where every picture in this repository comes from, and how it may be used.
 | `assets/looks/*.jpg`, `docs/brand/looks/shipped/*.png`, `docs/brand/wizard/built/*.png` | Look previews and screenshots | Rendered by this project's own code (look render tool and Settings test renderer) over the wallpapers above | GPL-3.0-or-later |
 
 GitHub presentation artwork and native UI compositions in `docs/presentation/`
-are also GPL-3.0-or-later. See their [source and generation notes](docs/presentation/README.md).
+are also GPL-3.0-or-later. The `docs/screenshots/desktop-*.png` and
+`docs/screenshots/settings-*.png` images are unmodified screenshots taken and
+provided by the maintainer on 2026-10-23. App icons and media artwork visible
+in them retain their respective owners' rights. See the
+[source and capture notes](docs/presentation/README.md).
 
 No fonts are bundled: widget styles name system fonts and fall back when one isn't installed.
 

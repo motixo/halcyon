@@ -6,6 +6,12 @@ package, `~/.local` for a user install. The program finds its files relative
 to its own executable (`<prefix>/bin/halcyon`), so the same build works in
 both places.
 
+## Supported processors
+
+The `amd64` packages run on **64-bit Intel and AMD PCs** (x86-64). The name
+does not mean AMD-only. ARM devices require a separate build. The packaged
+release targets Pop!_OS 24.04 with COSMIC.
+
 ## Identity
 
 | What | Value |

@@ -6,6 +6,9 @@ not install or activate Islands. Installing this add-on only places files under
 `/usr`; it does not change your session. Activation is per user at the next login.
 Choose the Islands style in Halcyon's Dock & panel settings after activation.
 
+The `amd64` add-on supports 64-bit Intel and AMD PCs (x86-64), just like the
+main Halcyon package.
+
 ## Supported versions
 
 The selector in `companion/panel_launcher.py` checks these versions at runtime.

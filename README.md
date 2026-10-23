@@ -28,17 +28,16 @@ Choose one of six starter looks, or build your own. Let the accent follow your
 wallpaper, choose another color from it, or set a color yourself. Thirteen widget
 styles range from frosted cards to paper, outlines and plain text.
 
-![Six coordinated looks: Halcyon, Calm, Evening, Focus, Paper and Rosé](docs/presentation/looks.png)
+![Halcyon desktop with purple wallpaper, clock and agenda, system monitor, music and Islands](docs/screenshots/desktop-purple.png)
 
-*Halcyon's built-in appearance previews. Window, dock and panel illustrations
-are simplified; widget content uses sample data.*
+*A desktop screenshot with coordinated widgets and optional Islands.*
 
 ## Useful at a glance
 
 Show only what you need. Combine clock, weather and calendar in one overview,
 or keep them separate.
 
-![Native weather, system monitor, music and notes widgets with sample data](docs/presentation/widgets.png)
+![Light desktop with clock and agenda, system monitor, music and Islands](docs/screenshots/desktop-paper.png)
 
 - **Your day:** clock, local weather and an optional Google Calendar agenda.
 - **Your system:** CPU, memory, disk, network and GPU readings, with optional
@@ -53,13 +52,15 @@ Drag widgets around a preview of your desktop. Resize them, snap them to a
 fine grid, or arrange them directly on the desktop. Save setups to return
 to a layout you like.
 
-<p align="center">
-  <img src="docs/presentation/layout.png" alt="Halcyon's Layout editor, with a weather widget selected for resizing" width="820">
-</p>
-
 Appearance changes apply as you make them, with Undo. Choosing a shared style
 keeps your applets and their order. Dock, panel, window and shortcut controls
 stay available when you want to go further.
+
+<p align="center">
+  <img src="docs/screenshots/settings-colors.png" alt="Colors and theme settings with automatic wallpaper colors enabled" width="817">
+</p>
+
+[More screenshots: transparent widgets and Dock & panel settings](docs/presentation/README.md#desktop-screenshots)
 
 **Optional: Islands.** Split the native dock or panel into floating groups.
 This uses a separate, version-matched companion package; it is not required
@@ -68,7 +69,9 @@ for Halcyon's widgets or themes.
 
 ## Install
 
-**Packaged for Pop!_OS 24.04 with COSMIC, on x86-64 (amd64).**
+**Packaged for Pop!_OS 24.04 with COSMIC, on 64-bit Intel and AMD PCs.**
+The `amd64` package is for x86-64 processors from either manufacturer; it is
+not AMD-only. ARM devices need a separate build.
 This is an early release; please report problems with your Halcyon and COSMIC
 versions.
 
