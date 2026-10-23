@@ -270,6 +270,7 @@ pub fn prepare(store: &DesktopStore) -> Result<Option<Prepared>, String> {
     for pointer in [
         "/theme",
         "/appearance/family",
+        "/appearance/native_mode_palettes",
         "/appearance/surface",
         "/appearance/wallpaper_colors",
         "/appearance/color_policy",

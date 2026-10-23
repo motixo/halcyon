@@ -140,8 +140,7 @@ fn record(look: &Look) -> Value {
     // color, like the windows; the panel shows Islands kept together (a
     // plain bar where the Islands component can't run). Where they sit,
     // their applets and the islands' arrangement stay the person's.
-    let tint = look.family.surface(look.seed).map(|v| f32::from(v) / 255.);
-    let bar = json!({"background": crate::desktop::panels::Background::Color(tint),
+    let bar = json!({"background": crate::desktop::panels::Background::ThemeDefault,
         "floating": true, "margin": 6, "border_radius": PILL});
     let islands = dock_islands_core::Settings {
         enabled: true,
@@ -450,7 +449,7 @@ mod tests {
                     assert!(bar.autohide.is_none(), "{}", preset.id);
                     assert!(matches!(
                         bar.background,
-                        Some(crate::desktop::panels::Background::Color(_))
+                        Some(crate::desktop::panels::Background::ThemeDefault)
                     ));
                 }
                 // See-through, except on a panel over the light wallpaper.

@@ -449,14 +449,22 @@ impl Family {
     pub fn wallpaper(self) -> ([u8; 3], [u8; 3]) {
         self.spec().wallpaper
     }
-    /// Light styles own COSMIC's Light surfaces; the others own Dark.
+    /// The family's initial mode; native palettes exist for both modes.
     pub fn light(self) -> bool {
         self.spec().light
     }
     /// The card surface: the style's lightness, tinted by the seed's hue.
     pub fn surface(self, seed: [u8; 3]) -> [u8; 3] {
+        self.surface_for(seed, !self.light())
+    }
+    /// Native surface in either mode. Keep the family's tint and its original
+    /// polarity unchanged; the opposite variant uses a readable tonal range.
+    pub fn surface_for(self, seed: [u8; 3], dark: bool) -> [u8; 3] {
         let seed = tone::lch(seed);
-        let (l, share, most, (shift_a, shift_b)) = self.spec().surface;
+        let (mut l, share, most, (shift_a, shift_b)) = self.spec().surface;
+        if dark == self.light() {
+            l = if dark { 0.28 } else { 0.965 };
+        }
         let c = (seed.c * share).min(most);
         let (a, b) = (c * seed.h.cos() + shift_a, c * seed.h.sin() + shift_b);
         tone::rgb(Lch {
@@ -466,9 +474,13 @@ impl Family {
         })
     }
     /// Containers inside COSMIC windows sit one step above the background.
+    #[cfg(test)]
     pub fn container(self, seed: [u8; 3]) -> [u8; 3] {
-        let surface = self.surface(seed);
-        let step = if self.light() { -0.032 } else { 0.038 };
+        self.container_for(seed, !self.light())
+    }
+    pub fn container_for(self, seed: [u8; 3], dark: bool) -> [u8; 3] {
+        let surface = self.surface_for(seed, dark);
+        let step = if dark { 0.038 } else { -0.032 };
         tone::at(surface, tone::lch(surface).l + step)
     }
 }

@@ -168,6 +168,16 @@ impl Settings {
                 ],
             ));
         }
+        if self.config.appearance.family.is_some()
+            && self.config.appearance.native_mode_palettes == 0
+        {
+            rows.push(banner(
+                "This theme was saved before native light and dark matching. Review a repair to let the bars follow Mode.",
+                WARN,
+                vec![button::standard("Repair theme matching")
+                    .on_press(edit(Edit::RepairThemeMatching)).into()],
+            ));
+        }
         let look = self.look();
         rows.push(self.theme_stage(&look));
         if look.selected && look.family.is_some() {

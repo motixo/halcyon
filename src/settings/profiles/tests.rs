@@ -1519,7 +1519,9 @@ fn review_r2_explicit_variants_reset_and_saved_restoration_remain_deliberate() {
         }
         for domain in [Domain::Dock, Domain::Panel] {
             editor.update(Message::ResetSurface(domain));
-            assert_eq!(editor.update(Message::Apply), Outcome::Changed);
+            // Both variants are now generated together. Dock resets the
+            // shared surface roles; Panel already uses ThemeDefault here.
+            assert_eq!(editor.update(Message::Apply), if domain == Domain::Dock { Outcome::Changed } else { Outcome::None });
         }
         assert!(editor.custom_surfaces.is_empty());
         customize();
@@ -2265,4 +2267,24 @@ fn a_style_leaves_the_dock_and_panel_alone_when_asked() {
     editor.set_style_bars(true);
     editor.update(Message::Select(Selection::Preset("theme-outline")));
     assert!(editor.selected_domains().contains(&Domain::Dock));
+}
+
+#[test]
+fn theme_matching_repair_waits_for_review_and_uses_the_existing_apply_transaction() {
+    let desk = Desk::new("theme-mode-repair-review");
+    let mut raw = desk.widget_config();
+    raw["appearance"]["family"] = serde_json::json!(crate::desktop_theme::Family::Soft);
+    fs::write(&desk.config, raw.to_string()).unwrap();
+    desk.fixture.user(DOCK, "background", "Color((0.1,0.2,0.3))");
+    let before = desk.desktop();
+    let mut editor = desk.editor();
+    editor.update(Message::RepairThemeMatching);
+    assert_eq!(desk.desktop(), before, "repair selection is a read-only review");
+    assert!(editor.can_apply(), "{:?}", editor.notice);
+    editor.update(Message::Apply);
+    assert_eq!(desk.fixture.read(DOCK, "background").unwrap(), "ThemeDefault");
+    assert_eq!(desk.widget_config()["appearance"]["native_mode_palettes"], 1);
+    let saved = crate::desktop::recovery::load_baseline(&desk.store()).unwrap().unwrap();
+    let original = saved.domains.iter().flat_map(|d| &d.native).find(|r| r.namespace == DOCK && r.key_name().unwrap() == "background").unwrap();
+    assert_eq!(original.contents().unwrap().unwrap(), b"Color((0.1,0.2,0.3))");
 }

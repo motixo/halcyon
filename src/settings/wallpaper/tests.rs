@@ -2108,7 +2108,7 @@ fn review_r1_recovery_rejects_unowned_roles_and_preserves_external_conflicts() {
     for control in [
         Control::OutlineWidth,
         Control::Color(ThemeVariant::Dark, ColorRole::Secondary),
-        Control::Color(ThemeVariant::Light, ColorRole::Background),
+        Control::Color(ThemeVariant::Light, ColorRole::Secondary),
     ] {
         let mut unrelated: SavedWallpaper =
             ron::from_str(&ron::to_string(&saved).unwrap()).unwrap();
