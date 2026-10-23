@@ -1597,6 +1597,12 @@ impl Settings {
             }
             Message::UndoDesktop => return self.undo_desktop_change(),
             Message::UndoDesktopShown(shown) => {
+                // A rendered historical action must not skip an unfinished
+                // gesture or flush it and silently retarget its captured ID.
+                if !self.appearance_pending.is_empty() || self.notice_editing {
+                    self.failed("Finish the current edit before undoing a previous change.".into());
+                    return Task::none();
+                }
                 if self.last_desktop_change.as_ref().map(|(_, _, id)| id) != shown.as_ref() {
                     self.failed("The last settings action changed. Review Undo again.".into());
                     return Task::none();

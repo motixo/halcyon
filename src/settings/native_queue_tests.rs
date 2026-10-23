@@ -347,3 +347,117 @@ fn task2r2_rendered_conflict_resolution_retains_its_review() {
         println!("{button}: captured A={a}, replacement review B={b}; B retained");
     }
 }
+
+#[test]
+fn task2r3_rendered_undo_refuses_unfinished_keyboard_gesture() {
+    if desktop_test_child(
+        "task2r3_rendered_undo_refuses_unfinished_keyboard_gesture",
+        DesktopEnv {
+            app_config: true,
+            fixture: true,
+            ..Default::default()
+        },
+    ) {
+        return;
+    }
+    let (store, mut app, mut native) = queue_fixture(Page::Appearance);
+    native.size = Size::new(1280., 1800.);
+    send_settings(&mut app, Message::Resized(native.size));
+    send_settings(&mut app, Message::ToggleAdvanced(Page::Appearance));
+    let before = Config::load();
+    send_settings(&mut app, Message::ClockDate(!before.clock.show_date));
+    let a = store.latest_change().unwrap().unwrap().id;
+    assert!(!app.native_busy);
+    let bounds = native.text_bounds(app.settings_view(), "Corners");
+    let point = cosmic::iced::Point::new(bounds.x + 100., bounds.y + bounds.height + 12.);
+    assert!(point.y < native.size.height, "keyboard slider is visible");
+    let messages = r2_native_event(
+        &mut app,
+        &mut native,
+        repair_slider_event(true, false),
+        point,
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(m, Message::AppearanceValue(AppearanceControl::Corners, _))),
+        "actual Corners slider receives held arrow: {messages:?}"
+    );
+    assert!(app.appearance_editing && !app.appearance_pending.is_empty());
+    let draft = app.appearance_draft.corner_radius;
+    assert_ne!(draft, before.appearance.corner_radius);
+    assert_eq!(
+        Config::load().appearance.corner_radius,
+        before.appearance.corner_radius
+    );
+    assert_eq!(store.latest_change().unwrap().unwrap().id, a);
+
+    let request = queue_pointer(&mut app, &mut native, "settings-undo");
+    settle_settings(&mut app, request);
+    assert_eq!(
+        Config::load().clock.show_date,
+        !before.clock.show_date,
+        "unfinished gesture must not let historical Undo reverse older Clock A"
+    );
+    assert_eq!(store.latest_change().unwrap().unwrap().id, a);
+    assert!(
+        app.error && app.status.contains("Finish the current edit"),
+        "explicit refusal: {}",
+        app.status
+    );
+    assert!(app.appearance_editing && !app.appearance_pending.is_empty());
+    assert_eq!(
+        Config::load().appearance.corner_radius,
+        before.appearance.corner_radius
+    );
+
+    // Refusal did not claim to undo B. Releasing completes B normally; only
+    // the newly displayed Undo B can reverse it, leaving disjoint Clock A.
+    let footer = native.bounds(app.settings_view(), "settings-undo").center();
+    let messages = r2_native_event(
+        &mut app,
+        &mut native,
+        repair_slider_event(false, false),
+        footer,
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|m| matches!(m, Message::SaveAppearance))
+    );
+    assert!(!app.appearance_editing && app.appearance_pending.is_empty());
+    assert_eq!(Config::load().appearance.corner_radius, draft);
+    assert_eq!(Config::load().clock.show_date, !before.clock.show_date);
+    let b = store.latest_change().unwrap().unwrap().id;
+    assert_ne!(a, b);
+    let request = queue_pointer(&mut app, &mut native, "settings-undo");
+    settle_settings(&mut app, request);
+    assert!(!app.error, "completed B Undo: {}", app.status);
+    assert_eq!(
+        Config::load().appearance.corner_radius,
+        before.appearance.corner_radius
+    );
+    assert_eq!(Config::load().clock.show_date, !before.clock.show_date);
+    let undone = raw_preferences();
+    let history = store.latest_change().unwrap().map(|c| c.id);
+    let messages = r2_native_event(
+        &mut app,
+        &mut native,
+        repair_slider_event(false, false),
+        footer,
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|m| matches!(m, Message::SaveAppearance))
+    );
+    assert_eq!(
+        raw_preferences(),
+        undone,
+        "late release must not reapply undone B"
+    );
+    assert_eq!(store.latest_change().unwrap().map(|c| c.id), history);
+    println!(
+        "Actual held Corners gesture: Undo A={a} refused; release committed B={b}; rendered Undo B preserved Clock; late release saved nothing"
+    );
+}
