@@ -83,8 +83,27 @@ def click(x,y):
     q.call('input-send-event', {'events':[{'type':'btn','data':{'down':False,'button':'left'}}]})
 
 def user(command):
-    import shlex
-    return guest('runuser -u probe -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus bash -lc '+shlex.quote(command))
+    # Use the actual logged-in COSMIC session's environment. A QGA root login
+    # shell does not inherit the desktop PATH or logind session identity.
+    script = """import os,pathlib,subprocess
+found=None
+for p in pathlib.Path('/proc').iterdir():
+ if not p.name.isdigit():continue
+ try:
+  if p.stat().st_uid==1000 and os.readlink(p/'exe')=='/usr/bin/cosmic-session':
+   found=dict(v.split('=',1) for v in (p/'environ').read_bytes().decode().split('\\0') if '=' in v);break
+ except (OSError,ProcessLookupError):pass
+if found is None:raise RuntimeError('No actual COSMIC session environment')
+allowed=['HOME','USER','LOGNAME','PATH','XDG_SESSION_ID','XDG_RUNTIME_DIR','DBUS_SESSION_BUS_ADDRESS','WAYLAND_DISPLAY','DISPLAY','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME','XDG_CURRENT_DESKTOP','XDG_SESSION_TYPE','LANG']
+env={k:v for k,v in found.items() if k in allowed}
+env.setdefault('HOME','/home/probe')
+env.setdefault('DBUS_SESSION_BUS_ADDRESS','unix:path=/run/user/1000/bus')
+env.setdefault('XDG_RUNTIME_DIR','/run/user/1000')
+args=['/usr/sbin/runuser','-u','probe','--','/usr/bin/env','-i']+[k+'='+v for k,v in env.items()]+['/bin/bash','-c',COMMAND]
+raise SystemExit(subprocess.run(args).returncode)
+""".replace('COMMAND',repr(command))
+    return guest("python3 - <<'DESKTOP_ENV'\n"+script+"\nDESKTOP_ENV")
+
 
 def capture(name):
     commands = {

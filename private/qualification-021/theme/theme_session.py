@@ -60,12 +60,21 @@ def target(label,phrase,optional=False,occurrence=0,dx=0,dy=0):
  needle=phrase.casefold().split()
  hits=[]
  for i,w in enumerate(words):
-  if int(w['top'])<65:continue
+  if int(w['top'])<140:continue
   part=words[i:i+len(needle)]
   if len(part)==len(needle) and [re.sub(r'[^\wé]','',r['text'].casefold()) for r in part]==[re.sub(r'[^\wé]','',a) for a in needle]:
    x=int(w['left']);y=int(w['top']);right=max(int(r['left'])+int(r['width']) for r in part)
    hits.append(((x+right)//2,y+int(w['height'])//2))
  if len(hits)<=occurrence:
+  # Reviewed screenshot 001-wizard-start has a visible solid Start button
+  # at these bounds; whole-screen sparse OCR misses it against the bird art.
+  # This fallback is limited to the observed welcome copy and button pixels.
+  if phrase=='Start' and {'Desktop','widgets','themes'}.issubset({w['text'] for w in words}):
+   im=__import__('PIL.Image',fromlist=['Image']).open(path).convert('RGB')
+   rgb=im.getpixel((345,438))
+   if rgb[2]>200 and rgb[0]>110 and rgb[1]>80:
+    c.record('observed-welcome-button-fallback',bounds=[279,431,411,471],pixel=rgb)
+    c.click(345,451);time.sleep(3);return True
   if optional:return False
   raise RuntimeError(f'UI target {phrase!r} not visible in {name}; OCR: '+ ' '.join(w['text'] for w in words))
  x,y=hits[occurrence];c.click(x+dx,y+dy);time.sleep(3)
@@ -190,7 +199,10 @@ def install(which):
 
 try:
  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
- c.shot('000-greeter');c.login('login');c.capture('baseline')
+ c.shot('000-greeter')
+ if host=='islands':command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
+ c.login('login');c.capture('baseline')
+ command('actual-session-environment',"printf 'PATH=%s\\nXDG_SESSION_ID=%s\\nWAYLAND_DISPLAY=%s\\n' \"$PATH\" \"$XDG_SESSION_ID\" \"$WAYLAND_DISPLAY\"",True)
  command('offline','ip -brief addr; ip route; cat /proc/net/route; systemctl is-active dbus; pgrep -a cosmic-settings-daemon; pgrep -a xdg-desktop-portal',required=False)
  command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
  approved=(ev/'approved-inputs.sha256').read_text()
