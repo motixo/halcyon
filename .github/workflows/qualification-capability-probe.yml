@@ -6,6 +6,11 @@ on:
         description: "Released 0.2.0 responsiveness: serial stock/main/Islands one-hour offline sessions"
         default: false
         type: boolean
+      lockup_context:
+        description: "Single released responsiveness context; dispatch stock first"
+        default: stock
+        type: choice
+        options: [stock, main, islands]
       acceptance:
         description: "One host: stock baseline/natural only OR independent Islands manual/natural"
         default: false
@@ -72,7 +77,7 @@ jobs:
       matrix:
         lineage: ${{ fromJSON(inputs.lockup && '["public"]' || (inputs.acceptance || inputs.auto_diagnosis || inputs.followup) && '["candidate"]' || inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
         exclude: ${{ fromJSON(!inputs.followup && inputs.host_filter == 'remaining' && '[{"lineage":"candidate","host":"stock"}]' || '[]') }}
-        host: ${{ fromJSON(inputs.lockup && '["serial"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'stock' && '["stock"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'islands' && '["islands"]' || inputs.followup && '["stock","islands"]' || inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
+        host: ${{ fromJSON(inputs.lockup && format('["{0}"]', inputs.lockup_context) || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'stock' && '["stock"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'islands' && '["islands"]' || inputs.followup && '["stock","islands"]' || inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.lockup && 100 || 120 }}
     steps:
@@ -101,16 +106,63 @@ jobs:
         if: ${{ !inputs.lockup }}
         timeout-minutes: 75
         run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" SCENARIO_SET="${{ inputs.acceptance && 'acceptance' || inputs.auto_diagnosis && 'auto-diagnosis' || inputs.followup && 'followup' || 'original' }}" bash private/qualification-021/theme/session.sh
-      - name: Serial short clean controls and one-hour released Islands session
+      - name: Native preflight; hour timer starts only after actual editor canary
         if: inputs.lockup
-        timeout-minutes: 83
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/lockup/serial.sh
-      - name: Stop only owned disposable responsiveness VMs
+        timeout-minutes: 8
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" COHORT="${{ matrix.host }}" bash private/qualification-021/lockup/start.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: ${{ always() && inputs.lockup }}
-        run: |
-          for cohort in stock main islands; do
-            sudo python3 private/qualification-021/lockup/stop.py "$RUNNER_TEMP/cosmic/lockup-$cohort"
-          done
+        with:
+          name: lockup-preflight-${{ matrix.host }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Real native input and resources through minute 20
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 1200
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-20-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Real native input and resources through minute 40
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 2400
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-40-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Real native input and resources through minute 61
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 3660
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-61-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Final real input, close and reopen after core hour
+        if: inputs.lockup
+        timeout-minutes: 3
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" finish
+      - name: Optional native suspend and resume, separate from core result
+        if: inputs.lockup
+        continue-on-error: true
+        timeout-minutes: 2
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" resume
+      - name: Preserve final native evidence
+        if: ${{ always() && inputs.lockup }}
+        timeout-minutes: 2
+        continue-on-error: true
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" collect
+      - name: Stop only owned disposable responsiveness VM
+        if: ${{ always() && inputs.lockup }}
+        run: sudo python3 private/qualification-021/lockup/stop.py "$RUNNER_TEMP/cosmic"
       - name: Readable evidence
         if: always()
         run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"

@@ -1,6 +1,8 @@
 #!/bin/bash
 set -Eeuo pipefail
 SRC=$(realpath private/qualification-021)
+[[ $COHORT = stock || $COHORT = main || $COHORT = islands ]]
+sha256sum -c "$SRC/lockup/preflight-manifest.sha256"
 cd "$WORK"
 mkdir -p evidence progress
 git -C "$SRC" rev-parse HEAD > evidence/infra-commit.txt
