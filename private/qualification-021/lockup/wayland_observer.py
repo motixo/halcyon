@@ -28,7 +28,9 @@ class Observer:
   while n not in self.done and time.monotonic()<end:self.receive()
   if n not in self.done:raise TimeoutError('real compositor roundtrip')
  def receive(self):
-  self.buffer+=self.sock.recv(65536)
+  data=self.sock.recv(65536)
+  if not data:raise ConnectionError('Compositor closed observer connection')
+  self.buffer+=data
   while len(self.buffer)>=8:
    obj,word=struct.unpack_from('<II',self.buffer);size=word>>16;opcode=word&65535
    if size<8:raise RuntimeError('Invalid Wayland frame')
@@ -58,6 +60,18 @@ class Observer:
     elif interface=='zcosmic_toplevel_handle_v1':
      if opcode==8:self.extended[obj]['states']=values[0]
      elif opcode==9:self.extended[obj]['geometry']=dict(zip(['output','x','y','width','height'],values))
+ def wait_initial(self,timeout=3):
+  # Initial extension properties are emitted from compositor refresh(), not
+  # guaranteed before wl_display.sync. Keep this connection alive until they
+  # arrive; recreating connections around immediate roundtrips loses them.
+  started=time.monotonic();end=started+timeout
+  while time.monotonic()<end:
+   live=[ext for ext,foreign in self.links.items() if not self.foreign[foreign].get('closed')]
+   complete=all('states' in self.extended[ext] and 'geometry' in self.extended[ext] for ext in live)
+   if complete and time.monotonic()-started>=.10:return True
+   ready,_,_=select.select([self.sock],[],[],min(.05,max(0,end-time.monotonic())))
+   if ready:self.receive()
+  return False
  def snapshot(self):
   self.registry=self.new('wl_registry');self.send(1,1,u(self.registry));self.roundtrip()
   for g in self.globals:
@@ -65,8 +79,9 @@ class Observer:
   self.info=self.bind(next(g for g in self.globals if g['interface']=='zcosmic_toplevel_info_v1'),3)
   self.bind(next(g for g in self.globals if g['interface']=='ext_foreign_toplevel_list_v1'),1)
   for _ in range(3):self.roundtrip()
+  initial_complete=self.wait_initial()
   for ext,foreign in self.links.items():self.foreign[foreign].update(self.extended[ext])
-  return {'time':time.time(),'globals':self.globals,'windows':list(self.foreign.values()),'read_only':True}
+  return {'time':time.time(),'globals':self.globals,'windows':list(self.foreign.values()),'read_only':True,'initial_extension_complete':initial_complete}
 if __name__=='__main__':
  observer=Observer(pathlib.Path(__file__).parent/'protocols')
  try:print(json.dumps(observer.snapshot()))

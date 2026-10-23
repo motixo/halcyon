@@ -1,0 +1,37 @@
+{
+  "run": 40015446836,
+  "infra_executed": "5c1f9a73c0623dabfdea5c8bcf730c2ae9e54ae1",
+  "allocations_used": 1,
+  "remaining_undispatched": 2,
+  "stop_reason": "Initial stock preflight failed; explicit user gate requires stop after this allocation",
+  "actual_hour_seconds": 0,
+  "typed_canaries": 0,
+  "stock": {
+    "unit_type": "forking",
+    "main_pid": 2655,
+    "result": "success",
+    "active_state": "active",
+    "substate": "running",
+    "visible_native_window": true,
+    "editor_elf_sha256": "61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149",
+    "native_observer_identity": true,
+    "native_observer_geometry_state": false,
+    "core_canary": "not reached",
+    "hour": "not started"
+  },
+  "main": "not dispatched",
+  "islands": "not dispatched",
+  "local_observer_correction": {
+    "same_connection_initial_event_wait": true,
+    "bounded_seconds": 3,
+    "local_tests": 5,
+    "native_verified": false
+  },
+  "compositor_source": {
+    "commit": "8cb1802caada438bb5cc7670dfabdaca5fad0502",
+    "path": "src/wayland/protocols/toplevel_info.rs",
+    "sha256": "709d3889af0fc68ec919dae4f31d1d9c8926bba598878d410adfa355599b7d96"
+  },
+  "product_failure_established": false,
+  "tracker_closed": false
+}

@@ -53,7 +53,7 @@ def editor_open(seq):
   last=observe('editor-map-'+str(seq));hits=editor_hits(last)
   if len(hits)==1 and 'geometry' in hits[0]:return hits[0]
   time.sleep(1)
- raise RuntimeError('Native editor did not map within bounded startup; last='+repr(last))
+ raise RuntimeError('Native observer lacks complete editor geometry/state within bounded startup; last='+repr(last))
 def pointer_move(x,y):
  c.q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':round(x*32767/1280)}},{'type':'abs','data':{'axis':'y','value':round(y*32767/800)}}]})
 def drag(start,end):
@@ -250,7 +250,7 @@ def resume():
 
 def collect():
  c.q=c.Channel('qmp.sock',True);c.capture('final');command('full-native-journal','journalctl -b -o short-monotonic --no-pager',required=False)
- state['finished']=True;save();c.guest('sync; systemctl poweroff',5)
+ state['finished']=True;save();c.guest('sync',5) # Owned-VM stop is handled by the controller; avoid QGA/poweroff race.
 
 try:
  if stage=='init':init()

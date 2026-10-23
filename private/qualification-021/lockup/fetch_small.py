@@ -1,11 +1,11 @@
 #!/usr/bin/python3
 """Controller-only small evidence; owner token remains in controller env."""
 import hashlib,json,pathlib,stat,subprocess,sys,zipfile
-run,output=sys.argv[1:];dest=pathlib.Path(output);dest.mkdir(parents=True,exist_ok=True)
+run,output=sys.argv[1:3];prefix=sys.argv[3] if len(sys.argv)>3 else 'lockup-session-';dest=pathlib.Path(output);dest.mkdir(parents=True,exist_ok=True)
 repo='repos/profilaz3/halcyon'
 items=json.loads(subprocess.check_output(['gh','api',repo+'/actions/runs/'+run+'/artifacts?per_page=100']))['artifacts']
 for item in items:
- if not item['name'].startswith('lockup-session-'):continue
+ if not item['name'].startswith(prefix):continue
  if item['size_in_bytes']>150*1024*1024:raise RuntimeError('Evidence exceeds small-only bound')
  archive=dest/(item['name']+'.zip')
  if not archive.exists():

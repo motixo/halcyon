@@ -1,0 +1,1 @@
+{"synthetic_parent_exit": 0, "child_survives_parent_exit": true, "supervisor_must_follow_forked_child": true, "actual_systemd_and_native_canary_still_required": true}

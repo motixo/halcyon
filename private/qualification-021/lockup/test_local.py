@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """Local wire/framing/media preflight. Never connects to host desktop."""
-import ast,importlib.util,json,pathlib,socket,struct,unittest
+import ast,importlib.util,json,pathlib,socket,struct,unittest,threading,time
 ROOT=pathlib.Path(__file__).resolve().parent
 spec=importlib.util.spec_from_file_location('observer',ROOT/'wayland_observer.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class Wire(unittest.TestCase):
@@ -12,6 +12,16 @@ class Wire(unittest.TestCase):
   frames=self.frame(4,2,m.string('lockup-input.txt'))+self.frame(5,8,m.u(4)+m.u(2))+self.frame(5,9,struct.pack('<Iiiii',9,-10,20,800,500))
   self.b.sendall(frames[:13]);self.o.receive();self.assertEqual(self.o.foreign[4].get('title'),None)
   self.b.sendall(frames[13:]);self.o.receive();self.assertEqual(self.o.foreign[4]['title'],'lockup-input.txt');self.assertEqual(self.o.extended[5]['states'],[2]);self.assertEqual(self.o.extended[5]['geometry']['x'],-10)
+ def test_delayed_extension_initial_events(self):
+  self.o.links={5:4}
+  def compositor_refresh():
+   time.sleep(.05)
+   self.b.sendall(self.frame(5,8,m.u(4)+m.u(2))+self.frame(5,9,struct.pack('<Iiiii',9,212,116,856,464)))
+  t=threading.Thread(target=compositor_refresh);t.start()
+  started=time.monotonic();self.assertTrue(self.o.wait_initial(.5));t.join()
+  self.assertGreaterEqual(time.monotonic()-started,.09);self.assertEqual(self.o.extended[5]['states'],[2]);self.assertEqual(self.o.extended[5]['geometry']['width'],856)
+ def test_incomplete_extension_is_not_complete(self):
+  self.o.links={5:4};self.assertFalse(self.o.wait_initial(.03))
  def test_read_only_requests(self):
   source=(ROOT/'wayland_observer.py').read_text();self.assertNotIn('activate',source.replace('activation',''));self.o.send(3,1,m.u(4));self.assertEqual(self.b.recv(99),self.frame(3,1,m.u(4)))
  def test_preflight_scope(self):
