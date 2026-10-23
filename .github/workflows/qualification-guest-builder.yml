@@ -25,10 +25,14 @@ jobs:
           persist-credentials: false
       - name: Install disposable runner tools
         shell: bash
+        timeout-minutes: 10
         run: |
           mkdir -p "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/cosmic/retain"
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get update -q
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil aria2
+          # Azure mirror was measured at ~30 KiB/s on one runner. Retain the
+          # Ubuntu signing root and use the main official mirror for tooling.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -q 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/runner-apt-update.log"
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil aria2 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/runner-tools.log"
       - name: Verify official ISO and signing inputs
         timeout-minutes: 20
         run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh inputs 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/inputs.log"
