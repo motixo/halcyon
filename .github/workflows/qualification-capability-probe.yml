@@ -40,6 +40,11 @@ jobs:
   session:
     if: ${{ always() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
     needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        lineage: [public, candidate]
+        host: [stock, islands]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -55,14 +60,14 @@ jobs:
         run: bash private/qualification-021/theme/prepare.sh
       - name: One offline VM; independent clean scenario overlays
         timeout-minutes: 75
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/theme/session.sh
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" bash private/qualification-021/theme/session.sh
       - name: Readable evidence
         if: always()
         run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: theme-session-${{ github.run_id }}
+          name: theme-session-${{ matrix.lineage }}-${{ matrix.host }}-${{ github.run_id }}
           path: ${{ runner.temp }}/cosmic/evidence/
           retention-days: 7
           compression-level: 6
