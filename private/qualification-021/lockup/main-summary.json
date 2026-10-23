@@ -1,0 +1,1629 @@
+{
+  "core_expected_shape_passed": true,
+  "cohort": "main",
+  "preflight_passed": true,
+  "hour_complete": true,
+  "elapsed": 3690.998414027,
+  "core_checkpoints": 13,
+  "input_checks": 45,
+  "unique_tokens": 45,
+  "exact_line_readbacks": 45,
+  "byte_exact_readbacks": 45,
+  "core_input_checks_including_preflight": 45,
+  "core_byte_exact": 45,
+  "timed_and_final_input_checks": 42,
+  "normal_closes": 15,
+  "core_input_hour_passed": true,
+  "full_native_journal_present": true,
+  "native_session_failure_observed": true,
+  "kernel_crash_oom_gpu_reset_lines": [
+    "[ 3871.026195] cosmic-probe kernel: cosmic-edit[12551]: segfault at 444 ip 000072da333abd2c sp 000072da328b5140 error 6 in libwayland-client.so.0.23.1[8d2c,72da333a9000+6000] likely on CPU 3 (core 3, socket 0)"
+  ],
+  "compositor_panics": [
+    "[ 3870.251280] cosmic-probe cosmic-comp[1459]: thread 'main' panicked at 'Custom Shaders not initialized': src/backend/render/wayland/blur_effect.rs:113"
+  ],
+  "files_applet_pixmap_panics": [
+    "[  188.809785] cosmic-probe cosmic-session[1266]: thread 'main' (1643) panicked at /build/cosmic-files-F3tdPv/cosmic-files-1.11.0~1792510858~24.04~3cc4b80/vendor/iced_tiny_skia/src/window/compositor.rs:207:10:",
+    "[  493.087388] cosmic-probe cosmic-session[1266]: thread 'main' (5633) panicked at /build/cosmic-files-F3tdPv/cosmic-files-1.11.0~1792510858~24.04~3cc4b80/vendor/iced_tiny_skia/src/window/compositor.rs:207:10:",
+    "[ 1389.238284] cosmic-probe cosmic-session[1266]: thread 'main' (6227) panicked at /build/cosmic-files-F3tdPv/cosmic-files-1.11.0~1792510858~24.04~3cc4b80/vendor/iced_tiny_skia/src/window/compositor.rs:207:10:",
+    "[ 1692.288961] cosmic-probe cosmic-session[1266]: thread 'main' (7894) panicked at /build/cosmic-files-F3tdPv/cosmic-files-1.11.0~1792510858~24.04~3cc4b80/vendor/iced_tiny_skia/src/window/compositor.rs:207:10:",
+    "[ 2289.597102] cosmic-probe cosmic-session[1266]: thread 'main' (8447) panicked at /build/cosmic-files-F3tdPv/cosmic-files-1.11.0~1792510858~24.04~3cc4b80/vendor/iced_tiny_skia/src/window/compositor.rs:207:10:",
+    "[ 2893.285540] cosmic-probe cosmic-session[1266]: thread 'main' (9552) panicked at /build/cosmic-files-F3tdPv/cosmic-files-1.11.0~1792510858~24.04~3cc4b80/vendor/iced_tiny_skia/src/window/compositor.rs:207:10:"
+  ],
+  "resume_input_responded": false,
+  "resume_error": "No calibrated large editor document surface at screen center",
+  "failures": [],
+  "optional_failures": [],
+  "optional_raw_counts_not_blanket_pass": {
+    "maximize/restore": {
+      "observed": 14,
+      "changed_or_closed": 14
+    },
+    "titlebar move": {
+      "observed": 14,
+      "changed_or_closed": 0
+    },
+    "border resize": {
+      "observed": 14,
+      "changed_or_closed": 14
+    },
+    "workspace next/return": {
+      "observed": 1,
+      "changed_or_closed": 0
+    },
+    "normal Files pointer close": {
+      "observed": 1,
+      "changed_or_closed": 1
+    }
+  },
+  "public_identities": {
+    "preflight": [
+      {
+        "pid": 4661,
+        "sha256": "0abb0f393b14ba0a5ddf791a719c391dfa9a8a04e39196a1caddc8ff7028a01f",
+        "args": "/usr/bin/halcyon "
+      }
+    ],
+    "core-final": [
+      {
+        "pid": 4661,
+        "sha256": "0abb0f393b14ba0a5ddf791a719c391dfa9a8a04e39196a1caddc8ff7028a01f",
+        "args": "/usr/bin/halcyon "
+      }
+    ]
+  },
+  "identities": {
+    "baseline": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1459,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1506,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1533,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      }
+    },
+    "preflight": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1459,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1506,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1533,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      },
+      "/usr/bin/cosmic-edit": {
+        "pid": 4963,
+        "sha256": "61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149"
+      }
+    },
+    "core-final": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1459,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1506,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1533,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      },
+      "/usr/bin/cosmic-edit": {
+        "pid": 12544,
+        "sha256": "61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149"
+      }
+    },
+    "final": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 13027,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 13078,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 13128,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      }
+    }
+  },
+  "resource_sample_count": 71,
+  "resource_median_gap_sec": 61.16445416600004,
+  "resource_max_gap_sec": 90.6947908520001,
+  "raw_input_proofs": [
+    {
+      "token": "pmain000001",
+      "readback": "pmain000001",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "005-preflight-first-0-input",
+      "ocr": false,
+      "phase": "preflight",
+      "elapsed": 13.232159142,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000002",
+      "readback": "pmain000002",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "007-preflight-before-close-0-input",
+      "ocr": false,
+      "phase": "preflight",
+      "elapsed": 20.183531018999986,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000003",
+      "readback": "pmain000003",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "010-preflight-reopen-10000-input",
+      "ocr": false,
+      "phase": "preflight",
+      "elapsed": 35.615531412999985,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000004",
+      "readback": "pmain000004",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "013-core-1-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 8.81461551000001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000005",
+      "readback": "pmain000005",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "015-core-before-close-1-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 15.667884784000023,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000006",
+      "readback": "pmain000006",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "018-core-reopen-10001-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 31.094566653000015,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000007",
+      "readback": "pmain000007",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "020-core-2-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 313.10750913299995,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000008",
+      "readback": "pmain000008",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "022-core-before-close-2-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 320.043110526,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000009",
+      "readback": "pmain000009",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "025-core-reopen-10002-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 335.37573346100004,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000010",
+      "readback": "pmain000010",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "027-core-3-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 617.157208134,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000011",
+      "readback": "pmain000011",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "029-core-before-close-3-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 624.0207052800001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000012",
+      "readback": "pmain000012",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "032-core-reopen-10003-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 639.552328233,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000013",
+      "readback": "pmain000013",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "034-core-4-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 910.598782196,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000014",
+      "readback": "pmain000014",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "036-core-before-close-4-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 917.502614942,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000015",
+      "readback": "pmain000015",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "039-core-reopen-10004-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 932.8319571040001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000016",
+      "readback": "pmain000016",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "041-core-5-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1208.690454642,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000017",
+      "readback": "pmain000017",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "043-core-before-close-5-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1215.547014664,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000018",
+      "readback": "pmain000018",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "046-core-reopen-10005-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1231.480143855,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000019",
+      "readback": "pmain000019",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "048-core-6-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1512.002012541,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000020",
+      "readback": "pmain000020",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "050-core-before-close-6-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1518.863618284,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000021",
+      "readback": "pmain000021",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "053-core-reopen-10006-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1534.494271106,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000022",
+      "readback": "pmain000022",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "055-core-7-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1816.3548144600002,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000023",
+      "readback": "pmain000023",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "057-core-before-close-7-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1823.23786347,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000024",
+      "readback": "pmain000024",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "060-core-reopen-10007-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1838.6448745280002,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000025",
+      "readback": "pmain000025",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "062-core-8-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2109.432261946,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000026",
+      "readback": "pmain000026",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "064-core-before-close-8-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2116.290846465,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000027",
+      "readback": "pmain000027",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "067-core-reopen-10008-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2131.8138604709998,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000028",
+      "readback": "pmain000028",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "069-core-9-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2408.551639683,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000029",
+      "readback": "pmain000029",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "071-core-before-close-9-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2415.621141497,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000030",
+      "readback": "pmain000030",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "074-core-reopen-10009-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2431.049091078,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000031",
+      "readback": "pmain000031",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "076-core-10-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2713.124023927,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000032",
+      "readback": "pmain000032",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "078-core-before-close-10-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2719.9814184039997,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000033",
+      "readback": "pmain000033",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "081-core-reopen-10010-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2735.502842719,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000034",
+      "readback": "pmain000034",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "083-core-11-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3016.521499821,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000035",
+      "readback": "pmain000035",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "085-core-before-close-11-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3023.5792470019996,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000036",
+      "readback": "pmain000036",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "088-core-reopen-10011-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3039.0997315249997,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000037",
+      "readback": "pmain000037",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "090-core-12-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3311.3423532909997,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000038",
+      "readback": "pmain000038",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "092-core-before-close-12-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3318.2890112229998,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000039",
+      "readback": "pmain000039",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "095-core-reopen-10012-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3334.335282087,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000040",
+      "readback": "pmain000040",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "097-core-13-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3616.676540269,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000041",
+      "readback": "pmain000041",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "099-core-before-close-13-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3623.539167933,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000042",
+      "readback": "pmain000042",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "102-core-reopen-10013-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3639.167755294,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000043",
+      "readback": "pmain000043",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "104-hour-final-9000-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3668.605207193,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000044",
+      "readback": "pmain000044",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "106-hour-final-before-close-9001-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3675.5502106599997,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pmain000045",
+      "readback": "pmain000045",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "109-hour-final-reopen-19001-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3690.9799417059994,
+      "geometry_source": "native protocol"
+    }
+  ],
+  "resources": {
+    "/usr/bin/cosmic-greeter-daemon": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 8932,
+        "fds": 11,
+        "threads": 5,
+        "pids": [
+          691
+        ],
+        "starttimes": [
+          657
+        ],
+        "cpu_ticks": 17
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 8932,
+        "fds": 11,
+        "threads": 5,
+        "pids": [
+          691
+        ],
+        "starttimes": [
+          657
+        ],
+        "cpu_ticks": 17
+      },
+      "rss_min_kib": 8932,
+      "rss_max_kib": 8932,
+      "fds_max": 11,
+      "threads_max": 5,
+      "pid_sets": [
+        [
+          691
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-session": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 7252,
+        "fds": 71,
+        "threads": 1,
+        "pids": [
+          1266
+        ],
+        "starttimes": [
+          3878
+        ],
+        "cpu_ticks": 3
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 7324,
+        "fds": 71,
+        "threads": 1,
+        "pids": [
+          1266
+        ],
+        "starttimes": [
+          3878
+        ],
+        "cpu_ticks": 5
+      },
+      "rss_min_kib": 7252,
+      "rss_max_kib": 7324,
+      "fds_max": 71,
+      "threads_max": 2,
+      "pid_sets": [
+        [
+          1266
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-comp": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 286160,
+        "fds": 186,
+        "threads": 33,
+        "pids": [
+          1459
+        ],
+        "starttimes": [
+          3938
+        ],
+        "cpu_ticks": 2136
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 336160,
+        "fds": 186,
+        "threads": 33,
+        "pids": [
+          1459
+        ],
+        "starttimes": [
+          3938
+        ],
+        "cpu_ticks": 75209
+      },
+      "rss_min_kib": 286160,
+      "rss_max_kib": 342316,
+      "fds_max": 186,
+      "threads_max": 33,
+      "pid_sets": [
+        [
+          1459
+        ]
+      ]
+    },
+    "/usr/bin/Xwayland": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 70240,
+        "fds": 8,
+        "threads": 1,
+        "pids": [
+          1488
+        ],
+        "starttimes": [
+          3982
+        ],
+        "cpu_ticks": 8
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 70240,
+        "fds": 8,
+        "threads": 1,
+        "pids": [
+          1488
+        ],
+        "starttimes": [
+          3982
+        ],
+        "cpu_ticks": 45
+      },
+      "rss_min_kib": 70240,
+      "rss_max_kib": 70240,
+      "fds_max": 8,
+      "threads_max": 1,
+      "pid_sets": [
+        [
+          1488
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-settings-daemon": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 16228,
+        "fds": 54,
+        "threads": 7,
+        "pids": [
+          1506
+        ],
+        "starttimes": [
+          3993
+        ],
+        "cpu_ticks": 64
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 16236,
+        "fds": 54,
+        "threads": 7,
+        "pids": [
+          1506
+        ],
+        "starttimes": [
+          3993
+        ],
+        "cpu_ticks": 119
+      },
+      "rss_min_kib": 16228,
+      "rss_max_kib": 16236,
+      "fds_max": 54,
+      "threads_max": 7,
+      "pid_sets": [
+        [
+          1506
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-notifications": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 22692,
+        "fds": 28,
+        "threads": 6,
+        "pids": [
+          1516
+        ],
+        "starttimes": [
+          3999
+        ],
+        "cpu_ticks": 12
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 22872,
+        "fds": 28,
+        "threads": 6,
+        "pids": [
+          1516
+        ],
+        "starttimes": [
+          3999
+        ],
+        "cpu_ticks": 19
+      },
+      "rss_min_kib": 22692,
+      "rss_max_kib": 22872,
+      "fds_max": 28,
+      "threads_max": 6,
+      "pid_sets": [
+        [
+          1516
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-panel": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 153068,
+        "fds": 250,
+        "threads": 22,
+        "pids": [
+          1533
+        ],
+        "starttimes": [
+          4004
+        ],
+        "cpu_ticks": 132
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 137052,
+        "fds": 250,
+        "threads": 22,
+        "pids": [
+          1533
+        ],
+        "starttimes": [
+          4004
+        ],
+        "cpu_ticks": 737
+      },
+      "rss_min_kib": 130880,
+      "rss_max_kib": 154048,
+      "fds_max": 250,
+      "threads_max": 22,
+      "pid_sets": [
+        [
+          1533
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-app-library": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 166140,
+        "fds": 49,
+        "threads": 33,
+        "pids": [
+          1536
+        ],
+        "starttimes": [
+          4006
+        ],
+        "cpu_ticks": 57
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 166156,
+        "fds": 49,
+        "threads": 33,
+        "pids": [
+          1536
+        ],
+        "starttimes": [
+          4006
+        ],
+        "cpu_ticks": 155
+      },
+      "rss_min_kib": 166140,
+      "rss_max_kib": 166164,
+      "fds_max": 49,
+      "threads_max": 33,
+      "pid_sets": [
+        [
+          1536
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-launcher": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 160660,
+        "fds": 50,
+        "threads": 32,
+        "pids": [
+          1541
+        ],
+        "starttimes": [
+          4009
+        ],
+        "cpu_ticks": 56
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 160664,
+        "fds": 50,
+        "threads": 32,
+        "pids": [
+          1541
+        ],
+        "starttimes": [
+          4009
+        ],
+        "cpu_ticks": 136
+      },
+      "rss_min_kib": 160656,
+      "rss_max_kib": 160668,
+      "fds_max": 50,
+      "threads_max": 32,
+      "pid_sets": [
+        [
+          1541
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-workspaces": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 97052,
+        "fds": 58,
+        "threads": 21,
+        "pids": [
+          1575
+        ],
+        "starttimes": [
+          4017
+        ],
+        "cpu_ticks": 30
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 97104,
+        "fds": 58,
+        "threads": 21,
+        "pids": [
+          1575
+        ],
+        "starttimes": [
+          4017
+        ],
+        "cpu_ticks": 67
+      },
+      "rss_min_kib": 97052,
+      "rss_max_kib": 97104,
+      "fds_max": 58,
+      "threads_max": 21,
+      "pid_sets": [
+        [
+          1575
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-osd": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 29136,
+        "fds": 40,
+        "threads": 12,
+        "pids": [
+          1589
+        ],
+        "starttimes": [
+          4023
+        ],
+        "cpu_ticks": 21
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 29148,
+        "fds": 40,
+        "threads": 12,
+        "pids": [
+          1589
+        ],
+        "starttimes": [
+          4023
+        ],
+        "cpu_ticks": 50
+      },
+      "rss_min_kib": 29136,
+      "rss_max_kib": 29152,
+      "fds_max": 40,
+      "threads_max": 12,
+      "pid_sets": [
+        [
+          1589
+        ]
+      ]
+    },
+    "/usr/libexec/xdg-desktop-portal": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 19156,
+        "fds": 23,
+        "threads": 7,
+        "pids": [
+          1616
+        ],
+        "starttimes": [
+          4065
+        ],
+        "cpu_ticks": 33
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 19148,
+        "fds": 23,
+        "threads": 7,
+        "pids": [
+          1616
+        ],
+        "starttimes": [
+          4065
+        ],
+        "cpu_ticks": 56
+      },
+      "rss_min_kib": 19140,
+      "rss_max_kib": 19156,
+      "fds_max": 23,
+      "threads_max": 9,
+      "pid_sets": [
+        [
+          1616
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-osk": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 26652,
+        "fds": 44,
+        "threads": 17,
+        "pids": [
+          1619
+        ],
+        "starttimes": [
+          4066
+        ],
+        "cpu_ticks": 42
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 26664,
+        "fds": 44,
+        "threads": 17,
+        "pids": [
+          1619
+        ],
+        "starttimes": [
+          4066
+        ],
+        "cpu_ticks": 641
+      },
+      "rss_min_kib": 26652,
+      "rss_max_kib": 26664,
+      "fds_max": 44,
+      "threads_max": 17,
+      "pid_sets": [
+        [
+          1619
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-bg": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 35124,
+        "fds": 14,
+        "threads": 2,
+        "pids": [
+          1620
+        ],
+        "starttimes": [
+          4066
+        ],
+        "cpu_ticks": 49
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 35124,
+        "fds": 14,
+        "threads": 2,
+        "pids": [
+          1620
+        ],
+        "starttimes": [
+          4066
+        ],
+        "cpu_ticks": 69
+      },
+      "rss_min_kib": 35124,
+      "rss_max_kib": 35124,
+      "fds_max": 14,
+      "threads_max": 2,
+      "pid_sets": [
+        [
+          1620
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-greeter": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 30376,
+        "fds": 37,
+        "threads": 13,
+        "pids": [
+          1642
+        ],
+        "starttimes": [
+          4079
+        ],
+        "cpu_ticks": 17
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 30384,
+        "fds": 37,
+        "threads": 13,
+        "pids": [
+          1642
+        ],
+        "starttimes": [
+          4079
+        ],
+        "cpu_ticks": 28
+      },
+      "rss_min_kib": 30376,
+      "rss_max_kib": 30384,
+      "fds_max": 37,
+      "threads_max": 13,
+      "pid_sets": [
+        [
+          1642
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-files-applet": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 48620,
+        "fds": 60,
+        "threads": 24,
+        "pids": [
+          1643
+        ],
+        "starttimes": [
+          4080
+        ],
+        "cpu_ticks": 52
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 47332,
+        "fds": 60,
+        "threads": 24,
+        "pids": [
+          10677
+        ],
+        "starttimes": [
+          289359
+        ],
+        "cpu_ticks": 71
+      },
+      "rss_min_kib": 46776,
+      "rss_max_kib": 48620,
+      "fds_max": 60,
+      "threads_max": 26,
+      "pid_sets": [
+        [
+          1643
+        ],
+        [
+          5633
+        ],
+        [
+          6227
+        ],
+        [
+          7894
+        ],
+        [
+          8447
+        ],
+        [
+          9552
+        ],
+        [
+          10677
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-idle": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 6576,
+        "fds": 19,
+        "threads": 7,
+        "pids": [
+          1684
+        ],
+        "starttimes": [
+          4090
+        ],
+        "cpu_ticks": 14
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 6576,
+        "fds": 19,
+        "threads": 7,
+        "pids": [
+          1684
+        ],
+        "starttimes": [
+          4090
+        ],
+        "cpu_ticks": 95
+      },
+      "rss_min_kib": 6576,
+      "rss_max_kib": 6576,
+      "fds_max": 19,
+      "threads_max": 7,
+      "pid_sets": [
+        [
+          1684
+        ]
+      ]
+    },
+    "/usr/libexec/xdg-desktop-portal-gtk": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 25824,
+        "fds": 17,
+        "threads": 5,
+        "pids": [
+          1685
+        ],
+        "starttimes": [
+          4091
+        ],
+        "cpu_ticks": 23
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 25824,
+        "fds": 17,
+        "threads": 5,
+        "pids": [
+          1685
+        ],
+        "starttimes": [
+          4091
+        ],
+        "cpu_ticks": 31
+      },
+      "rss_min_kib": 25824,
+      "rss_max_kib": 25824,
+      "fds_max": 17,
+      "threads_max": 5,
+      "pid_sets": [
+        [
+          1685
+        ]
+      ]
+    },
+    "/usr/libexec/xdg-desktop-portal-cosmic": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 164992,
+        "fds": 37,
+        "threads": 29,
+        "pids": [
+          1839
+        ],
+        "starttimes": [
+          4150
+        ],
+        "cpu_ticks": 57
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 165184,
+        "fds": 37,
+        "threads": 29,
+        "pids": [
+          1839
+        ],
+        "starttimes": [
+          4150
+        ],
+        "cpu_ticks": 68
+      },
+      "rss_min_kib": 164992,
+      "rss_max_kib": 165184,
+      "fds_max": 37,
+      "threads_max": 29,
+      "pid_sets": [
+        [
+          1839
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-applets": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 572064,
+        "fds": 631,
+        "threads": 145,
+        "pids": [
+          2052,
+          2783,
+          2788,
+          2798,
+          2806,
+          2807,
+          3066,
+          3072,
+          3087,
+          3122,
+          3173,
+          3175,
+          3181,
+          3183,
+          3185,
+          3186,
+          3187,
+          3191,
+          3207
+        ],
+        "starttimes": [
+          4259,
+          8853,
+          8857,
+          8858,
+          8861,
+          8863,
+          8951,
+          8953,
+          8954,
+          8957,
+          8962,
+          8963,
+          8965,
+          8967,
+          8969,
+          8970,
+          8972,
+          8974,
+          8975
+        ],
+        "cpu_ticks": 176
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 572248,
+        "fds": 630,
+        "threads": 145,
+        "pids": [
+          2052,
+          2783,
+          2788,
+          2798,
+          2806,
+          2807,
+          3066,
+          3072,
+          3087,
+          3122,
+          3173,
+          3175,
+          3181,
+          3183,
+          3185,
+          3186,
+          3187,
+          3191,
+          3207
+        ],
+        "starttimes": [
+          4259,
+          8853,
+          8857,
+          8858,
+          8861,
+          8863,
+          8951,
+          8953,
+          8954,
+          8957,
+          8962,
+          8963,
+          8965,
+          8967,
+          8969,
+          8970,
+          8972,
+          8974,
+          8975
+        ],
+        "cpu_ticks": 281
+      },
+      "rss_min_kib": 572064,
+      "rss_max_kib": 572248,
+      "fds_max": 631,
+      "threads_max": 146,
+      "pid_sets": [
+        [
+          2052,
+          2783,
+          2788,
+          2798,
+          2806,
+          2807,
+          3066,
+          3072,
+          3087,
+          3122,
+          3173,
+          3175,
+          3181,
+          3183,
+          3185,
+          3186,
+          3187,
+          3191,
+          3207
+        ]
+      ]
+    },
+    "/usr/bin/halcyon": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 53072,
+        "fds": 69,
+        "threads": 15,
+        "pids": [
+          4661
+        ],
+        "starttimes": [
+          9320
+        ],
+        "cpu_ticks": 35
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 54684,
+        "fds": 69,
+        "threads": 15,
+        "pids": [
+          4661
+        ],
+        "starttimes": [
+          9320
+        ],
+        "cpu_ticks": 1084
+      },
+      "rss_min_kib": 53072,
+      "rss_max_kib": 54684,
+      "fds_max": 69,
+      "threads_max": 15,
+      "pid_sets": [
+        [
+          4661
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-edit": {
+      "samples": 71,
+      "first": {
+        "t": 141.741046206,
+        "rss_kib": 207104,
+        "fds": 45,
+        "threads": 31,
+        "pids": [
+          4963
+        ],
+        "starttimes": [
+          12460
+        ],
+        "cpu_ticks": 84
+      },
+      "last": {
+        "t": 3847.121446263,
+        "rss_kib": 207504,
+        "fds": 45,
+        "threads": 31,
+        "pids": [
+          12544
+        ],
+        "starttimes": [
+          383373
+        ],
+        "cpu_ticks": 79
+      },
+      "rss_min_kib": 205616,
+      "rss_max_kib": 207676,
+      "fds_max": 45,
+      "threads_max": 31,
+      "pid_sets": [
+        [
+          4963
+        ],
+        [
+          5449
+        ],
+        [
+          6039
+        ],
+        [
+          6617
+        ],
+        [
+          7145
+        ],
+        [
+          7704
+        ],
+        [
+          8252
+        ],
+        [
+          8845
+        ],
+        [
+          9362
+        ],
+        [
+          9939
+        ],
+        [
+          10491
+        ],
+        [
+          11037
+        ],
+        [
+          11578
+        ],
+        [
+          12131
+        ],
+        [
+          12544
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,217 @@
+{
+  "executed_infra": "7840d5609b08ef95ac529af6ab546d77ccc36242",
+  "runtime_source_sha256": {
+    "session.py": "7cf4526868f05f2e12ce92fa1ffebc98f4ae0c7b933c702117e03849169497d4",
+    "wayland_observer.py": "d8dc2c71df15b99c8735ad6b613b60a7ee9ae015c4a197c9a9a3998d19a73cc9",
+    "resources.py": "c4164be37ee50e13787ba4ae63af408b6eec3237f36f093272ade1e757d9b47e",
+    "start.sh": "f277df0320b57dcbc5c86f822e89d49199beae118129dbda479ce6eaf4ee8f06",
+    "stop.py": "9211d1a358bd771bf3f72d8c4b7497ddc3c58af8fbfa3c207099936670d2cf71",
+    "editor_pixels.py": "e742437e018d8d789e79782f67056bcc4ef10c1707dfbe42a1feea7047819d2c",
+    "live_repair.py": "72e4c9d21101e05dde3c977dcda0fb36539ee2893069f22b4a7d6d0f86a784e7"
+  },
+  "publication": "ON HOLD",
+  "rx590_causation": "unproven",
+  "contexts": {
+    "stock": {
+      "run": "40018232557",
+      "core_input_hour_passed": true,
+      "native_session_failure_observed": false,
+      "actual_core_elapsed_sec": 3690.7402878020002,
+      "core_checkpoints": 13,
+      "byte_exact_saves_including_preflight": 45,
+      "normal_closes_including_preflight": 15,
+      "source_stage_count": 8,
+      "artifacts": [
+        {
+          "id": 12532996846,
+          "name": "lockup-progress-stock-61-40018232557",
+          "size_in_bytes": 701276,
+          "digest": "sha256:ac64df3386475a7427c648b8313943dfd8aa9bec5ecd1be23fd649415106457e",
+          "expires_at": "2026-10-30T21:25:17Z"
+        },
+        {
+          "id": 12532668378,
+          "name": "lockup-session-stock-40018232557",
+          "size_in_bytes": 91627649,
+          "digest": "sha256:6fe460119a371dc59abed53c87e448d23d89fe7e3a835b2d01a1287ffcdc0e29",
+          "expires_at": "2026-10-30T21:27:24Z"
+        },
+        {
+          "id": 12530849349,
+          "name": "lockup-progress-stock-40-40018232557",
+          "size_in_bytes": 699712,
+          "digest": "sha256:13bc0efc25ed550644a75743d495866c0d839395939e27b29e3ed56b5709c3eb",
+          "expires_at": "2026-10-30T21:04:17Z"
+        },
+        {
+          "id": 12530642689,
+          "name": "lockup-progress-stock-20-40018232557",
+          "size_in_bytes": 698354,
+          "digest": "sha256:971c95862420a64f400d178e87ccd296c54328b96b086a50266de2f5f6610f55",
+          "expires_at": "2026-10-30T20:44:17Z"
+        },
+        {
+          "id": 12530180832,
+          "name": "lockup-preflight-stock-40018232557",
+          "size_in_bytes": 696684,
+          "digest": "sha256:5217ed9dd279a50fb6b01f9c32b2ed78caf4b88c897911d27178412469993dba",
+          "expires_at": "2026-10-30T20:24:17Z"
+        }
+      ],
+      "selected_evidence_sha256": {
+        "lockup-results.json": "ae40ca1aea18cc2a5109352ca4cee1cbb109f864c8e47642863e18e3e8441f28",
+        "resource-samples.jsonl": "5b2b51e7d24d22e20aff0127c9492288815b7ff08292f45a161fff6a67cc68c9",
+        "full-native-journal.txt": "c6304cb416e50ecf34138c3176b8d25c85d6a4619ea78d916becb022df9c2c22",
+        "native-environment.txt": "1932320c030347d76c7063cf088f72e86a4a4406807efcc3242a9d18e94fd5dd",
+        "qmp-blocks.json": "133550460335d35a67731eea0b91b136db901b932d660a2490c70e80b9fafeeb",
+        "vm-command.txt": "80c2589191e367c2593c887d5f1a11ac2760ca1261c5191935c4e6faf6428347",
+        "editor-unit-0.txt": "5dfce5e4f5dce6d408714a289f60de0375088274e9b32df887bbe91a8be5d574",
+        "editor-unit-1.txt": "8d3c1df6c233661dcfa1fb0668f8e58fa50ede714a81e238f95efb86b39ec3e7",
+        "preflight-identity.txt": "45b7a14f7fbede6787af9792eca62718c1ca8f28130c57e91441308885142f9e",
+        "core-final-identity.txt": "d49a075e33da04f8478bb15a5301e388302a7a02fa295e700ec21a7614d1c4f0",
+        "final-identity.txt": "b47d5b5061c09b65e30a2c31b3339a4883fd47880697c50202eadf359656d670",
+        "105-hour-final-reopen-19001-before-input.png": "fb037c0eb01915ad6fb3026eafe6248093fd0ec2c7f62a84ee565ee3f4e76891",
+        "106-hour-final-reopen-19001-input.png": "a96337ba0fc0ed73e8a25db7af8a88d953f422f11ae4f8b1731e3a85ef9b510a",
+        "107-workspace-overview-9900.png": "8f8e4fc21ac64ae9bb511ea6afd3946c8be42afa3dc1fc4f23d041c5199b409d"
+      },
+      "summary_sha256": "6adb7f788749538d1f2e5bc31be68475dafa8dc23a005e0609dab16e78a05723"
+    },
+    "main": {
+      "run": "40027094006",
+      "core_input_hour_passed": true,
+      "native_session_failure_observed": true,
+      "actual_core_elapsed_sec": 3690.998414027,
+      "core_checkpoints": 13,
+      "byte_exact_saves_including_preflight": 45,
+      "normal_closes_including_preflight": 15,
+      "source_stage_count": 8,
+      "artifacts": [
+        {
+          "id": 12536019039,
+          "name": "lockup-session-main-40027094006",
+          "size_in_bytes": 97674636,
+          "digest": "sha256:cf6f934b34e96f2e76cd5eb1402a933bb1aec3789ac38b5620a8093e9d040ae5",
+          "expires_at": "2026-10-30T22:38:46Z"
+        },
+        {
+          "id": 12535988949,
+          "name": "lockup-progress-main-61-40027094006",
+          "size_in_bytes": 823310,
+          "digest": "sha256:a6a845cb42ff35cec5e62d3703c57b70083b21ce94ffb56f5235f3278fab4999",
+          "expires_at": "2026-10-30T22:36:40Z"
+        },
+        {
+          "id": 12535781016,
+          "name": "lockup-progress-main-40-40027094006",
+          "size_in_bytes": 821268,
+          "digest": "sha256:5f0063da0af8ce5a16900462919fc1f92ff44937a3d3d001349d4d2af9a1890c",
+          "expires_at": "2026-10-30T22:15:40Z"
+        },
+        {
+          "id": 12534347136,
+          "name": "lockup-progress-main-20-40027094006",
+          "size_in_bytes": 819218,
+          "digest": "sha256:641c890041a80c292990467c7aeac09190ce3c17c6aa1a5ba3c8a06c45d6a613",
+          "expires_at": "2026-10-30T21:55:40Z"
+        },
+        {
+          "id": 12532918896,
+          "name": "lockup-preflight-main-40027094006",
+          "size_in_bytes": 816052,
+          "digest": "sha256:cd93349f30dbe0a132e9b4a7760cba5afab371eb4134f8ec260a6f5a0ec4aa4e",
+          "expires_at": "2026-10-30T21:35:40Z"
+        }
+      ],
+      "selected_evidence_sha256": {
+        "lockup-results.json": "719aed4e5e3b2cede13ed57250cab2f317d6fca3977aa6631a0cf895c43209c0",
+        "resource-samples.jsonl": "002bffcdd5612bfffd3a198465fcbc9c6d09658f52a5b958a86b6b49b8a07c77",
+        "full-native-journal.txt": "80db14e118b0e80f3576a6d0e66a84440ad23d75042975d58568671a36541b2c",
+        "native-environment.txt": "afa973b52f872b8e89ad0bc77e6eb2fa23c1136244beaa5b317605eb5a2d9843",
+        "qmp-blocks.json": "3c1a5a9491ca9ddbb95a1f8ca028dd6069056fa054109ab7ffc071afd60928cd",
+        "vm-command.txt": "5c869739662206ead2acdae130b9481516e248f5e719ad940084ee76aab807e7",
+        "editor-unit-0.txt": "d6578c120bb7d7959088e837f0e6e7cd95b5d84c2929ba83f6673d1bd2a6f250",
+        "editor-unit-1.txt": "21269bc685e2e096c9ed5e21dd09b6644e12bb3cd076b343c832d8744a7c24c9",
+        "preflight-identity.txt": "0202db3ac325501d0281e1a43393f92c3bcd4e04e3979b04d627b57c476d998b",
+        "core-final-identity.txt": "2e1a6142ee5a1eb375f546a0a1458a0117778079746429f2f669e0a3afd4e61f",
+        "final-identity.txt": "e5fbf63e4cdbaafb50f0a5869479ef30eb62218a9dabb7df805defbf1d215191",
+        "108-hour-final-reopen-19001-before-input.png": "e2aca192ab82954cd39cf9868ed0e85e2b493150d1c6ec3f99ca4c86b8e3fb5f",
+        "109-hour-final-reopen-19001-input.png": "162462b2985ea08ec9299b455d8ebf4efaa1bb1f0f66c339f9f5115f4f39f212",
+        "110-workspace-overview-9900.png": "f0efb1fdd17e427f9d438b98bd4185fd84b3c7bb26e87b7d2a21b1bc661752f1",
+        "117-resume-failure.png": "76f9bcc850e9c7b2277cb9b07878a1ddc706c85867bed3db9a006c63a9725bf4"
+      },
+      "summary_sha256": "6287d432623a36ffed7f1a54c2bcc9f48f20a18641a4aba57708cadacebbbfcc"
+    },
+    "islands": {
+      "run": "40035187607",
+      "core_input_hour_passed": true,
+      "native_session_failure_observed": true,
+      "actual_core_elapsed_sec": 3690.6634861230004,
+      "core_checkpoints": 13,
+      "byte_exact_saves_including_preflight": 45,
+      "normal_closes_including_preflight": 15,
+      "source_stage_count": 8,
+      "artifacts": [
+        {
+          "id": 12539711512,
+          "name": "lockup-session-islands-40035187607",
+          "size_in_bytes": 100982874,
+          "digest": "sha256:678d8826ff13993ef924dbc52035d17b434d41acc196e57b9937579c6ea5e56b",
+          "expires_at": "2026-10-30T23:52:02Z"
+        },
+        {
+          "id": 12539079350,
+          "name": "lockup-progress-islands-61-40035187607",
+          "size_in_bytes": 831476,
+          "digest": "sha256:be0b7a715afdab3f9a449e59670eb2784dc604b5ca372d30944a54a5b61aca17",
+          "expires_at": "2026-10-30T23:49:59Z"
+        },
+        {
+          "id": 12538413821,
+          "name": "lockup-progress-islands-40-40035187607",
+          "size_in_bytes": 830174,
+          "digest": "sha256:031c7f3b3f478815dfc77e0b96f27a8315252fc732c7e9d4df6184ec95162ebf",
+          "expires_at": "2026-10-30T23:28:59Z"
+        },
+        {
+          "id": 12537203838,
+          "name": "lockup-progress-islands-20-40035187607",
+          "size_in_bytes": 828261,
+          "digest": "sha256:d28a8f757c84ef3eb46777690ed112d6e74299a15d857fefee2d7b7a2676581b",
+          "expires_at": "2026-10-30T23:08:59Z"
+        },
+        {
+          "id": 12537151405,
+          "name": "lockup-preflight-islands-40035187607",
+          "size_in_bytes": 826788,
+          "digest": "sha256:7ec01a6ca030195a415584c5ed5b5104a62b5957ba3dbc8fcfcdc6da2ce5ef82",
+          "expires_at": "2026-10-30T22:48:59Z"
+        }
+      ],
+      "selected_evidence_sha256": {
+        "lockup-results.json": "900d1295c4ae404df84db31dc5129519377b9df4d4736e3ed4fa9aa9e10aa55a",
+        "resource-samples.jsonl": "9be879d1fe3cbb8404a0724710154b54dad068878781c9aa823e03665e1368f2",
+        "full-native-journal.txt": "26c49dc38855619564249ee41b4b95675873020a3241fa31fbb67bdc2672a8d1",
+        "native-environment.txt": "afa973b52f872b8e89ad0bc77e6eb2fa23c1136244beaa5b317605eb5a2d9843",
+        "qmp-blocks.json": "86d92a107bcbda720903e89e9c22291d89be51aead09696b94df36f701771a8b",
+        "vm-command.txt": "5c869739662206ead2acdae130b9481516e248f5e719ad940084ee76aab807e7",
+        "editor-unit-0.txt": "36b9b7b5587d9bbe946deaabfecdb8927448c8e3aa74acadffb879b3098d746e",
+        "editor-unit-1.txt": "8cc6ce207e139ee7d0ed8b606f1d2d01661dc51d4cbaab86aa2cd06167cfd971",
+        "preflight-identity.txt": "da9b1db4c35874eff775fe1e02adaea901e9a3f599f3b9c023cf93016c3650df",
+        "core-final-identity.txt": "0ae036a826dddcce1b07d0b47332545bde1d361bd20464219e300ed9234c8397",
+        "final-identity.txt": "841fab5f0f644707ed5e815b2c54235a70efe0932ba613786182b0cf22aa40e8",
+        "108-hour-final-reopen-19001-before-input.png": "0daf36312cdd325c0cf519023e11aea13c439f87d52e8062a838a3c35a5b680b",
+        "109-hour-final-reopen-19001-input.png": "a7b176784adcff78b5c7013f1ecc59d70d81ff76fef38a8b5200d5ce483891c4",
+        "110-workspace-overview-9900.png": "f0efb1fdd17e427f9d438b98bd4185fd84b3c7bb26e87b7d2a21b1bc661752f1",
+        "117-resume-failure.png": "76f9bcc850e9c7b2277cb9b07878a1ddc706c85867bed3db9a006c63a9725bf4"
+      },
+      "summary_sha256": "842c45ad60f4c11f058b7653febcffd0b78658eee1bf922a9d7452d35907ded4"
+    }
+  },
+  "analysis_sha256": {
+    "summarize_soak.py": "0fcc1817a68e61292ca3e6b73208288e65c472079d28d0721734ae29a19eae97",
+    "summarize_round.py": "1338c8e5be3fea4a9a1145800b23a3b3b0437d6fbfa480ca7cee79b0f48c29e4",
+    "r3-run-metadata.json": "b2093cd0e1636d0427d03a93c24832f542f1a0388959c2ea042bdd99631e2387",
+    "native-crash-diagnosis.json": "211970b4b2091d7d8e70b3f67ed8ef82a31cd582a4e2dae84f025f03765072c1"
+  },
+  "report_sha256": "02757b5f46ff68e860d865a8d8284d43f08d2429b275578e1a3078bc84c32f74"
+}
