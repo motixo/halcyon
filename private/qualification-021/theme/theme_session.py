@@ -82,7 +82,7 @@ def target(label,phrase,optional=False,occurrence=0,dx=0,dy=0):
 
 def scroll(down=True,n=5):
  # QMP wheel input, within content rather than the window sidebar.
- c.q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':round(1000*32767/1280)}},{'type':'abs','data':{'axis':'y','value':round(650*32767/800)}}]})
+ c.q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':round(1000*32767/1280)}},{'type':'abs','data':{'axis':'y','value':round(500*32767/800)}}]})
  for _ in range(n):
   c.q.call('input-send-event',{'events':[{'type':'btn','data':{'button':'wheel-down' if down else 'wheel-up','down':True}},{'type':'btn','data':{'button':'wheel-down' if down else 'wheel-up','down':False}}]})
  time.sleep(2)
@@ -247,7 +247,11 @@ try:
   launch('/usr/bin/halcyon',['--settings','themes'])
   target('legacy-explicit-repair','Repair theme matching')
   screen('legacy-repair-preview');snapshot('legacy-repair-preview-running')
-  target('legacy-repair-apply','Apply')
+  # The public UI calls the existing Apply action 'Use theme'. Maximize
+  # with its observed titlebar control so the sticky footer fits the screen.
+  c.record('observed-maximize-control',x=1002,y=101)
+  c.click(1002,101);time.sleep(3);screen('legacy-repair-maximized')
+  target('legacy-repair-apply','Use theme')
   stop_ui();frame('legacy-after-repair');cycle('legacy-repaired')
   summary['scenarios'].append({'scenario':'actual legacy explicit Repair','execution':'complete; raw baseline and provenance retained'})
  else:

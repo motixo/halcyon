@@ -9,7 +9,7 @@ on:
       host_filter:
         description: 'Focused infrastructure rerun: all, stock, islands'
         type: choice
-        options: [all, stock, islands]
+        options: [all, stock, islands, remaining]
         default: all
       lineage_filter:
         description: 'Focused infrastructure rerun: all, public, candidate'
@@ -54,6 +54,7 @@ jobs:
       fail-fast: false
       matrix:
         lineage: ${{ fromJSON(inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
+        exclude: ${{ fromJSON(inputs.host_filter == 'remaining' && '[{"lineage":"candidate","host":"stock"}]' || '[]') }}
         host: ${{ fromJSON(inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
