@@ -6937,19 +6937,43 @@ mod tests {
             assert!(status.success());
             return;
         }
+        // Appearance now schedules read-only wallpaper thumbnails. Inspect
+        // their actual completion rather than equating any Task with an OS write.
+        fn assert_only_backdrop(task: Task<Message>) {
+            use cosmic::iced::futures::StreamExt;
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                    while let Some(action) = stream.next().await {
+                        assert!(
+                            matches!(
+                                action,
+                                cosmic::iced::runtime::Action::Output(cosmic::Action::App(
+                                    Message::Profiles(profiles::Message::Backdrop(_, _))
+                                ))
+                            ),
+                            "Preview must only schedule read-only backdrop work"
+                        );
+                    }
+                }
+            });
+        }
         let path = Config::path().unwrap();
         let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
         assert!(!app.config.appearance.match_cosmic_colors);
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Opacity, 85));
         let task = app.update(Message::MatchCosmicColors(true));
-        assert_eq!(task.units(), 0, "Preview must not schedule an OS command");
+        assert_only_backdrop(task);
         assert!(!app.busy && !app.error);
         assert!(app.config.appearance.match_cosmic_colors);
         assert_eq!(app.config.appearance.opacity, 85);
         assert!(!app.appearance_editing && app.save_at.is_none());
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Corners, 12));
         let task = app.update(Message::MatchCosmicColors(false));
-        assert_eq!(task.units(), 0, "Preview must not schedule an OS command");
+        assert_only_backdrop(task);
         let config = Config::try_load().unwrap();
         assert!(!config.appearance.match_cosmic_colors);
         assert!(!config.appearance.match_wallpaper);

@@ -61,6 +61,44 @@ class SafeProjectStatus(unittest.TestCase):
         self.assertFalse(self.marker.exists(), 'repository helper executed')
         return result['projects']
 
+    def test_current_config_routing(self):
+        # Missing routing, legacy preference, or ignored XDG must not silently
+        # show an empty/wrong project list. Exercise the actual helper process.
+        current = self.root / '.config/halcyon/config.json'
+        custom = self.root / 'custom/halcyon/config.json'
+        legacy = self.root / '.config/cosmic-desktop-cards/config.json'
+        override = self.root / 'override.json'
+        for path in (current, custom, override):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({'project_roots': [str(self.repo)]}))
+        legacy.parent.mkdir(parents=True)
+        bins = self.root / 'bin'
+        bins.mkdir()
+        (bins / 'git').symlink_to('/usr/bin/git')
+        for case, extra, stale_legacy in (
+            ('fresh current home', {}, False),
+            ('stale legacy', {}, True),
+            ('custom XDG', {'XDG_CONFIG_HOME': str(self.root / 'custom')}, True),
+            ('empty XDG', {'XDG_CONFIG_HOME': ''}, True),
+            ('explicit override', {'DESKTOP_CARDS_CONFIG': str(override),
+                                   'XDG_CONFIG_HOME': str(self.root / 'missing')}, True),
+        ):
+            with self.subTest(case=case):
+                if stale_legacy:
+                    legacy.write_text(json.dumps({'project_roots': []}))
+                else:
+                    legacy.unlink(missing_ok=True)
+                env = dict(os.environ)
+                for key in ('DESKTOP_CARDS_CONFIG', 'XDG_CONFIG_HOME'):
+                    env.pop(key, None)
+                env.update(PATH=str(bins), **extra)
+                output = subprocess.check_output(
+                    ['/usr/bin/python3', str(Path(projects.__file__).resolve())], env=env)
+                rows = json.loads(output)['projects']
+                self.assertEqual([row['path'] for row in rows], [str(self.repo)])
+                self.assertFalse(rows[0]['error'])
+        self.assertFalse(self.marker.exists())
+
     def configure_helpers(self):
         hooks = self.root / 'hooks'
         hooks.mkdir()

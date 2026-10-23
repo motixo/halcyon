@@ -1,3 +1,23 @@
+cosmic-ext-halcyon (0.2.0) unstable; urgency=medium
+
+  * Add Frosted, Clear glass, Smoked glass and Liquid materials for widgets,
+    with shared or per-surface finishes, transparency, tint and readable text.
+    Dock and panel materials require the updated active Islands companion,
+    including when using its ordinary Native layout.
+  * Preserve Liquid widget motion in saved setups and semantic Undo.
+  * Qualify Islands on reviewed 1.10/1.11 sources with bounded startup probes,
+    stock fallback and local rounded frosting without changing global frosting.
+  * Fix Projects reading stale legacy settings instead of the current Halcyon
+    configuration, including custom XDG locations and explicit overrides.
+  * Introduce automatic daily activity reporting while desktop widgets run.
+    Reports contain a random installation ID, app version, first country
+    and schema; no widget content is sent. Reporting has no opt-out setting.
+  * Cache approximate country from Country.is without retaining IP addresses.
+  * Explain reporting in first-run setup, App settings and privacy
+    documentation.
+
+ -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Fri, 23 Oct 2026 06:00:00 +0000
+
 cosmic-ext-halcyon (0.1.1) unstable; urgency=medium
 
   * Keep music progress and elapsed time visible after seeking in browser

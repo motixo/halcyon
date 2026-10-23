@@ -8,7 +8,7 @@ Apply native screen-edge or applet-list edits before arranging the live dock. Th
 
 Islands use native theme colors, opacity and frosted-alpha mapping. When the compositor offers background blur and the native theme enables panel frosting, each island has its own rounded blur region. The surface-wide radius stays zero; a coalesced union of logical-pixel rectangles supplies the shape. Input masks share that geometry but keep reveal strips and arrangement handles separate from blur. Transparent gaps pass clicks through. No launcher or companion code changes global theme preferences. COSMIC still reserves a rectangular edge strip according to its normal policy.
 
-The IPC `rounded_blur` capability reports whether all active panel surfaces have a blur object; it is not the current frosting preference or a promise about an unqualified compositor. Without native blur the usual theme-backed background remains available. See [the material integration contract](MATERIALS.md) for Task 2.
+The IPC `rounded_blur` capability reports whether all active panel surfaces have a blur object; it is not the current frosting preference or a promise about an unqualified compositor. Without native blur the usual theme-backed background remains available. See [the material integration contract](MATERIALS.md) for the 0.2.0 finishes, including ordinary Native bar layouts.
 
 ## Compatibility and build
 

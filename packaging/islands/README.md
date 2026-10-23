@@ -6,6 +6,14 @@ not install or activate Islands. Installing this add-on only places files under
 `/usr`; it does not change your session. Activation is per user at the next login.
 Choose the Islands style in Halcyon's Dock & panel settings after activation.
 
+The 0.2.0 companion also renders Halcyon's four glass materials on Dock and Panel,
+with either Native or Islands layout. Widget materials work in the main app alone.
+Bar materials require this updated companion to be active; installing the deb
+without refreshing your per-user copy and logging in again is not sufficient.
+Native theme colors and opacity remain in charge. Material frosting stays local
+to rounded bar regions without changing the global frosting preference. Highlights
+on bars are static; the optional Liquid edge motion belongs to widgets.
+
 The `amd64` add-on supports 64-bit Intel and AMD PCs (x86-64), just like the
 main Halcyon package.
 
@@ -55,7 +63,9 @@ native sessions. These checks do not cover every graphics driver, distribution
 build or monitor setup.
 The 1.10 checks used its source-built compositor with the host's 1.11-era
 libraries and applets. They did not qualify a complete clean 1.10 OS or login
-session; that remains a release-validation requirement.
+session. Hardware GPU performance, fractional scaling and multi-monitor/hotplug
+behavior remain outside this qualification. No unconditional future compatibility
+is claimed.
 
 ## Install and activate
 

@@ -246,7 +246,8 @@ def repository(path, sockets):
 
 
 def scan():
-    path = Path(os.environ.get('DESKTOP_CARDS_CONFIG', Path.home() / '.config/cosmic-desktop-cards/config.json'))
+    config_home = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+    path = Path(os.environ.get('DESKTOP_CARDS_CONFIG', config_home / 'halcyon/config.json'))
     try:
         config = json.loads(path.read_text())
     except (OSError, ValueError):

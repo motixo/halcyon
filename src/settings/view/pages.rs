@@ -1264,6 +1264,11 @@ impl Settings {
                     toggler(self.config.settings_animations).on_toggle(Message::SettingsAnimations).into())),
             ]),
             section(vec![
+                heading("Privacy", ""),
+                detail("Daily activity report", crate::usage::DISCLOSURE),
+                label("Reports are automatic. Inactive records expire after 90 days.", 12., MUTED),
+            ]),
+            section(vec![
                 // Recovered work waits here instead of on every page.
                 split(
                     if self.recovery_sheet.rows.is_empty() {

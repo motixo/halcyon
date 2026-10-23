@@ -575,11 +575,22 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
             before,
             "Inspecting samples saves nothing"
         );
+        // Legacy controls moved below the material chooser into Advanced.
+        // The pointer driver's bounds are content coordinates, so use a tall
+        // fixture for these legacy controls; preview checks above keep both
+        // original viewports. The compact material controls have their own test.
+        let tall = Size::new(size.width, 2200.);
+        let _ = app.update(Message::Resized(tall));
+        native = Native::new(tall);
+        app.system_animations = false;
+        click(&mut app, &mut native, "settings-advanced");
         click(&mut app, &mut native, "contrast-assist");
         assert!(Config::load().appearance.contrast_assist);
         assert_eq!(Config::load().appearance.opacity, 70);
         click(&mut app, &mut native, "settings-undo");
         assert!(!Config::load().appearance.contrast_assist);
+        let _ = app.update(Message::Resized(size));
+        native = Native::new(size);
         let _ = app.update(Message::Page(Page::Devbox));
         let previous = app.config.devbox.clone();
         click(&mut app, &mut native, "devbox-details-memory");
@@ -888,11 +899,15 @@ fn widget_fonts_list_installed_families_and_save_a_choice() {
     if child("widget_fonts_list_installed_families_and_save_a_choice") {
         return;
     }
-    let size = Size::new(1020., 1300.);
+    // Advanced now follows the material chooser; keep all font controls in
+    // the pointer driver's content-coordinate viewport.
+    let size = Size::new(1020., 2200.);
     let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
     let _ = app.update(Message::Resized(size));
     let mut native = Native::new(size);
     assert!(native.try_bounds(app.settings_view(), "font-list-text").is_none());
+    app.system_animations = false;
+    click(&mut app, &mut native, "settings-advanced");
     click(&mut app, &mut native, "font-text");
     assert!(native.try_bounds(app.settings_view(), "font-list-text").is_some());
     native.capture(app.settings_view(), &cosmic::Theme::dark(), "widget-fonts-open");
