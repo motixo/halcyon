@@ -19,13 +19,24 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - name: Build and exercise one disposable guest
+      - name: Install disposable runner tools
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/cosmic/retain"
           sudo env DEBIAN_FRONTEND=noninteractive apt-get update -q
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil aria2
-          sudo env WORK="$RUNNER_TEMP/cosmic" timeout --signal=TERM --kill-after=60s 100m bash private/qualification-021/build.sh 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/build.log"
+      - name: Verify official ISO and signing inputs
+        timeout-minutes: 20
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh inputs 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/inputs.log"
+      - name: Install full signed package cohort onto disk
+        timeout-minutes: 65
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh install 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/install.log"
+      - name: Boot real greeter and exercise stock login session
+        timeout-minutes: 15
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/build.sh exercise 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/boot.log"
+      - name: Make owned retained inputs readable for artifact upload
+        if: always()
+        run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/cosmic/retain"
       - name: Preserve bounded evidence on every outcome
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

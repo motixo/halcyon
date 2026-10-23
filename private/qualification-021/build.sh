@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 umask 022
 : "${WORK:?dedicated disposable build directory required}"
+PHASE=${1:-all}
+[[ "$PHASE" =~ ^(all|inputs|install|exercise)$ ]]
 SRC=$(realpath private/qualification-021)
 mkdir -p "$WORK"/{evidence,retain,iso,root}
 exec 9>"$WORK/lock"; flock -n 9
@@ -18,7 +20,7 @@ cleanup() {
   mountpoint -q iso && umount iso
   [[ -n "$LOOP" ]] && losetup -d "$LOOP"
   if [[ -f guest.raw && ! -f retain/cosmic-1.11.qcow2 ]]; then
-    qemu-img convert -O qcow2 -c guest.raw retain/partial-install.qcow2
+    qemu-img convert -O qcow2 -c -o compression_type=zstd guest.raw retain/partial-install.qcow2
     sha256sum retain/partial-install.qcow2 > evidence/partial-install.sha256
   fi
 }
@@ -30,6 +32,7 @@ import fcntl,os
 f=os.open('/dev/kvm',os.O_RDWR); assert fcntl.ioctl(f,0xAE00,0)==12
 os.close(fcntl.ioctl(f,0xAE01,0)); os.close(f)
 PY
+if [[ "$PHASE" == all || "$PHASE" == inputs ]]; then
 curl -fL --retry 3 https://api.pop-os.org/builds/24.04/generic?arch=amd64 -o evidence/build-api.json
 BASE=https://iso.pop-os.org/24.04/amd64/generic/28
 for name in SHA256SUMS SHA256SUMS.gpg; do curl -fL --retry 3 "$BASE/$name" -o "retain/$name"; done
@@ -41,6 +44,9 @@ aria2c --max-connection-per-server=8 --split=8 --min-split-size=16M \
  --file-allocation=none --max-tries=3 --timeout=30 --summary-interval=60 \
  --dir=retain --out=pop-os_24.04_amd64_generic_28.iso "$BASE/pop-os_24.04_amd64_generic_28.iso"
 (cd retain; sha256sum -c SHA256SUMS) | tee evidence/iso-checksum.txt
+fi
+[[ "$PHASE" != inputs ]] || exit 0
+if [[ "$PHASE" == all || "$PHASE" == install ]]; then
 mount -o loop,ro retain/pop-os_24.04_amd64_generic_28.iso iso
 cp iso/casper/filesystem.manifest evidence/iso-filesystem.manifest
 truncate -s 40G guest.raw
@@ -83,10 +89,12 @@ sync
 for p in run sys proc dev; do umount -R "$R/$p"; done
 umount "$R/boot/efi" "$R"; losetup -d "$LOOP"; LOOP=
 umount iso
-qemu-img convert -O qcow2 -c guest.raw base.qcow2
+qemu-img convert -O qcow2 guest.raw base.qcow2
 rm guest.raw
 cp /usr/share/OVMF/OVMF_VARS_4M.fd base-vars.fd
 cp /usr/share/OVMF/OVMF_CODE_4M.fd retain/OVMF_CODE_4M.fd
+fi
+[[ "$PHASE" != install ]] || exit 0
 cp base-vars.fd trial-vars.fd
 qemu-img create -f qcow2 -F qcow2 -b "$WORK/base.qcow2" trial.qcow2
 qemu-system-x86_64 --version > evidence/qemu-version.txt
@@ -108,7 +116,7 @@ set -e
 # Retain the exercised disk (including disposable user's baseline), not a preboot claim.
 kill "$(cat qemu.pid)" 2>/dev/null || true
 for i in {1..30}; do kill -0 "$(cat qemu.pid)" 2>/dev/null || break; sleep 1; done
-qemu-img convert -O qcow2 -c trial.qcow2 retain/cosmic-1.11.qcow2
+qemu-img convert -O qcow2 -c -o compression_type=zstd trial.qcow2 retain/cosmic-1.11.qcow2
 cp trial-vars.fd retain/cosmic-vars.fd
 cp base-vars.fd retain/preboot-vars.fd
 cp evidence/build-api.json retain/
