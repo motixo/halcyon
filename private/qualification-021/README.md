@@ -7,7 +7,12 @@ services. `checkout` does not persist its read-only repository credential.
 
 ## Provisioning and retained provenance
 
-Run `.github/workflows/qualification-guest-builder.yml`. Build 28 generic amd64 is
+Dispatch `.github/workflows/qualification-guest-builder.yml` on this branch with
+empty `reuse_run` for a fresh build, or set `reuse_run` to a retained builder run
+to verify every retained input hash and replay the image **offline**. Example:
+`gh workflow run qualification-guest-builder.yml --ref ci/qualification-probe-021 -f reuse_run=39954180751`.
+Only read-only Actions/repository permission is supplied on the runner; never
+forward an owner token. Build 28 generic amd64 is
 downloaded only on the disposable runner. Its detached SHA256SUMS signature is
 checked using the fingerprint published at https://apt.pop-os.org/ and the pinned
 Pop keyring revision. The ISO must pass that signed checksum before extraction.
@@ -18,9 +23,12 @@ disk; remove the live `casper`/installer package; configure fstab, UEFI
 systemd-boot, a disposable local user, display manager and QEMU guest agent.
 No host home, desktop configuration, personal account, tokens or signing key is
 mounted or copied. The public disposable login is `probe` / `cosmic-probe`.
-This password protects no real account or service. VNC/QMP/QGA are private Unix
-sockets. The guest has outbound NAT during construction, no listening forwarded
-ports. Qualification overlays should use `-nic none` unless the scenario needs
+This password protects no real account or service. The disposable user's
+first-login setup marker is created and its wizard closed after the first real
+login, preserving default layout/theme values rather than running through
+interactive preference choices. This is recorded as fixture setup. VNC/QMP/QGA are private Unix
+sockets. Chroot package acquisition uses the disposable runner's network; the
+booted guest uses `-nic none`, with no forwarded ports. Qualification overlays should use `-nic none` unless the scenario needs
 network access.
 
 APT authenticates the complete source indexes against the ISO's distribution
@@ -72,8 +80,40 @@ low-disk controller. Obtain the artifact IDs and digest through the Actions API.
 
 ## Limits
 
-A second offline reconstruction must be demonstrated before claiming that the
-retained closure recipe was replay-verified. A retained sealed disk can be used
+Candidate-media example, to run later on the disposable runner with reviewed
+final packages (the product scenario has **not** been executed here):
+
+```bash
+mkdir candidate-inputs
+cp /absolute/final/halcyon*.deb candidate-inputs/
+(cd candidate-inputs && sha256sum -- *.deb > SHA256SUMS)
+xorriso -as mkisofs -V HALCYON_INPUTS -r -o candidate-inputs.iso candidate-inputs
+# Add to the recorded QEMU command:
+# -drive file=/absolute/candidate-inputs.iso,format=raw,media=cdrom,readonly=on
+```
+
+Inside the disposable guest, through QGA's root execution channel:
+
+```bash
+mkdir -p /mnt/candidate
+mount -o ro /dev/sr0 /mnt/candidate
+cd /mnt/candidate
+sha256sum -c SHA256SUMS
+apt-get --no-download install -y /mnt/candidate/*.deb
+dpkg --audit
+apt-get check
+```
+
+Supply the approved expected SHA256SUMS separately from package media too; do
+not trust a manifest merely because it arrived beside a candidate. Capture
+`dpkg-deb --contents` and extracted final payload hashes before installation,
+then running `/proc/PID/exe` hashes after installation/login. Supply dependency
+`.deb` files on the same read-only medium if needed. This example is a staging
+recipe, not an implementation of the parent's complete native scenario adapter.
+
+A second offline rootfs reconstruction must be demonstrated before claiming that the
+ISO-plus-package installation recipe was replay-verified. Replaying the sealed
+disk offline is a separate, narrower check. A retained sealed disk can be used
 for reproducible overlay scenarios independently of that further reconstruction.
 Exact historical 1.10 is not supplied by this work. Its prior partial evidence
 remains partial. Read `guest-builder-report.md` for actual run outcomes; this
