@@ -61,6 +61,10 @@ struct Status {
     active_generation: Option<String>,
     #[serde(default)]
     package_versions: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    installed_cohort: Option<String>,
+    #[serde(default)]
+    running_profiles: Vec<String>,
 }
 thread_local! {
     static NATIVE_VIEW: std::cell::RefCell<Option<Installation>> = const { std::cell::RefCell::new(None) };
@@ -160,11 +164,18 @@ impl Installation {
                         .all(|b| b.is_ascii_alphanumeric() || b".+:~_-".contains(&b))
             })
             .collect();
+        let running_profiles: Vec<_> = status
+            .running_profiles
+            .iter()
+            .take(64)
+            .filter_map(|value| safe_hash(&Some(value.clone())))
+            .collect();
         let diagnostics = serde_json::json!({
             "version": 1, "enabled": status.enabled, "compatible": status.compatible,
             "status": status.status.map(CompatibilityStatus::label), "reason": reason,
             "installed_generation": safe_hash(&status.installed_generation),
             "active_generation": safe_hash(&status.active_generation), "package_versions": packages,
+            "installed_cohort": safe_hash(&status.installed_cohort), "running_profiles": running_profiles,
         })
         .to_string();
         match (status.installation.as_str(), status.provenance) {
@@ -263,6 +274,26 @@ mod tests {
             Installation::parse(unknown.as_bytes()),
             Installation::Pending
         );
+    }
+    #[test]
+    fn task3_runtime_profiles_are_sanitized_cached_diagnostics_not_a_running_lock() {
+        let data = serde_json::json!({
+            "format": "halcyon-islands-installation", "version": 1,
+            "installation": "installed", "provenance": "package", "enabled": true,
+            "compatible": true, "status_version": 1, "status": "Ready",
+            "installed_cohort": "a".repeat(64),
+            "running_profiles": ["b".repeat(64), "/home/private/token".to_string()],
+        });
+        let parsed = Installation::parse(&serde_json::to_vec(&data).unwrap());
+        let diagnostics: serde_json::Value =
+            serde_json::from_str(parsed.diagnostics().unwrap()).unwrap();
+        assert_eq!(diagnostics["installed_cohort"], "a".repeat(64));
+        assert_eq!(
+            diagnostics["running_profiles"],
+            serde_json::json!(["b".repeat(64)])
+        );
+        assert!(diagnostics.get("running_cohort").is_none());
+        assert!(!parsed.diagnostics().unwrap().contains("private"));
     }
     #[test]
     fn task2_installed_disabled_incompatible_and_unknown_are_distinct() {

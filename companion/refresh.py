@@ -102,9 +102,18 @@ def stage_installed_update(home, installed_bundle, *, session=None, fixture=Fals
         return response('blocked', 'unsafe_installation')
 
 
+def require_selector_path(home):
+    paths = os.environ.get('PATH', '').split(os.pathsep)
+    local = str(home / '.local/bin')
+    if local not in paths or '/usr/bin' not in paths or paths.index(local) > paths.index('/usr/bin'):
+        raise ValueError('The session PATH must put ~/.local/bin before /usr/bin')
+
+
 def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda _: None, enable=False):
     if not fixture and Path(os.environ.get('XDG_DATA_HOME', home / '.local/share')) != home / '.local/share':
         return response('blocked', 'unsupported_data_location')
+    if enable and not fixture:
+        require_selector_path(home)
     recover_interrupted(home)
     active = records(home)
     if not active and not enable:
@@ -172,11 +181,15 @@ def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda 
     verify_bundle(target, owner=os.getuid())
     if digest(target / 'manifest.json') != generation:
         raise ValueError('generation_changed')
+    selector_bytes = (target / 'selector.py').read_bytes()
+    selector_info = manifest['files']['selector.py']
+    if hashlib.sha256(selector_bytes).hexdigest() != selector_info['sha256'] or selector_info['mode'] != 0o755:
+        raise ValueError('generation_selector_mismatch')
     boundary('generation')
     pointer = dict(version=1, generation=generation, package_version=manifest['package_version'], defer_session=current)
     contents = {
         POINTER: (canonical(pointer) + b'\n', 0o600),
-        SELECTOR: ((library / 'selector.py').read_bytes(), 0o755),
+        SELECTOR: (selector_bytes, selector_info['mode']),
     }
     if not active:
         contents[SELECTION] = (canonical({'enabled': True, 'defer_session': current}) + b'\n', 0o600)

@@ -16,7 +16,7 @@ import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'companion'))
 from bundle_contract import canonical, digest, identity, verify_bundle, cohort_id
-from native_scenarios import SCENARIOS, validate
+from native_scenarios import SCENARIOS, SYSTEM_UPDATES, validate
 
 
 def artifact_map(root, artifacts):
@@ -30,8 +30,30 @@ def artifact_map(root, artifacts):
     return artifacts
 
 
+def main_identity(package):
+    from discover import package_files
+    fields = subprocess.check_output(['dpkg-deb', '-f', str(package.resolve()), 'Package', 'Version'], text=True, timeout=10)
+    control = dict(line.split(': ', 1) for line in fields.splitlines())
+    if control['Package'] != 'cosmic-ext-halcyon':
+        raise ValueError('wrong_main_package')
+    package_hash = digest(package)
+    files = package_files(package.read_bytes())
+    return dict(package_sha256=package_hash, package_version=control['Version'], files=files,
+                executable='/usr/bin/halcyon', executable_sha256=files['/usr/bin/halcyon'])
+
+
+def input_identities(request):
+    return {**request_identities(request), 'candidate_sha256': identity(request['candidate']),
+            'image_manifest_sha256': identity(request['image']), 'evidence_id': request['evidence_id'],
+            'main_package_sha256': request.get('main_package_sha256'),
+            'main_identity_sha256': identity(request.get('main')),
+            'runtime_contract_sha256': identity(request['runtime_contract'])}
+
+
 def validate_result(request, observed, root):
     reasons = []
+    if request.get('inputs') != input_identities(request) or observed.get('inputs') != request['inputs']:
+        reasons.append('authoritative_inputs_mismatch')
     if observed.get('format') != 'halcyon-native-observation' or observed.get('version') != 1:
         return ['observation_schema']
     if observed.get('request_sha256') != identity(request):
@@ -49,12 +71,29 @@ def validate_result(request, observed, root):
         reasons.append('guest_artifact_mismatch')
     if not observed.get('offline') or not observed.get('no_host_mounts') or observed.get('secrets_present') is not False:
         reasons.append('isolation_unverified')
+    runtime = observed.get('runtime_measurement', {})
+    expected_runtime = request.get('runtime_contract')
+    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 1
+            or runtime.get('verified') is not True or identity(expected_runtime['runtime']) not in runtime.get('profiles', [])):
+        reasons.append('runtime_measurement_mismatch')
     artifacts = artifact_map(root, observed.get('artifacts'))
-    reasons.extend(validate(observed.get('scenarios'), artifacts))
+    if request.get('main'):
+        main = observed.get('main', {})
+        live = main.get('running', {})
+        if (main.get('installed') != request['main'] or live.get('executable') != request['main']['executable']
+                or live.get('sha256') != request['main']['executable_sha256'] or live.get('same_session') is not True
+                or not live.get('evidence') or not all(ref in artifacts and artifacts[ref]['kind'] == 'processes' for ref in live.get('evidence', []))):
+            reasons.append('main_native_identity_mismatch')
+    elif request.get('main_package_sha256'):
+        reasons.append('main_identity_missing')
+    required = {**SCENARIOS, **(SYSTEM_UPDATES if request.get('main_package_sha256') else {})}
+    if request.get('scenarios') != list(required):
+        reasons.append('scenario_contract_mismatch')
+    reasons.extend(validate(observed.get('scenarios'), artifacts, required))
     return reasons
 
 
-def run(candidate_path, image_path, package, out, driver=None):
+def run(candidate_path, image_path, package, out, driver=None, main_package=None):
     out.mkdir(parents=True, exist_ok=False)
     candidate = json.loads(candidate_path.read_bytes())
     image = json.loads(image_path.read_bytes())
@@ -79,6 +118,11 @@ def run(candidate_path, image_path, package, out, driver=None):
         payload_sha256=manifest['payload_sha256'], catalog_sha256=manifest['files']['catalog.json']['sha256'],
         scenarios=list(SCENARIOS), required=dict(network='none', host_mounts=False, secrets=False,
         finalize_before_test=True, preserve_failures=True))
+    request['runtime_contract'] = {k: targets[0][k] for k in ('runtime', 'runtime_compatibility')} if len(targets) == 1 else None
+    request['main'] = main_identity(main_package) if main_package else None
+    request['main_package_sha256'] = digest(main_package) if main_package else None
+    request['scenarios'] = list({**SCENARIOS, **(SYSTEM_UPDATES if main_package else {})})
+    request['inputs'] = input_identities(request)
     (out / 'request.json').write_bytes(canonical(request)+b'\n')
     reasons = ['native_driver_required']
     observation_hash = None
@@ -100,24 +144,44 @@ def run(candidate_path, image_path, package, out, driver=None):
             reasons = ['native_evidence_invalid_or_incomplete']
     if not request['evidence_id']:
         reasons.append('reviewed_catalog_target_required')
-    if digest(package) != request['package_sha256']:
+    if (digest(package) != request['package_sha256'] or
+            (main_package and digest(main_package) != request['main_package_sha256'])):
         reasons.append('package_changed_during_qualification')
     result = dict(format='halcyon-qualification', version=1,
         state='passed' if not reasons else 'blocked', reasons=reasons, request_sha256=identity(request),
         package_sha256=request['package_sha256'], bundle_sha256=bundle_hash,
         payload_sha256=manifest['payload_sha256'], catalog_sha256=request['catalog_sha256'],
         candidate_id=candidate['id'], image_sha256=image['sha256'], graphics=image['graphics'],
-        observation_sha256=observation_hash, scope='complete-session', promotion='review-required')
+        inputs=request['inputs'], observation_sha256=observation_hash, scope='complete-session', promotion='review-required')
     (out/'result.json').write_bytes(canonical(result)+b'\n')
     return result
 
 
-def promotion(package, evidence, approval):
+def request_identities(request):
+    """Authoritative summary derived only from the frozen request."""
+    return {**{k: request[k] for k in ('package_sha256', 'bundle_sha256', 'payload_sha256', 'catalog_sha256')},
+            'candidate_id': request['candidate']['id'], 'image_sha256': request['image']['sha256'],
+            'graphics': request['image']['graphics']}
+
+
+def promotion(package, evidence, approval, main_package=None):
     result = json.loads((evidence/'result.json').read_bytes())
     request = json.loads((evidence/'request.json').read_bytes())
     observed = json.loads((evidence/'observations.json').read_bytes())
     reviewed = json.loads(approval.read_bytes())
-    if (result['state'] != 'passed' or result['scope'] != 'complete-session'
+    expected = request_identities(request)
+    if (request.get('format') != 'halcyon-native-request' or request.get('version') != 1
+            or result.get('format') != 'halcyon-qualification' or result.get('version') != 1
+            or request.get('inputs') != input_identities(request)
+            or result.get('inputs') != request['inputs']
+            or reviewed.get('inputs') != request['inputs']
+            or (digest(main_package) if main_package else None) != request.get('main_package_sha256')
+            or (main_identity(main_package) if main_package else None) != request.get('main')
+            or request['package_sha256'] != digest(package)
+            or any(result.get(k) != v for k, v in expected.items())
+            or request['candidate']['id'] != cohort_id(request['candidate']['cohort'])
+            or request['image']['cohort_id'] != request['candidate']['id']
+            or result['state'] != 'passed' or result['scope'] != 'complete-session'
             or result['package_sha256'] != digest(package)
             or result['request_sha256'] != identity(request)
             or result['observation_sha256'] != digest(evidence/'observations.json')
@@ -131,12 +195,14 @@ def promotion(package, evidence, approval):
         subprocess.run(['dpkg-deb', '-x', str(package.resolve()), work], check=True, timeout=60)
         bundle = Path(work) / 'usr/lib/cosmic-ext-halcyon-islands'
         manifest, catalog = verify_bundle(bundle, 'companion-manifest.json')
-        if digest(bundle / 'companion-manifest.json') != request['bundle_sha256'] or manifest['payload_sha256'] != request['payload_sha256']:
+        if digest(bundle / 'companion-manifest.json') != request['bundle_sha256'] or manifest['payload_sha256'] != request['payload_sha256'] or manifest['files']['catalog.json']['sha256'] != request['catalog_sha256']:
             raise ValueError('promotion_bundle_mismatch')
-        if not any(r['id'] == request['candidate']['id'] and r['qualification'] == 'native-session' and
+        if not any(r['qualification'] == 'native-session' and {k:r[k] for k in ('runtime','runtime_compatibility')} == request['runtime_contract'] and r['payload_sha256'] == request['payload_sha256'] and r['id'] == request['candidate']['id'] and r['qualification'] == 'native-session' and
                    r['evidence']['id'] == request['evidence_id'] and r['evidence']['image_sha256'] == request['image']['sha256']
                    for r in catalog['cohorts']):
             raise ValueError('promotion_catalog_evidence_mismatch')
+    if digest(package) != request['package_sha256'] or (main_package and digest(main_package) != request['main_package_sha256']):
+        raise ValueError('package_changed_during_promotion')
     return dict(package_sha256=digest(package), evidence_sha256=digest(evidence/'result.json'),
                 review_reference=reviewed['review_reference'])
 
@@ -147,18 +213,19 @@ def main():
     p.add_argument('--image',type=Path)
     p.add_argument('--package',type=Path,required=True)
     p.add_argument('--out',type=Path)
+    p.add_argument('--main-package',type=Path)
     p.add_argument('--driver',type=Path)
     p.add_argument('--evidence',type=Path)
     p.add_argument('--approval',type=Path)
     args=p.parse_args()
     try:
         if args.approval:
-            print(json.dumps(promotion(args.package,args.evidence,args.approval))); return 0
+            print(json.dumps(promotion(args.package,args.evidence,args.approval,args.main_package))); return 0
         if not all((args.candidate,args.image,args.out)):
             p.error('--candidate, --image, --out required')
-        result=run(args.candidate,args.image,args.package,args.out,args.driver)
+        result=run(args.candidate,args.image,args.package,args.out,args.driver,args.main_package)
         print(json.dumps(result)); return 0 if result['state']=='passed' else 2
-    except (OSError,ValueError,KeyError,subprocess.SubprocessError) as error:
+    except (OSError,ValueError,KeyError,TypeError,subprocess.SubprocessError) as error:
         p.exit(2, 'Qualification blocked: '+type(error).__name__+'\n')
 
 

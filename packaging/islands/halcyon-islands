@@ -208,6 +208,8 @@ def main():
                 *(['--root', str(home), '--library', str(LIBRARY)] if args.root else [])], timeout=8).returncode
         if modern and args.command == 'enable':
             import refresh
+            if args.root is None:
+                refresh.require_selector_path(home)
             with refresh.locked(home):
                 if (home / '.local/state/desktop-cards-panel/failed').exists():
                     raise ValueError('A previous Islands failure selects the stock panel. Activation was not changed.')

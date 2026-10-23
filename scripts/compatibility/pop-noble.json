@@ -11,7 +11,10 @@
       "origin": "pop-os-release",
       "keyring": "trust/pop-archive.gpg",
       "keyring_sha256": "a228ba8145acf8c57afd44ad7e8eb2d11776b5a2ca5fe5174698110023952f07",
-      "fingerprint": "63C46DF0140D738961429F4E204DD8AEC33A7AFF"
+      "fingerprint": "63C46DF0140D738961429F4E204DD8AEC33A7AFF",
+      "pocket": "noble",
+      "suite": "noble",
+      "codename": "noble"
     }
   ]
 }

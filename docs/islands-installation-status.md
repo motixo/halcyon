@@ -49,8 +49,9 @@ admission policy. The old source-only `compatible` description above applies onl
 to legacy records. New status adds `status_version: 1`, `status`, `reason`,
 `installed_generation`, `active_generation`, `compatibility` and sanitized
 `package_versions`. The status labels are exactly Ready, Log out to activate,
-Using standard panel and Compatibility update needed. Unknown running cohort can
-never be Ready. Integrity failure retains installed provenance and management.
+Using standard panel and Compatibility update needed. Unknown running measurement can
+never be Ready. The complete installed lock and measured runtime profiles are
+separate identities; only an explicit qualified catalog binding connects them. Integrity failure retains installed provenance and management.
 Ready additionally requires the exact selected running ELF and child-owned
 read-only Capabilities reply; this health result never establishes installation.
 A removed package still produces absent even when a retained generation exists.
@@ -65,3 +66,7 @@ markers, read personal configuration, or expose filesystem/session identities.
 See [COMPATIBILITY.md](COMPATIBILITY.md) for the catalog, final-artifact evidence,
 actual 0.2.0 bootstrap and restore-chain contracts. An empty reviewed catalog is
 an honest blocked qualification state, not an invitation to synthesize support.
+
+Diagnostics use `installed_cohort` and `running_profiles` (profile digest list),
+never a guessed running full-package cohort. These fields are also present at the top level of status v1. Rust cached diagnostics
+retain only validated 64-digit hashes (at most 64 profiles); no process or file IO was added to Settings.

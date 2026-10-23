@@ -28,11 +28,20 @@ OPTIONAL = {'fractional-scale': ('capture','input'), 'multi-monitor': ('capture'
             'physical-gpu': ('graphics','capture','input')}
 
 
-def validate(scenarios, artifacts):
+# Group4 supplies these observations from the integrated final main+Islands run.
+SYSTEM_UPDATES = {
+    'updates-discovery': ('packages', 'input', 'capture', 'assertions'),
+    'updates-authorization-cancel': ('packages', 'input', 'config', 'assertions'),
+    'updates-apply-relogin': ('packages', 'login', 'processes', 'capture', 'assertions'),
+    'updates-failure-recovery': ('packages', 'config', 'capture', 'assertions'),
+}
+
+
+def validate(scenarios, artifacts, required=None):
     reasons = []
     if not isinstance(scenarios, dict):
         return ['scenario_results_missing']
-    for name, kinds in SCENARIOS.items():
+    for name, kinds in (SCENARIOS if required is None else required).items():
         row = scenarios.get(name, {})
         if row.get('result') != 'pass' or row.get('native') is not True:
             reasons.append('scenario_incomplete:' + name)

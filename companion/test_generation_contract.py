@@ -11,6 +11,21 @@ from bundle_contract import *
 import runtime_identity
 
 
+def runtime_fixture(row):
+    files = runtime_identity.inventory(row)
+    profile = dict(version=1, processes={name: dict(executable=path, sha256=files[path],
+                   mapped=files.copy(), count=1) for name, path in row['processes'].items()},
+                   constraints={}, unmeasured=['previously-read-resources', 'kernel-bytes', 'driver-firmware', 'anonymous-code'])
+    row['runtime'] = profile
+    row['runtime_compatibility'] = [dict(id=runtime_id(profile), evidence_id=row['evidence']['id'],
+                                       reason='Synthetic fixture explicit scope; not native qualification')]
+    return profile
+
+
+def measured(row):
+    return dict(format='halcyon-runtime-measurement',version=1,verified=True,profiles=[runtime_id(row['runtime'])])
+
+
 def catalog_fixture(payload='a'*64):
     packages = {name: dict(version='1.0',sha256='b'*64,files={'/usr/bin/'+name:'c'*64})
                 for name in ('cosmic-panel','cosmic-comp','cosmic-session','cosmic-settings-daemon')}
@@ -18,6 +33,7 @@ def catalog_fixture(payload='a'*64):
                processes={n:'/usr/bin/'+n for n in ('cosmic-comp','cosmic-session','cosmic-settings-daemon')},
                qualification='native-session',payload_sha256=payload,
                evidence=dict(id='synthetic-unit-fixture-NOT-native',image_sha256='d'*64,scope='complete-session'))
+    runtime_fixture(row)
     row['id']=cohort_id(row)
     return dict(format=CATALOG,version=1,cohorts=[row])
 
@@ -46,13 +62,13 @@ class Contract(unittest.TestCase):
         self.known=dict(verified=True,cohort=self.cohort)
     def classify(self, installed=None,running=None,manifest=None,catalog=None):
         return classify_compatibility(installed if installed is not None else self.known,
-            running if running is not None else self.known,manifest or self.manifest,catalog or self.catalog)
+            running if running is not None else measured(self.catalog['cohorts'][0]),manifest or self.manifest,catalog or self.catalog)
     def test_admitted_identical_running_and_installed(self):
         self.assertEqual(self.classify()['state'],'ready')
     def test_unknown_running_never_ready(self):
         self.assertEqual(self.classify(running={})['state'],'logout_required')
     def test_old_running_new_installed_and_missing_mixed_packages(self):
-        self.assertEqual(self.classify(running=dict(verified=True,cohort='0'*64))['reason'],'installed_running_differ')
+        self.assertEqual(self.classify(running=dict(format='halcyon-runtime-measurement',version=1,verified=True,profiles=['0'*64]))['reason'],'installed_running_differ')
         self.assertEqual(self.classify(installed={})['state'],'unsupported')
         changed=copy.deepcopy(self.catalog);changed['cohorts'][0]['packages']['cosmic-comp']['version']='new'
         self.assertEqual(self.classify(catalog=changed)['state'],'invalid_bundle')
@@ -93,8 +109,11 @@ class Contract(unittest.TestCase):
                 cat['cohorts'][0]['processes'][name]=str(exe)
                 process=proc/str(100+index);process.mkdir();(process/'comm').write_text(name)
                 (process/'exe').symlink_to(exe);(process/'environ').write_bytes(b'XDG_SESSION_ID=native-fixture\0')
-                (process/'maps').write_text('1000-2000 r-xp 0000 00:00 1 '+str(exe)+'\n2000-3000 rw-s 0000 00:00 2 /memfd:graphics-buffer (deleted)\n')
+                (process/'stat').write_bytes(b'100 (fixture) ' + b'0 '*20)
+                st=exe.stat();device=f'{os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}'
+                (process/'maps').write_text(f'1000-2000 r-xp 0000 {device} {st.st_ino} '+str(exe)+'\n2000-3000 rw-s 0000 00:00 2 /memfd:graphics-buffer (deleted)\n')
             with patch.object(runtime_identity,'inventory',return_value=files):
+                runtime_fixture(cat['cohorts'][0])
                 self.assertTrue(runtime_identity.running_identity(cat,proc,session='native-fixture')['verified'])
                 # An executable mapping of an unknown/deleted binary still fails.
                 with (proc/'100/maps').open('a') as stream:stream.write('4000-5000 r-xp 0000 00:00 3 /unknown-library (deleted)\n')

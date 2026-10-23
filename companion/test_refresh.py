@@ -54,6 +54,26 @@ class Refresh(unittest.TestCase):
         self.assertEqual(len(refresh.records(self.home)),2)
         self.disable();self.assertFalse((self.home/refresh.SELECTOR).exists());self.assertFalse((self.home/refresh.POINTER).exists())
         self.assertEqual(config.read_bytes(),b'private user layout')
+    def test_package_replacement_after_snapshot_preserves_selector_and_restore_chain(self):
+        self.enable()
+        old_pointer = (self.home/refresh.POINTER).read_bytes()
+        self.upgrade()
+        intended = (self.library/'selector.py').read_bytes()
+        def replace(point):
+            if point == 'generation':
+                (self.library/'selector.py').write_bytes(b'unrelated concurrent package replacement')
+        self.assertEqual(self.stage(boundary=replace)['state'], 'staged')
+        target, _, _, _ = refresh.selected_generation(self.home)
+        self.assertEqual((self.home/refresh.SELECTOR).read_bytes(), intended)
+        self.assertEqual((target/'selector.py').read_bytes(), intended)
+        refresh.verify_owned(self.home, refresh.records(self.home))
+        install.restore(refresh.records(self.home)[0][0])
+        self.assertEqual((self.home/refresh.POINTER).read_bytes(), old_pointer)
+        refresh.verify_owned(self.home, refresh.records(self.home))
+        self.disable()
+        self.assertFalse((self.home/refresh.SELECTOR).exists())
+        self.assertFalse((self.home/refresh.POINTER).exists())
+
     def test_external_edit_preserved(self):
         self.enable();self.upgrade();selector=self.home/refresh.SELECTOR;selector.write_bytes(b'user edit')
         self.assertEqual(self.stage()['state'],'external_change');self.assertEqual(selector.read_bytes(),b'user edit')

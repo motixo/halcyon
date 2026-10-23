@@ -14,8 +14,6 @@ def verify(root, expected):
     data=json.loads(manifest.read_bytes())
     if data.get('format')!='halcyon-release' or data.get('version')!=1 or data.get('release')=='0.2.0':
         raise ValueError('release_manifest_invalid')
-    if data.get('system_updates_acceptance')!='passed':
-        raise ValueError('group4_acceptance_required')
     kinds=set()
     for name,record in data['artifacts'].items():
         if Path(name).name!=name or digest(root/name)!=record['sha256']:raise ValueError('artifact_mismatch')
@@ -23,7 +21,10 @@ def verify(root, expected):
     if not {'main-deb','islands-deb','corresponding-source'} <= kinds:raise ValueError('release_incomplete')
     package=data['islands_package']
     if data['artifacts'][package]['kind']!='islands-deb':raise ValueError('wrong_companion')
-    promotion(root/package,root/'native-evidence',root/'approval.json')
+    main = [name for name, record in data['artifacts'].items() if record['kind'] == 'main-deb']
+    if len(main) != 1:
+        raise ValueError('exact_main_package_required')
+    promotion(root/package,root/'native-evidence',root/'approval.json',root/main[0])
     return data
 
 if __name__=='__main__':

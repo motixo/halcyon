@@ -147,13 +147,14 @@ def generation_status(result, home, library, installed=None, running=None, host=
         result['healthy'] = host
     result.update(status_version=1, status=label, reason=reason,
                   installed_generation=generation, active_generation=active_generation,
-                  compatibility=state)
+                  installed_cohort=(installed or {}).get('cohort'),
+                  running_profiles=(running or {}).get('profiles', []), compatibility=state)
     # Deliberate allowlist: no filesystem paths, session IDs, environment or
     # exception strings. Diagnostic output cannot change the activation state.
     result['diagnostics'] = dict(version=1, installation=result['installation'],
         provenance=result['provenance'], enabled=result['enabled'], status=label,
         reason=reason, installed_generation=generation, active_generation=active_generation,
-        installed_cohort=(installed or {}).get('cohort'), running_cohort=(running or {}).get('cohort'))
+        installed_cohort=(installed or {}).get('cohort'), running_profiles=(running or {}).get('profiles', []))
     return result
 
 

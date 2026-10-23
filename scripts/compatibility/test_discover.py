@@ -25,6 +25,17 @@ class SignedDiscovery(unittest.TestCase):
         with self.assertRaises(ValueError):self.verify(fingerprint='0'*40)
         with self.assertRaisesRegex(ValueError,'expired'):self.verify(now=self.now+dt.timedelta(days=20))
         with self.assertRaisesRegex(ValueError,'date_invalid'):self.verify(now=self.now-dt.timedelta(days=20))
+    def test_static_base_pocket_requires_explicit_immutable_pin(self):
+        data=(HERE/'fixtures/ubuntu-base-InRelease').read_bytes()
+        key=HERE/'fixtures/multipocket/ubuntu.gpg'
+        fingerprint='F6ECB3762474EDA9D21B7022871920D1991BC93C'
+        with self.assertRaisesRegex(ValueError,'expired'):
+            discover.verify_release(data,key,fingerprint,self.now)
+        release,_,_=discover.verify_release(data,key,fingerprint,self.now,immutable_release_sha256=discover.sha(data))
+        self.assertEqual(release['Suite'],'noble')
+        with self.assertRaisesRegex(ValueError,'immutable_release_changed'):
+            discover.verify_release(data,key,fingerprint,self.now,immutable_release_sha256='0'*64)
+
     def test_index_package_same_source_altered_bytes_rejected(self):
         content=b'Package: cosmic-panel\nVersion: same-source\n'
         digest=hashlib.sha256(content).hexdigest()

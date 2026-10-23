@@ -94,7 +94,7 @@ class GenerationStatus(unittest.TestCase):
                 status=install_status.detect(home,library,True,{},installed=known,running={})
                 self.assertEqual(status['status'],'Log out to activate')
                 self.assertNotIn(str(home),json.dumps(status))
-                status=install_status.detect(home,library,True,{},installed=known,running=known,host=True)
+                status=install_status.detect(home,library,True,{},installed=known,running=__import__('test_generation_contract').measured(catalog['cohorts'][0]),host=True)
                 self.assertEqual(status['status'],'Ready')
             self.assertEqual({p:p.read_bytes() for p in before},before)
             (library/'catalog.json').write_text('{}')

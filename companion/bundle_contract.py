@@ -49,7 +49,48 @@ def read_json(path):
 
 
 def cohort_id(cohort):
-    return identity({k: cohort[k] for k in ('distribution', 'suite', 'architecture', 'packages', 'processes')})
+    # Proof locations and refreshed signed index identities are retained on the
+    # candidate, but do not turn identical installed bytes into a new cohort.
+    def payload(value):
+        if isinstance(value, dict):
+            return {k: payload(v) for k, v in value.items() if k not in ('provenance', 'url')}
+        if isinstance(value, list):
+            return [payload(v) for v in value]
+        return value
+    return identity(payload({k: cohort[k] for k in ('distribution', 'suite', 'architecture', 'packages', 'processes')}))
+
+
+def runtime_id(profile):
+    return identity(profile)
+
+
+def valid_runtime(profile):
+    if profile.get('version') != 1 or not profile.get('processes'):
+        raise ValueError('runtime_schema')
+    if not {'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= profile['processes'].keys():
+        raise ValueError('runtime_required_processes')
+    for name, item in profile['processes'].items():
+        if Path(item['executable']).name != name or not Path(item['executable']).is_absolute() or '..' in Path(item['executable']).parts:
+            raise ValueError('runtime_executable')
+        if not HEX.fullmatch(item['sha256']) or type(item.get('count')) is not int or not 1 <= item['count'] <= 64 or not isinstance(item['mapped'], dict):
+            raise ValueError('runtime_process')
+        for path, sha in item['mapped'].items():
+            if not Path(path).is_absolute() or '..' in Path(path).parts or not HEX.fullmatch(sha):
+                raise ValueError('runtime_mapping')
+    constraints = profile['constraints']
+    if not isinstance(constraints, dict) or set(constraints) - {'kernel_release', 'kernel_version_sha256', 'module_versions'}:
+        raise ValueError('runtime_constraints')
+    if 'kernel_release' in constraints and (not isinstance(constraints['kernel_release'], str) or not 1 <= len(constraints['kernel_release']) <= 256):
+        raise ValueError('runtime_kernel_release')
+    if 'kernel_version_sha256' in constraints and not HEX.fullmatch(constraints['kernel_version_sha256']):
+        raise ValueError('runtime_kernel')
+    for name, attrs in constraints.get('module_versions', {}).items():
+        if not re.fullmatch('[A-Za-z0-9_]+', name) or not attrs or set(attrs) - {'version', 'srcversion'} or not all(isinstance(v, str) and v for v in attrs.values()):
+            raise ValueError('runtime_module')
+    # These are deliberately NOT asserted to be observed package identities.
+    if profile.get('unmeasured') != ['previously-read-resources', 'kernel-bytes', 'driver-firmware', 'anonymous-code']:
+        raise ValueError('runtime_measurement_limits')
+    return profile
 
 
 def valid_catalog(catalog):
@@ -67,6 +108,15 @@ def valid_catalog(catalog):
         if not HEX.fullmatch(row['payload_sha256']):
             raise ValueError('catalog_payload')
         if row['qualification'] == 'native-session':
+            valid_runtime(row['runtime'])
+            if {name:item['executable'] for name,item in row['runtime']['processes'].items()} != row['processes']:
+                raise ValueError('runtime_process_inventory_mismatch')
+            bindings = row['runtime_compatibility']
+            if not bindings or len({b['id'] for b in bindings}) != len(bindings):
+                raise ValueError('runtime_bindings')
+            for binding in bindings:
+                if not HEX.fullmatch(binding['id']) or binding['evidence_id'] != row['evidence']['id'] or not binding.get('reason'):
+                    raise ValueError('runtime_equivalence_evidence')
             # Evidence IDs are allocated before finalization to avoid a digest
             # cycle. Promotion validates the external result for this exact deb.
             evidence = row['evidence']
@@ -79,13 +129,17 @@ def valid_catalog(catalog):
         if not {'cosmic-panel', 'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= row['packages'].keys():
             raise ValueError('catalog_packages')
         for package in row['packages'].values():
-            if not package['version'] or not HEX.fullmatch(package['sha256']) or not package['files']:
+            if not package['version'] or not HEX.fullmatch(package['sha256']) or not isinstance(package['files'], dict):
                 raise ValueError('catalog_package')
             for path, sha in package['files'].items():
                 if not path.startswith('/usr/') and not path.startswith('/lib/'):
                     raise ValueError('catalog_file_path')
                 if '..' in Path(path).parts or not HEX.fullmatch(sha):
                     raise ValueError('catalog_file_digest')
+    profiles = {runtime_id(r['runtime']) for r in catalog['cohorts'] if r.get('runtime')}
+    for row in catalog['cohorts']:
+        if any(b['id'] not in profiles for b in row.get('runtime_compatibility', [])):
+            raise ValueError('runtime_profile_missing')
     return catalog
 
 
@@ -130,12 +184,12 @@ def classify_compatibility(installed, running, manifest, catalog):
         admitted = {r['id']: r for r in catalog['cohorts'] if r['qualification'] == 'native-session'
                     and r['payload_sha256'] == manifest['payload_sha256']}
         current = installed.get('cohort') if installed.get('verified') is True else None
-        active = running.get('cohort') if running.get('verified') is True else None
+        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 1 else None
         if current not in admitted:
             return result('unsupported', 'installed_cohort_unqualified')
         if active is None:
             return result('logout_required', 'running_identity_unknown', current)
-        if active != current:
+        if not set(active).intersection(b['id'] for b in admitted[current]['runtime_compatibility']):
             return result('logout_required', 'installed_running_differ', current)
         return result('ready', 'qualified_cohort', current)
     except (KeyError, TypeError, ValueError, AttributeError):
