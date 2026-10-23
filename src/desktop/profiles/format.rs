@@ -1,4 +1,4 @@
-//! The profile record (`desktop-cards-profile`, version 5).
+//! The profile record (`desktop-cards-profile`, up to version 8).
 //!
 //! Version 2 adds the `windows` and `workspaces` sections and per-variant
 //! window `gaps` under Appearance; version 3 adds `wallpaper` and
@@ -48,8 +48,9 @@ pub use super::desktop_look::{
 };
 
 pub const FORMAT: &str = "desktop-cards-profile";
-/// The newest format, written when a record includes Dock Islands.
-pub const VERSION: u32 = 7;
+/// The newest format, written when a record includes glass materials.
+pub const VERSION: u32 = 8;
+pub const VERSION_7: u32 = 7;
 pub const VERSION_6: u32 = 6;
 pub const VERSION_5: u32 = 5;
 pub const VERSION_4: u32 = 4;
@@ -968,8 +969,11 @@ impl Profile {
     }
     /// The version this record is written as.
     pub fn written_version(&self) -> u32 {
-        if self.appearance_only || self.has_theme_members() {
+        if self.has_materials() {
             return VERSION;
+        }
+        if self.appearance_only || self.has_theme_members() {
+            return VERSION_7;
         }
         if self.has_islands() {
             return VERSION_6;
@@ -1027,6 +1031,11 @@ impl Profile {
             }
         }
         (profile, omitted)
+    }
+    fn has_materials(&self) -> bool {
+        self.widget_style
+            .as_ref()
+            .is_some_and(|v| v.get("materials").is_some() || v.get("material_motion").is_some())
     }
     fn has_theme_members(&self) -> bool {
         [&self.dock, &self.panel]
@@ -1098,9 +1107,14 @@ impl Profile {
                 "Dock Islands requires profile version 6".into(),
             ));
         }
-        if (self.appearance_only || self.has_theme_members()) && self.version < VERSION {
+        if (self.appearance_only || self.has_theme_members()) && self.version < VERSION_7 {
             return Err(ProfileError::Invalid(
                 "Shared themes require profile version 7".into(),
+            ));
+        }
+        if self.has_materials() && self.version < VERSION {
+            return Err(ProfileError::Invalid(
+                "Materials require profile version 8".into(),
             ));
         }
         if self.appearance_only {
@@ -1252,7 +1266,7 @@ pub fn import_local(bytes: &[u8]) -> Result<Profile, ProfileError> {
     // The version a section first appears in.
     let since = |key: &str| {
         if key == "appearance_only" {
-            Some(VERSION)
+            Some(VERSION_7)
         } else if SECTIONS_V1.contains(&key) {
             Some(LEGACY_VERSION)
         } else if SECTIONS_V2.contains(&key) {

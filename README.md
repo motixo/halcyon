@@ -38,6 +38,36 @@ outlines or transparent text. Adjust colors, fonts and corners to suit your wall
 
 *Real desktop screenshots. Click an image to open it at full size.*
 
+## Glass materials
+
+Choose **Frosted**, **Clear glass**, **Smoked glass** or **Liquid** in Appearance.
+Keep one shared finish or adjust Widgets, Dock and Panel independently. Transparency,
+tint and Widget readability let you tune the result without replacing your colors.
+Liquid adds a brief optional edge glint on widgets; bar highlights are static.
+Changes apply immediately, with Undo, and materials travel with saved setups.
+
+Widget materials work in the main app. **Dock and Panel materials require the
+updated, active 0.2.0 companion**, with either Native or Islands layout. Install
+the add-on, run `halcyon-islands enable`, then log out and back in. Older or inactive
+companions keep their previous bar appearance. There is no blur-strength control
+or optical refraction effect.
+
+[![Appearance material chooser](docs/screenshots/materials-chooser.png)](docs/screenshots/materials-chooser.png)
+
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/materials-frosted.png"><img src="docs/screenshots/materials-frosted.png" alt="Frosted widgets and native bars" width="100%"></a><br><strong>Frosted</strong></td>
+    <td width="50%"><a href="docs/screenshots/materials-clear.png"><img src="docs/screenshots/materials-clear.png" alt="Clear glass widgets and native bars" width="100%"></a><br><strong>Clear glass</strong></td>
+  </tr>
+  <tr>
+    <td><a href="docs/screenshots/materials-smoked.png"><img src="docs/screenshots/materials-smoked.png" alt="Smoked glass widgets and native bars" width="100%"></a><br><strong>Smoked glass</strong></td>
+    <td><a href="docs/screenshots/materials-liquid.png"><img src="docs/screenshots/materials-liquid.png" alt="Liquid widgets and native bars" width="100%"></a><br><strong>Liquid</strong></td>
+  </tr>
+</table>
+
+*Native captures in an isolated COSMIC session, using the same wallpaper and
+synthetic notes. Rendering depends on the compositor, theme and wallpaper.*
+
 ## Widgets
 
 Clock, weather, calendar, system monitor, music, Git projects, notes, checklists
@@ -49,8 +79,9 @@ in one overview.
 - **Music:** playback and seeking through MPRIS; controls depend on the player.
 - **Setups:** save your layout and appearance to return to later.
 
-The screenshots show an existing Calendar connection. Google Calendar sign-in
-is not configured in the public **0.1.1** package; the other widgets work without it.
+The older desktop gallery shows an existing Calendar connection. Calendar sign-in
+depends on the publisher’s OAuth configuration: check the release notes for your
+build. The other widgets work without a Google account.
 
 ## Wallpaper & colors
 
@@ -72,8 +103,10 @@ desktop screenshots above.
   <a href="docs/screenshots/settings-panel.png"><img src="docs/screenshots/settings-panel.png" alt="Dock and panel settings with Islands selected, showing placement, size, transparency and corners" width="900"></a>
 </p>
 
-Islands needs a **separate, version-matched package**. For widgets and themes,
-install only Halcyon. [Islands compatibility and installation →](packaging/islands/README.md)
+Islands needs the **separate, matching companion release**. Its selector admits
+reviewed COSMIC source combinations and checks startup; unknown sources fall back
+to the stock panel. The 1.10 qualification uses its compositor with host libraries
+and applets, not a complete clean 1.10 OS. For widgets and themes, install only Halcyon. [Islands compatibility and installation →](packaging/islands/README.md)
 
 ## Install
 
@@ -83,12 +116,18 @@ not AMD-only. ARM devices need a separate build.
 This is an early release; please report problems with your Halcyon and COSMIC
 versions.
 
+**Starting with 0.2.0:** running the desktop widgets automatically sends a daily
+activity report to Google: a random installation ID, app version, approximate first country and report
+format version. Country.is supplies the country from the public IP; Halcyon
+discards the IP. This is always on; there is no reporting toggle.
+[What is collected and why](docs/PRIVACY.md).
+
 1. Download the main `cosmic-ext-halcyon_<version>_amd64.deb` from
    [GitHub Releases](https://github.com/profilaz3/halcyon/releases/latest).
-2. Install the downloaded file. For v0.1.1:
+2. Install the downloaded file. For v0.2.0:
 
    ```sh
-   sudo apt install ./cosmic-ext-halcyon_0.1.1_amd64.deb
+   sudo apt install ./cosmic-ext-halcyon_0.2.0_amd64.deb
    ```
 
 3. Open **Halcyon** from the app launcher. The first-run setup helps you choose
@@ -147,7 +186,13 @@ Code, documentation and design contributions are welcome.
 
 ## Privacy
 
-No analytics or tracking. Weather queries and selected coordinates go to
+Halcyon 0.2.0 and later automatically report daily installation activity to a
+private Google Sheet. Reports contain a random installation ID, app version, approximate first country
+and report format version. The first country is looked up through Country.is;
+Halcyon does not store the IP address. They contain no calendar, music, notes, projects,
+precise location or hardware details. [Privacy details](docs/PRIVACY.md).
+
+Weather queries and selected coordinates go to
 [Open-Meteo](https://open-meteo.com). Connecting Google Calendar allows Halcyon
 to fetch your calendar; sign-in tokens stay in your system keyring. Music
 artwork may be fetched from the public HTTPS URL supplied by your player.

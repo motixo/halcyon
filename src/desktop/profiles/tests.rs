@@ -500,7 +500,7 @@ fn import_refuses_future_unknown_malformed_oversized_and_recovery_records() {
         serde_json::to_vec(&value).unwrap()
     };
     let cases: Vec<(&str, Vec<u8>, bool)> = vec![
-        ("future version", with(json!({"version": 8})), true),
+        ("future version", with(json!({"version": VERSION + 1})), true),
         ("unknown section", with(json!({"screensaver": {"path": "/etc/passwd"}})), true),
         ("later section", with(json!({"wallpaper": {"path": "/etc/passwd"}})), false),
         ("hook", with(json!({"post_apply": "rm -rf ~"})), true),
@@ -805,7 +805,7 @@ fn windows_workspaces_profile_roundtrip_and_legacy_import() {
         ),
         (
             "future version",
-            r#"{"format":"desktop-cards-profile","version":8,"name":"X"}"#,
+            r#"{"format":"desktop-cards-profile","version":9,"name":"X"}"#,
             true,
         ),
     ] {
@@ -829,7 +829,7 @@ fn windows_workspaces_profile_roundtrip_and_legacy_import() {
         let expected = if preset.id == "presentation" {
             format::VERSION_4
         } else {
-            format::VERSION
+            format::VERSION_7
         };
         assert_eq!(preset.profile.version, expected, "{}", preset.id);
         assert!(preset.profile.windows.is_none() && preset.profile.workspaces.is_none());

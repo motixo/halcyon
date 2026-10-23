@@ -496,9 +496,11 @@ pub fn load_installed_fonts() {
     let _ = INSTALLED.set(names);
 }
 pub fn font_installed(name: &str) -> bool {
-    INSTALLED
-        .get()
-        .is_some_and(|names| names.binary_search_by(|known| known.as_str().cmp(name)).is_ok())
+    INSTALLED.get().is_some_and(|names| {
+        names
+            .binary_search_by(|known| known.as_str().cmp(name))
+            .is_ok()
+    })
 }
 
 /// COSMIC's own palettes use a pastel accent in Dark and a deep one in Light,
@@ -694,7 +696,18 @@ impl Config {
                 roles: resolve(self.appearance),
             });
         }
-        cache.as_ref().map(|c| c.roles)
+        cache.as_ref().map(|c| {
+            let mut roles = c.roles;
+            roles.card = crate::materials::palette(
+                roles.card,
+                self.materials.widgets(),
+                self.appearance.contrast_assist,
+            );
+            if self.materials.widgets().is_some() {
+                roles.frosted = !roles.transparent;
+            }
+            roles
+        })
     }
     pub fn wallpaper_palette(&self) -> Palette {
         self.theme_roles()
@@ -702,7 +715,11 @@ impl Config {
     }
     pub fn surface_palette(&self) -> Palette {
         self.theme_roles()
-            .map_or_else(|| self.palette(), |r| r.surface)
+            .map_or_else(|| {
+                let mut p = self.palette();
+                if self.materials.widgets().is_some() { p.background.a = p.background.a.max(0.92); }
+                p
+            }, |r| r.surface)
     }
     /// Whether At a glance draws a panel: its own choice without a widget
     /// style, or when it keeps its own background; otherwise the style's.

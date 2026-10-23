@@ -43,10 +43,20 @@ def run_installer(arguments, env):
         raise ValueError(message[-1] if message else 'Companion installer failed')
 
 
+def version_details(versions, launcher):
+    lines = ['Installed COSMIC packages:']
+    lines.extend(f'  {name}: {versions.get(name) or "unavailable"}' for name in launcher.PACKAGES)
+    for index, system in enumerate(launcher.SUPPORTED_SYSTEMS, 1):
+        lines.append(f'Supported combination {index}:')
+        lines.extend(f'  {name}: {version}' for name, version in system.items())
+    return '\n'.join(lines)
+
+
 def status(home, launcher, installer):
     installed = all((LIBRARY / name).is_file() for name in (
         'cosmic-panel-islands', 'companion-manifest.json', 'install.py', 'panel_launcher.py'))
-    match = installed and launcher.compatible(LIBRARY, manifest_name='companion-manifest.json')
+    versions = launcher.installed_versions()
+    match = installed and launcher.compatible(LIBRARY, versions, 'companion-manifest.json')
     data = Path(os.environ.get('XDG_DATA_HOME', home / '.local/share'))
     bundle = data / 'cosmic-desktop-cards/companion'
     try:
@@ -62,9 +72,16 @@ def status(home, launcher, installer):
                 and selection.get('enabled') is True)
     state = Path(os.environ.get('XDG_STATE_HOME', home / '.local/state')) / 'desktop-cards-panel'
     failed = (state / 'failed').exists()
-    ready = selected and launcher.compatible(bundle) and not failed
+    ready = selected and launcher.compatible(bundle, versions) and not failed
     print('Installed: ' + ('yes' if installed else 'no'))
     print('System compatibility (selector checks): ' + ('match' if match else 'no match'))
+    if not launcher.supported_system(versions):
+        print(version_details(versions, launcher))
+    if match:
+        exact = any(versions == row for row in launcher.SUPPORTED_SYSTEMS)
+        print('Qualification: ' + ('listed package combination' if exact else
+              'reviewed source combination; distribution rebuild, not a fully tested OS'))
+        print('Runtime ABI and compositor checks run at panel startup; status does not verify them.')
     print('Enabled for this user: ' + ('yes' if selected else 'no'))
     if failed:
         print('Stock panel selected: a previous Islands failure is recorded.')
@@ -109,6 +126,18 @@ def change(command, home, fixture, launcher, installer):
             raise ValueError('An existing panel selector is not managed by this command; restore its original install record first')
         if not launcher.compatible(LIBRARY, launcher.PACKAGES, 'companion-manifest.json'):
             raise ValueError('Packaged binary or manifest fails the selector integrity checks')
+        versions = launcher.installed_versions()
+        if not launcher.compatible(LIBRARY, versions, 'companion-manifest.json'):
+            raise ValueError(
+                'This Islands build does not support the installed COSMIC packages.\n'
+                + version_details(versions, launcher)
+                + '\nActivation was not changed. Install an Islands build tested for these packages; '
+                  'do not downgrade COSMIC to enable it.')
+        state = Path(env.get('XDG_STATE_HOME', home / '.local/state')) / 'desktop-cards-panel'
+        if (state / 'failed').exists():
+            raise ValueError(
+                'A previous Islands failure selects the stock panel. Activation was not changed. '
+                'See /usr/share/doc/cosmic-ext-halcyon-islands/README before retrying.')
         # Never hide edits by layering a fresh installation over a changed bundle.
         if active:
             record = active[0][1]
@@ -130,10 +159,7 @@ def change(command, home, fixture, launcher, installer):
                            '--manifest', str(LIBRARY / 'companion-manifest.json'),
                            '--enable-next-login', '--record-owner', PACKAGE], env)
         print('Islands enabled for the next login. Log out and back in to start it.')
-        print('The normal panel is used whenever COSMIC versions do not match.')
-        state = Path(env.get('XDG_STATE_HOME', home / '.local/state')) / 'desktop-cards-panel'
-        if (state / 'failed').exists():
-            print('A previous failure marker still selects the stock panel; see the package README.')
+        print('The normal panel is used if source qualification or runtime checks fail.')
         return 0
 
 

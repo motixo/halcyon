@@ -99,6 +99,7 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
         }
         Message::SidebarSlide(_) => add(&["sidebar_slide"]),
         Message::SettingsAnimations(_) => add(&["settings_animations"]),
+        Message::MaterialMotion(_) => add(&["material_motion"]),
         Message::Tools(tools::Message::Player(_))
         | Message::Tools(tools::Message::Card(crate::tools::cards::Action::MusicAuto)) => {
             add(&["music", "player"])

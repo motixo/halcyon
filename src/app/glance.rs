@@ -1,8 +1,8 @@
 //! The unified, content-sized clock, weather, and current agenda surface.
 use super::*;
-use crate::config::{ClockAlignment, GlanceDensity};
 #[cfg(test)]
 use crate::config::GlanceStyle;
+use crate::config::{ClockAlignment, GlanceDensity};
 use cosmic::iced::Size;
 use cosmic::iced::advanced::text::{self as advanced_text, Paragraph};
 use cosmic::iced::widget::rich_text;
@@ -1040,7 +1040,8 @@ impl Cards {
         } else {
             opacity
         };
-        let themed = self.config.appearance.family.is_some();
+        let themed =
+            self.config.appearance.family.is_some() || self.config.materials.widgets().is_some();
         let opacity = if themed { p.background.a } else { opacity };
         let outline = if themed {
             self.config.appearance.border_opacity as f32 / 100.
@@ -1048,7 +1049,7 @@ impl Cards {
             0.14
         };
         let radius: f32 = if themed {
-            self.config.appearance.corner_radius as f32
+            crate::widget_style::corner_radius(&self.config)
         } else if self.glance_compact() {
             20.
         } else {
@@ -1061,7 +1062,15 @@ impl Cards {
             },
             ..p
         });
-        container(column::with_children(vec![content]).width(Length::Fill))
+        let background = crate::widget_style::background(Color {
+            a: opacity,
+            ..p.background
+        });
+        let material_border = crate::widget_style::border(Color {
+            a: outline,
+            ..p.accent
+        });
+        let content = container(column::with_children(vec![content]).width(Length::Fill))
             .padding(padding)
             .width(width)
             .height(height)
@@ -1069,14 +1078,12 @@ impl Cards {
                 cosmic::iced::widget::container::Style {
                     text_color: Some(p.foreground),
                     icon_color: Some(p.foreground),
-                    background: panel.then_some(Background::Color(Color {
-                        a: opacity,
-                        ..p.background
-                    })),
+                    background: panel.then_some(background),
                     border: Border {
-                        color: Color {
-                            a: if panel { outline } else { 0. },
-                            ..p.accent
+                        color: if panel {
+                            material_border
+                        } else {
+                            Color::TRANSPARENT
                         },
                         width: if panel { edge.0 } else { 0. },
                         radius: radius.into(),
@@ -1085,7 +1092,17 @@ impl Cards {
                     ..Default::default()
                 }
             }))
-            .into()
+            .into();
+        crate::widget_style::surface(
+            content,
+            Palette {
+                background: Color {
+                    a: if panel { opacity } else { 0. },
+                    ..p.background
+                },
+                ..p
+            },
+        )
     }
 }
 

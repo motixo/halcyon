@@ -89,10 +89,12 @@ class CompanionPackaging(unittest.TestCase):
         subprocess.run([sys.executable, str(COMPANION / 'install.py'), '--root', str(self.home),
                         '--binary', str(self.binary), '--manifest', str(self.manifest), '--enable-next-login'],
                        env=env, capture_output=True, check=True)
+        # Isolate session deferral from host package and compositor admission.
         code = ('import sys; from pathlib import Path; '
                 + 'sys.path.insert(0, ' + repr(str(COMPANION)) + '); '
                 + 'import panel_launcher as p; p.STOCK=Path("/bin/true"); '
-                + 'p.other_host=lambda: None; p.compatible=lambda bundle: True; sys.exit(p.main())')
+                + 'p.other_host=lambda: None; p.compatible=lambda bundle: True; '
+                + 'p.runtime_compatible=lambda bundle: True; sys.exit(p.main())')
         subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, check=True, timeout=5)
         self.assertFalse(marker.exists(), 'staging activated the companion in the same login')
         env['XDG_SESSION_ID'] = 'review-next'
@@ -415,6 +417,7 @@ class CompanionPackaging(unittest.TestCase):
                         with patch.dict(os.environ, child_env, clear=True), \
                                 patch.object(launcher, 'other_host', return_value=None), \
                                 patch.object(launcher, 'compatible', return_value=True), \
+                                patch.object(launcher, 'runtime_compatible', return_value=True), \
                                 patch.object(launcher.os, 'open', opened), \
                                 patch.object(launcher.os, 'fstat'), patch.object(launcher.os, 'set_inheritable'), \
                                 patch.object(Path, operation, side_effect=error), \

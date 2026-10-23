@@ -167,7 +167,7 @@ impl Page {
             Self::Overview => "Layout",
             Self::Widgets => "My widgets",
             Self::WidgetLayout => "Layout",
-            Self::Appearance => "Widget style",
+            Self::Appearance => "Appearance",
             Self::DesktopAppearance => "Theme details",
             Self::DesktopWallpaper => "Wallpaper",
             Self::Themes => "Colors & theme",
@@ -242,7 +242,7 @@ impl Page {
             Self::Overview => "Layout",
             Self::WidgetLayout => "Arrange widgets",
             Self::PendingChanges => "Recover unfinished work",
-            Self::Appearance => "Widget style",
+            Self::Appearance => "Appearance",
             Self::Widgets => "My widgets",
             Self::Glance => "At a glance",
             Self::Calendar => "Calendar",
@@ -518,6 +518,12 @@ pub enum Message {
     DesktopPaletteChanged,
     AppearanceValue(AppearanceControl, u16),
     AppearancePreview(Widget),
+    MaterialTarget(crate::materials::Target),
+    MaterialChoose(Option<crate::materials::Kind>),
+    MaterialAdjust(bool),
+    MaterialValue(bool, u8),
+    MaterialSave,
+    MaterialMotion(bool),
     ContrastAssist(bool),
     WidgetSurface(Option<crate::desktop_theme::Surface>),
     ResetThemeSurface(crate::desktop::profiles::Domain),
@@ -604,6 +610,11 @@ pub struct Settings {
     samples: crate::app::SettingsSamples,
     notice: u16,
     notice_editing: bool,
+    material_target: crate::materials::Target,
+    material_adjust: bool,
+    material_draft: Option<crate::materials::Finish>,
+    material_baseline: Option<crate::materials::Materials>,
+    material_native: bool,
     appearance_draft: crate::config::Appearance,
     appearance_preview: Widget,
     appearance_editing: bool,
@@ -791,6 +802,11 @@ impl cosmic::Application for Settings {
             session_drafts: session_drafts::SessionDrafts::default(),
             recovery_sheet: legacy::Recovery::load(),
             notice: config.meeting_notice_minutes.clamp(1, 60) as u16,
+            material_target: Default::default(),
+            material_adjust: false,
+            material_draft: None,
+            material_baseline: None,
+            material_native: false,
             appearance_draft: config.appearance.clone(),
             appearance_preview: Widget::Weather,
             nav_model: navigation::model(page),
@@ -857,6 +873,10 @@ impl cosmic::Application for Settings {
         if page == Page::DesktopDock {
             app.desktop.open();
         }
+        if page == Page::Appearance {
+            app.material_native = crate::desktop::actions::history_store()
+                .is_ok_and(|s| crate::desktop::materials::native_support(&s));
+        }
         if page == Page::DesktopAppearance {
             app.system_appearance.open();
         }
@@ -875,8 +895,10 @@ impl cosmic::Application for Settings {
         }
         app.restore_session_drafts();
         app.open_page_editor(page);
-        if matches!(page, Page::Overview | Page::DesktopProfiles | Page::Themes)
-            || page.nav() == Page::Widgets
+        if matches!(
+            page,
+            Page::Overview | Page::DesktopProfiles | Page::Themes | Page::Appearance
+        ) || page.nav() == Page::Widgets
         {
             app.profiles.open_home();
         }
@@ -2092,8 +2114,10 @@ impl Settings {
                 if matches!(page, Page::DesktopProfiles | Page::Themes) {
                     self.profiles.open();
                 }
-                if matches!(page, Page::Overview | Page::DesktopProfiles | Page::Themes)
-                    || page.nav() == Page::Widgets
+                if matches!(
+                    page,
+                    Page::Overview | Page::DesktopProfiles | Page::Themes | Page::Appearance
+                ) || page.nav() == Page::Widgets
                 {
                     self.profiles.open_home();
                 }
@@ -2367,6 +2391,36 @@ impl Settings {
                 self.flush_edits()
             }
             Message::CommitEdits(_) => {}
+            Message::MaterialTarget(target) => {
+                self.save_material_draft();
+                self.material_target = target;
+            }
+            Message::MaterialChoose(kind) => {
+                self.flush_edits();
+                self.material_draft = None;
+                self.material_baseline = None;
+                let current = self.config.materials.effective(self.material_target);
+                self.apply_material(kind.map(|kind| current.filter(|f| f.kind == kind).unwrap_or_else(|| crate::materials::Finish::new(kind))));
+            }
+            Message::MaterialAdjust(open) => self.material_adjust = open,
+            Message::MaterialValue(opacity, value) => {
+                if self.material_draft.is_none() {
+                    self.material_baseline = Some(self.config.materials);
+                }
+                if let Some(mut finish) = self
+                    .material_draft
+                    .or(self.config.materials.effective(self.material_target))
+                {
+                    if opacity {
+                        finish.opacity = Some(value);
+                    } else {
+                        finish.tint = value;
+                    }
+                    self.material_draft = Some(finish);
+                }
+            }
+            Message::MaterialSave => self.save_material_draft(),
+            Message::MaterialMotion(on) => self.save(json!({"material_motion":on})),
             Message::AppearancePreview(widget) => self.appearance_preview = widget,
             Message::WidgetSurface(value) => self.save_appearance(json!({"surface":value})),
             Message::ResetThemeSurface(domain) => {
@@ -2379,6 +2433,17 @@ impl Settings {
             Message::ContrastAssist(on) => {
                 self.flush_edits();
                 self.save_appearance(json!({"contrast_assist":on}));
+            }
+            Message::AppearanceValue(AppearanceControl::Opacity, value)
+                if self.config.materials.widgets().is_some() =>
+            {
+                self.material_target = crate::materials::Target::Widgets;
+                if self.material_draft.is_none() {
+                    self.material_baseline = Some(self.config.materials);
+                }
+                let mut f = self.config.materials.widgets().unwrap();
+                f.opacity = Some(value as u8);
+                self.material_draft = Some(f);
             }
             Message::AppearanceValue(control, value) => {
                 self.appearance_editing = true;
@@ -2937,6 +3002,10 @@ impl Settings {
         )
     }
     fn open_page_editor(&mut self, page: Page) {
+        if page == Page::Appearance {
+            self.material_native = crate::desktop::actions::history_store()
+                .is_ok_and(|s| crate::desktop::materials::native_support(&s));
+        }
         match page {
             Page::DesktopWindows => {
                 self.windows.open();
@@ -3078,6 +3147,7 @@ impl Settings {
         cosmic::task::future(async move { Message::Cities(id, search_cities(query).await) })
     }
     fn flush_edits(&mut self) {
+        self.save_material_draft();
         self.save_at = None;
         self.edit_generation = self.edit_generation.wrapping_add(1);
         let pending = std::mem::take(&mut self.appearance_pending);
@@ -6867,19 +6937,43 @@ mod tests {
             assert!(status.success());
             return;
         }
+        // Appearance now schedules read-only wallpaper thumbnails. Inspect
+        // their actual completion rather than equating any Task with an OS write.
+        fn assert_only_backdrop(task: Task<Message>) {
+            use cosmic::iced::futures::StreamExt;
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            runtime.block_on(async {
+                if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                    while let Some(action) = stream.next().await {
+                        assert!(
+                            matches!(
+                                action,
+                                cosmic::iced::runtime::Action::Output(cosmic::Action::App(
+                                    Message::Profiles(profiles::Message::Backdrop(_, _))
+                                ))
+                            ),
+                            "Preview must only schedule read-only backdrop work"
+                        );
+                    }
+                }
+            });
+        }
         let path = Config::path().unwrap();
         let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
         assert!(!app.config.appearance.match_cosmic_colors);
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Opacity, 85));
         let task = app.update(Message::MatchCosmicColors(true));
-        assert_eq!(task.units(), 0, "Preview must not schedule an OS command");
+        assert_only_backdrop(task);
         assert!(!app.busy && !app.error);
         assert!(app.config.appearance.match_cosmic_colors);
         assert_eq!(app.config.appearance.opacity, 85);
         assert!(!app.appearance_editing && app.save_at.is_none());
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Corners, 12));
         let task = app.update(Message::MatchCosmicColors(false));
-        assert_eq!(task.units(), 0, "Preview must not schedule an OS command");
+        assert_only_backdrop(task);
         let config = Config::try_load().unwrap();
         assert!(!config.appearance.match_cosmic_colors);
         assert!(!config.appearance.match_wallpaper);
@@ -9726,5 +9820,33 @@ mod tests {
             store.latest_change().unwrap().is_none(),
             "one actual click creates one Undo"
         );
+    }
+}
+
+impl Settings {
+    fn apply_material(&mut self, finish: Option<crate::materials::Finish>) {
+        let baseline = self.material_baseline.take();
+        let result = crate::desktop::actions::history_store()
+            .map_err(|e| e.to_string())
+            .and_then(|store| {
+                crate::desktop::materials::apply_from(
+                    &store,
+                    self.material_target,
+                    finish,
+                    baseline,
+                )
+            });
+        match result {
+            Ok(()) => {
+                self.config = Config::load();
+                self.saved();
+            }
+            Err(error) => self.failed(error),
+        }
+    }
+    fn save_material_draft(&mut self) {
+        if let Some(finish) = self.material_draft.take() {
+            self.apply_material(Some(finish));
+        }
     }
 }

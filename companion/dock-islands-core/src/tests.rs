@@ -146,3 +146,21 @@ fn keyboard_reordering_skips_empty_sections_and_preserves_their_slot() {
     a.reorder_visible(Placement::Together, Section::Center, present, 1);
     assert_eq!(a, saved);
 }
+
+#[test]
+fn rounded_regions_keep_gaps_clear_and_coalesce_straight_edges() {
+    // A square needs one rectangle, not one request per row.
+    assert_eq!(rounded_region(10, 20, 12, 8, 0.), vec![[10, 20, 12, 8]]);
+    assert!(rounded_region(0, 0, 0, 8, 4.).is_empty());
+    // Radius two: corner rows inset one; middle rows span the full width.
+    assert_eq!(
+        rounded_region(10, 20, 8, 6, 2.),
+        vec![[11, 20, 6, 2], [10, 22, 8, 2], [11, 24, 6, 2]]
+    );
+    let rects = rounded_region(0, 0, 8, 6, 160.);
+    assert_eq!(rects, rounded_region(0, 0, 8, 6, 3.));
+    for [x, y, w, h] in rects {
+        assert!(x >= 0 && y >= 0 && x + w <= 8 && y + h <= 6);
+        assert!(w > 0 && h > 0);
+    }
+}

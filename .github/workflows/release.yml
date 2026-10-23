@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Verify activity collector deployment
+        run: python3 scripts/usage/release-check.py --check-live
       - name: Install build and packaging dependencies
         run: |
           sudo apt-get update
@@ -33,6 +35,10 @@ jobs:
           desktop-file-validate packaging/io.github.profilaz3.Halcyon.desktop
       - name: Build release binary
         run: cargo build --release --locked
+      - name: Test activity collector
+        run: |
+          node --test scripts/usage/collector.test.cjs
+          python3 -m unittest discover -s scripts/usage -p 'test_*.py'
       - name: Test Python helpers and packaging
         run: |
           for test in scripts/test_*.py; do
@@ -41,6 +47,7 @@ jobs:
           python3 -m unittest scripts/test_controller.py
           python3 -m unittest discover -s packaging -p 'test_*.py'
           python3 packaging/islands/test_islands.py
+          python3 -m unittest companion.test_compatibility
       - name: Test Rust
         run: cargo test --locked -- --test-threads=1
       - name: Test Islands core

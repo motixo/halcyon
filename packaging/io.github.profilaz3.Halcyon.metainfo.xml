@@ -18,8 +18,12 @@
       <li>Reversible changes that preserve your applets, their order, panel
       position and the widgets you set up.</li>
     </ul>
-    <p>No analytics, no tracking, and no account needed. Connecting Google Calendar
-    is optional. Weather uses Open-Meteo and sign-in tokens stay in your system keyring.</p>
+    <p>No account is needed. Halcyon automatically sends a daily activity report
+    to Google while the desktop widgets run: a random installation ID, app version,
+    approximate first country and report format version. Country.is provides the
+    country from the public IP; Halcyon does not store the IP. Reporting is always on; no widget content is sent.</p>
+    <p>Connecting Google Calendar is optional. Weather uses Open-Meteo and sign-in
+    tokens stay in your system keyring.</p>
   </description>
   <developer id="io.github.profilaz3">
     <name>profilaz3</name>
@@ -33,6 +37,15 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="0.2.0" date="2026-10-23">
+      <description><ul>
+        <li>Add four shared glass materials, surface overrides and saved Liquid widget motion.</li>
+        <li>Extend materials to Dock and Panel with the updated active optional companion.</li>
+        <li>Qualify reviewed COSMIC sources with startup probes and stock fallback.</li>
+        <li>Fix Projects reading the current Halcyon configuration.</li>
+        <li>Add automatic daily activity and approximate country reporting with privacy disclosure; no widget content is sent.</li>
+      </ul></description>
+    </release>
     <release version="0.1.1" date="2026-10-23">
       <description>
         <ul>

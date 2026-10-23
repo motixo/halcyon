@@ -533,6 +533,43 @@ pub fn plan(
                 widget::put(&mut value, pointer, entry.desired.clone())
             })
             .and_then(|()| config::check_config_value(&value).map(drop));
+        if outcome.is_ok()
+            && result
+                .widget
+                .changes()
+                .any(|(p, _)| p.starts_with("/materials/"))
+        {
+            let material_result = (|| -> Result<(), String> {
+                let next = config::check_config_value(&value)?;
+                for (target, name) in [
+                    (crate::materials::Target::Dock, "Dock"),
+                    (crate::materials::Target::Panel, "Panel"),
+                ] {
+                    let key = crate::desktop::materials::key(name);
+                    let original = store.read_user(&key).map_err(|e| e.to_string())?;
+                    if let Some(raw) = &original {
+                        raw.decode::<dock_islands_core::material::BarMaterial>()?
+                            .validate()?;
+                    }
+                    let desired = next
+                        .materials
+                        .effective(target)
+                        .map(|finish| {
+                            RawValue::encode(&dock_islands_core::material::BarMaterial {
+                                version: 1,
+                                finish,
+                            })
+                        })
+                        .transpose()
+                        .map_err(|e| e.to_string())?;
+                    result.patch.set(key, original, desired);
+                }
+                Ok(())
+            })();
+            if let Err(reason) = material_result {
+                result.blocking.push(reason);
+            }
+        }
         if let Err(reason) = outcome {
             result
                 .blocking

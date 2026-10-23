@@ -58,7 +58,7 @@ impl InactiveReason {
                 "Islands stopped unexpectedly, so the standard panel was selected. See the Islands troubleshooting guide before enabling it again."
             }
             Self::NotRunning => {
-                "Islands is not running. After enabling or updating the add-on, log out and back in. The standard dock and panel remain available."
+                "Islands is not running. Startup checks may have selected the standard panel. After enabling or updating the add-on, log out and back in; check the Islands status and session log if it remains unavailable."
             }
         }
     }
@@ -71,6 +71,27 @@ fn read_record(path: &std::path::Path) -> Option<serde_json::Value> {
     (bytes.len() <= 65536)
         .then(|| serde_json::from_slice(&bytes).ok())
         .flatten()
+}
+
+// Explanatory mirror of the selector's reviewed-source-v1 policy. This never
+// activates a host; ABI/global checks remain the launcher's responsibility.
+fn source_revision<'a>(package: &str, version: &'a str) -> Option<&'a str> {
+    static FORMAT: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let captures = FORMAT
+        .get_or_init(|| {
+            regex::Regex::new(r"^(\d+(?:\.\d+)*)~\d+~[0-9.]+~([0-9a-f]{7,40})$")
+                .expect("fixed package pattern")
+        })
+        .captures(version)?;
+    let release: Vec<u64> = captures[1]
+        .split('.')
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    if package != "cosmic-comp" && release.as_slice() < [1, 10].as_slice() {
+        return None;
+    }
+    Some(captures.get(2)?.as_str())
 }
 
 fn inactive_reason(
@@ -89,15 +110,33 @@ fn inactive_reason(
         return InactiveReason::Failed;
     }
     if let Some(manifest) = read_record(&bundle.join("manifest.json")) {
-        // Only query fixed package names. Older manifests may omit packages;
-        // absent or unreadable version evidence must not invent an upgrade.
-        for package in ["cosmic-panel", "cosmic-comp", "cosmic-session"] {
-            if let Some(expected) = manifest["packages"][package].as_str()
-                && let Some(actual) = installed_version(package)
-                && actual != expected
-            {
-                return InactiveReason::CosmicChanged;
-            }
+        // New add-ons advertise tested combinations. Older manifests retain
+        // their single combination; missing evidence must not invent an upgrade.
+        let source_policy =
+            manifest["source_policy"] == "reviewed-source-v1" && manifest["runtime_probe"] == 1;
+        let legacy = &manifest["packages"];
+        let candidates = manifest["supported_packages"]
+            .as_array()
+            .filter(|rows| !rows.is_empty())
+            .map(Vec::as_slice)
+            .unwrap_or_else(|| std::slice::from_ref(legacy));
+        let versions = ["cosmic-panel", "cosmic-comp", "cosmic-session"]
+            .map(|name| (name, installed_version(name)));
+        if candidates.iter().all(|candidate| {
+            versions.iter().any(|(name, actual)| {
+                candidate[*name]
+                    .as_str()
+                    .zip(actual.as_deref())
+                    .is_some_and(|(expected, actual)| {
+                        expected != actual
+                            && !(source_policy
+                                && source_revision(name, expected)
+                                    .zip(source_revision(name, actual))
+                                    .is_some_and(|(a, b)| a == b))
+                    })
+            })
+        }) {
+            return InactiveReason::CosmicChanged;
         }
     }
     InactiveReason::NotRunning
@@ -337,6 +376,46 @@ mod tests {
     }
 
     #[test]
+    fn source_policy_diagnoses_rebuilds_without_claiming_unknown_revisions() {
+        let fixture = Fixture::new("islands-source-policy");
+        let bundle = &fixture.0;
+        std::fs::write(bundle.join("cosmic-panel-islands"), "fixture").unwrap();
+        std::fs::write(
+            bundle.join("manifest.json"),
+            r#"{
+            "source_policy":"reviewed-source-v1", "runtime_probe":1,
+            "supported_packages":[{"cosmic-panel":"1.11.0~1~24.04~ca20ce3",
+                "cosmic-comp":"0.1~1~24.04~8cb1802", "cosmic-session":"1.11.0~1~24.04~4b0a0a2"}]
+        }"#,
+        )
+        .unwrap();
+        let actual = |name: &str| {
+            Some(
+                match name {
+                    "cosmic-panel" => "1.11.0~2~26.04~ca20ce3",
+                    "cosmic-comp" => "0.1~2~26.04~8cb1802",
+                    _ => "1.11.0~2~26.04~4b0a0a2",
+                }
+                .into(),
+            )
+        };
+        assert_eq!(
+            inactive_reason(bundle, bundle, actual),
+            InactiveReason::NotRunning
+        );
+        assert_eq!(
+            inactive_reason(bundle, bundle, |name| {
+                if name == "cosmic-comp" {
+                    Some("0.1~2~26.04~abcdef0".into())
+                } else {
+                    actual(name)
+                }
+            }),
+            InactiveReason::CosmicChanged
+        );
+    }
+
+    #[test]
     fn isolated_inactive_message_never_reads_host_companion_state() {
         let fixture = Fixture::new("islands-status-isolated");
         let before = fixture.tree();
@@ -345,6 +424,43 @@ mod tests {
             "The isolated Islands panel component is not active"
         );
         assert_eq!(fixture.tree(), before);
+    }
+
+    #[test]
+    fn inactive_status_accepts_each_supported_combination_but_not_mixed_releases() {
+        let fixture = Fixture::new("islands-status-matrix");
+        let bundle = &fixture.0;
+        std::fs::write(bundle.join("cosmic-panel-islands"), "fixture").unwrap();
+        std::fs::write(bundle.join("selection.json"), r#"{"enabled":true}"#).unwrap();
+        std::fs::write(
+            bundle.join("manifest.json"),
+            r#"{
+            "packages":{"cosmic-panel":"1.11","cosmic-comp":"new","cosmic-session":"1.11"},
+            "supported_packages":[
+                {"cosmic-panel":"1.11","cosmic-comp":"new","cosmic-session":"1.11"},
+                {"cosmic-panel":"1.10","cosmic-comp":"old","cosmic-session":"1.10"}
+            ]
+        }"#,
+        )
+        .unwrap();
+        for (panel, compositor, session, expected) in [
+            ("1.10", "old", "1.10", InactiveReason::NotRunning),
+            ("1.11", "new", "1.11", InactiveReason::NotRunning),
+            ("1.10", "new", "1.10", InactiveReason::CosmicChanged),
+            ("1.12", "newer", "1.12", InactiveReason::CosmicChanged),
+        ] {
+            assert_eq!(
+                inactive_reason(bundle, &bundle.join("state"), |name| Some(
+                    match name {
+                        "cosmic-panel" => panel,
+                        "cosmic-comp" => compositor,
+                        _ => session,
+                    }
+                    .into()
+                )),
+                expected
+            );
+        }
     }
 
     #[test]

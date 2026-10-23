@@ -15,8 +15,10 @@ mod schedule;
 mod settings;
 mod system_theme;
 mod tools;
+mod usage;
 mod watch;
 mod widget_style;
+mod materials;
 
 fn main() -> cosmic::iced::Result {
     // Settings from before the rename move to the new folders, once.
@@ -81,6 +83,7 @@ fn main() -> cosmic::iced::Result {
     if command.as_deref() == Some("--settings") {
         return settings::run(args.next().as_deref().unwrap_or(""));
     }
+    usage::start(paths::state_dir().map(|dir| dir.join("usage.json")));
     let settings = cosmic::app::Settings::default()
         .no_main_window(true)
         .client_decorations(false)

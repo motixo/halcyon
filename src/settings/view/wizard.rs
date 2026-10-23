@@ -792,6 +792,7 @@ impl Settings {
             .into()
         };
         column::with_children(vec![
+            words(crate::usage::DISCLOSURE, 12., SOFT),
             summary("Look", look, Screen::Look),
             summary("Dock & panel", panel, Screen::Bars),
             summary("Weather", city, Screen::Weather),

@@ -299,9 +299,10 @@ impl Cards {
     /// off for every other surface.
     pub(super) fn blur_surfaces(&self) -> Task<Message> {
         use cosmic::iced::platform_specific::shell::commands::blur::blur;
-        let frosted = self.config.theme_roles().is_some_and(|roles| roles.frosted);
+        let frosted = self.config.materials.widgets().is_some()
+            || self.config.theme_roles().is_some_and(|roles| roles.frosted);
         let m = crate::widget_style::shadow_margin(&self.config);
-        let radius = f32::from(self.config.appearance.corner_radius.min(32));
+        let radius = crate::widget_style::corner_radius(&self.config);
         Task::batch(Widget::ALL.map(|widget| {
             let filled = match widget {
                 Widget::Clock => false,

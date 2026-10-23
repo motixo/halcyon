@@ -1148,9 +1148,11 @@ pub async fn fetch_projects() -> Result<ProjectsData, String> {
     tokio::task::spawn_blocking(move || {
         let helper =
             crate::paths::helper("project-status.py").ok_or("Project status unavailable")?;
+        let config = crate::config::Config::path().ok_or("Project configuration unavailable")?;
         let output = std::process::Command::new("/usr/bin/timeout")
             .args(["25s", "/usr/bin/python3"])
             .arg(helper)
+            .env("DESKTOP_CARDS_CONFIG", config)
             .output()
             .map_err(|e| e.to_string())?;
         if !output.status.success() {
@@ -1194,6 +1196,62 @@ pub async fn t3_active() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_helper_receives_resolved_config_path() {
+        if let Ok(expected) = std::env::var("HALCYON_PROJECT_ROUTE_FIXTURE") {
+            let data = tokio::runtime::Runtime::new()
+                .unwrap()
+                .block_on(fetch_projects())
+                .unwrap();
+            assert_eq!(data.updated_at, expected);
+            return;
+        }
+        struct Fixture(std::path::PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        let root = Fixture(
+            std::env::temp_dir().join(format!("halcyon-project-route-{}", std::process::id())),
+        );
+        let helper = root
+            .0
+            .as_path()
+            .join("lib/cosmic-ext-halcyon/project-status.py");
+        std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
+        std::fs::write(
+            &helper,
+            r#"import json, os
+print(json.dumps({'updated_at': os.environ['DESKTOP_CARDS_CONFIG'], 'projects': []}))
+"#,
+        )
+        .unwrap();
+        for explicit in [false, true] {
+            let expected = if explicit {
+                root.0.as_path().join("override.json")
+            } else {
+                root.0.as_path().join("config/halcyon/config.json")
+            };
+            let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+            command
+                .args([
+                    "--exact",
+                    "data::tests::project_helper_receives_resolved_config_path",
+                    "--nocapture",
+                ])
+                .env("HOME", root.0.as_path())
+                .env("XDG_CONFIG_HOME", root.0.as_path().join("config"))
+                .env("HALCYON_PREFIX", root.0.as_path())
+                .env("HALCYON_PROJECT_ROUTE_FIXTURE", &expected)
+                .env_remove("DESKTOP_CARDS_CONFIG");
+            if explicit {
+                command.env("DESKTOP_CARDS_CONFIG", &expected);
+            }
+            assert!(command.status().unwrap().success(), "explicit={explicit}");
+        }
+    }
 
     #[test]
     fn cpu_history_freshness_requires_two_valid_recent_counter_samples() {

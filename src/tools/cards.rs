@@ -111,7 +111,13 @@ pub fn frame<'a, M: 'a>(content: Element<'a, M>, config: &Config, height: f32) -
     let p = config.palette();
     let appearance = config.appearance;
     let edge = crate::widget_style::edge(p);
-    container(
+    let radius = crate::widget_style::radius(appearance.corner_radius);
+    let background = crate::widget_style::background(p.background);
+    let material_border = crate::widget_style::border(Color {
+        a: f32::from(appearance.border_opacity.min(50)) / 100.,
+        ..p.accent
+    });
+    let content = container(
         column::with_children(vec![content])
             .width(Length::Fill)
             .height(Length::Fill),
@@ -123,24 +129,22 @@ pub fn frame<'a, M: 'a>(content: Element<'a, M>, config: &Config, height: f32) -
         cosmic::iced::widget::container::Style {
             text_color: Some(p.foreground),
             icon_color: Some(p.foreground),
-            background: Some(Background::Color(p.background)),
+            background: Some(background),
             border: Border {
-                color: Color {
-                    a: if p.background.a == 0. {
-                        0.
-                    } else {
-                        f32::from(appearance.border_opacity.min(50)) / 100.
-                    },
-                    ..p.accent
+                color: if p.background.a == 0. {
+                    Color::TRANSPARENT
+                } else {
+                    material_border
                 },
                 width: edge.0,
-                radius: f32::from(appearance.corner_radius.min(32)).into(),
+                radius: radius.into(),
             },
             shadow: edge.1,
             ..Default::default()
         }
     }))
-    .into()
+    .into();
+    crate::widget_style::surface(content, p)
 }
 
 fn tinted<'a, M: 'a>(

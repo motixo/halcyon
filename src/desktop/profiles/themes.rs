@@ -248,6 +248,7 @@ pub fn appearance(family: Family, accent: Option<[u8; 3]>) -> AppearanceLook {
 pub fn record(family: Family) -> Profile {
     let mut p = Profile::new(family.title()).unwrap();
     p.appearance_only = true;
+    p.version = super::format::VERSION_7;
     let (opacity, radius, border) = family.geometry();
     p.widget_style = Some(
         json!({"appearance":{"family":family,"surface":null,"opacity":opacity,"corner_radius":radius,"border_opacity":border,"accent":null,"color_source":"custom","sync_colors":true,"wallpaper_colors":false,"contrast_assist":false}}),
@@ -679,7 +680,7 @@ pub fn capture(store: &DesktopStore, name: &str) -> Result<Capture, ProfileError
             .map_err(ProfileError::Invalid)?;
     }
     p.widget_style = Some(style);
-    p.version = VERSION;
+    p.version = super::format::VERSION_7;
     p.validate()?;
     Ok(c)
 }
@@ -1010,7 +1011,7 @@ mod tests {
             json!({"dock":{"anchor":"Left"}}),
             json!({"appearance":{"mode":"light"}}),
             json!({"version":6}),
-            json!({"version":8}),
+            json!({"version":super::format::VERSION + 1}),
             json!({"widget_style":{"appearance":{"family":"future"}}}),
         ] {
             let mut invalid = v.clone();

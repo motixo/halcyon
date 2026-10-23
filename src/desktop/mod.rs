@@ -13,6 +13,7 @@ pub mod apps;
 #[allow(dead_code)]
 pub mod desktop_icons;
 pub mod islands;
+pub mod materials;
 pub mod motion;
 pub mod panels;
 // Consumed by the Profiles page (stage 3, Task 2) and later scheduling.
@@ -38,6 +39,7 @@ pub fn rules() -> impl Iterator<Item = &'static KeyRule> {
     panels::RULES
         .iter()
         .chain(islands::RULES.iter())
+        .chain(materials::RULES.iter())
         .chain(appearance::rules())
         .chain(windows::RULES.iter())
         .chain(workspaces::RULES.iter())
