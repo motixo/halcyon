@@ -21,6 +21,7 @@ mod direct;
 mod drafts;
 mod legacy;
 mod motion;
+mod native_jobs;
 mod navigation;
 mod placement;
 mod preference_undo;
@@ -565,6 +566,7 @@ pub enum Message {
     SetupDismissed(bool),
     SetupOpen(bool),
     OpenWeatherSource,
+    UndoDesktopRestore(String),
     DesktopRestorePreview,
     DesktopRestorePlanned(Result<crate::desktop::recovery::RestorePlan, String>),
     DesktopRestoreConfirm(bool),
@@ -572,6 +574,12 @@ pub enum Message {
     ExportRecovery,
     RecoveryExported(Result<Option<PathBuf>, String>),
     OpenIslandsGuide,
+    NativeDone(native_jobs::Delivery),
+    InstallationChecked(
+        u64,
+        crate::desktop::islands::Installation,
+        desktop::islands::RuntimeStatus,
+    ),
     RefreshInstallation,
     InstallationReady(u64, crate::desktop::islands::Installation),
     ShowControls,
@@ -616,6 +624,9 @@ pub struct Settings {
     recovery_sheet: legacy::Recovery,
     desktop_recovery: recovery::DesktopRecovery,
     installation_generation: u64,
+    native_busy: bool,
+    native_deferred: std::collections::VecDeque<Message>,
+    native_tasks: Vec<Task<Message>>,
     config: Config,
     samples: crate::app::SettingsSamples,
     notice: u16,
@@ -779,6 +790,7 @@ impl cosmic::Application for Settings {
         &mut self.core
     }
     fn init(core: Core, page: Page) -> (Self, Task<Message>) {
+        let _native = crate::desktop::islands::Installation::native_view(Default::default());
         // Styles name their fonts; learn which are installed before drawing.
         crate::desktop_theme::load_installed_fonts();
         let page = page.canonical();
@@ -813,6 +825,9 @@ impl cosmic::Application for Settings {
             recovery_sheet: legacy::Recovery::load(),
             desktop_recovery: recovery::DesktopRecovery::default(),
             installation_generation: 0,
+            native_busy: false,
+            native_deferred: Default::default(),
+            native_tasks: Vec::new(),
             notice: config.meeting_notice_minutes.clamp(1, 60) as u16,
             material_target: Default::default(),
             material_adjust: false,
@@ -885,7 +900,7 @@ impl cosmic::Application for Settings {
         if page == Page::DesktopDock {
             app.desktop.open();
         }
-        if page == Page::Appearance {
+        if page == Page::Appearance && !app.native_worker_needed() {
             app.material_native = crate::desktop::actions::history_store()
                 .is_ok_and(|s| crate::desktop::materials::native_support(&s));
         }
@@ -1266,7 +1281,15 @@ impl cosmic::Application for Settings {
             .into()
     }
     fn on_app_exit(&mut self) -> Option<Message> {
+        if self.native_busy {
+            return Some(Message::Window(WindowControl::Close));
+        }
         self.flush_edits();
+        if self.native_busy {
+            // libcosmic dispatches this message instead of closing. The worker
+            // drains queued Close only after its durable write completes.
+            return Some(Message::Window(WindowControl::Close));
+        }
         self.checkpoint_session_drafts();
         self.automation.release_hold();
         None
@@ -1275,6 +1298,14 @@ impl cosmic::Application for Settings {
         Some(Message::FlushEdits)
     }
     fn update(&mut self, message: Message) -> Task<Message> {
+        let _native = crate::desktop::islands::Installation::native_view(
+            self.desktop.islands.installation.clone(),
+        );
+        if let Some(task) = self.dispatch_native(&message) {
+            return Task::batch(
+                std::iter::once(task).chain(std::mem::take(&mut self.native_tasks)),
+            );
+        }
         let revision = crate::desktop::store::revision();
         let checkpoint = checkpoint_message(&message);
         let scopes = self.preference_scope(&message);
@@ -1431,14 +1462,26 @@ impl cosmic::Application for Settings {
             };
             self.automation.sync_hold(parts);
         }
-        task
+        Task::batch(std::iter::once(task).chain(std::mem::take(&mut self.native_tasks)))
     }
 }
 
 impl Settings {
     fn handle(&mut self, message: Message) -> Task<Message> {
+        if let Some(task) = self.dispatch_native(&message) {
+            return task;
+        }
         match message {
             Message::Preview => return Task::none(),
+            Message::NativeDone(done) => return self.finish_native(done),
+            Message::InstallationChecked(generation, state, runtime) => {
+                if generation != self.installation_generation {
+                    return Task::none();
+                }
+                let _ = self.handle(Message::InstallationReady(generation, state));
+                self.material_native = runtime.material;
+                self.desktop.accept_runtime(runtime);
+            }
             Message::Calendar(message) => return self.update_calendar(message),
             Message::Wizard(message) => return self.update_wizard(message),
             Message::OpenWizard => {
@@ -1552,7 +1595,23 @@ impl Settings {
                 }
             }
             Message::UndoDesktop => return self.undo_desktop_change(),
+            Message::UndoDesktopRestore(expected) => {
+                if self
+                    .last_desktop_change
+                    .as_ref()
+                    .is_none_or(|(_, _, id)| *id != expected)
+                {
+                    self.failed("The last settings action changed. Review Undo again.".into());
+                    return Task::none();
+                }
+                return self.undo_desktop_change();
+            }
             Message::ResolveUndo(restore) => {
+                if self.native_worker_needed() {
+                    if let Some(review) = self.undo_review.clone() {
+                        return self.background_undo(None, Some((review, restore)));
+                    }
+                }
                 if let Some(review) = self.undo_review.as_ref() {
                     let result = crate::desktop::actions::history_store().and_then(|store| {
                         if restore {
@@ -2416,10 +2475,20 @@ impl Settings {
             Message::CommitEdits(_) => {}
             Message::MaterialTarget(target) => {
                 self.save_material_draft();
+                if self.native_busy {
+                    self.native_deferred
+                        .push_back(Message::MaterialTarget(target));
+                    return Task::none();
+                }
                 self.material_target = target;
             }
             Message::MaterialChoose(kind) => {
                 self.flush_edits();
+                if self.native_busy {
+                    self.native_deferred
+                        .push_back(Message::MaterialChoose(kind));
+                    return Task::none();
+                }
                 self.material_draft = None;
                 self.material_baseline = None;
                 let current = self.config.materials.effective(self.material_target);
@@ -2791,26 +2860,35 @@ impl Settings {
                 self.installation_generation += 1;
                 let generation = self.installation_generation;
                 self.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
-                return Task::perform(
-                    async {
-                        tokio::task::spawn_blocking(|| {
-                            crate::desktop::DesktopStore::from_env()
-                                .ok()
-                                .map(|s| crate::desktop::islands::Installation::discover(&s))
-                                .unwrap_or_default()
-                        })
-                        .await
-                        .unwrap_or_default()
-                    },
-                    move |state| cosmic::Action::App(Message::InstallationReady(generation, state)),
-                );
+                let panel = self.desktop.selected;
+                let output = self.desktop.island_output();
+                return cosmic::task::future(async move {
+                    let (state, runtime) = tokio::task::spawn_blocking(move || {
+                        let Ok(store) = crate::desktop::DesktopStore::from_env() else {
+                            return (Default::default(), Default::default());
+                        };
+                        let state = crate::desktop::islands::Installation::discover(&store);
+                        let runtime = desktop::islands::RuntimeStatus::read(
+                            &store,
+                            state.installed(),
+                            panel,
+                            output,
+                        );
+                        (state, runtime)
+                    })
+                    .await
+                    .unwrap_or_default();
+                    Message::InstallationChecked(generation, state, runtime)
+                });
             }
             Message::InstallationReady(generation, state) => {
                 if generation != self.installation_generation {
                     return Task::none();
                 }
+                let _native = crate::desktop::islands::Installation::native_view(state.clone());
                 self.desktop.islands.installation = state;
                 self.desktop.check_islands();
+                self.profiles.refresh();
                 if !self.desktop.islands.installation.installed()
                     && matches!(
                         self.material_target,
@@ -2908,7 +2986,10 @@ fn desktop_write_message(message: &Message) -> bool {
         Message::DesktopIcons(message) => message.writes(),
         Message::WindowRules(message) => message.writes(),
         Message::Shortcuts(message) => message.writes(),
-        Message::CommandDone(..) | Message::UndoDesktop | Message::DesktopRestoreDone(..) => true,
+        Message::CommandDone(..)
+        | Message::UndoDesktop
+        | Message::UndoDesktopRestore(..)
+        | Message::DesktopRestoreDone(..) => true,
         _ => false,
     }
 }
@@ -2992,7 +3073,7 @@ impl Settings {
         Task::none()
     }
     fn update_profiles(&mut self, message: profiles::Message) -> Task<Message> {
-        use profiles::{Message as Edit, Outcome};
+        use profiles::Message as Edit;
         // A dialog result returns to the request that started it, whatever
         // page is showing; everything else belongs to the page.
         let result = matches!(
@@ -3021,7 +3102,12 @@ impl Settings {
                 return Task::none();
             }
         }
-        let media = match self.profiles.update(message) {
+        let outcome = self.profiles.update(message);
+        self.profile_outcome(outcome)
+    }
+    fn profile_outcome(&mut self, outcome: profiles::Outcome) -> Task<Message> {
+        use profiles::Outcome;
+        let media = match outcome {
             Outcome::None => self.media_tasks(),
             Outcome::Changed => self.after_desktop_change(),
             Outcome::FocusName => {
@@ -3041,7 +3127,12 @@ impl Settings {
             return Task::none();
         };
         let store = crate::desktop::DesktopStore::from_env().ok();
-        match wizard.update(message, store.as_ref(), &self.config) {
+        let outcome = wizard.update(message, store.as_ref(), &self.config);
+        self.wizard_outcome(outcome)
+    }
+    fn wizard_outcome(&mut self, outcome: wizard::Outcome) -> Task<Message> {
+        let store = crate::desktop::DesktopStore::from_env().ok();
+        match outcome {
             wizard::Outcome::None => Task::none(),
             wizard::Outcome::Changed => self.after_desktop_change(),
             wizard::Outcome::Done { finish, startup } => {
@@ -3138,7 +3229,7 @@ impl Settings {
         )
     }
     fn open_page_editor(&mut self, page: Page) {
-        if page == Page::Appearance {
+        if page == Page::Appearance && !self.native_worker_needed() {
             self.material_native = crate::desktop::actions::history_store()
                 .is_ok_and(|s| crate::desktop::materials::native_support(&s));
         }
@@ -10107,7 +10198,15 @@ mod tests {
             &controls_theme(&app.config),
             "task2-recovery-after",
         );
-        send_settings(&mut app, Message::UndoDesktop);
+        native_click(&mut app, &mut native, "undo-desktop-restore");
+        assert_eq!(store.read_user(&key).unwrap().unwrap().as_str(), "0.71");
+        native_click(&mut app, &mut native, "restore-desktop");
+        native_click(&mut app, &mut native, "restore-desktop-confirm");
+        let (mut reopened, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut reopened, initial);
+        send_settings(&mut reopened, Message::Resized(size));
+        native_click(&mut reopened, &mut native, "undo-desktop-restore");
+        app = reopened;
         assert_eq!(store.read_user(&key).unwrap().unwrap().as_str(), "0.71");
         std::fs::remove_file(
             store
@@ -10123,11 +10222,244 @@ mod tests {
                 .is_some()
         );
     }
+    #[test]
+    fn task2r1_native_starter_thumbnail_adapts_absent_and_pending_islands() {
+        if desktop_test_child(
+            "task2r1_native_starter_thumbnail_adapts_absent_and_pending_islands",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let (mut app, initial) = Settings::init(Core::default(), Page::DesktopProfiles);
+        settle_settings(&mut app, initial);
+        let preset = crate::desktop::profiles::preset("halcyon").unwrap();
+        let mut native = crate::native_test::Native::new(Size::new(320., 180.));
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
+        let installed = crate::desktop::islands::Installation::discover(&store);
+        app.desktop.islands.installation = installed;
+        let original = native.render(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+        );
+        app.desktop.islands.installation = crate::desktop::islands::Installation::Absent;
+        let absent = native.render(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+        );
+        assert!(
+            absent != original,
+            "absent starter must not reuse the compiled Islands desktop"
+        );
+        native.bounds(
+            app.preset_thumbnail(&preset, 180.),
+            "starter-standard-panel",
+        );
+        app.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
+        let pending = native.render(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+        );
+        assert_eq!(pending, absent);
+        native.capture(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+            "task2r1-standard-thumbnail",
+        );
+    }
+
+    #[test]
+    fn task2r1_slow_probe_never_runs_in_native_pointer_or_focus_completion() {
+        if desktop_test_child(
+            "task2r1_slow_probe_never_runs_in_native_pointer_or_focus_completion",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        use cosmic::iced::futures::StreamExt;
+        use cosmic::iced::{Event, mouse};
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let root = store.fixture_root().unwrap();
+        crate::desktop::islands::fixture_installed(root);
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        send_settings(&mut app, Message::Resized(Size::new(1024., 1800.)));
+        std::fs::write(
+            root.join("slow-islands-probe.py"),
+            format!(
+                "import time,pathlib\ntime.sleep(0.6)\nprint(pathlib.Path({:?}).read_text())\n",
+                root.join("islands-installation.json").to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let mut native = crate::native_test::Native::new(Size::new(1024., 1800.));
+        let rect = native.bounds(app.settings_view(), "manage-islands");
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            rect.center(),
+        );
+        let messages = native
+            .event(
+                app.settings_view(),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                rect.center(),
+            )
+            .0;
+        assert!(!messages.is_empty());
+        let mut pending = Vec::new();
+        for message in messages {
+            let start = Instant::now();
+            pending.push(app.update(message));
+            assert!(
+                start.elapsed() < Duration::from_millis(250),
+                "native navigation waited for the helper"
+            );
+        }
+        for task in pending {
+            settle_settings(&mut app, task);
+        }
+        assert_eq!(app.page, Page::DesktopDock);
+        let rect = native.bounds(app.settings_view(), "native-islands-style");
+        assert!(rect.y + rect.height <= native.size.height);
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            rect.center(),
+        );
+        let messages = native
+            .event(
+                app.settings_view(),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                rect.center(),
+            )
+            .0;
+        assert!(!messages.is_empty());
+        for message in messages {
+            let start = Instant::now();
+            let task = app.update(message);
+            assert!(
+                start.elapsed() < Duration::from_millis(250),
+                "native style action waited for pre-write discovery"
+            );
+            settle_settings(&mut app, task);
+        }
+        let key = crate::desktop::ConfigKey::new(
+            dock_islands_core::NAMESPACE,
+            1,
+            app.desktop.selected.entry(),
+        )
+        .unwrap();
+        assert!(
+            store.read_user(&key).unwrap().is_some(),
+            "rendered Islands choice must complete its Apply transaction"
+        );
+        // Installation disappears after the worker has accepted the displayed
+        // choice, before its guarded commit. Cached UI capability is no authority.
+        std::fs::remove_file(store.user_path(&key)).unwrap();
+        app.desktop.refresh();
+        let prior = store.latest_change().unwrap().map(|v| v.id);
+        std::fs::write(root.join("slow-islands-probe.py"),format!("import time,pathlib\ntime.sleep(0.6)\nc=pathlib.Path({:?})\nn=int(c.read_text())+1 if c.exists() else 1\nc.write_text(str(n))\np=pathlib.Path({:?})\nif n==3: p.write_text('{{\"format\":\"halcyon-islands-installation\",\"version\":1,\"installation\":\"absent\",\"enabled\":false}}')\nprint(p.read_text())\n",root.join("probe-count").to_str().unwrap(),root.join("islands-installation.json").to_str().unwrap())).unwrap();
+        let rect = native.bounds(app.settings_view(), "native-islands-style");
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            rect.center(),
+        );
+        let messages = native
+            .event(
+                app.settings_view(),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                rect.center(),
+            )
+            .0;
+        assert!(!messages.is_empty());
+        for message in messages {
+            let start = Instant::now();
+            let task = app.update(message);
+            assert!(start.elapsed() < Duration::from_millis(250));
+            settle_settings(&mut app, task);
+        }
+        assert!(
+            std::fs::read_to_string(root.join("probe-count"))
+                .unwrap()
+                .parse::<u32>()
+                .unwrap()
+                >= 3
+        );
+        assert!(
+            store.read_user(&key).unwrap().is_none(),
+            "removal before commit must refuse the sidecar"
+        );
+        assert_eq!(store.latest_change().unwrap().map(|v| v.id), prior);
+        assert!(matches!(
+            app.desktop.notice,
+            Some(desktop::Notice::Error(_))
+        ));
+        let start = Instant::now();
+        let task = app.update(Message::RefreshInstallation);
+        assert!(start.elapsed() < Duration::from_millis(250));
+        // Collect the real background response, then dispatch it as the native
+        // event loop does. Result handling itself must not launch another probe.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let messages = runtime.block_on(async {
+            let mut output = Vec::new();
+            if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                while let Some(action) = stream.next().await {
+                    if let cosmic::iced::runtime::Action::Output(cosmic::Action::App(message)) =
+                        action
+                    {
+                        output.push(message);
+                    }
+                }
+            }
+            output
+        });
+        for message in messages {
+            let start = Instant::now();
+            let task = app.update(message);
+            assert!(
+                start.elapsed() < Duration::from_millis(250),
+                "focus completion repeated discovery on the native thread"
+            );
+            settle_settings(&mut app, task);
+        }
+        // Closing waits for the asynchronous material completion rather than
+        // dropping the final adjustment when the app exits.
+        app.material_target = crate::materials::Target::Widgets;
+        let finish = crate::materials::Finish::new(crate::materials::Kind::Frosted);
+        app.material_draft = Some(finish);
+        let start = Instant::now();
+        let exit = app.on_app_exit();
+        assert!(start.elapsed() < Duration::from_millis(250));
+        assert!(
+            exit.is_some(),
+            "exit must wait for its pending native write"
+        );
+        send_settings(&mut app, exit.unwrap());
+        assert_eq!(Config::load().materials.widgets, Some(finish));
+        assert!(app.on_app_exit().is_none());
+    }
 }
 
 impl Settings {
     fn apply_material(&mut self, finish: Option<crate::materials::Finish>) {
         let baseline = self.material_baseline.take();
+        if self.native_worker_needed() {
+            self.background_material(self.material_target, finish, baseline);
+            return;
+        }
         let result = crate::desktop::actions::history_store()
             .map_err(|e| e.to_string())
             .and_then(|store| {

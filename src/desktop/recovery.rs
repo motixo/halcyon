@@ -972,6 +972,6 @@ fn promote(store: &DesktopStore, next: BaselineInfo) -> Result<BaselineInfo, Des
 mod tests;
 
 mod restore;
-pub use restore::{RestorePlan, apply_restore, export_baseline, plan_restore};
+pub use restore::{RestorePlan, apply_restore, export_baseline, plan_restore, write_export};
 pub(crate) use restore::{read_native, record_created, write_native, write_scoped};
 pub(super) use restore::{save_pre_restore, verify_plan};

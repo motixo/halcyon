@@ -17,7 +17,8 @@ Restore uses strict current-byte guards, without semantic theme regeneration.
 
 Export contains scoped appearance/layout preferences and captured raw native
 records. It excludes whole widget configuration, content, accounts, journals and
-history. A checksum/version-damaged but readable manifest can export a bounded,
+history. Exports use a confined no-follow atomic writer with mode 0600, including
+replacement of an existing file. A checksum/version-damaged but readable manifest can export a bounded,
 allowlisted **unverified evidence** envelope, which is never accepted as a restore
 plan. An unreadable manifest is preserved and cannot be safely exported as scoped
 evidence. Separately captured GSettings app animations are exportable, but desktop
@@ -28,7 +29,12 @@ The monotonic generation is never rolled back, including failed/interrupted
 restores. Prepared palettes and queued schedule jobs carry the generation they
 observed. Palette acknowledgement (including a no-op) lives in the journaled
 history record, under the same locks as writes. Interrupted transactions restore
-both preferences and acknowledgement; a stale worker can do neither. The old
+both preferences and acknowledgement; a stale worker can do neither. Recovery of
+a journaled Restore/Undo advances the epoch even if the original process stopped
+before publishing it. Palette commit checks both epoch and the current durable
+acknowledgement, including jobs prepared during Restore. Opaque wallpaper has an
+unavailable ownership stamp, so it cannot block unrelated recovery or suppress a
+later readable wallpaper. The old
 unjournaled acknowledgement is read only before the first restore for compatibility.
 
 Restore is a manual choice. Current-wallpaper colors stay until the next wallpaper
@@ -36,4 +42,5 @@ input; schedules stay enabled, queued older events are superseded, and future
 events follow the existing manual-override/catch-up rules. The epoch's manual date
 survives history pruning and Undo. Pre-restore points under
 `desktop-recovery/pre-restore` are immutable scoped evidence; the normal Undo UI
-and interrupted-change recovery are the supported reversal interfaces.
+and interrupted-change recovery are the supported reversal interfaces. App settings
+shows Undo Restore for the latest restore, including after reopening Settings.

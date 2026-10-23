@@ -47,9 +47,21 @@ def detect(home, library, package_installed, versions):
     result = dict(format=FORMAT, version=1, installation='absent', provenance=None,
                   enabled=False, compatible=None, running=None, healthy=None)
     bundle = home / '.local/share/cosmic-desktop-cards/companion'
-    manifest = verified(library, 'companion-manifest.json') if package_installed else None
-    if manifest is not None:
+    manifest = None
+    payload_qualified = False
+    if package_installed:
+        # dpkg + package CLI establish provenance. Payload qualification is a
+        # separate health/compatibility result, never an installation detector.
         result.update(installation='installed', provenance='package')
+        try:
+            manifest = record(library / 'companion-manifest.json')
+            binary = library / 'cosmic-panel-islands'
+            intact = digest(binary) == manifest.get('binary_sha256') and bool(binary.stat().st_mode & stat.S_IXUSR)
+            payload_qualified = manifest.get('upstream') == 'ca20ce3185b3b4404f429d59d429c40b58a2ddef' and manifest.get('protocol') == 1
+            if not intact:
+                result['healthy'] = False
+        except (OSError, ValueError, TypeError):
+            result['healthy'] = False
     else:
         # A former packaged user bundle is not a supported manual install.
         # Only a completed, unrestored installer record with exact payloads is.
@@ -65,6 +77,7 @@ def detect(home, library, package_installed, versions):
                 manifest = verified(bundle, 'manifest.json')
                 if manifest is not None:
                     result.update(installation='installed', provenance='manual')
+                    payload_qualified = True
                     break
             except (OSError, ValueError, TypeError, KeyError):
                 continue
@@ -72,9 +85,9 @@ def detect(home, library, package_installed, versions):
         return result
     # Compatibility is the selector's single reviewed-source policy. It is
     # independent of installation and remains weaker than running/ABI health.
-    result['compatible'] = panel_launcher.supported_system(versions) and (
+    result['compatible'] = payload_qualified and panel_launcher.supported_system(versions) and (
         any(versions == row for row in panel_launcher.SUPPORTED_SYSTEMS)
-        or manifest.get('runtime_probe') == 1)
+        or (manifest or {}).get('runtime_probe') == 1)
     try:
         selection = record(bundle / 'selection.json')
         result['enabled'] = selection.get('enabled') is True and verified(bundle, 'manifest.json') is not None

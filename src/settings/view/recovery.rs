@@ -13,6 +13,7 @@ impl Settings {
             Installation::Installed { .. } => pages::section(vec![split(
                 label("Add-ons", 14., FG),
                 button::text("Islands")
+                    .id("manage-islands".into())
                     .on_press(Message::Page(Page::DesktopDock))
                     .into(),
             )]),
@@ -42,6 +43,17 @@ impl Settings {
             .spacing(8)
             .into(),
         )];
+        if let Some((crate::desktop::Owner::Recovery, _, id)) = &self.last_desktop_change {
+            rows.push(
+                button::text("Undo Restore")
+                    .id("undo-desktop-restore".into())
+                    .on_press_maybe(
+                        (!recovery.busy && !self.native_busy)
+                            .then(|| Message::UndoDesktopRestore(id.clone())),
+                    )
+                    .into(),
+            );
+        }
         if let Some(problem) = &recovery.problem {
             rows.push(label(problem, 12., MUTED));
         }

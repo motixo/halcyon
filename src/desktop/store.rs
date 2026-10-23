@@ -693,6 +693,11 @@ pub fn choose_root(app_config_override: bool, fixture: Option<PathBuf>) -> RootC
 pub(crate) enum Fault {
     FailWrite(ConfigKey),
     InterruptAfter(usize),
+    InterruptBeforeEpoch,
+    PauseAfterEpoch(
+        std::sync::Arc<std::sync::Barrier>,
+        std::sync::Arc<std::sync::Barrier>,
+    ),
     /// Another program writes this raw value to the key at this index just
     /// before the transaction gets to it.
     ChangedElsewhereBefore(usize, &'static str),
@@ -737,7 +742,7 @@ struct WidgetWrite {
     change: WidgetChange,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DesktopStore {
     user_root: PathBuf,
     system_roots: Vec<PathBuf>,
@@ -1312,7 +1317,7 @@ impl DesktopStore {
         if patch.keys().any(|key| {
             key.namespace() == dock_islands_core::NAMESPACE
                 || key.namespace() == dock_islands_core::material::NAMESPACE
-        }) && !super::islands::Installation::discover(self).installed()
+        }) && !super::islands::Installation::for_write(self).installed()
         {
             return Err(DesktopError::Io(
                 "Islands is not installed. Saved add-on preferences were kept.".into(),
@@ -1334,6 +1339,13 @@ impl DesktopStore {
         }
         if self.journal_path().exists() {
             return Err(DesktopError::RecoveryPending);
+        }
+        // Preparation may observe the new epoch before Restore publishes its
+        // acknowledgement. Make the final ownership decision under these locks.
+        if let (Some(epoch), Some(stamp)) = (patch.epoch_guard, patch.palette_ack) {
+            if self.palette_seen(epoch, stamp)? {
+                return Ok(Committed::empty(id));
+            }
         }
         if let Record::Clear(expected) = record
             && self.latest_change()?.map(|latest| latest.id).as_deref() != Some(expected)
@@ -1556,8 +1568,19 @@ impl DesktopStore {
         super::recovery::ensure_locked(self, super::recovery::BaselineKind::OriginalDesktop)?;
         atomic_write(&self.journal_path(), &bytes, Some(0o600))
             .map_err(|error| io_error("Could not record the change journal", error))?;
+        #[cfg(test)]
+        if matches!(*self.fault.borrow(), Some(Fault::InterruptBeforeEpoch)) {
+            return Err(DesktopError::Io(
+                "Simulated journal-before-epoch interruption".into(),
+            ));
+        }
         if restore_boundary {
             self.advance_restore_epoch()?;
+        }
+        #[cfg(test)]
+        if let Some(Fault::PauseAfterEpoch(published, resume)) = self.fault.borrow().clone() {
+            published.wait();
+            resume.wait();
         }
         let mut written: Vec<&ConfigKey> = Vec::new();
         for (index, (key, entry)) in order.into_iter().enumerate() {
@@ -1611,15 +1634,10 @@ impl DesktopStore {
             return Err(DesktopError::Io("Simulated interruption".into()));
         }
         if restore_boundary {
-            let draft = super::wallpaper::WallpaperDraft::load(self)
-                .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
-            let epoch = self
-                .restore_epoch()
-                .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
-            let ack = Some((
-                epoch,
-                super::wallpaper::automatic::source(self, &draft).stamp,
-            ));
+            let ack = Some(
+                self.restore_palette_ack()
+                    .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?,
+            );
             if let Some(bytes) = &mut new_record {
                 let mut next: undo::UndoFile = serde_json::from_slice(bytes)
                     .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
@@ -1923,6 +1941,11 @@ impl DesktopStore {
         let Some(journal) = self.pending_recovery()? else {
             return Ok(RecoveryReport::default());
         };
+        if matches!(journal.operation.as_str(), "restore" | "undo_restore") {
+            // The journal can be durable before the original epoch write.
+            // Every recovery attempt is a new conservative manual boundary.
+            self.advance_restore_epoch()?;
+        }
         super::recovery::ensure_locked(self, super::recovery::BaselineKind::CurrentDesktop)?;
         let entries = journal
             .entries

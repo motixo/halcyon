@@ -307,7 +307,7 @@ pub(super) struct SavedSelection {
     pub(super) theme: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ProfilesEditor {
     store: Option<Result<DesktopStore, String>>,
     /// The Islands panel component answered when the looks were fitted.

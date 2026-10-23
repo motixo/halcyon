@@ -145,6 +145,29 @@ pub struct DesktopEditor {
 }
 
 impl DesktopEditor {
+    pub fn display_snapshot(&self) -> Self {
+        Self {
+            islands: self.islands.display_snapshot(),
+            store: self.store.clone(),
+            drafts: self.drafts.clone(),
+            selected: self.selected,
+            catalog: self.catalog.clone(),
+            outputs: self.outputs.clone(),
+            undo: self.undo.clone(),
+            elsewhere: self.elsewhere.clone(),
+            notice: self.notice.clone(),
+            advanced: self.advanced,
+            picker: self.picker,
+            applet_group: self.applet_group,
+            starter_open: self.starter_open,
+            has_battery: self.has_battery,
+            applet_query: self.applet_query.clone(),
+            overview: self.overview,
+            drag: self.drag.clone(),
+            focus: self.focus,
+            recovery: self.recovery.clone(),
+        }
+    }
     /// First visit: choose the store and read current values. Later visits
     /// refresh untouched values and keep the drafts. Reads only.
     pub fn open(&mut self) {

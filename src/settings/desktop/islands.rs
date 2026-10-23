@@ -68,6 +68,20 @@ impl DesktopEditor {
             .map(|configured| (self.selected, configured, actual));
     }
     pub fn check_islands(&mut self) {
+        if self.store().is_some_and(|s| {
+            crate::desktop::islands::Installation::on_native_thread()
+                && crate::desktop::islands::Installation::needs_worker(s)
+        }) {
+            // The event handler only consumes the structured background result.
+            if !self.islands.installation.installed() {
+                self.islands.lease = None;
+                self.islands.geometry = None;
+                self.islands.measured_output = None;
+                self.islands.compatible = false;
+                self.islands.status = None;
+            }
+            return;
+        }
         if let Some(store) = self.store().filter(|s| s.fixture_root().is_some()) {
             self.islands.installation = crate::desktop::islands::Installation::discover(store);
         }
@@ -458,4 +472,116 @@ pub fn preview_lengths(draft: &PanelDraft) -> [f64; 3] {
             n as f64 * size + (n - 1) as f64 * spacing + padding * 2.
         }
     })
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RuntimeStatus {
+    pub panel: Option<PanelKind>,
+    pub requested_output: String,
+    pub compatible: bool,
+    pub material: bool,
+    pub status: Option<String>,
+    pub geometry: Option<Layout>,
+    pub output: Option<String>,
+}
+impl RuntimeStatus {
+    pub fn read(store: &DesktopStore, installed: bool, panel: PanelKind, output: String) -> Self {
+        if !installed {
+            return Self::default();
+        }
+        let mut result = Self {
+            panel: Some(panel),
+            requested_output: output.clone(),
+            ..Self::default()
+        };
+        match Client::connect(store).and_then(|mut c| {
+            c.capabilities()?;
+            Ok(c)
+        }) {
+            Ok(mut client) => {
+                result.compatible = true;
+                result.material = matches!(
+                    client.request(&Request::MaterialSupport),
+                    Ok(Response::MaterialSupport { version: 1 })
+                );
+                if let Ok(Response::Draft { layout, view, .. }) =
+                    client.request(&Request::Inspect {
+                        panel: panel.entry().into(),
+                        output,
+                    })
+                {
+                    result.geometry = Some(layout);
+                    result.output = Some(view.output);
+                }
+            }
+            Err(error) => result.status = Some(error),
+        }
+        result
+    }
+}
+impl DesktopEditor {
+    pub fn accept_runtime(&mut self, status: RuntimeStatus) {
+        self.islands.compatible = status.compatible;
+        self.islands.status = status.status;
+        if !self.arranging()
+            && status.panel == Some(self.selected)
+            && status.requested_output == self.requested_island_output()
+        {
+            self.islands.geometry = status.geometry;
+            if let Some(output) = status.output {
+                self.remember_island_output(output);
+            }
+        }
+    }
+}
+impl State {
+    /// Display snapshot while the sole lease owner is executing on a worker.
+    pub fn display_snapshot(&self) -> Self {
+        Self {
+            installation: self.installation.clone(),
+            compatible: self.compatible,
+            status: self.status.clone(),
+            selected: self.selected,
+            group: self.group,
+            gap_text: self.gap_text.clone(),
+            lease: None,
+            geometry: self.geometry.clone(),
+            measured_output: self.measured_output.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    #[test]
+    fn task2r1_runtime_result_is_bound_to_the_requested_panel() {
+        let mut editor = DesktopEditor::default();
+        editor.selected = PanelKind::Panel;
+        let status = RuntimeStatus {
+            panel: Some(PanelKind::Dock),
+            geometry: Some(Layout::default()),
+            output: Some("dock-output".into()),
+            ..Default::default()
+        };
+        editor.accept_runtime(status.clone());
+        assert!(
+            editor.islands.geometry.is_none(),
+            "late Dock geometry cannot become Panel geometry"
+        );
+        editor.accept_runtime(RuntimeStatus {
+            panel: Some(PanelKind::Panel),
+            requested_output: "old-output".into(),
+            ..status.clone()
+        });
+        assert!(
+            editor.islands.geometry.is_none(),
+            "late output geometry cannot replace the selected output"
+        );
+        editor.accept_runtime(RuntimeStatus {
+            panel: Some(PanelKind::Panel),
+            ..status
+        });
+        assert!(editor.islands.geometry.is_some());
+    }
 }

@@ -608,13 +608,15 @@ impl Settings {
 
     /// A miniature desktop: the look's wallpaper (or style colors) with its
     /// widget cards where the layout puts them.
-    pub(super) fn preset_thumbnail<'a>(
+    pub(crate) fn preset_thumbnail<'a>(
         &'a self,
         preset: &'a Preset,
         height: f32,
     ) -> Element<'a, Message> {
         // A starter look shows its rendered desktop, filling the tile.
-        if let Some(handle) = look_preview(preset.id) {
+        let standard_bars =
+            look_preview(preset.id).is_some() && !self.desktop.islands.installation.installed();
+        if !standard_bars && let Some(handle) = look_preview(preset.id) {
             return container(
                 cosmic::widget::image(handle)
                     .width((height * 16. / 9.).floor())
@@ -683,6 +685,37 @@ impl Settings {
                 .into(),
             };
             let mut layers = vec![background];
+            if standard_bars {
+                let bar_height = (screen[1] * 0.055).max(8.);
+                layers.push(
+                    pin(container(fill(
+                        cosmic::widget::space().into(),
+                        Color::from_rgba(0.08, 0.09, 0.11, 0.92),
+                        Color::TRANSPARENT,
+                        0.,
+                        0.,
+                    ))
+                    .id(cosmic::widget::Id::new("starter-standard-panel"))
+                    .width(screen[0])
+                    .height(bar_height))
+                    .position(Point::ORIGIN)
+                    .into(),
+                );
+                layers.push(
+                    pin(fill(
+                        cosmic::widget::space().into(),
+                        Color::from_rgba(0.08, 0.09, 0.11, 0.92),
+                        Color::TRANSPARENT,
+                        0.,
+                        3.,
+                    )
+                    .width(screen[0] * 0.3)
+                    .height(bar_height))
+                    .position(Point::new(screen[0] * 0.35, screen[1] - bar_height - 3.))
+                    .into(),
+                );
+            }
+
             for geometry in &geometry.widgets {
                 if let Some(widget) =
                     Widget::parse(&geometry.key).filter(|widget| config.widget_visible(*widget))

@@ -1923,3 +1923,44 @@ fn task2_queued_schedule_is_superseded_by_restore_but_future_event_runs() {
     };
     assert!(!matches!(job.run(&store)[0].1, Ran::KeptManual(_)));
 }
+#[test]
+fn task2r1_journal_before_epoch_recovery_supersedes_queued_schedule() {
+    let f = Fixture::new("schedule-restore");
+    let store = f.store().with_app_config(f.0.join("config.json"));
+    std::fs::write(store.app_config().unwrap(), "{}").unwrap();
+    crate::desktop::recovery::ensure_baseline(
+        &store,
+        crate::desktop::recovery::BaselineKind::CurrentDesktop,
+    )
+    .unwrap();
+    let due = decide::Due {
+        rule: "a".into(),
+        profile: ProfileRef::Preset("presentation".into()),
+        name: "Clean desktop".into(),
+        cause: decide::Cause::Schedule("2026-10-23T10:00:00".into()),
+        at: Utc::now().timestamp() + 30,
+    };
+    let job = runtime::Job {
+        due: vec![due.clone()],
+        held: Default::default(),
+        epoch: store.restore_epoch().unwrap(),
+    };
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    store.inject(Some(crate::desktop::store::Fault::InterruptBeforeEpoch));
+    assert!(crate::desktop::recovery::apply_restore(&store, &plan).is_err());
+    let store = f.store().with_app_config(f.0.join("config.json"));
+    store.recover().unwrap();
+    assert!(matches!(job.run(&store)[0].1, Ran::KeptManual(_)));
+    let mut future = due;
+    future.at = Utc::now().timestamp() + 60;
+    let job = runtime::Job {
+        due: vec![future],
+        held: Default::default(),
+        epoch: store.restore_epoch().unwrap(),
+    };
+    assert!(!matches!(job.run(&store)[0].1, Ran::KeptManual(_)));
+}

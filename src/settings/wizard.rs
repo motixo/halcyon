@@ -267,6 +267,7 @@ pub enum Outcome {
     },
 }
 
+#[derive(Clone)]
 pub struct Wizard {
     pub step: Step,
     /// The starter look on the desktop, chosen here.

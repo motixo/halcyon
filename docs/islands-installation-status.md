@@ -12,18 +12,24 @@ The JSON object has `format: "halcyon-islands-installation"`, `version: 1`,
 Unknown format/version, timeout, invalid data or failed discovery means **pending**
 in Rust. Pending exposes neither Islands controls nor the install link.
 
-Package evidence requires dpkg's installed status, the CLI, and a regular,
-executable, checksummed protocol-1 binary and reviewed manifest. Manual evidence
-requires a completed, unrestored `companion/install.py` record with no package
+Package presence requires dpkg's installed status and the regular package CLI.
+An unsupported payload protocol/source sets compatibility false; a missing or
+altered payload/manifest sets health false, while installed/package provenance
+remains available for management. Manual evidence requires a completed, unrestored `companion/install.py` record with no package
 owner and exact binary, manifest and selector hashes/modes. A removed package's
 user bundle is not a manual installation. Files or a socket alone are not proof.
 Installation does not imply activation. Compatibility uses the existing selector's
 reviewed-source policy; it does not claim runtime ABI or full-session acceptance.
-Running and health stay unknown in this read-only response; a capable IPC host is
-required separately for live arrangement.
+Running and runtime health stay unknown in this read-only response; payload
+damage can establish unhealthy status. A capable IPC host is required separately
+for live arrangement.
 
 Settings refreshes on open/focus. It uses the shared installation state for
-Add-ons and Islands controls; the store revalidates before sidecar writes. Imported
+Add-ons and Islands controls. Installation/runtime probes and native add-on
+edits run on blocking workers; the event handler consumes structured results.
+Read-only UI planning uses that cached capability. The store independently
+revalidates on the worker under transaction locks before sidecar writes, and
+refuses a write if a UI handler bypasses the worker. Imported
 and scheduled looks omit optional Islands settings, including `island_gap`, when
 absent, keeping saved sidecars. Applying a look does not enable disabled Islands. The setup wizard and Dock
 controls still honor an explicit user choice to enable or disable them.

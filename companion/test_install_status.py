@@ -35,6 +35,30 @@ class InstallationStatus(unittest.TestCase):
         s = self.status.detect(self.home, self.library, False, panel_launcher.PACKAGES)
         self.assertEqual(s['installation'], 'absent')
 
+    def test_package_provenance_survives_unqualified_or_damaged_payload(self):
+        self.package()
+        manifest = self.library / 'companion-manifest.json'
+        original = json.loads(manifest.read_text())
+        for change in ('protocol', 'upstream', 'corrupt', 'missing'):
+            with self.subTest(change=change):
+                self.package()
+                value = dict(original)
+                if change in ('protocol', 'upstream'):
+                    value[change] = 2 if change == 'protocol' else 'future-source'
+                    manifest.write_text(json.dumps(value))
+                elif change == 'corrupt':
+                    (self.library / 'cosmic-panel-islands').write_bytes(b'damaged')
+                else:
+                    manifest.unlink()
+                result = self.status.detect(self.home, self.library, True, panel_launcher.PACKAGES)
+                self.assertEqual(result['installation'], 'installed')
+                self.assertEqual(result['provenance'], 'package')
+                if change in ('protocol', 'upstream'):
+                    self.assertFalse(result['compatible'])
+                else:
+                    self.assertFalse(result['healthy'])
+                self.assertEqual(self.status.detect(self.home, self.library, False, panel_launcher.PACKAGES)['installation'], 'absent')
+
     def test_verified_manual_record_required_and_restored_record_is_not_installation(self):
         bundle = self.home / '.local/share/cosmic-desktop-cards/companion'
         bundle.mkdir(parents=True)

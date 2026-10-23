@@ -869,3 +869,60 @@ fn task2_restore_undo_review_keeps_newer_app_field_and_reverses_native() {
         95
     );
 }
+
+#[test]
+fn task2r1_opaque_fixed_wallpaper_does_not_block_restore_undo_or_recovery() {
+    for interrupted in [false, true] {
+        let f = Fixture::new("opaque-fixed-wallpaper");
+        f.user(DOCK, "opacity", "0.8");
+        f.user(crate::desktop::wallpaper::NAMESPACE, "all", "placeholder");
+        let wallpaper =
+            f.0.join("config/cosmic/com.system76.CosmicBackground/v1/all");
+        fs::write(&wallpaper, b"\xff\x00opaque").unwrap();
+        let store = f.store();
+        store.apply(&change(&store, "0.5")).unwrap();
+        let original = fs::read(
+            store
+                .state_dir()
+                .join("desktop-recovery/original/manifest.json"),
+        )
+        .unwrap();
+        let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+        if interrupted {
+            store.inject(Some(crate::desktop::store::Fault::InterruptBeforeRecord));
+            assert!(apply_restore(&store, &plan).is_err());
+            let reopened = f.store();
+            reopened.recover().unwrap();
+            assert!(reopened.pending_recovery().unwrap().is_none());
+        } else {
+            let restored = apply_restore(&store, &plan).unwrap();
+            assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.8");
+            store.undo_latest(&restored.id).unwrap();
+        }
+        assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.5");
+        assert_eq!(fs::read(&wallpaper).unwrap(), b"\xff\x00opaque");
+        assert_eq!(
+            fs::read(
+                store
+                    .state_dir()
+                    .join("desktop-recovery/original/manifest.json")
+            )
+            .unwrap(),
+            original
+        );
+        assert!(
+            store
+                .palette_seen(store.restore_epoch().unwrap(), 0)
+                .unwrap()
+        );
+        fs::remove_file(&wallpaper).unwrap();
+        let draft = crate::desktop::wallpaper::WallpaperDraft::load(&store).unwrap();
+        let later = crate::desktop::wallpaper::automatic::source(&store, &draft).stamp;
+        assert_ne!(later, 0);
+        assert!(
+            !store
+                .palette_seen(store.restore_epoch().unwrap(), later)
+                .unwrap()
+        );
+    }
+}

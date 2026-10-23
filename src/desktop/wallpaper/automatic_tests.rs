@@ -559,3 +559,91 @@ fn task2_interrupted_restore_recovery_keeps_manual_colors_and_invalidates_worker
     set_color(&f, [0.8, 0.3, 0.2]);
     assert!(prepare(&restarted).unwrap().is_some());
 }
+
+#[test]
+fn task2r1_preparation_between_epoch_and_ack_cannot_override_restore() {
+    use crate::desktop::recovery::{
+        BaselineKind, RecoveryDomain, apply_restore, ensure_baseline, plan_restore,
+    };
+    use std::sync::{Arc, Barrier};
+    for noop in [false, true] {
+        let (f, store) = fixture("during-restore");
+        if noop {
+            commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+        }
+        ensure_baseline(&store, BaselineKind::CurrentDesktop).unwrap();
+        let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+        let published = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        let root = f.0.clone();
+        let (a, b) = (published.clone(), resume.clone());
+        let restore = std::thread::spawn(move || {
+            let store = DesktopStore::fixture(&root)
+                .unwrap()
+                .with_app_config(root.join("config.json"));
+            store.inject(Some(crate::desktop::store::Fault::PauseAfterEpoch(a, b)));
+            apply_restore(&store, &plan).unwrap();
+        });
+        published.wait();
+        let prepared = prepare(&store);
+        resume.wait();
+        restore.join().unwrap();
+        let prepared = prepared.unwrap().unwrap();
+        assert_eq!(
+            prepared.patch.is_empty() && prepared.widgets.is_empty(),
+            noop
+        );
+        let before = fs::read(store.app_config().unwrap()).unwrap();
+        let history = fs::read(store.state_dir().join("desktop-undo.json")).unwrap();
+        assert!(
+            commit(&store, prepared).unwrap().is_none(),
+            "restore already acknowledged this source"
+        );
+        assert_eq!(fs::read(store.app_config().unwrap()).unwrap(), before);
+        assert_eq!(
+            fs::read(store.state_dir().join("desktop-undo.json")).unwrap(),
+            history,
+            "no-op work must not replace restore history"
+        );
+        set_color(&f, [0.8, 0.2, 0.1]);
+        assert!(prepare(&store).unwrap().is_some());
+    }
+}
+
+#[test]
+fn task2r1_journal_before_epoch_crash_invalidates_old_palette_jobs() {
+    use crate::desktop::recovery::*;
+    for noop in [false, true] {
+        let (f, store) = fixture("journal-before-epoch");
+        if noop {
+            commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+            let p = store.state_dir().join("desktop-undo.json");
+            let mut history: serde_json::Value =
+                serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
+            history.as_object_mut().unwrap().remove("palette_ack");
+            fs::write(p, history.to_string()).unwrap();
+        }
+        let prepared = prepare(&store).unwrap().unwrap();
+        assert_eq!(
+            prepared.patch.is_empty() && prepared.widgets.is_empty(),
+            noop
+        );
+        ensure_baseline(&store, BaselineKind::CurrentDesktop).unwrap();
+        let epoch = store.restore_epoch().unwrap();
+        let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+        store.inject(Some(crate::desktop::store::Fault::InterruptBeforeEpoch));
+        assert!(apply_restore(&store, &plan).is_err());
+        assert_eq!(store.restore_epoch().unwrap(), epoch);
+        let reopened = f.store().with_app_config(f.0.join("config.json"));
+        reopened.recover().unwrap();
+        assert!(
+            reopened.restore_epoch().unwrap() > epoch,
+            "recorded restore must acquire durable ownership on recovery"
+        );
+        assert!(reopened.manual_at().is_some());
+        assert!(commit(&reopened, prepared).is_err());
+        reopened.recover().unwrap();
+        set_color(&f, [0.9, 0.1, 0.5]);
+        assert!(prepare(&reopened).unwrap().is_some());
+    }
+}

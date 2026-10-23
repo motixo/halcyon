@@ -202,7 +202,7 @@ pub(super) fn export_task() -> cosmic::app::Task<super::Message> {
                     let path = url
                         .to_file_path()
                         .map_err(|_| "Choose a local file".to_string())?;
-                    super::profiles::write_export(&path, bytes.as_bytes(), store.fixture_root())?;
+                    write_export(&path, bytes.as_bytes(), store.fixture_root())?;
                     Ok(Some(path))
                 }
                 Err(cosmic::dialog::file_chooser::Error::Cancelled) => Ok(None),
@@ -212,4 +212,60 @@ pub(super) fn export_task() -> cosmic::app::Task<super::Message> {
         .await;
         super::Message::RecoveryExported(result)
     })
+}
+
+fn write_export(
+    path: &std::path::Path,
+    bytes: &[u8],
+    confine: Option<&std::path::Path>,
+) -> Result<(), String> {
+    crate::desktop::recovery::write_export(path, bytes, confine).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    #[test]
+    fn task2r1_export_is_private_on_create_and_replace_under_normal_umask() {
+        let f = crate::desktop::store::tests::Fixture::new("private-recovery-export");
+        struct Umask(libc::mode_t);
+        impl Drop for Umask {
+            fn drop(&mut self) {
+                unsafe {
+                    libc::umask(self.0);
+                }
+            }
+        }
+        let _mask = Umask(unsafe { libc::umask(0o022) });
+        let path = f.0.join("recovery.json");
+        for contents in [b"first".as_slice(), b"replacement".as_slice()] {
+            write_export(&path, contents, Some(&f.0)).unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), contents);
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+    }
+    #[test]
+    fn task2r1_export_refuses_links_and_fixture_escape_without_mutation() {
+        let f = crate::desktop::store::tests::Fixture::new("confined-recovery-export");
+        let outside = f.0.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let target = outside.join("keep.json");
+        std::fs::write(&target, b"keep").unwrap();
+        let link = f.0.join("linked");
+        symlink(&outside, &link).unwrap();
+        assert!(write_export(&link.join("new.json"), b"private", None).is_err());
+        let leaf = f.0.join("leaf.json");
+        symlink(&target, &leaf).unwrap();
+        assert!(write_export(&leaf, b"private", None).is_err());
+        let confined = f.0.join("confined");
+        std::fs::create_dir(&confined).unwrap();
+        assert!(write_export(&target, b"private", Some(&confined)).is_err());
+        assert_eq!(std::fs::read(target).unwrap(), b"keep");
+        assert!(!outside.join("new.json").exists());
+    }
 }

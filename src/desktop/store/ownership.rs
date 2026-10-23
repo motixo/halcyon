@@ -53,10 +53,18 @@ impl DesktopStore {
         }
         Ok(false)
     }
-    pub(super) fn acknowledge_recovered_restore(&self, id: &str) -> Result<(), DesktopError> {
-        let draft = super::super::wallpaper::WallpaperDraft::load(self)?;
+    /// Stamp zero means the wallpaper is opaque/unavailable. Real source stamps
+    /// are nonzero, so a later readable wallpaper is never suppressed by this.
+    pub(super) fn restore_palette_ack(&self) -> Result<(u64, u64), DesktopError> {
         let epoch = self.restore_epoch()?;
-        let stamp = super::super::wallpaper::automatic::source(self, &draft).stamp;
+        let stamp = super::super::wallpaper::WallpaperDraft::load(self)
+            .ok()
+            .map(|draft| super::super::wallpaper::automatic::source(self, &draft).stamp)
+            .unwrap_or(0);
+        Ok((epoch, stamp))
+    }
+    pub(super) fn acknowledge_recovered_restore(&self, id: &str) -> Result<(), DesktopError> {
+        let (epoch, stamp) = self.restore_palette_ack()?;
         let mut file = self.history_file()?.unwrap_or_else(|| {
             let mut file = LatestChange {
                 id: id.into(),

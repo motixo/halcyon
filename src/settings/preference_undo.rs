@@ -166,7 +166,8 @@ impl Settings {
     }
 
     pub(super) fn undo_preferences(&mut self) {
-        let _ = self.undo_desktop_change();
+        let task = self.undo_desktop_change();
+        self.native_tasks.push(task);
     }
 }
 

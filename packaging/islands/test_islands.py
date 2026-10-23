@@ -131,7 +131,11 @@ class IslandsPackage(unittest.TestCase):
         self.assertIsNone(status['running'])
         (self.library / 'cosmic-panel-islands').unlink()
         status = json.loads(self.cli('status', options=['--json']).stdout)
-        self.assertEqual(status['installation'], 'absent')
+        # A missing payload is a damaged installed package. Package removal is
+        # a different provenance input, covered by test_install_status.py.
+        self.assertEqual(status['installation'], 'installed')
+        self.assertEqual(status['provenance'], 'package')
+        self.assertFalse(status['healthy'])
 
     def test_reviewed_source_rebuild_needs_new_probe_bundle(self):
         versions = {k: v.replace('~24.04~', '~26.04~') for k, v in panel_launcher.PACKAGES.items()}

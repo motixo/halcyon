@@ -27,7 +27,49 @@ struct Status {
     enabled: bool,
     compatible: Option<bool>,
 }
+thread_local! {
+    static NATIVE_VIEW: std::cell::RefCell<Option<Installation>> = const { std::cell::RefCell::new(None) };
+}
+pub struct NativeView(Option<Installation>);
+impl Drop for NativeView {
+    fn drop(&mut self) {
+        NATIVE_VIEW.with(|v| {
+            v.replace(self.0.take());
+        });
+    }
+}
 impl Installation {
+    /// Native read-only planning consumes the last background result. A write
+    /// must run outside this context and re-discover under transaction locks.
+    pub fn native_view(state: Self) -> NativeView {
+        NativeView(NATIVE_VIEW.with(|v| v.replace(Some(state))))
+    }
+    pub fn on_native_thread() -> bool {
+        NATIVE_VIEW.with(|v| v.borrow().is_some())
+    }
+    pub fn needs_worker(store: &DesktopStore) -> bool {
+        match store.fixture_root() {
+            None => true,
+            Some(_root) => {
+                #[cfg(test)]
+                {
+                    return _root.join("slow-islands-probe.py").is_file();
+                }
+                #[cfg(not(test))]
+                {
+                    false
+                }
+            }
+        }
+    }
+    pub(crate) fn for_write(store: &DesktopStore) -> Self {
+        if Self::on_native_thread() && Self::needs_worker(store) {
+            // Fail closed if a future UI path bypasses the background executor.
+            Self::Pending
+        } else {
+            Self::discover(store)
+        }
+    }
     pub fn installed(&self) -> bool {
         matches!(self, Self::Installed { .. })
     }
@@ -52,7 +94,21 @@ impl Installation {
         }
     }
     pub fn discover(store: &DesktopStore) -> Self {
+        if Self::needs_worker(store) {
+            if let Some(state) = NATIVE_VIEW.with(|v| v.borrow().clone()) {
+                return state;
+            }
+        }
         if let Some(root) = store.fixture_root() {
+            #[cfg(test)]
+            if root.join("slow-islands-probe.py").is_file() {
+                let output = std::process::Command::new("/usr/bin/python3")
+                    .arg("-B")
+                    .arg(root.join("slow-islands-probe.py"))
+                    .output()
+                    .unwrap();
+                return Self::parse(&output.stdout);
+            }
             return match crate::desktop::recovery::read_path(
                 &root.join("islands-installation.json"),
                 65536,

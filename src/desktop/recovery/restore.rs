@@ -396,3 +396,35 @@ pub(crate) fn record_created(store: &DesktopStore, key: &ConfigKey) -> Result<()
     )
     .map_err(failed)
 }
+
+/// Private export uses the same descriptor traversal as recovery storage.
+/// Refuse linked/special destinations; never inherit profile-export modes.
+pub fn write_export(path: &Path, bytes: &[u8], confine: Option<&Path>) -> Result<(), DesktopError> {
+    if !path.is_absolute() || bytes.len() > MAX_MANIFEST_BYTES {
+        return Err(failed("choose an absolute local recovery export path"));
+    }
+    if let Some(root) = confine {
+        if !path.starts_with(root) {
+            return Err(failed("export must remain inside the fixture root"));
+        }
+        Directory::open(root, false)
+            .map_err(failed)?
+            .ok_or_else(|| failed("missing fixture root"))?;
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| failed("missing export folder"))?;
+    let name = path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .ok_or_else(|| failed("invalid export name"))?;
+    let dir = Directory::open(parent, false)
+        .map_err(failed)?
+        .ok_or_else(|| failed("missing export folder"))?;
+    // Bounded no-follow inspection also rejects linked and special leaves.
+    dir.read(OsStr::new(name), MAX_MANIFEST_BYTES)
+        .map_err(failed)?;
+    let pending = format!(".recovery-export-{}", getrandom::u64().map_err(failed)?);
+    dir.write_new(&pending, bytes).map_err(failed)?;
+    dir.rename(&pending, name, true).map_err(failed)
+}

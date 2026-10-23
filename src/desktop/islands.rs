@@ -176,6 +176,9 @@ pub struct Client {
 }
 impl Client {
     pub fn connect(store: &DesktopStore) -> Result<Self, String> {
+        if Installation::on_native_thread() && Installation::needs_worker(store) {
+            return Err("Islands runtime status is refreshed in the background".into());
+        }
         if !Installation::discover(store).installed() {
             return Err(
                 "Islands is not installed or its installation could not be verified".into(),

@@ -606,6 +606,9 @@ impl Settings {
             .last_desktop_change
             .as_ref()
             .map(|(_, _, id)| id.clone());
+        if self.native_worker_needed() {
+            return self.background_undo(shown, None);
+        }
         let result = crate::desktop::actions::history_store().and_then(|store| {
             let id = shown.ok_or_else(|| {
                 crate::desktop::DesktopError::UndoUnavailable("No settings action to undo".into())
@@ -676,7 +679,10 @@ mod tests {
             assert_eq!(page.parent(), None, "{page:?}");
         }
         assert_eq!(Page::DesktopAppearance.parent(), Some(Page::Themes));
-        assert_eq!(Page::DesktopWindowRules.parent(), Some(Page::DesktopWindows));
+        assert_eq!(
+            Page::DesktopWindowRules.parent(),
+            Some(Page::DesktopWindows)
+        );
     }
     #[test]
     fn task_search_finds_fields_and_opens_advanced_only_when_needed() {
