@@ -38,9 +38,14 @@ def edit_window(label):
 def center(w):
  g=w['geometry'];return (max(40,min(1240,g['x']+g['width']//2)),max(100,min(670,g['y']+g['height']//2)))
 def launch(unit,binary,args):
- command('launch-'+unit,'systemd-run --user --collect --unit='+unit+' '+shlex.join([binary,*args]),True);time.sleep(5)
+ # Pinned cosmic-edit daemonizes before its UI exists. A Type=simple
+ # transient service can kill the forked child when its parent exits.
+ kind=' --property=Type=forking --property=GuessMainPID=yes' if binary=='/usr/bin/cosmic-edit' else ''
+ command('launch-'+unit,'systemd-run --user --collect'+kind+' --unit='+unit+' '+shlex.join([binary,*args]),True);time.sleep(5)
 def editor_open(seq):
- launch('lockup-edit-'+str(seq),'/usr/bin/cosmic-edit',['/home/probe/lockup-input.txt']);return edit_window('editor-open-'+str(seq))
+ launch('lockup-edit-'+str(seq),'/usr/bin/cosmic-edit',['/home/probe/lockup-input.txt'])
+ command('editor-unit-'+str(seq),'systemctl --user show lockup-edit-'+str(seq)+'.service -p Type -p MainPID -p Result -p ActiveState -p SubState; journalctl --user -b -u lockup-edit-'+str(seq)+'.service --no-pager',True,False)
+ return edit_window('editor-open-'+str(seq))
 def pointer_move(x,y):
  c.q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':round(x*32767/1280)}},{'type':'abs','data':{'axis':'y','value':round(y*32767/800)}}]})
 def drag(start,end):
