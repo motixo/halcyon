@@ -65,11 +65,17 @@ def runtime_id(profile):
 
 
 def valid_runtime(profile):
-    if profile.get('version') != 1 or not profile.get('processes'):
+    if profile.get('version') != 2 or not profile.get('processes'):
         raise ValueError('runtime_schema')
     if not {'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= profile['processes'].keys():
         raise ValueError('runtime_required_processes')
     for name, item in profile['processes'].items():
+        if name in ('cosmic-panel', 'cosmic-panel-islands'):
+            raise ValueError('runtime_host_is_not_a_dependency')
+        if item.get('lifecycle') not in ('session', 'panel-child'):
+            raise ValueError('runtime_lifecycle')
+        if name in ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon') and item['lifecycle'] != 'session':
+            raise ValueError('runtime_core_lifecycle')
         if Path(item['executable']).name != name or not Path(item['executable']).is_absolute() or '..' in Path(item['executable']).parts:
             raise ValueError('runtime_executable')
         if not HEX.fullmatch(item['sha256']) or type(item.get('count')) is not int or not 1 <= item['count'] <= 64 or not isinstance(item['mapped'], dict):
@@ -136,10 +142,17 @@ def valid_catalog(catalog):
                     raise ValueError('catalog_file_path')
                 if '..' in Path(path).parts or not HEX.fullmatch(sha):
                     raise ValueError('catalog_file_digest')
-    profiles = {runtime_id(r['runtime']) for r in catalog['cohorts'] if r.get('runtime')}
+    profiles = {runtime_id(r['runtime']): r['runtime'] for r in catalog['cohorts'] if r.get('runtime')}
     for row in catalog['cohorts']:
         if any(b['id'] not in profiles for b in row.get('runtime_compatibility', [])):
             raise ValueError('runtime_profile_missing')
+        # An equivalent profile may change code hashes, never hide a required
+        # child behind a core-only profile or move it into the wrong phase.
+        def roles(profile):
+            return {n: (p['executable'], p['count'], p['lifecycle']) for n, p in profile['processes'].items()}
+        for binding in row.get('runtime_compatibility', []):
+            if roles(profiles[binding['id']]) != roles(row['runtime']):
+                raise ValueError('runtime_equivalence_lifecycle')
     return catalog
 
 
@@ -174,7 +187,7 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
     return manifest, catalog
 
 
-def classify_compatibility(installed, running, manifest, catalog):
+def classify_compatibility(installed, running, manifest, catalog, *, phase='running'):
     def result(state, reason, cohort=None):
         return dict(version=1, state=state, reason=reason, cohort=cohort)
     try:
@@ -184,13 +197,15 @@ def classify_compatibility(installed, running, manifest, catalog):
         admitted = {r['id']: r for r in catalog['cohorts'] if r['qualification'] == 'native-session'
                     and r['payload_sha256'] == manifest['payload_sha256']}
         current = installed.get('cohort') if installed.get('verified') is True else None
-        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 1 else None
+        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 2 and running.get('phase') == phase and phase in ('prelaunch', 'running') else None
         if current not in admitted:
             return result('unsupported', 'installed_cohort_unqualified')
         if active is None:
             return result('logout_required', 'running_identity_unknown', current)
         if not set(active).intersection(b['id'] for b in admitted[current]['runtime_compatibility']):
             return result('logout_required', 'installed_running_differ', current)
+        if phase == 'prelaunch':
+            return result('eligible', 'qualified_prelaunch', current)
         return result('ready', 'qualified_cohort', current)
     except (KeyError, TypeError, ValueError, AttributeError):
         return result('invalid_bundle', 'catalog_invalid')

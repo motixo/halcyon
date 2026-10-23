@@ -145,16 +145,19 @@ def generation_status(result, home, library, installed=None, running=None, host=
     result['running'] = host
     if host is not None and result['healthy'] is not False:
         result['healthy'] = host
+    # Eligibility measurements may be supplied by callers, but never describe
+    # a running process inventory or establish Ready.
+    running_profiles = (running or {}).get('profiles', []) if (running or {}).get('phase') == 'running' else []
     result.update(status_version=1, status=label, reason=reason,
                   installed_generation=generation, active_generation=active_generation,
                   installed_cohort=(installed or {}).get('cohort'),
-                  running_profiles=(running or {}).get('profiles', []), compatibility=state)
+                  running_profiles=running_profiles, compatibility=state)
     # Deliberate allowlist: no filesystem paths, session IDs, environment or
     # exception strings. Diagnostic output cannot change the activation state.
     result['diagnostics'] = dict(version=1, installation=result['installation'],
         provenance=result['provenance'], enabled=result['enabled'], status=label,
         reason=reason, installed_generation=generation, active_generation=active_generation,
-        installed_cohort=(installed or {}).get('cohort'), running_profiles=(running or {}).get('profiles', []))
+        installed_cohort=(installed or {}).get('cohort'), running_profiles=running_profiles)
     return result
 
 
@@ -184,12 +187,14 @@ def main():
     if not args.root and installed:
         try:
             from bundle_contract import verify_bundle
-            from runtime_identity import installed_identity, running_identity, host_health
+            from runtime_identity import installed_identity, running_identity, host_identity
             _, catalog = verify_bundle(library, 'companion-manifest.json')
-            measured, active = installed_identity(catalog), running_identity(catalog)
+            measured = installed_identity(catalog)
             from refresh import selected_generation
             _, selected, _, _ = selected_generation(home)
-            host = host_health(selected['binary_sha256'])
+            owner = host_identity(selected['binary_sha256'])
+            active = running_identity(catalog, phase='running', host=owner)
+            host = owner is not None
         except (OSError, ValueError, KeyError, TypeError):
             pass
     print(json.dumps(detect(home, library, installed, versions, installed=measured, running=active, host=host), separators=(',', ':')))

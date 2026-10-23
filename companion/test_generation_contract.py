@@ -13,8 +13,8 @@ import runtime_identity
 
 def runtime_fixture(row):
     files = runtime_identity.inventory(row)
-    profile = dict(version=1, processes={name: dict(executable=path, sha256=files[path],
-                   mapped=files.copy(), count=1) for name, path in row['processes'].items()},
+    profile = dict(version=2, processes={name: dict(executable=path, sha256=files[path],
+                   mapped=files.copy(), count=1, lifecycle='session') for name, path in row['processes'].items()},
                    constraints={}, unmeasured=['previously-read-resources', 'kernel-bytes', 'driver-firmware', 'anonymous-code'])
     row['runtime'] = profile
     row['runtime_compatibility'] = [dict(id=runtime_id(profile), evidence_id=row['evidence']['id'],
@@ -23,7 +23,7 @@ def runtime_fixture(row):
 
 
 def measured(row):
-    return dict(format='halcyon-runtime-measurement',version=1,verified=True,profiles=[runtime_id(row['runtime'])])
+    return dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=[runtime_id(row['runtime'])])
 
 
 def catalog_fixture(payload='a'*64):
@@ -68,7 +68,7 @@ class Contract(unittest.TestCase):
     def test_unknown_running_never_ready(self):
         self.assertEqual(self.classify(running={})['state'],'logout_required')
     def test_old_running_new_installed_and_missing_mixed_packages(self):
-        self.assertEqual(self.classify(running=dict(format='halcyon-runtime-measurement',version=1,verified=True,profiles=['0'*64]))['reason'],'installed_running_differ')
+        self.assertEqual(self.classify(running=dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=['0'*64]))['reason'],'installed_running_differ')
         self.assertEqual(self.classify(installed={})['state'],'unsupported')
         changed=copy.deepcopy(self.catalog);changed['cohorts'][0]['packages']['cosmic-comp']['version']='new'
         self.assertEqual(self.classify(catalog=changed)['state'],'invalid_bundle')

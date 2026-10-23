@@ -73,7 +73,8 @@ fetches a catalog or package over the network.
 
 `companion/bundle_contract.py` is the Python policy authority.
 `classify_compatibility(installed, running, manifest, catalog)` is pure and returns
-`ready`, `logout_required`, `unsupported` or `invalid_bundle` with a stable reason.
+`ready`, `logout_required`, `unsupported` or `invalid_bundle` with a stable reason
+in its default running phase; the explicit prelaunch phase can return `eligible`.
 Measurements are separate IO adapters. V2 manifests bind every helper, selector,
 installer, catalog and ELF by exact digest/mode; the generation is the SHA256 of
 the final manifest. The payload hash binds all executable components except the
@@ -87,14 +88,19 @@ and verified package runtime-file inventories, including resources. Metapackages
 may have an empty file inventory; their version and authenticated deb identity
 remain in the installed lock. This is separate from running identity.
 
-Each native target declares `runtime` v1 and evidence-bound
+Each native target declares `runtime` v2 and evidence-bound
 `runtime_compatibility` bindings. The runtime profile contains:
 
 - `processes`: the complete declared required process inventory (same names and
   paths as the cohort's `processes`). Each entry has `executable`, ELF `sha256`,
-  exact `count` (1–64) and an allowlist `mapped` of executable mapping paths and
+  exact `count` (1–64), explicit `lifecycle` and an allowlist `mapped` of executable mapping paths and
   digests. Include relevant applets/services, not just the three mandatory core
-  processes. Paths must match procfs's resolved executable/mapping names.
+  processes. `session` dependencies must already exist before launch; the three
+  core processes always use this lifecycle. `panel-child` processes are created
+  by this panel and must be absent before launch, then present in the declared
+  counts before readiness. All panel-owned applets must use `panel-child`.
+  `cosmic-panel` and `cosmic-panel-islands` are forbidden as dependencies: the
+  host is identified separately. Paths must match procfs's resolved names.
 - `constraints`: explicitly qualified measurable constraints. Supported fields
   are `kernel_release` from `/proc/sys/kernel/osrelease`,
   `kernel_version_sha256` of `/proc/version`, and `module_versions` mapping loaded
@@ -108,13 +114,48 @@ Each native target declares `runtime` v1 and evidence-bound
 A profile ID is its canonical JSON SHA256. Each accepted binding has `id`,
 `evidence_id` equal to the target's evidence ID, and a nonempty `reason` recording
 its qualified equivalence/scope. Profiles referenced by bindings must exist in
-this catalog. Unchanged-code package rebuilds may deliberately share a qualified
+this catalog and preserve the complete process names, paths, counts and lifecycle
+roles. A core-only equivalent profile cannot hide required panel children.
+Unchanged-code package rebuilds may deliberately share a qualified
 profile. Resource-only changes need explicit scoped qualification; package
 versions or a unique catalog row never establish running identity.
 
-`running_identity` returns `format: halcyon-runtime-measurement`, `version: 1`,
-`verified` and **all** matching `profiles`, never a full installed `cohort`.
+`running_identity` returns `format: halcyon-runtime-measurement`, `version: 2`,
+`phase: prelaunch | running`, `verified` and **all** matching `profiles`, never a full installed `cohort`.
 The pure classifier requires an explicit target binding to a measured profile.
+
+`prepare_launch` verifies the bundle and complete installed inventory, including
+applet bytes, then requests the `prelaunch` measurement. That phase measures all
+session processes/constraints, requires absence of every declared panel-child
+process in the target XDG session, and directly checks each future child's
+installed ELF against the selected profile. Matching, old, wrong or unreadable
+leftover applets block eligibility; arbitrary missing session dependencies do not
+count as measured. `classify_compatibility(..., phase='prelaunch')` can return
+`eligible` with `qualified_prelaunch`; it never returns `ready`.
+
+The launcher freezes that verified contract and those eligible profile IDs for
+one launch, retains the one-host lock and descriptor-isolated ABI probe, then
+starts the actual host once. During the existing readiness deadline, child-owned
+Capabilities AND the `running` phase must pass. The real host's procfs PID,
+starttime, ELF, uid and XDG session are pinned; it must be the supervised process
+group/session leader. Every panel child must have the expected bytes, executable
+mappings and count, descend from that exact host, and remain in its group/session.
+The host identity is checked again after bounded process snapshots. A foreign
+same-session applet, old inode or reused PID cannot substitute for a child.
+Session dependencies/constraints are measured again, so disappearing cores are
+not ignored after launch. Only a profile admitted in prelaunch can become ready.
+No second host is launched to discover identity.
+
+A child failure/mismatch remains unready and exhausts the existing timeout.
+One read-only measurement may be in flight; its file IO cannot extend that
+deadline and any late result is discarded. The
+supervisor tears down its host group, preserves the crash latch and fresh-session
+notification restart/fallback rules. Read-only status obtains the current host
+from authenticated IPC ownership and measures its actual children; prelaunch
+eligibility is never displayed as Ready or listed as running profiles.
+Staging still checks installed qualification only and reports
+`runtime_readiness: not_measured`; it neither launches nor asserts eligibility.
+
 It measures every declared process in the same uid/XDG session. Executable bytes
 come from the live `/proc/PID/exe` inode, even after package replacement. Mappings
 come from map_files or an open file with the exact procfs device/inode identity;
@@ -129,7 +170,9 @@ another login. A responsive IPC socket cannot override admission.
 Native drivers can collect the supported read-only measurement with
 `python3 /usr/lib/cosmic-ext-halcyon-islands/runtime_identity.py --catalog
 /usr/lib/cosmic-ext-halcyon-islands/catalog.json` in the actual target session.
-Use its `runtime` object in raw observations; capture the process inventory and
+The default phase is `running`; it authenticates the existing host via IPC and
+procfs and never creates one. For prelaunch diagnostics add `--phase prelaunch`.
+Use only the `running` phase `runtime` object in raw qualification observations; capture the process inventory and
 constraint evidence independently. This command never installs, launches or stages.
 Runtime ABI probe, inherited notification isolation, child-owned IPC readiness,
 one-host locking/supervision and crash latch remain additional gates.
@@ -220,7 +263,8 @@ image ID and full image descriptor hash, graphics scope, evidence ID, runtime
 contract hash, final main package hash and extracted main identity hash. Summary fields are rederived from the
 request; promotion also directly verifies final extracted bundle/catalog and
 complete final package bytes. Raw observations must include `runtime_measurement`
-matching the target profile, actual guest package inventory and all scenarios.
+matching the target profile in measurement v2 `phase: running`, actual guest
+package inventory and all scenarios. A prelaunch result is explicitly rejected.
 For an integrated run, request `main` is extracted from the actual final
 `cosmic-ext-halcyon` deb: package digest/version, every regular `/usr`/`/lib` file
 hash, `/usr/bin/halcyon` path and executable digest. Raw `main.installed` must

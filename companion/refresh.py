@@ -24,7 +24,7 @@ LIBRARY = Path('/usr/lib') / PACKAGE
 
 def response(state, reason, generation=None):
     return dict(state=state, reason=reason, generation=generation,
-                next_login=state == 'staged')
+                next_login=state == 'staged', runtime_readiness='not_measured')
 
 
 @contextlib.contextmanager

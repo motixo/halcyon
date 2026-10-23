@@ -73,7 +73,7 @@ def validate_result(request, observed, root):
         reasons.append('isolation_unverified')
     runtime = observed.get('runtime_measurement', {})
     expected_runtime = request.get('runtime_contract')
-    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 1
+    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 2 or runtime.get('phase') != 'running'
             or runtime.get('verified') is not True or identity(expected_runtime['runtime']) not in runtime.get('profiles', [])):
         reasons.append('runtime_measurement_mismatch')
     artifacts = artifact_map(root, observed.get('artifacts'))

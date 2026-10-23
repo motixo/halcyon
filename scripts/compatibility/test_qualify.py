@@ -23,7 +23,7 @@ class Qualification(unittest.TestCase):
                 ref=name+'-'+kind+'.txt';(self.root/ref).write_text('synthetic unit test; never native evidence')
                 artifacts[ref]=dict(sha256=digest(self.root/ref),kind=kind);evidence[kind]=[ref]
             scenarios[name]=dict(result='pass',native=True,evidence=evidence,assertions=[dict(passed=True,observed='fixture',expected='fixture')])
-        self.observed=dict(inputs=self.request['inputs'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=1,verified=True,profiles=[identity(self.request['runtime_contract']['runtime'])]),format='halcyon-native-observation',version=1,request_sha256=identity(self.request),
+        self.observed=dict(inputs=self.request['inputs'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=[identity(self.request['runtime_contract']['runtime'])]),format='halcyon-native-observation',version=1,request_sha256=identity(self.request),
             environment=dict(image_sha256='a'*64,kind='complete-login-session',packages={'cosmic-comp':'fixture'},graphics='software-virtio-single',dpkg_audit_clean=True,dependency_closure_verified=True),
             package_sha256='b'*64,bundle_sha256='c'*64,offline=True,no_host_mounts=True,secrets_present=False,artifacts=artifacts,scenarios=scenarios)
     def test_schema_validation_is_not_native_execution(self):
@@ -39,6 +39,11 @@ class Qualification(unittest.TestCase):
             self.assertTrue(validate_result(self.request,observed,self.root))
         observed=copy.deepcopy(self.observed);observed['package_sha256']='e'*64
         self.assertIn('guest_artifact_mismatch',validate_result(self.request,observed,self.root))
+    def test_prelaunch_eligibility_is_not_native_running_acceptance(self):
+        observed=copy.deepcopy(self.observed)
+        observed['runtime_measurement']['phase']='prelaunch'
+        self.assertIn('runtime_measurement_mismatch',validate_result(self.request,observed,self.root))
+
     def test_no_post_evidence_mutation_or_path_escape(self):
         name=next(iter(self.observed['artifacts']));(self.root/name).write_text('changed')
         with self.assertRaises(ValueError):validate_result(self.request,self.observed,self.root)

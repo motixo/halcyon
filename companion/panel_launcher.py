@@ -85,11 +85,11 @@ def compatible(bundle, versions=None, manifest_name='manifest.json'):
         manifest=json.loads((bundle/manifest_name).read_text())
         if isinstance(manifest, dict) and manifest.get('version') == 2:
             from bundle_contract import verify_bundle, classify_compatibility
-            from runtime_identity import installed_identity, running_identity
+            from runtime_identity import installed_identity, running_identity, host_identity
             manifest, catalog = verify_bundle(bundle, manifest_name)
             manifest = {**manifest, 'verified': True}
             installed = installed_identity(catalog)
-            running = running_identity(catalog)
+            running = running_identity(catalog, host=host_identity(manifest['binary_sha256']))
             return classify_compatibility(installed, running, manifest, catalog)['state'] == 'ready'
         if not isinstance(manifest, dict):return False
         if manifest['upstream']!='ca20ce3185b3b4404f429d59d429c40b58a2ddef' or manifest['protocol']!=1:return False
@@ -102,6 +102,47 @@ def compatible(bundle, versions=None, manifest_name='manifest.json'):
             any(versions == row for row in SUPPORTED_SYSTEMS)
             or manifest.get('runtime_probe') == 1)
     except (OSError,ValueError,KeyError,TypeError,AttributeError,subprocess.SubprocessError):return False
+
+def prepare_launch(bundle):
+    """Return a postlaunch guard only for verified prelaunch eligibility.
+
+    Freeze the exact bundle, installed lock and permitted profiles for this one
+    launch. Eligibility is not a running-ready measurement. No host is started
+    here; the supervisor supplies its actual child to the returned guard.
+    """
+    try:
+        from bundle_contract import verify_bundle, classify_compatibility
+        from runtime_identity import installed_identity, running_identity, host_process
+        manifest, catalog = verify_bundle(bundle)
+        manifest = {**manifest, 'verified': True}
+        installed = installed_identity(catalog)
+        prelaunch = running_identity(catalog, phase='prelaunch')
+        state = classify_compatibility(installed, prelaunch, manifest, catalog, phase='prelaunch')
+        if state['state'] != 'eligible':
+            return None
+        target = next(row for row in catalog['cohorts'] if row['id'] == installed['cohort'])
+        eligible = set(prelaunch['profiles']).intersection(b['id'] for b in target['runtime_compatibility'])
+        owner = None
+
+        def admitted(child):
+            nonlocal owner
+            try:
+                if child.poll() is not None:
+                    return False
+                current = host_process(child.pid, manifest['binary_sha256'])
+                if owner is None:
+                    owner = current
+                if current != owner:
+                    return False
+                running = running_identity(catalog, phase='running', host=owner)
+                ready = classify_compatibility(installed, running, manifest, catalog)['state'] == 'ready'
+                return ready and bool(eligible.intersection(running['profiles'])) and child.poll() is None
+            except (OSError, ValueError, KeyError, TypeError, IndexError):
+                return False
+        return admitted
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+        return None
+
 
 def runtime_compatible(bundle):
     """Execute the checksummed binary with no inherited session descriptors.
@@ -224,10 +265,18 @@ def watch_output(stream, child, out, wedged):
         out.flush()
 
 
-def wait_ready(child, done, wedged):
-    """Confirm the real child dispatches IPC; a live but hung process is unsafe."""
+def wait_ready(child, done, wedged, admission=None):
+    """Require child-owned IPC AND its declared runtime before readiness."""
     deadline = time.monotonic() + READY_SECONDS
     runtime = os.environ.get('XDG_RUNTIME_DIR')
+    measurement = None
+    def measure(slot):
+        try:
+            slot['ready'] = admission(child) is True
+        except Exception:
+            slot['ready'] = False
+        finally:
+            slot['done'].set()
     while runtime and time.monotonic() < deadline and not done.is_set():
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
@@ -243,23 +292,35 @@ def wait_ready(child, done, wedged):
                 if len(line) > 65536 or not line.endswith(b'\n'):
                     raise ValueError('invalid IPC reply')
                 cap = json.loads(line).get('Capabilities', {})
-                if (cap.get('protocol') == 1 and cap.get('together') is True
-                        and cap.get('separate') is True):
-                    return
+                if cap.get('protocol') == 1 and cap.get('together') is True and cap.get('separate') is True:
+                    admitted = admission is None
+                    if admission is not None:
+                        # File/procfs IO cannot extend the readiness deadline.
+                        # At most one read-only measurement is in flight. A late
+                        # result has no side effects and is discarded on teardown.
+                        if measurement is None:
+                            measurement = dict(done=threading.Event(), ready=False)
+                            threading.Thread(target=measure, args=(measurement,), daemon=True).start()
+                        if measurement['done'].is_set():
+                            admitted = measurement['ready']
+                            measurement = None
+                    if admitted and not done.is_set() and child.poll() is None and time.monotonic() < deadline:
+                        return True
         except (OSError, ValueError, AttributeError, TypeError):
             pass
         if done.wait(.1):
-            return
+            return False
     if not done.is_set() and child.poll() is None:
         wedged.set()
-        sys.stderr.write('Islands startup IPC health check failed; selecting stock\n')
+        sys.stderr.write('Islands startup IPC/runtime readiness failed; selecting stock\n')
         try:
             os.killpg(child.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+    return False
 
 
-def run_host(binary, pass_fds=(), env=None, readiness=False):
+def run_host(binary, pass_fds=(), env=None, readiness=False, admission=None):
     """Keep supervision descriptors in this process, outside native applets.
 
     Returns the exit code, whether a signal asked us to stop, and whether the
@@ -271,8 +332,10 @@ def run_host(binary, pass_fds=(), env=None, readiness=False):
     watcher = threading.Thread(target=watch_output, args=(child.stdout, child, sys.stderr.buffer, wedged), daemon=True)
     watcher.start()
     done = threading.Event()
+    readiness_thread = None
     if readiness:
-        threading.Thread(target=wait_ready, args=(child, done, wedged), daemon=True).start()
+        readiness_thread = threading.Thread(target=wait_ready, args=(child, done, wedged, admission), daemon=True)
+        readiness_thread.start()
 
     def terminate(signum, frame):
         nonlocal stopping
@@ -293,6 +356,8 @@ def run_host(binary, pass_fds=(), env=None, readiness=False):
             pass
         for sig, handler in previous.items():
             signal.signal(sig, handler)
+    if readiness_thread is not None:
+        readiness_thread.join(2)
     # Applets share the output pipe; they are stopped with the host's group.
     watcher.join(2)
     if not watcher.is_alive():
@@ -344,11 +409,11 @@ def stock_host(binary, pass_fds=(), limit=None, env=None, keep_running=False):
             return 0
 
 
-def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False):
+def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False, admission=None):
     """Reap the selected host before starting stock or returning to the session."""
     started = True
     try:
-        _, stopping, _ = run_host(binary, pass_fds, readiness=True)
+        _, stopping, _ = run_host(binary, pass_fds, readiness=True, admission=admission)
     except OSError:
         started, stopping = False, False
     if stopping or (started and compositor_gone()):
@@ -405,7 +470,10 @@ def main(bundle=None, pointer=None):
         try:
             value=int(os.environ[name]);os.fstat(value);inherited.append(value);os.set_inheritable(value,True)
         except (KeyError,ValueError,OSError):pass
-    if not enabled or not compatible(bundle) or (state/'failed').exists():
+    if not enabled or (state/'failed').exists():
+        return stock_host(STOCK, tuple(inherited))
+    admission = prepare_launch(bundle)
+    if admission is None:
         return stock_host(STOCK, tuple(inherited))
     if not runtime_compatible(bundle):
         sys.stderr.write('Islands ABI/compositor preflight failed; selecting stock\n')
@@ -413,6 +481,6 @@ def main(bundle=None, pointer=None):
     def failed():
         state.mkdir(parents=True,exist_ok=True,mode=0o700)
         (state/'failed').write_text('The companion exited unexpectedly. Stock panel selected.\n')
-    return supervise(bundle/'cosmic-panel-islands',STOCK,tuple(inherited),failed,'PANEL_NOTIFICATIONS_FD' in os.environ)
+    return supervise(bundle/'cosmic-panel-islands',STOCK,tuple(inherited),failed,'PANEL_NOTIFICATIONS_FD' in os.environ,admission=admission)
 
 if __name__=='__main__':sys.exit(main())

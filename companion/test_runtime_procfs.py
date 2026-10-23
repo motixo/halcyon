@@ -24,7 +24,8 @@ class Procfs(unittest.TestCase):
             binary = self.root/name; shutil.copy2('/usr/bin/sleep', binary)
             child = self.start(name)
             measured = _process(Path('/proc')/str(child.pid))
-            measured.pop('start'); measured['count'] = 1
+            measured = {key: measured[key] for key in ('executable', 'sha256', 'mapped')}
+            measured.update(count=1, lifecycle='session')
             self.profile['processes'][name] = measured
         self.bind(self.row)
         self.manifest = dict(format='halcyon-islands-bundle',version=2,verified=True,payload_sha256='a'*64)

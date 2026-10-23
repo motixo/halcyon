@@ -80,11 +80,44 @@
             ],
             "properties": {
               "version": {
-                "const": 1
+                "const": 2
               },
               "processes": {
                 "type": "object",
-                "minProperties": 3
+                "minProperties": 3,
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "executable",
+                    "sha256",
+                    "mapped",
+                    "count",
+                    "lifecycle"
+                  ],
+                  "properties": {
+                    "lifecycle": {
+                      "enum": [
+                        "session",
+                        "panel-child"
+                      ]
+                    },
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 64
+                    },
+                    "executable": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "mapped": {
+                      "type": "object"
+                    }
+                  }
+                }
               },
               "constraints": {
                 "type": "object"
@@ -145,5 +178,5 @@
       }
     }
   },
-  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet."
+  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v2 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness."
 }

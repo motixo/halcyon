@@ -70,3 +70,11 @@ an honest blocked qualification state, not an invitation to synthesize support.
 Diagnostics use `installed_cohort` and `running_profiles` (profile digest list),
 never a guessed running full-package cohort. These fields are also present at the top level of status v1. Rust cached diagnostics
 retain only validated 64-digit hashes (at most 64 profiles); no process or file IO was added to Settings.
+
+Runtime measurement v2 distinguishes `prelaunch` eligibility from `running`
+readiness. Status uses the actual IPC owner's procfs identity and checks its
+panel-owned children, counts and ancestry before Ready. A prelaunch measurement
+cannot establish Ready even with a healthy IPC reply, and contributes no
+`running_profiles`. Staging reports `runtime_readiness: not_measured` and promises
+only the next login after successful staging. These phases add no native-thread
+IO to Settings and do not change installation/provenance or absent-management policy.
