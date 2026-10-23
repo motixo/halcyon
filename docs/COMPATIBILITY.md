@@ -148,10 +148,39 @@ failure is a blocked discovery error, never permission to omit files or packages
 
 ### Measure the final catalog before packaging
 
-The production `bundle_contract.read_json` **16 MiB catalog limit is unchanged**.
-A catalog embeds complete per-package file maps; each additional supported cohort
-adds another row. Native runtime/equivalence/evidence fields and all rows must fit.
-Candidate JSON is a separate artifact and is not subject to that reader limit.
+Catalog v1 uses the explicit **64 MiB** `bundle_contract.CATALOG_BYTES` limit
+through `read_catalog`, shared by runtime bundle verification, packaging,
+qualification/promotion and capacity measurement. Ordinary `read_json` records
+(manifests, selections and journals) retain their **16 MiB** limit; the individual
+file-digest ceiling remains **512 MiB**. The candidate writer remains **128 MiB**.
+
+This catalog-specific allowance follows actual complete discovery: 1,783 packages,
+165,721 file entries, a 25,689,147-byte full-cohort envelope and a 23,002,305-byte
+identity-only lower bound. Both exceeded the old 16 MiB reader. A 64 MiB catalog
+allows the measured cohort plus one comparable retained cohort and room for
+runtime/equivalence/evidence fields. It is not a guarantee of arbitrarily many
+retained rows: measure each final combined catalog. Never prune identities to fit.
+Older ABI/payload combinations retain their separate immutable packages.
+
+The reader opens without following the final symlink and refuses symlink ancestry,
+nonregular files, oversized opened files, growth beyond the cap, truncation and
+observed replacement/mutation. It reads at most the limit plus one byte, verifies
+stable opened-file metadata and checks the manifest digest over the exact bytes
+it parses. Packaging and generation staging copy bounded authored bytes without
+reserialization. The bootstrap selector verifies executable helpers first, then
+delegates catalog data verification to this reader before any refresh or launch;
+it does not perform an unbounded preliminary catalog hash. Staging rechecks the
+expected catalog digest while capturing its bounded bytes after bundle validation.
+No path/stat-only cache or permanent trust cache is used; each load and pure
+classification validates the full catalog. File-path traversal validation uses
+exact POSIX components without allocating a Path for every inventory entry.
+
+The wire format and cohort identity calculation are unchanged. Old bounded catalogs
+and the shipped empty catalog remain valid. Older helpers safely refuse catalogs
+above 16 MiB; do not mix them with a new catalog. Changed helper bytes change the
+payload/generation identity, so final packaging must use a new monotonic version
+and native qualification of those exact final bytes. No old artifact is rewritten.
+The shipped catalog remains empty until actual native evidence is approved.
 
 Run on the completed full candidate and exact final catalog:
 

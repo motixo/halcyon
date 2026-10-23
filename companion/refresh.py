@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 import install
-from bundle_contract import canonical, digest, read_json, verify_bundle
+from bundle_contract import canonical, digest, read_json, read_catalog_bytes, verify_bundle
 from panel_launcher import session_identity
 
 PACKAGE = 'cosmic-ext-halcyon-islands'
@@ -172,7 +172,9 @@ def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda 
             staged = Path(temporary) / generation
             staged.mkdir(mode=0o700)
             for name, info in manifest['files'].items():
-                install.place(staged / name, (library / name).read_bytes(), info['mode'])
+                data = (read_catalog_bytes(library / name, info['sha256']) if name == 'catalog.json'
+                        else (library / name).read_bytes())
+                install.place(staged / name, data, info['mode'])
             install.place(staged / 'manifest.json', manifest_bytes, 0o644)
             verify_bundle(staged, owner=os.getuid())
             boundary('copied')

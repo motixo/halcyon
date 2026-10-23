@@ -82,6 +82,11 @@ def main():
             path = bundle / name
             if path.is_symlink() or path.stat().st_uid != os.getuid() or path.stat().st_mode & 0o777 != entry['mode']:
                 raise ValueError('owner_or_mode')
+            if name == 'catalog.json':
+                # Data only: the verified helper below bounds, hashes and
+                # validates the same opened bytes before refresh or launch.
+                # Do not pre-hash an unbounded catalog before that reader.
+                continue
             with path.open('rb') as stream:
                 if hashlib.file_digest(stream, 'sha256').hexdigest() != entry['sha256']:
                     raise ValueError('digest')

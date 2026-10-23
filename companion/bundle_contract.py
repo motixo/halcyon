@@ -12,6 +12,10 @@ import stat
 
 FORMAT = 'halcyon-islands-bundle'
 CATALOG = 'halcyon-islands-catalog'
+# Full 1,783-package discovery measured a 25,689,147-byte cohort envelope.
+# Room for two comparable cohorts plus runtime/evidence; never a global cap.
+CATALOG_BYTES = 64 * 1024 * 1024
+RECORD_BYTES = 16 * 1024 * 1024
 HELPERS = ('panel_launcher.py', 'bundle_contract.py', 'runtime_identity.py',
            'install_status.py', 'install.py', 'refresh.py', 'selector.py', 'panel_configuration.py')
 FILES = (*HELPERS, 'cosmic-panel-islands', 'catalog.json')
@@ -46,15 +50,58 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def read_json(path):
-    if not os.path.lexists(path):
-        raise FileNotFoundError(path)
-    if not regular(path) or path.stat().st_size > 16 * 1024 * 1024:
+def _record_bytes(path, limit, expected_sha256=None):
+    # Bound the opened file, not just a pathname stat followed by read_bytes().
+    # NONBLOCK prevents a raced FIFO/device from hanging before fstat refusal.
+    path = Path(path)
+    if any(p.is_symlink() for p in (path, *path.parents)):
         raise ValueError('not_bounded_record')
-    value = json.loads(path.read_bytes())
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
+            raise ValueError('not_bounded_record')
+        stream = os.fdopen(fd, 'rb')
+    except BaseException:
+        os.close(fd)
+        raise
+    with stream:
+        # Do not reserve the full 64 MiB for a smaller catalog (or 16 MiB for
+        # every tiny manifest). Growth/truncation still fails the snapshot check.
+        data = stream.read(min(limit, before.st_size) + 1)
+        if len(data) > limit:
+            raise ValueError('not_bounded_record')
+        after = os.fstat(stream.fileno())
+        current = path.stat(follow_symlinks=False)
+        def stamp(info):
+            return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        if (stamp(before) != stamp(after) or stamp(after) != stamp(current)
+                or len(data) != before.st_size or not regular(path)):
+            raise ValueError('record_changed_during_read')
+    if expected_sha256 is not None and hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise ValueError('bundle_component_mismatch')
+    return data
+
+
+def _json_object(data):
+    value = json.loads(data)
     if not isinstance(value, dict):
         raise ValueError('not_object')
     return value
+
+
+def read_json(path):
+    return _json_object(_record_bytes(path, RECORD_BYTES))
+
+
+def read_catalog_bytes(path, expected_sha256=None):
+    """Bounded exact bytes for packaging; no reserialization of authored input."""
+    return _record_bytes(path, CATALOG_BYTES, expected_sha256)
+
+
+def read_catalog(path, expected_sha256=None):
+    """Validate the same bounded bytes whose digest the manifest binds."""
+    return valid_catalog(_json_object(read_catalog_bytes(path, expected_sha256)))
 
 
 def cohort_id(cohort):
@@ -125,7 +172,7 @@ def valid_runtime(profile):
 
 
 def valid_catalog(catalog):
-    if catalog.get('format') != CATALOG or catalog.get('version') != 1 or not isinstance(catalog.get('cohorts'), list):
+    if not isinstance(catalog, dict) or catalog.get('format') != CATALOG or catalog.get('version') != 1 or not isinstance(catalog.get('cohorts'), list):
         raise ValueError('catalog_schema')
     seen = set()
     for row in catalog['cohorts']:
@@ -165,7 +212,10 @@ def valid_catalog(catalog):
             for path, sha in package['files'].items():
                 if not path.startswith('/usr/') and not path.startswith('/lib/'):
                     raise ValueError('catalog_file_path')
-                if '..' in Path(path).parts or not HEX.fullmatch(sha):
+                # POSIX absolute inventory paths: the traversal rule is an
+                # exact '..' component, without constructing 165k Path objects
+                # on every status/readiness classification. Do not normalize.
+                if '..' in path.split('/') or not HEX.fullmatch(sha):
                     raise ValueError('catalog_file_digest')
     profiles = {runtime_id(r['runtime']): r['runtime'] for r in catalog['cohorts'] if r.get('runtime')}
     for row in catalog['cohorts']:
@@ -199,7 +249,11 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
         if not isinstance(entry, dict) or not isinstance(entry.get('mode'), int) or not isinstance(entry.get('sha256'), str):
             raise ValueError('bundle_entry')
         path = bundle / name
-        if digest(path) != entry['sha256'] or stat.S_IMODE(path.stat().st_mode) != entry['mode']:
+        if name == 'catalog.json':
+            catalog = read_catalog(path, entry['sha256'])
+        elif digest(path) != entry['sha256']:
+            raise ValueError('bundle_component_mismatch')
+        if stat.S_IMODE(path.stat().st_mode) != entry['mode']:
             raise ValueError('bundle_component_mismatch')
         if owner is not None and path.stat().st_uid != owner:
             raise ValueError('bundle_owner')
@@ -208,7 +262,6 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
     payload = {k: v for k, v in manifest['files'].items() if k != 'catalog.json'}
     if identity(payload) != manifest['payload_sha256'] or manifest['binary_sha256'] != payload['cosmic-panel-islands']['sha256']:
         raise ValueError('bundle_payload_mismatch')
-    catalog = valid_catalog(read_json(bundle / 'catalog.json'))
     if any(r['qualification']=='native-session' for r in catalog['cohorts']) and manifest.get('upstream') != CONFIGURATION_SOURCE['upstream']:
         raise ValueError('configuration_native_source_mismatch')
     return manifest, catalog

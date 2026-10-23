@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure discovery inventories and the unchanged 16 MiB catalog contract.
+"""Measure discovery inventories and the shared bounded catalog contract.
 
 Measurements do not prune packages, grant admission or relax bundle readers.
 """
@@ -11,9 +11,8 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'companion'))
-from bundle_contract import cohort_id, read_json, valid_catalog
+from bundle_contract import CATALOG_BYTES, cohort_id, read_catalog
 
-CATALOG_BYTES = 16 * 1024**2  # bundle_contract.read_json; intentionally unchanged
 CANDIDATE_BYTES = 128 * 1024**2
 ENCODER = json.JSONEncoder(sort_keys=True, separators=(',', ':'), ensure_ascii=True)
 
@@ -55,12 +54,12 @@ def catalog_capacity(path, candidate=None):
     result = dict(actual_bytes=size, catalog_reader_limit=CATALOG_BYTES,
                   within_reader=size <= CATALOG_BYTES, schema_valid=False, candidate_bound=False)
     try:
-        catalog = valid_catalog(read_json(path))
+        catalog = read_catalog(path)
         result.update(schema_valid=True, cohorts=len(catalog['cohorts']))
         if candidate is not None:
             expected = cohort_id(candidate['cohort'])
             result['candidate_bound'] = candidate.get('id') == expected and any(row['id'] == expected for row in catalog['cohorts'])
-    except (ValueError, KeyError, TypeError) as error:
+    except (OSError, ValueError, KeyError, TypeError) as error:
         result['error'] = str(error) if isinstance(error, ValueError) else 'catalog_schema'
     return result
 

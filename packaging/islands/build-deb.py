@@ -18,7 +18,8 @@ HERE = Path(__file__).resolve().parent
 COMPANION = HERE.parent.parent / 'companion'
 sys.path.insert(0, str(COMPANION))
 import panel_launcher
-from bundle_contract import HELPERS, canonical, identity, verify_bundle, valid_catalog
+from bundle_contract import (HELPERS, canonical, identity, verify_bundle,
+                             valid_catalog, read_catalog_bytes, digest)
 
 PACKAGE = 'cosmic-ext-halcyon-islands'
 MAINTAINER = 'profilaz3 <261673162+profilaz3@users.noreply.github.com>'
@@ -59,11 +60,14 @@ def build(binary, manifest, version, out, licenses=None, catalog=None):
         record = json.loads((library / 'companion-manifest.json').read_text())
         for name in HELPERS:
             stage_file(COMPANION / name, library / name, 0o755 if name in ('install.py', 'panel_launcher.py', 'selector.py') else 0o644)
-        stage_file(catalog or COMPANION / 'compatibility/catalog.json', library / 'catalog.json')
-        files = {p.name: {'sha256': hashlib.sha256(p.read_bytes()).hexdigest(), 'mode': p.stat().st_mode & 0o777}
+        catalog_data = read_catalog_bytes(catalog or COMPANION / 'compatibility/catalog.json')
+        admitted = valid_catalog(json.loads(catalog_data))
+        (library / 'catalog.json').write_bytes(catalog_data)
+        (library / 'catalog.json').chmod(0o644)
+        del catalog_data
+        files = {p.name: {'sha256': digest(p), 'mode': p.stat().st_mode & 0o777}
                  for p in library.iterdir() if p.name != 'companion-manifest.json'}
         payload = identity({k: v for k, v in files.items() if k != 'catalog.json'})
-        admitted = valid_catalog(json.loads((library / 'catalog.json').read_bytes()))
         if any(r['payload_sha256'] != payload for r in admitted['cohorts']):
             raise ValueError('Catalog belongs to a different finalized payload; retain a separate immutable package for that cohort')
         record.update(format='halcyon-islands-bundle', version=2, package_version=version,
