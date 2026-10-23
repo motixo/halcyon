@@ -97,7 +97,7 @@ def init():
  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
  blocks=c.q.call('query-block');(ev/'qmp-blocks.json').write_text(json.dumps(blocks,indent=2)+'\n')
  if cohort=='stock' and any(x.get('removable') and x.get('inserted') for x in blocks):raise RuntimeError('Stock has inserted candidate media')
- command('prelogin-constant-clock','timedatectl set-ntp false && timedatectl set-timezone Europe/London && timedatectl set-time "2026-10-23 12:00:00"')
+ command('prelogin-clock-readonly','timedatectl show --all')
  if cohort=='islands':command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
  c.login('lockup-login');c.capture('baseline');install_guest_helpers()
  command('shortcuts','cat /usr/share/cosmic/com.system76.CosmicSettings.Shortcuts/v1/defaults; cat /home/probe/.config/cosmic/com.system76.CosmicSettings.Shortcuts/v1/custom 2>/dev/null',required=False)
@@ -163,7 +163,7 @@ def run(until):
  state['observed_elapsed']=time.monotonic()-state['start_monotonic'];save()
 
 def finish():
- c.q=c.Channel('qmp.sock',True);input_probe(9000,'one-hour-final');state['hour_complete']=time.monotonic()-state['start_monotonic']>=3600
+ c.q=c.Channel('qmp.sock',True);input_probe(9000,'duration-final');state['hour_complete']=time.monotonic()-state['start_monotonic']>=3600
  # Bounded real guest RTC/suspend attempt only after the hour is already proven.
  command('suspend-capability','cat /sys/power/state; cat /sys/power/mem_sleep; command -v rtcwake',required=False)
  command('resume-attempt','systemd-run --unit=lockup-resume --collect /usr/sbin/rtcwake -m mem -s 12',required=False)
