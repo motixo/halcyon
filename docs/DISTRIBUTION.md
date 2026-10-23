@@ -1,8 +1,15 @@
 # Distribution and updates
 
-Status: v0.1.1 ships as GitHub release packages. The signed APT repository,
-update UI, and automatic Islands rebuilds below are the next milestone, not
-services that are already running.
+Status: manual GitHub release packages remain supported. Local signed-archive
+and explicit enrollment preparation now exists; no public APT channel or Updates
+UI is claimed. **0.2.1 publication remains on hold.**
+
+[APT operations](APT-OPERATIONS.md) is the current implementation/deployment
+contract, including exact immutable promotion inputs, scoped enrollment,
+retention, expiry and tested keyring rotation. [Updates handoff](UPDATES-HANDOFF.md)
+records actual PackageKit/Store interfaces and the remaining Rust/UI/native work.
+The earlier milestone design below supplies context; those two documents and the
+current publication hold govern execution.
 
 ## Current releases
 
@@ -76,7 +83,8 @@ on their system policy and must not be promised universally.
 Acceptance in a disposable Pop!_OS VM: enroll, `apt update`, install v0.1.0,
 upgrade to the candidate through PackageKit, uninstall/reinstall while retaining
 preferences, reject a corrupted index and a wrong signature, reject expired
-metadata, and rotate keys using overlapping old/new signatures. Also verify
+metadata, and rotate keys using an old-key-signed overlapping public keyring
+before switching to a single new-key signature. Also verify
 that unrelated packages cannot be selected from this repository.
 
 ### COSMIC Store discovery

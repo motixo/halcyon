@@ -1,0 +1,72 @@
+name: Prepare reviewed APT generation (no publication)
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: Run containing independently reviewed halcyon-release-candidate
+        required: true
+      review_sha256:
+        description: Independently reviewed distribution-review.json SHA256
+        required: true
+      epoch:
+        description: Reviewed generation UTC Unix timestamp (seven-day validity)
+        required: true
+      previous_run:
+        description: Previous prepared archive run (empty for bootstrap only)
+        required: false
+      previous_sha256:
+        description: Reviewed previous archive.json digest (required with previous_run)
+        required: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install verification tools on disposable runner
+        run: sudo apt-get update && sudo apt-get install -y apt-utils gnupg appstream python3-apt
+      - uses: actions/download-artifact@v4
+        with:
+          name: halcyon-release-candidate
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - uses: actions/download-artifact@v4
+        if: inputs.previous_run != ''
+        with:
+          name: halcyon-apt-unsigned
+          run-id: ${{ inputs.previous_run }}
+          github-token: ${{ github.token }}
+          path: previous
+      - name: Verify evidence and stage exact bytes
+        env:
+          REVIEW_SHA: ${{ inputs.review_sha256 }}
+          EPOCH: ${{ inputs.epoch }}
+          PREVIOUS_RUN: ${{ inputs.previous_run }}
+          PREVIOUS_SHA: ${{ inputs.previous_sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous_args=()
+          if [ -n "$PREVIOUS_RUN" ]; then
+            test -n "$PREVIOUS_SHA"
+            previous_args=(--previous previous --previous-sha256 "$PREVIOUS_SHA")
+          else
+            test -z "$PREVIOUS_SHA"
+          fi
+          python3 -B scripts/apt/build_archive.py --artifacts candidate \
+            --review-sha256 "$REVIEW_SHA" --epoch "$EPOCH" \
+            "${previous_args[@]}" --out unsigned
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halcyon-apt-unsigned
+          path: unsigned
+          retention-days: 7
+# Intentionally no signing environment, write permissions, tags, schedule,
+# Pages action or deployment. Long-term archive retention and final publication
+# are parent-owned; this short-lived CI artifact is not durable hosting.
