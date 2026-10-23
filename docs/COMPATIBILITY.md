@@ -176,7 +176,13 @@ panel's no-argument startup path, read-only:
   validated: required/unknown/duplicate fields, bool and enum types, version 1,
   gap 0–64, both three-section permutations, positions 0–10000, at most 32 saved
   output layouts, and nonempty output names of at most 128 UTF-8 bytes without
-  control characters. Recognized invalid/oversized/unreadable sidecars disable
+  control characters. The fixed arrays in `together.order`, `separate.order`
+  and `separate.positions` require three-element RON **tuples** `(a,b,c)`;
+  square-bracket lists are native-invalid. Compact and pretty output from the
+  shared Rust `Settings` serializer are covered by retained, Rust-loaded
+  [fixtures](../companion/fixtures/settings-generator/README.md), including
+  saved-output layouts. This fixture host does not qualify native COSMIC.
+  Recognized invalid/oversized/unreadable sidecars disable
   **Islands fallback**, leaving native All/Active/present Name behavior intact.
   Noncanonical RON extensions outside this bounded reader reject the snapshot
   rather than guessing disabled; this prevents an enabled native extension from

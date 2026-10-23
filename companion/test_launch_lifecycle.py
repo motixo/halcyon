@@ -342,11 +342,12 @@ class LaunchLifecycle(unittest.TestCase):
         self.assertTrue((self.home/'.local/state/desktop-cards-panel/failed').exists())
         self.assertEqual(len(self.events_named('stock')),1);self.assert_reaped()
 
-    def configure_named_fallback(self, enabled=True):
-        from test_islands_configuration import settings
+    def configure_named_fallback(self, enabled=True, fixture=None):
+        from test_islands_configuration import FIXTURES, settings
         self.config_center.with_name('output').write_text('Name("DP-9")')
         sidecar=self.home/'.config/cosmic/io.github.desktopcards.DockIslands/v1/Panel'
-        sidecar.parent.mkdir(parents=True,exist_ok=True);sidecar.write_text(settings(enabled))
+        sidecar.parent.mkdir(parents=True,exist_ok=True)
+        sidecar.write_text((FIXTURES/fixture).read_text() if fixture else settings(enabled))
 
     def test_enabled_islands_absent_name_admits_actual_fallback_child(self):
         self.configure_named_fallback();self.successful_login()
@@ -356,6 +357,36 @@ class LaunchLifecycle(unittest.TestCase):
 
     def test_enabled_fallback_still_requires_configured_child(self):
         self.configure_named_fallback();self.failure('missing')
+
+    def test_enabled_fallback_child_present_before_readiness_is_ready(self):
+        from unittest.mock import patch
+        self.configure_named_fallback()
+        # Reproduce the independent review's schedule with the same real loop.
+        runner=RUNNER.replace('ready=real_wait(child,done,wedged,admission)',
+                              'time.sleep(.5)\n    ready=real_wait(child,done,wedged,admission)')
+        with patch(__name__+'.RUNNER',runner):self.successful_login()
+
+    def test_saved_output_pretty_settings_require_actual_child(self):
+        self.configure_named_fallback(fixture='outputs-enabled-pretty.ron');self.successful_login()
+
+    def test_saved_output_pretty_missing_child_fails(self):
+        self.configure_named_fallback(fixture='outputs-enabled-pretty.ron');self.failure('missing')
+
+    def test_native_invalid_list_absent_name_is_disabled(self):
+        self.configure_named_fallback(fixture='invalid-order-list.ron');self.successful_login('missing',0)
+
+    def test_enabled_all_keeps_native_child_requirement(self):
+        self.configure_named_fallback();self.config_center.with_name('output').write_text('All')
+        self.successful_login()
+
+    def test_disabled_active_keeps_native_child_requirement(self):
+        self.configure_named_fallback(False);self.config_center.with_name('output').write_text('Active')
+        self.successful_login()
+
+    def test_disabled_present_name_keeps_native_child_requirement(self):
+        self.configure_named_fallback(False)
+        self.config_center.with_name('output').write_text('Name("fixture-output")')
+        self.successful_login()
 
     def test_enabled_fallback_rejects_foreign_child(self):
         self.configure_named_fallback();self.failure('foreign')

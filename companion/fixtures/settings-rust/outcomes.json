@@ -1,0 +1,174 @@
+{
+  "fixtures": [
+    {
+      "enabled": true,
+      "file": "enabled.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": true,
+      "file": "enabled-pretty.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": false,
+      "file": "disabled.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": false,
+      "file": "disabled-pretty.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": true,
+      "file": "outputs-enabled.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": true,
+      "file": "outputs-enabled-pretty.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": true,
+      "file": "limits.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": true,
+      "file": "limits-pretty.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": false,
+      "file": "outputs-disabled.ron",
+      "native_outcome": "valid",
+      "python_unsupported": false,
+      "serialized_settings": true
+    },
+    {
+      "enabled": false,
+      "file": "invalid-order-list.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-position-list.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-order-short.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-order-long.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-position-short.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-position-long.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-order-duplicate.ron",
+      "native_outcome": "validation_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-order-enum.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-position-range.ron",
+      "native_outcome": "validation_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-position-negative.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-position-overflow.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": false,
+      "file": "invalid-all-lists.ron",
+      "native_outcome": "deserialize_error",
+      "python_unsupported": false,
+      "serialized_settings": false
+    },
+    {
+      "enabled": true,
+      "file": "unsupported-named.ron",
+      "native_outcome": "valid",
+      "python_unsupported": true,
+      "serialized_settings": false
+    },
+    {
+      "enabled": true,
+      "file": "unsupported-number.ron",
+      "native_outcome": "valid",
+      "python_unsupported": true,
+      "serialized_settings": false
+    },
+    {
+      "enabled": true,
+      "file": "unsupported-unicode.ron",
+      "native_outcome": "valid",
+      "python_unsupported": true,
+      "serialized_settings": false
+    }
+  ],
+  "native_qualification": false,
+  "schema": 1
+}

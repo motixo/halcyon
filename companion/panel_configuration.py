@@ -425,9 +425,15 @@ def islands_settings_enabled(text):
             if isinstance(token,tuple):return token[1]
             if token in ('(', '{', '['):
                 end={'(':')','{':'}','[':']'}[token]
-                result=[] if token=='[' else Struct() if token=='(' else Map()
+                # Serde fixed arrays use RON tuples, not sequences. Distinguish
+                # (field:value) structs from (value,value,...) before reading;
+                # keep tuple/list shape so native-invalid lists stay invalid.
+                is_tuple=token=='(' and at<len(tokens) and tokens[at]!=')' and not (
+                    at+1<len(tokens) and tokens[at+1]==':')
+                sequence=token=='[' or is_tuple
+                result=[] if sequence else Struct() if token=='(' else Map()
                 while at<len(tokens) and tokens[at]!=end:
-                    if token=='[':result.append(value(depth+1))
+                    if sequence:result.append(value(depth+1))
                     else:
                         key=tokens[at];at+=1
                         if token=='{':
@@ -442,7 +448,7 @@ def islands_settings_enabled(text):
                     if at<len(tokens) and tokens[at]==',':at+=1
                     elif at>=len(tokens) or tokens[at]!=end:raise ValueError('islands_ron_comma')
                 if at>=len(tokens):raise ValueError('islands_ron_end')
-                at+=1;return result
+                at+=1;return tuple(result) if is_tuple else result
             if at<len(tokens) and tokens[at]=='(':raise UnsupportedSettings('islands_named_or_tuple_extension')
             if token in ('true','false'):return token=='true'
             if re.fullmatch('[+-]?[0-9]+',token):
@@ -458,14 +464,14 @@ def islands_settings_enabled(text):
         def uint(n,limit):
             if type(n) is not int or not 0<=n<=limit:raise ValueError('islands_number')
         def order(items):
-            if not isinstance(items,list) or len(items)!=3 or set(items)!={('enum','Start'),('enum','Center'),('enum','End')}:
+            if type(items) is not tuple or len(items)!=3 or set(items)!={('enum','Start'),('enum','Center'),('enum','End')}:
                 raise ValueError('islands_order')
         def arrangement(layout):
             fields(layout,('together','separate'))
             together,separate=layout['together'],layout['separate']
             fields(together,('order','position'));fields(separate,('order','positions'))
             order(together['order']);order(separate['order']);uint(together['position'],10000)
-            if not isinstance(separate['positions'],list) or len(separate['positions'])!=3:raise ValueError('islands_positions')
+            if type(separate['positions']) is not tuple or len(separate['positions'])!=3:raise ValueError('islands_positions')
             for n in separate['positions']:uint(n,10000)
         fields(settings,('version','enabled','placement','gap','default_layout','outputs'))
         if type(settings['version']) is not int or settings['version']!=1 or type(settings['enabled']) is not bool: return False
