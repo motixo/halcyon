@@ -166,7 +166,7 @@ def mode(mode,label):
   name,path,words=screen('native-auto-control')
   word=next((w for w in words if w['text'].casefold()=='automatically'),None)
   if word is None:raise RuntimeError('Native automatic-mode toggler is not visible')
-  c.click(1105,int(word['top'])+int(word['height'])//2);time.sleep(3)
+  c.click(978,int(word['top'])+int(word['height'])//2);time.sleep(3)
  else:target('native-mode-'+mode,mode,dy=-60)
  screen('native-selected-'+mode)
  stop_ui()
@@ -175,7 +175,13 @@ def mode(mode,label):
  if mode=='Auto':
   auto=[bytes.fromhex(v['hex']).decode().strip() for k,v in state['files'].items() if k.endswith('CosmicTheme.Mode/v1/auto_switch')]
   if auto!=['true']:raise RuntimeError('Native automatic-mode switch did not enable: '+str(auto))
- if mode in ['Light','Dark'] and m!=[str(mode=='Dark').lower()]:raise RuntimeError('Native mode UI did not persist requested mode: '+str(m))
+ if mode in ['Light','Dark'] and m!=[str(mode=='Dark').lower()]:
+  # An unchanged native default need not create a per-user override. Require
+  # independent live portal confirmation for this specific no-op Dark case.
+  portal_files=sorted(ev.glob('*'+label+'-portal.txt'))
+  current=portal_files[-1].read_text().splitlines()[0] if portal_files else ''
+  if not (mode=='Dark' and m==[] and re.search(r'\bu 1$',current)):
+   raise RuntimeError('Native mode effective state does not match request: '+str(m)+' portal='+current)
  return state
 
 def cycle(look):
@@ -200,7 +206,8 @@ def install(which):
 try:
  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
  c.shot('000-greeter')
- if host=='islands':command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
+ if host=='islands':
+  command('fixture-local-bin',"install -d -o 1000 -g 1000 /home/probe/.local/bin && printf 'PATH=\"/home/probe/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\\n' > /etc/environment")
  c.login('login');c.capture('baseline')
  command('actual-session-environment',"printf 'PATH=%s\\nXDG_SESSION_ID=%s\\nWAYLAND_DISPLAY=%s\\n' \"$PATH\" \"$XDG_SESSION_ID\" \"$WAYLAND_DISPLAY\"",True)
  command('offline','ip -brief addr; ip route; cat /proc/net/route; systemctl is-active dbus; pgrep -a cosmic-settings-daemon; pgrep -a xdg-desktop-portal',required=False)
