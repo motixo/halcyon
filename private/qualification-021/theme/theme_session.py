@@ -27,7 +27,15 @@ def command(label,cmd,as_user=False,required=True,timeout=60):
 
 def stop_ui():
  c.user('systemctl --user stop theme-ui.service cosmic-ui.service halcyon.service 2>/dev/null || true')
- c.guest("pkill -u 1000 -x halcyon || true; pkill -u 1000 -x cosmic-settings || true")
+ c.guest("""python3 - <<'STOP'
+import pathlib,os,signal
+for p in pathlib.Path('/proc').iterdir():
+ if not p.name.isdigit():continue
+ try:
+  if p.stat().st_uid==1000 and os.readlink(p/'exe') in ['/usr/bin/halcyon','/usr/bin/cosmic-settings']:
+   os.kill(int(p.name),signal.SIGTERM)
+ except (OSError,ProcessLookupError):pass
+STOP""")
  time.sleep(2)
 
 def launch(binary,args,unit='theme-ui'):
