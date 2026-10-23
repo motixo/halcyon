@@ -56,6 +56,13 @@ when they do not match. Your saved Islands layout is kept.
 
 ![Halcyon desktop with coordinated widgets and optional Islands](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-purple.png)
 
+<table>
+  <tr>
+    <td width="50%"><img src="https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-paper.png" alt="Light desktop" width="100%"></td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-mist.png" alt="Transparent widgets" width="100%"></td>
+  </tr>
+</table>
+
 ![Colors and theme settings with automatic wallpaper colors enabled](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/settings-colors.png)
 
 [Features and setup](https://github.com/${REPOSITORY}/blob/${TAG}/README.md) ·

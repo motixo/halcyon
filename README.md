@@ -1,71 +1,79 @@
 <p align="center">
-  <img src="assets/wizard/welcome.jpg" alt="Halcyon’s original welcome artwork: a kingfisher over the sea" width="100%">
+  <img src="assets/wizard/welcome.jpg" alt="Halcyon's kingfisher over the sea" width="420">
 </p>
 
 <h1 align="center">Halcyon</h1>
 
-<p align="center">
-  Desktop widgets and themes for COSMIC.
-</p>
+<p align="center">Desktop widgets and themes for COSMIC.</p>
 
 <p align="center">
   <a href="https://github.com/profilaz3/halcyon/releases/latest"><strong>Download</strong></a> ·
   <a href="#install">Install</a> ·
   <a href="docs/DEVELOPMENT.md">Build from source</a> ·
-  <a href="https://github.com/profilaz3/halcyon/issues">Report an issue</a>
+  <a href="https://github.com/profilaz3/halcyon/issues">Issues & feature requests</a>
 </p>
 
-Halcyon brings your wallpaper, colors, widgets, windows, dock and panel together.
-Start with a complete look, then adjust the parts that matter to you. Keep the
-weather nearby, see what your system is doing, control your music, or leave
-yourself a note.
+[![Halcyon on a purple lake desktop: clock and agenda, system monitor, music, and Islands](docs/screenshots/desktop-purple.png)](docs/screenshots/desktop-purple.png)
 
-**Free and open source · Native Rust + libcosmic · No Halcyon account required**
+Change the wallpaper, follow its colors across widgets and COSMIC, and arrange
+what you want to see on your desktop.
 
-## A desktop that belongs together
+**Pop!_OS 24.04 · Intel & AMD 64-bit · Rust + libcosmic · Free and open source**
 
-Choose one of six starter looks, or build your own. Let the accent follow your
-wallpaper, choose another color from it, or set a color yourself. Thirteen widget
-styles range from frosted cards to paper, outlines and plain text.
+## Different looks, same desktop
 
-![Halcyon desktop with purple wallpaper, clock and agenda, system monitor, music and Islands](docs/screenshots/desktop-purple.png)
+Six starter looks and thirteen widget styles. Use light cards, frosted surfaces,
+outlines or transparent text. Adjust colors, fonts and corners to suit your wallpaper.
 
-*A desktop screenshot with coordinated widgets and optional Islands.*
+<table>
+  <tr>
+    <td width="50%"><a href="docs/screenshots/desktop-paper.png"><img src="docs/screenshots/desktop-paper.png" alt="Light cards over a warm desert wallpaper" width="100%"></a></td>
+    <td width="50%"><a href="docs/screenshots/desktop-mist.png"><img src="docs/screenshots/desktop-mist.png" alt="Transparent widgets over misty mountains" width="100%"></a></td>
+  </tr>
+  <tr>
+    <td><strong>Light</strong><br>Solid cards and a warm palette.</td>
+    <td><strong>Transparent</strong><br>Clock, agenda and metrics directly on the wallpaper.</td>
+  </tr>
+</table>
 
-## Useful at a glance
+*Real desktop screenshots. Click an image to open it at full size.*
 
-Show only what you need. Combine clock, weather and calendar in one overview,
-or keep them separate.
+## Widgets
 
-![Light desktop with clock and agenda, system monitor, music and Islands](docs/screenshots/desktop-paper.png)
+Clock, weather, calendar, system monitor, music, Git projects, notes, checklists
+and a focus timer. Keep them separate or combine clock, weather and calendar
+in one overview.
 
-- **Your day:** clock, local weather and an optional Google Calendar agenda.
-- **Your system:** CPU, memory, disk, network and GPU readings, with optional
-  history graphs and reorderable rows.
-- **Your work:** Git project status, notes and checklists, and a focus timer.
-- **Your music:** playback controls and seeking through your player's MPRIS
-  interface. Available controls depend on the player.
+- **Arrange:** drag, resize and snap widgets in the layout editor or on the desktop.
+- **System monitor:** choose and reorder metrics, with optional history graphs.
+- **Music:** playback and seeking through MPRIS; controls depend on the player.
+- **Setups:** save your layout and appearance to return to later.
 
-## Put things where they work for you
+The screenshots show an existing Calendar connection. Google Calendar sign-in
+is not configured in the public **0.1.1** package; the other widgets work without it.
 
-Drag widgets around a preview of your desktop. Resize them, snap them to a
-fine grid, or arrange them directly on the desktop. Save setups to return
-to a layout you like.
+## Wallpaper & colors
 
-Appearance changes apply as you make them, with Undo. Choosing a shared style
-keeps your applets and their order. Dock, panel, window and shortcut controls
-stay available when you want to go further.
+Turn on **Follow wallpaper** to update colors when the wallpaper changes.
+Apply them to widgets and COSMIC, or just the widgets. Pick another extracted
+color or set your own. Appearance changes apply immediately, with Undo.
 
 <p align="center">
-  <img src="docs/screenshots/settings-colors.png" alt="Colors and theme settings with automatic wallpaper colors enabled" width="817">
+  <a href="docs/screenshots/settings-colors.png"><img src="docs/screenshots/settings-colors.png" alt="Colors and theme settings: wallpaper colors, scope, accent, and light or dark mode" width="817"></a>
 </p>
 
-[More screenshots: transparent widgets and Dock & panel settings](docs/presentation/README.md#desktop-screenshots)
+## Dock, panel & Islands
 
-**Optional: Islands.** Split the native dock or panel into floating groups.
-This uses a separate, version-matched companion package; it is not required
-for Halcyon's widgets or themes.
-[See compatibility and setup →](packaging/islands/README.md)
+Set the dock and panel's placement, size, transparency and corners.
+**Islands** groups applets into separate floating sections, as shown in the
+desktop screenshots above.
+
+<p align="center">
+  <a href="docs/screenshots/settings-panel.png"><img src="docs/screenshots/settings-panel.png" alt="Dock and panel settings with Islands selected, showing placement, size, transparency and corners" width="900"></a>
+</p>
+
+Islands needs a **separate, version-matched package**. For widgets and themes,
+install only Halcyon. [Islands compatibility and installation →](packaging/islands/README.md)
 
 ## Install
 
