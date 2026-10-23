@@ -112,6 +112,9 @@ def frame(label):
  state=snapshot(name)
  portal(name)
  procs=state['processes']
+ services=[p['exe'] for p in procs]
+ if '/usr/bin/cosmic-settings-daemon' not in services or '/usr/libexec/xdg-desktop-portal-cosmic' not in services:
+  raise RuntimeError('Full native settings daemon/portal missing during observation')
  stopped=not any('/halcyon' in p['exe'] or p['exe'].endswith('/cosmic-settings') for p in procs)
  modes={k:bytes.fromhex(v['hex']).decode(errors='replace') for k,v in state['files'].items() if 'CosmicTheme.Mode/' in k}
  # Independent screen analysis: fixed safe ROI inside the clock label bounds
