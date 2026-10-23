@@ -1628,6 +1628,23 @@ mod tests {
             cards.ids[5],
             Size::new(2560., 1440.),
         ));
+        // Geometry is authoritative only after the compositor identifies the
+        // selected output. An early resize must not seed a saved placement.
+        assert!(!cards.output_known);
+        assert!(!cards.config.widget_positions.contains_key("glance"));
+        let wire = crate::displays::test_support::Wire::new();
+        let _ = cards.update(Message::OutputChanged(
+            crate::displays::OutputEvent::Created(Some(crate::displays::test_support::info(
+                Some("DP-1"),
+                (2560, 1440),
+            ))),
+            wire.output(1),
+        ));
+        let _ = cards.update(Message::SurfaceResized(
+            cards.ids[5],
+            Size::new(2560., 1440.),
+        ));
+        assert!(cards.output_known);
         let seeded = cards.config.widget_positions["glance"];
         let glance_origin = cards.glance_position(&cards.config.widget_positions);
         assert!((glance_origin[0] - clock_origin[0]).abs() < 0.001);
