@@ -157,7 +157,11 @@ def select_look(look):
  state=frame('selected-'+look)
  # The real selected app config must name a family; absence means no success.
  configs=[bytes.fromhex(v['hex']).decode(errors='replace') for k,v in state['files'].items() if k.endswith('config.json')]
- if not any('family' in raw for raw in configs):raise RuntimeError('UI look selection did not persist an appearance family')
+ families={'halcyon':'frosted','calm':'soft','evening':'soft','focus':'bare','paper':'paper','rose':'glass'}
+ palettes={'halcyon':'ocean','calm':'teal','evening':'lavender','focus':'graphite','paper':'amber','rose':'rose'}
+ current=next((json.loads(raw) for raw in configs if 'appearance' in json.loads(raw)),{})
+ actual=(current.get('appearance',{}).get('family'),current.get('theme'))
+ if actual!=(families[look],palettes[look]):raise RuntimeError('UI look did not persist requested identity '+look+': '+str(actual))
  return state
 
 def mode(mode,label):
@@ -188,6 +192,9 @@ def cycle(look):
  before=snapshot(look+'-cycle-before')
  for i,m in enumerate(['Dark','Light','Dark']):mode(m,look+'-manual-'+m.lower()+'-'+str(i))
  c.click(640,16);time.sleep(3);screen(look+'-real-clock-applet');c.key('esc')
+ # The native calendar does not dismiss on Escape here. Its popup grab
+ # swallows the next window click. Dismiss through real outside input.
+ c.click(100,650);time.sleep(2);screen(look+'-applet-dismissed')
  after=snapshot(look+'-cycle-after')
  def hosts(s):return [(p['pid'],p['exe'],p['sha256']) for p in s['processes'] if p['exe'].endswith(('/cosmic-panel','/cosmic-panel-islands','/cosmic-applet-time'))]
  summary['scenarios'].append({'scenario':look+' Dark-Light-Dark native UI','execution':'complete; pixels require independent review','host_processes_preserved':hosts(before)==hosts(after),'before':hosts(before),'after':hosts(after)})
