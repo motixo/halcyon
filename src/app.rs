@@ -555,7 +555,12 @@ impl Cards {
             self.paused_layout = Some(std::mem::take(&mut self.layout_editor));
         }
         self.pause_note();
-        self.sidebar.drag = None;
+        // Sidebar reordering only previews in config until release. Retiring its
+        // surface cancels that preview before replacement geometry is computed.
+        if let Some(drag) = self.sidebar.drag.take() {
+            self.config.widget_order =
+                drag.original_order.iter().map(|w| w.key().into()).collect();
+        }
         self.sidebar.hide();
         self.display_generation += 1;
         self.selected_output = selected;

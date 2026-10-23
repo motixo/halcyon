@@ -303,3 +303,154 @@ impl Cards {
         wire
     }
 }
+
+#[test]
+fn monitor_migration_cancels_sidebar_preview_before_replacement_geometry() {
+    if isolated(
+        "app::display_tests::monitor_migration_cancels_sidebar_preview_before_replacement_geometry",
+    ) {
+        return;
+    }
+    use cosmic::iced::{Point, mouse};
+    let original = vec![Widget::Weather, Widget::Devbox, Widget::Projects];
+    // Both removal/fallback and geometry changes retire the old sidebar surface.
+    for disconnect in [true, false] {
+        Config::save_changes(serde_json::json!({
+            "widget_display":"DP-2", "widget_order":["weather","devbox","projects"],
+            "future_preference":37
+        }))
+        .unwrap();
+        let config_path = Config::path().unwrap();
+        let saved = std::fs::read(&config_path).unwrap();
+        let wire = Wire::new();
+        let fallback = wire.output(1);
+        let selected = wire.output(2);
+        let (mut cards, _) = Cards::init(Core::default(), Config::try_load().unwrap());
+        send(
+            &mut cards,
+            Message::OutputChanged(
+                OutputEvent::Created(Some(info(Some("DP-2"), (1920, 1080)))),
+                selected.clone(),
+            ),
+        );
+        send(
+            &mut cards,
+            Message::OutputChanged(
+                OutputEvent::Created(Some(info(Some("eDP-1"), (1280, 720)))),
+                fallback.clone(),
+            ),
+        );
+        ready(&mut cards, [1920., 1080.]);
+        assert!(!cards.config.has_custom_positions());
+        let old_ids = cards.ids;
+        let start = Point::new(70., drawer::FIRST_ROW + 20.);
+        send(
+            &mut cards,
+            Message::Pointer(old_ids[2], mouse::Event::CursorMoved { position: start }),
+        );
+        send(&mut cards, Message::SidebarPress(Widget::Weather));
+        send(
+            &mut cards,
+            Message::Pointer(
+                old_ids[2],
+                mouse::Event::CursorMoved {
+                    position: Point::new(70., drawer::FIRST_ROW + 2. * drawer::ROW_STEP + 20.),
+                },
+            ),
+        );
+        assert_ne!(
+            cards.config.ordered_right_cards(),
+            original,
+            "actual pointer reducer must preview a reorder"
+        );
+        assert_eq!(
+            cards.sidebar.drag.as_ref().unwrap().original_order,
+            original
+        );
+        assert_eq!(
+            std::fs::read(&config_path).unwrap(),
+            saved,
+            "preview never saved"
+        );
+        let migration = if disconnect {
+            OutputEvent::Removed
+        } else {
+            OutputEvent::InfoUpdate(info(Some("DP-2"), (1280, 720)))
+        };
+        let created = send(
+            &mut cards,
+            Message::OutputChanged(migration, selected.clone()),
+        );
+        assert_eq!(
+            cards.config.ordered_right_cards(),
+            original,
+            "display migration must cancel the sidebar preview before creating replacement geometry"
+        );
+        assert!(cards.sidebar.drag.is_none());
+        assert!(!cards.output_known);
+        assert_eq!(
+            created.len(),
+            1,
+            "only the fresh budget probe may be created"
+        );
+        let expected_output = if disconnect { &fallback } else { &selected };
+        bound(&created, expected_output);
+        assert_ne!(cards.ids[2], old_ids[2]);
+        send(
+            &mut cards,
+            Message::Pointer(
+                old_ids[2],
+                mouse::Event::ButtonReleased(mouse::Button::Left),
+            ),
+        );
+        assert_eq!(cards.config.ordered_right_cards(), original);
+        assert_eq!(
+            std::fs::read(&config_path).unwrap(),
+            saved,
+            "stale release cannot commit a preview"
+        );
+        bound(&ready(&mut cards, [1280., 720.]), expected_output);
+        assert!(cards.output_known);
+        assert_eq!(cards.config.ordered_right_cards(), original);
+        assert_eq!(
+            std::fs::read(&config_path).unwrap(),
+            saved,
+            "fresh probe must use the cancellation baseline"
+        );
+        // A fresh, deliberate drag must capture the original order, not inherit
+        // the abandoned preview; its release can then commit exactly that edit.
+        let new_sidebar = cards.ids[2];
+        send(
+            &mut cards,
+            Message::Pointer(new_sidebar, mouse::Event::CursorMoved { position: start }),
+        );
+        send(&mut cards, Message::SidebarPress(Widget::Weather));
+        assert_eq!(
+            cards.sidebar.drag.as_ref().unwrap().original_order,
+            original
+        );
+        send(
+            &mut cards,
+            Message::Pointer(
+                new_sidebar,
+                mouse::Event::CursorMoved {
+                    position: Point::new(70., drawer::FIRST_ROW + drawer::ROW_STEP + 20.),
+                },
+            ),
+        );
+        send(
+            &mut cards,
+            Message::Pointer(
+                new_sidebar,
+                mouse::Event::ButtonReleased(mouse::Button::Left),
+            ),
+        );
+        assert_eq!(
+            Config::try_load().unwrap().ordered_right_cards(),
+            vec![Widget::Devbox, Widget::Weather, Widget::Projects]
+        );
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
+        assert_eq!(value["future_preference"], 37);
+    }
+}
