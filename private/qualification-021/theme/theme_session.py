@@ -13,6 +13,7 @@ summary={'scope':'offline full-session DEVELOPMENT snapshot; not final 0.2.1 qua
          'lineage':lineage,'host':host,'scenarios':[],'frames':[],'errors':[],
          'automatic':{'native': 'not yet observed','injected_events':False}}
 count=0
+clock_box=None
 
 def save():
  (ev/'theme-results.json').write_text(json.dumps(summary,indent=2)+'\n')
@@ -64,7 +65,7 @@ def target(label,phrase,optional=False,occurrence=0,dx=0,dy=0):
 
 def scroll(down=True,n=5):
  # QMP wheel input, within content rather than the window sidebar.
- c.click(1100,650)
+ c.q.call('input-send-event',{'events':[{'type':'abs','data':{'axis':'x','value':round(1000*32767/1280)}},{'type':'abs','data':{'axis':'y','value':round(650*32767/800)}}]})
  for _ in range(n):
   c.q.call('input-send-event',{'events':[{'type':'btn','data':{'button':'wheel-down' if down else 'wheel-up','down':True}},{'type':'btn','data':{'button':'wheel-down' if down else 'wheel-up','down':False}}]})
  time.sleep(2)
@@ -97,6 +98,7 @@ def portal(label):
  command(label+'-portal',"busctl --user call org.freedesktop.portal.Desktop /org/freedesktop/portal/desktop org.freedesktop.portal.Settings Read ss org.freedesktop.appearance color-scheme; busctl --user list",True,False)
 
 def frame(label):
+ global clock_box
  time.sleep(4)
  name,path,words=screen(label)
  state=snapshot(name)
@@ -114,10 +116,12 @@ def frame(label):
   pix=list(im.crop(box).getdata());metrics['bar_regions'][bar]={'dominant':Counter(pix).most_common(8)}
  if clock:
   w=clock[0];x=int(w['left']);y=int(w['top']);ww=int(w['width']);hh=int(w['height'])
-  box=(x,y,x+ww,y+hh);crop=im.crop(box);crop.save(ev/(name+'-clock-text.png'))
+  clock_box=(x,y,x+ww,y+hh)
+ if clock_box:
+  box=clock_box;crop=im.crop(box);crop.save(ev/(name+'-clock-text.png'))
   colors=Counter(crop.getdata());bg,n=colors.most_common(1)[0]
   fg=[(rgb,n) for rgb,n in colors.items() if sum((a-b)**2 for a,b in zip(rgb,bg))>55**2]
-  metrics['clock_text']={'bounds':box,'background':bg,'foreground_candidates':sorted(fg,key=lambda v:-v[1])[:12],'foreground_pixels':sum(n for rgb,n in fg), 'ocr_text':w['text']}
+  metrics['clock_text']={'bounds':box,'background':bg,'foreground_candidates':sorted(fg,key=lambda v:-v[1])[:12],'foreground_pixels':sum(n for rgb,n in fg), 'ocr_text':clock[0]['text'] if clock else None,'bounds_from_previous_frame':not bool(clock)}
  summary['frames'].append({'name':name,'stopped':stopped,'modes':modes,'pixels':metrics})
  save()
  if not stopped:raise RuntimeError('Halcyon or settings still running during stopped-widget observation')
@@ -128,6 +132,7 @@ def select_look(look):
  if not target('wizard-start','Start',True):target('wizard-continue','Continue',True)
  target('wizard-look-'+look,{'rose':'Rosé'}.get(look,look))
  screen('wizard-selected-'+look)
+ snapshot('running-selected-'+look)
  stop_ui()
  state=frame('selected-'+look)
  # The real selected app config must name a family; absence means no success.
@@ -154,9 +159,12 @@ def mode(mode,label):
  return state
 
 def cycle(look):
+ before=snapshot(look+'-cycle-before')
  for i,m in enumerate(['Dark','Light','Dark']):mode(m,look+'-manual-'+m.lower()+'-'+str(i))
  c.click(640,16);time.sleep(3);screen(look+'-real-clock-applet');c.key('esc')
- summary['scenarios'].append({'scenario':look+' Dark-Light-Dark native UI','execution':'complete; pixels require independent review'})
+ after=snapshot(look+'-cycle-after')
+ def hosts(s):return [(p['pid'],p['exe'],p['sha256']) for p in s['processes'] if p['exe'].endswith(('/cosmic-panel','/cosmic-panel-islands','/cosmic-applet-time'))]
+ summary['scenarios'].append({'scenario':look+' Dark-Light-Dark native UI','execution':'complete; pixels require independent review','host_processes_preserved':hosts(before)==hosts(after),'before':hosts(before),'after':hosts(after)})
  save()
 
 def install(which):
@@ -173,7 +181,7 @@ try:
  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
  c.shot('000-greeter');c.login('login');c.capture('baseline')
  command('offline','ip -brief addr; ip route; cat /proc/net/route; systemctl is-active dbus; pgrep -a cosmic-settings-daemon; pgrep -a xdg-desktop-portal',required=False)
- command('mount-inputs','mkdir -p /mnt/candidate; mount -o ro /dev/sr0 /mnt/candidate; cd /mnt/candidate; sha256sum -c SHA256SUMS')
+ command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
  approved=(ev/'approved-inputs.sha256').read_text()
  checks='cd /mnt/candidate && sha256sum -c /dev/stdin <<\'INPUTS\'\n'+approved+'INPUTS\n'
  command('independent-input-check',checks)
@@ -197,7 +205,10 @@ try:
    scroll(True,18)
    if target('native-reset','Reset to default',True):
     screen('native-reset-confirmation');target('native-reset-confirm','Reset',True)
-    stop_ui();frame('public-native-reset');summary['scenarios'].append({'scenario':'public native panel Reset','execution':'control activated; visual review required'})
+    stop_ui();frame('public-native-reset');cycle('public-native-reset')
+    c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
+    time.sleep(15);c.login('public-reset-relogin');frame('public-reset-after-relogin')
+    summary['scenarios'].append({'scenario':'public native panel Reset','execution':'control activated; visual review required'})
    else:
     summary['scenarios'].append({'scenario':'public native panel Reset','execution':'BLOCKED: no visible Reset control; no config deletion substituted'})
    stop_ui()
@@ -206,7 +217,7 @@ try:
   before=snapshot('legacy-before-open')
   launch('/usr/bin/halcyon',['--settings','themes'])
   target('legacy-explicit-repair','Repair theme matching')
-  screen('legacy-repair-preview')
+  screen('legacy-repair-preview');snapshot('legacy-repair-preview-running')
   target('legacy-repair-apply','Apply')
   stop_ui();frame('legacy-after-repair');cycle('legacy-repaired')
   summary['scenarios'].append({'scenario':'actual legacy explicit Repair','execution':'complete; raw baseline and provenance retained'})

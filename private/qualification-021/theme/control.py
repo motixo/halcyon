@@ -162,4 +162,3 @@ PY''')
     if rc:raise RuntimeError('fixture onboarding preparation failed')
     time.sleep(3)
     shot(label+'-desktop')
-
