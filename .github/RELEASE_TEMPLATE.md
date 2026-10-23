@@ -4,7 +4,7 @@
 
 Desktop widgets and themes for **COSMIC on Pop!_OS 24.04**.
 
-**[Download for amd64](https://github.com/${REPOSITORY}/releases/download/${TAG}/cosmic-ext-halcyon_${VERSION}_amd64.deb)** ·
+**[Download for 64-bit Intel/AMD PCs](https://github.com/${REPOSITORY}/releases/download/${TAG}/cosmic-ext-halcyon_${VERSION}_amd64.deb)** ·
 [Source](https://github.com/${REPOSITORY}/tree/${TAG}) ·
 [Report a problem](https://github.com/${REPOSITORY}/issues)
 
@@ -43,7 +43,8 @@ when they do not match. Your saved Islands layout is kept.
 
 ## Before you start
 
-- **Platform:** Pop!_OS 24.04 with COSMIC, x86-64 (amd64).
+- **Platform:** Pop!_OS 24.04 with COSMIC on 64-bit Intel or AMD PCs.
+  `amd64` means x86-64 and supports both manufacturers; this is not an ARM build.
 - **Google Calendar:** ${CALENDAR}
 - **Islands:** optional, distributed separately, and tied to specific COSMIC
   versions. Use only a companion build matching your desktop.
@@ -53,7 +54,16 @@ when they do not match. Your saved Islands layout is kept.
 
 ## Explore Halcyon
 
-![Native weather, system monitor, music and notes widgets with sample data](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/presentation/widgets.png)
+![Halcyon desktop with coordinated widgets and optional Islands](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-purple.png)
+
+<table>
+  <tr>
+    <td width="50%"><img src="https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-paper.png" alt="Light desktop" width="100%"></td>
+    <td width="50%"><img src="https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-mist.png" alt="Transparent widgets" width="100%"></td>
+  </tr>
+</table>
+
+![Colors and theme settings with automatic wallpaper colors enabled](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/settings-colors.png)
 
 [Features and setup](https://github.com/${REPOSITORY}/blob/${TAG}/README.md) ·
 [Package details](https://github.com/${REPOSITORY}/blob/${TAG}/packaging/README.md) ·
