@@ -17,6 +17,16 @@ class Procfs(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name); self.proc = self.root/'proc'; self.proc.mkdir()
+        # These independently spawned byte-probe actors are session roles.
+        # Panel-child ownership/layout is exercised by test_launch_lifecycle.
+        # Measure a real empty panel configuration; only output inventory is a
+        # synthetic compositor boundary, not process or configuration IO.
+        config=self.root/'config/cosmic/com.system76.CosmicPanel/v1';config.mkdir(parents=True)
+        (config/'entries').write_text('[]')
+        from unittest.mock import patch
+        env=patch.dict(os.environ,{'HOME':str(self.root),'XDG_CONFIG_HOME':str(self.root/'config'),'XDG_DATA_HOME':str(self.root/'data'),'XDG_DATA_DIRS':str(self.root/'system')})
+        env.start();self.addCleanup(env.stop)
+        outputs=patch('panel_configuration.output_names',return_value=['fixture-output']);outputs.start();self.addCleanup(outputs.stop)
         self.children = []; self.addCleanup(self.stop)
         self.catalog = catalog_fixture(); self.row = self.catalog['cohorts'][0]
         self.profile = self.row['runtime']; self.profile['processes'] = {}

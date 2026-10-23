@@ -88,17 +88,18 @@ and verified package runtime-file inventories, including resources. Metapackages
 may have an empty file inventory; their version and authenticated deb identity
 remain in the installed lock. This is separate from running identity.
 
-Each native target declares `runtime` v2 and evidence-bound
+Each native target declares `runtime` v3 and evidence-bound
 `runtime_compatibility` bindings. The runtime profile contains:
 
 - `processes`: the complete declared required process inventory (same names and
   paths as the cohort's `processes`). Each entry has `executable`, ELF `sha256`,
-  exact `count` (1–64), explicit `lifecycle` and an allowlist `mapped` of executable mapping paths and
+  `count` (1–64 for session dependencies, `"configured"` for panel children), explicit `lifecycle` and an allowlist `mapped` of executable mapping paths and
   digests. Include relevant applets/services, not just the three mandatory core
   processes. `session` dependencies must already exist before launch; the three
   core processes always use this lifecycle. `panel-child` processes are created
-  by this panel and must be absent before launch, then present in the declared
-  counts before readiness. All panel-owned applets must use `panel-child`.
+  by this panel and must be absent before launch, then present in the frozen effective configuration
+  counts before readiness. A qualified but deliberately unconfigured child has
+  an expected count of zero, while a configured child must actually appear. All panel-owned applets must use `panel-child`.
   `cosmic-panel` and `cosmic-panel-islands` are forbidden as dependencies: the
   host is identified separately. Paths must match procfs's resolved names.
 - `constraints`: explicitly qualified measurable constraints. Supported fields
@@ -114,18 +115,78 @@ Each native target declares `runtime` v2 and evidence-bound
 A profile ID is its canonical JSON SHA256. Each accepted binding has `id`,
 `evidence_id` equal to the target's evidence ID, and a nonempty `reason` recording
 its qualified equivalence/scope. Profiles referenced by bindings must exist in
-this catalog and preserve the complete process names, paths, counts and lifecycle
-roles. A core-only equivalent profile cannot hide required panel children.
+this catalog and preserve the complete process names, paths, count sources, lifecycle
+roles and configuration policy. A core-only equivalent profile cannot hide required panel children.
 Unchanged-code package rebuilds may deliberately share a qualified
 profile. Resource-only changes need explicit scoped qualification; package
 versions or a unique catalog row never establish running identity.
 
-`running_identity` returns `format: halcyon-runtime-measurement`, `version: 2`,
+`running_identity` returns `format: halcyon-runtime-measurement`, `version: 3`,
 `phase: prelaunch | running`, `verified` and **all** matching `profiles`, never a full installed `cohort`.
-The pure classifier requires an explicit target binding to a measured profile.
+Each match also carries `configurations[profile_id] = {sha256, children}`: a
+fingerprint of observed configuration/desktop inputs, outputs and PATH, and the
+exact derived expected child counts (including zeros). The pure classifier and
+qualification validator require that configuration record and an explicit target
+binding to a measured profile. Configuration changes do not change the catalog
+profile or require a new installed package.
+
+Every profile declares `configuration` with `resolver:
+"cosmic-panel-ca20ce3-native-v1"`, a qualified `max_outputs` bound, and `applets`.
+`applets` maps desktop file stems to `{process, args}`: a declared panel-child
+executable and its exact allowed argument vector. Multiple desktop IDs can map
+to one executable; all child executables must have a binding. Even an empty
+child policy must measure the real configuration and reject configured applets;
+there is no core-only escape from configuration checks.
+
+`panel_configuration.py` implements a bounded supported subset of the pinned
+panel's no-argument startup path, read-only:
+
+- Resolve `com.system76.CosmicPanel/v1/entries`, then each named bar's `name`,
+  `output`, `plugins_wings` and `plugins_center`. Read user `XDG_CONFIG_HOME`
+  overrides first; use the first existing namespace directory in XDG data
+  home/directories for per-key system defaults. Missing entries use the pinned
+  built-in Panel/Dock lists, not an empty list. Missing per-bar fields use pinned
+  struct defaults. Options, lists, tuples, quoted strings, trailing commas and
+  nested comments are supported. Invalid/unsupported RON declines admission
+  instead of guessing which upstream error/default path would win.
+- Count all three plugin regions per effective bar. Query actual `wl_output` v4
+  names over a separate bounded registry connection, never inherited session
+  descriptors, DRM guesses or a second host. `All` multiplies by live outputs,
+  `Name` by matching outputs, and `Active` creates one bar. Output count must fit
+  the qualified scope; implementation support is not native multi-display proof.
+- Mirror pinned desktop search order: XDG application roots, sorted direct
+  files, then queued nested directories; match file stems, selecting the first
+  matching path for each unique plugin on a bar. Malformed higher-priority
+  overrides never silently fall through. Decode desktop escapes, split direct
+  `Exec` using the pinned shell-word subset (no shell execution or field-code
+  expansion), resolve executable PATH order, and require the exact qualified
+  resolved executable and arguments. Hidden/TryExec flags are not used as an
+  absence exemption: this panel path itself uses Exec directly.
+- Scope is native direct ELF applets. Flatpak/wrapper indirection, symlinked
+  config/desktop trees, duplicate plugin IDs within a single bar, duplicate or
+  ambiguous names/keys, localized Exec, raw-string/extended RON syntax and
+  ambiguous Exec escapes/comments are unsupported and select stock before
+  launch without a crash marker. Repeating a supported applet across Panel,
+  Dock or another supported bar is allowed. The resolver never edits layouts.
+
+Snapshot dependencies are watched with bounded inotify coverage **before** they
+are read, including absent higher-priority entries and directory replacements.
+The launch guard retains that snapshot across preflight and readiness; changed
+then restored files still invalidate it. Output names are also rechecked.
+A startup configuration race tears down/falls back without a persistent crash
+latch. A boot/login-scoped `fallback-session` marker preserves the existing
+fresh-notification-descriptor restart route while preventing same-login retry
+loops. The next login may retry the unchanged qualified artifact. Once readiness
+has passed the startup watch is closed; normal live layout edits are allowed,
+and a subsequent real host crash still creates the persistent crash latch.
+Stable configured missing/excess/foreign children and code mismatches remain
+startup failures with the existing persistent latch. Read-only status measures
+the current effective configuration, so an in-progress live reconfiguration is
+unknown until its exact owned child set stabilizes.
 
 `prepare_launch` verifies the bundle and complete installed inventory, including
-applet bytes, then requests the `prelaunch` measurement. That phase measures all
+applet bytes, then derives/freezes the effective supported configuration and requests the
+`prelaunch` measurement. That phase measures all
 session processes/constraints, requires absence of every declared panel-child
 process in the target XDG session, and directly checks each future child's
 installed ELF against the selected profile. Matching, old, wrong or unreadable
@@ -133,7 +194,7 @@ leftover applets block eligibility; arbitrary missing session dependencies do no
 count as measured. `classify_compatibility(..., phase='prelaunch')` can return
 `eligible` with `qualified_prelaunch`; it never returns `ready`.
 
-The launcher freezes that verified contract and those eligible profile IDs for
+The launcher freezes that verified contract, configuration and eligible profile IDs for
 one launch, retains the one-host lock and descriptor-isolated ABI probe, then
 starts the actual host once. During the existing readiness deadline, child-owned
 Capabilities AND the `running` phase must pass. The real host's procfs PID,
@@ -262,9 +323,9 @@ approval: package/manifest/payload/catalog, candidate ID and full candidate hash
 image ID and full image descriptor hash, graphics scope, evidence ID, runtime
 contract hash, final main package hash and extracted main identity hash. Summary fields are rederived from the
 request; promotion also directly verifies final extracted bundle/catalog and
-complete final package bytes. Raw observations must include `runtime_measurement`
-matching the target profile in measurement v2 `phase: running`, actual guest
-package inventory and all scenarios. A prelaunch result is explicitly rejected.
+complete final package bytes. Raw observations must include the measured configuration fingerprint/child counts and `runtime_measurement`
+matching the target profile in measurement v3 `phase: running`, actual guest
+package inventory and all scenarios. A prelaunch result or a missing configuration measurement is explicitly rejected.
 For an integrated run, request `main` is extracted from the actual final
 `cosmic-ext-halcyon` deb: package digest/version, every regular `/usr`/`/lib` file
 hash, `/usr/bin/halcyon` path and executable digest. Raw `main.installed` must
@@ -317,6 +378,10 @@ for its known cohort. If the CLI itself was removed, the retained generation's
 `install.py --restore <install-record.json>` remains available; restore owned
 records newest-first. No removed package's leftover files become manual
 installation provenance.
+
+A directly copied manual launcher can lack generation helpers. It declines
+legacy/invalid manifests before importing them and catches missing-helper imports
+as stock-fallback conditions; no legacy version-only admission is restored.
 
 `halcyon-islands status --json` and `diagnostics` expose versioned installation,
 compatibility, selected/installed generation and reason separately. Settings

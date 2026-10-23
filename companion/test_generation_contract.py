@@ -13,8 +13,9 @@ import runtime_identity
 
 def runtime_fixture(row):
     files = runtime_identity.inventory(row)
-    profile = dict(version=2, processes={name: dict(executable=path, sha256=files[path],
+    profile = dict(version=3, processes={name: dict(executable=path, sha256=files[path],
                    mapped=files.copy(), count=1, lifecycle='session') for name, path in row['processes'].items()},
+                   configuration=dict(resolver='cosmic-panel-ca20ce3-native-v1',max_outputs=1,applets={}),
                    constraints={}, unmeasured=['previously-read-resources', 'kernel-bytes', 'driver-firmware', 'anonymous-code'])
     row['runtime'] = profile
     row['runtime_compatibility'] = [dict(id=runtime_id(profile), evidence_id=row['evidence']['id'],
@@ -23,7 +24,7 @@ def runtime_fixture(row):
 
 
 def measured(row):
-    return dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=[runtime_id(row['runtime'])])
+    return dict(format='halcyon-runtime-measurement',version=3,phase='running',verified=True,profiles=[runtime_id(row['runtime'])], configurations={runtime_id(row['runtime']):dict(sha256='e'*64,children={})})
 
 
 def catalog_fixture(payload='a'*64):
@@ -68,7 +69,7 @@ class Contract(unittest.TestCase):
     def test_unknown_running_never_ready(self):
         self.assertEqual(self.classify(running={})['state'],'logout_required')
     def test_old_running_new_installed_and_missing_mixed_packages(self):
-        self.assertEqual(self.classify(running=dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=['0'*64]))['reason'],'installed_running_differ')
+        self.assertEqual(self.classify(running=dict(format='halcyon-runtime-measurement',version=3,phase='running',verified=True,profiles=['0'*64]))['reason'],'installed_running_differ')
         self.assertEqual(self.classify(installed={})['state'],'unsupported')
         changed=copy.deepcopy(self.catalog);changed['cohorts'][0]['packages']['cosmic-comp']['version']='new'
         self.assertEqual(self.classify(catalog=changed)['state'],'invalid_bundle')
@@ -112,7 +113,8 @@ class Contract(unittest.TestCase):
                 (process/'stat').write_bytes(b'100 (fixture) ' + b'0 '*20)
                 st=exe.stat();device=f'{os.major(st.st_dev):02x}:{os.minor(st.st_dev):02x}'
                 (process/'maps').write_text(f'1000-2000 r-xp 0000 {device} {st.st_ino} '+str(exe)+'\n2000-3000 rw-s 0000 00:00 2 /memfd:graphics-buffer (deleted)\n')
-            with patch.object(runtime_identity,'inventory',return_value=files):
+            config=root/'config/cosmic/com.system76.CosmicPanel/v1';config.mkdir(parents=True);(config/'entries').write_text('[]')
+            with patch.object(runtime_identity,'inventory',return_value=files), patch.dict(os.environ,{'HOME':str(root),'XDG_CONFIG_HOME':str(root/'config'),'XDG_DATA_HOME':str(root/'data'),'XDG_DATA_DIRS':str(root/'system')}), patch('panel_configuration.output_names',return_value=['fixture-output']):
                 runtime_fixture(cat['cohorts'][0])
                 self.assertTrue(runtime_identity.running_identity(cat,proc,session='native-fixture')['verified'])
                 # An executable mapping of an unknown/deleted binary still fails.

@@ -76,11 +76,12 @@
               "version",
               "processes",
               "constraints",
-              "unmeasured"
+              "unmeasured",
+              "configuration"
             ],
             "properties": {
               "version": {
-                "const": 2
+                "const": 3
               },
               "processes": {
                 "type": "object",
@@ -102,9 +103,16 @@
                       ]
                     },
                     "count": {
-                      "type": "integer",
-                      "minimum": 1,
-                      "maximum": 64
+                      "oneOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 64
+                        },
+                        {
+                          "const": "configured"
+                        }
+                      ]
                     },
                     "executable": {
                       "type": "string"
@@ -116,7 +124,34 @@
                     "mapped": {
                       "type": "object"
                     }
-                  }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "lifecycle": {
+                            "const": "panel-child"
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "count": {
+                            "const": "configured"
+                          }
+                        }
+                      },
+                      "else": {
+                        "properties": {
+                          "count": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 64
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               },
               "constraints": {
@@ -129,6 +164,45 @@
                   "driver-firmware",
                   "anonymous-code"
                 ]
+              },
+              "configuration": {
+                "type": "object",
+                "required": [
+                  "resolver",
+                  "max_outputs",
+                  "applets"
+                ],
+                "properties": {
+                  "resolver": {
+                    "const": "cosmic-panel-ca20ce3-native-v1"
+                  },
+                  "max_outputs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 32
+                  },
+                  "applets": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": [
+                        "process",
+                        "args"
+                      ],
+                      "properties": {
+                        "process": {
+                          "type": "string"
+                        },
+                        "args": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
               }
             }
           },
@@ -178,5 +252,5 @@
       }
     }
   },
-  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v2 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness."
+  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v3 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness. Panel-child counts are configured at launch from qualified desktop Exec bindings and effective COSMIC config; session counts remain fixed. Configuration absence is not a generic missing-process exemption."
 }

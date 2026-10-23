@@ -26,14 +26,22 @@ class Pipeline(unittest.TestCase):
         builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
         binary=self.root/'binary';binary.write_text('#!/bin/sh\nexit 99\n')
         manifest=self.root/'manifest.json';manifest.write_bytes(canonical(dict(protocol=1,upstream='c'*40,binary_sha256=digest(binary))))
+        licenses=None
+        if os.environ.get('HALCYON_RELEASED_020'):
+            released=Path(os.environ['HALCYON_RELEASED_020'])
+            self.assertEqual(digest(released),'1ec258de00228f02d37fa6201bd4ac4050344594cb452ad6d05ada459ea81c5e')
+            subprocess.run(['dpkg-deb','-x',str(released),str(self.root/'released')],check=True)
+            binary=self.root/'released/usr/lib/cosmic-ext-halcyon-islands/cosmic-panel-islands'
+            manifest=binary.with_name('companion-manifest.json')
+            licenses=self.root/'released/usr/share/doc/cosmic-ext-halcyon-islands/THIRD_PARTY_LICENSES.txt'
         with patch.dict(os.environ, SOURCE_DATE_EPOCH='1792627200'):
-            pre=builder.build(binary,manifest,'0.2.1~test',self.root/'pre')
+            pre=builder.build(binary,manifest,'0.2.1~test',self.root/'pre',licenses=licenses)
             subprocess.run(['dpkg-deb','-x',str(pre),str(self.root/'extract')],check=True,stdout=subprocess.DEVNULL)
             bundle=self.root/'extract/usr/lib/cosmic-ext-halcyon-islands'
             m,_=verify_bundle(bundle,'companion-manifest.json')
             catalog=catalog_fixture(m['payload_sha256']);row=catalog['cohorts'][0]
             cat=self.root/'catalog.json';cat.write_bytes(canonical(catalog))
-            built=builder.build(binary,manifest,'0.2.1~test',self.root/'final',catalog=cat)
+            built=builder.build(binary,manifest,'0.2.1~test',self.root/'final',catalog=cat,licenses=licenses)
         self.package=self.root/'islands.deb';shutil.copy2(built,self.package)
         self.main=self.root/'main.deb'
         main_tree=self.root/'main-tree';(main_tree/'DEBIAN').mkdir(parents=True);(main_tree/'usr/bin').mkdir(parents=True)
@@ -59,7 +67,7 @@ for name,kinds in {**SCENARIOS,**SYSTEM_UPDATES}.items():
   ref=name+'-'+kind+'.txt';(out/ref).write_text('SYNTHETIC TEST ONLY: NOT NATIVE EVIDENCE')
   artifacts[ref]={'sha256':digest(out/ref),'kind':kind};refs[kind]=[ref]
  scenarios[name]={'result':'pass','native':True,'evidence':refs,'assertions':[{'passed':True,'observed':'fixture','expected':'fixture'}]}
-observed=dict(format='halcyon-native-observation',version=1,inputs=r['inputs'],request_sha256=identity(r),environment=dict(image_sha256=r['image']['sha256'],kind='complete-login-session',packages=r['candidate']['cohort']['packages'],graphics=r['image']['graphics'],dpkg_audit_clean=True,dependency_closure_verified=True),package_sha256=r['package_sha256'],bundle_sha256=r['bundle_sha256'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=[identity(r['runtime_contract']['runtime'])]),offline=True,no_host_mounts=True,secrets_present=False,artifacts=artifacts,scenarios=scenarios)
+observed=dict(format='halcyon-native-observation',version=1,inputs=r['inputs'],request_sha256=identity(r),environment=dict(image_sha256=r['image']['sha256'],kind='complete-login-session',packages=r['candidate']['cohort']['packages'],graphics=r['image']['graphics'],dpkg_audit_clean=True,dependency_closure_verified=True),package_sha256=r['package_sha256'],bundle_sha256=r['bundle_sha256'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=3,phase='running',verified=True,profiles=[identity(r['runtime_contract']['runtime'])],configurations={identity(r['runtime_contract']['runtime']):dict(sha256='e'*64,children={})}),offline=True,no_host_mounts=True,secrets_present=False,artifacts=artifacts,scenarios=scenarios)
 observed['main']={'installed':r['main'],'running':{'executable':r['main']['executable'],'sha256':r['main']['executable_sha256'],'same_session':True,'evidence':['clean-login-processes.txt']}}
 (out/'observations.json').write_bytes(canonical(observed))
 '''.replace('PATHS',repr([str(ROOT/'companion'),str(ROOT/'scripts/compatibility')])));driver.chmod(0o755)

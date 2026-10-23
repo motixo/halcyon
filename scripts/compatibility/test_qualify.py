@@ -13,7 +13,7 @@ class Qualification(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
         self.request=dict(image=dict(sha256='a'*64,graphics='software-virtio-single'),candidate=dict(cohort=dict(packages={'cosmic-comp':'fixture'})),package_sha256='b'*64,bundle_sha256='c'*64)
-        self.request.update(payload_sha256='d'*64,catalog_sha256='e'*64,evidence_id='synthetic',runtime_contract={'runtime':{'fixture':True}},scenarios=list(SCENARIOS))
+        self.request.update(payload_sha256='d'*64,catalog_sha256='e'*64,evidence_id='synthetic',runtime_contract={'runtime':{'fixture':True,'processes':{}}},scenarios=list(SCENARIOS))
         self.request['candidate']['id']='f'*64
         self.request['inputs']=input_identities(self.request)
         artifacts={};scenarios={}
@@ -23,9 +23,14 @@ class Qualification(unittest.TestCase):
                 ref=name+'-'+kind+'.txt';(self.root/ref).write_text('synthetic unit test; never native evidence')
                 artifacts[ref]=dict(sha256=digest(self.root/ref),kind=kind);evidence[kind]=[ref]
             scenarios[name]=dict(result='pass',native=True,evidence=evidence,assertions=[dict(passed=True,observed='fixture',expected='fixture')])
-        self.observed=dict(inputs=self.request['inputs'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=2,phase='running',verified=True,profiles=[identity(self.request['runtime_contract']['runtime'])]),format='halcyon-native-observation',version=1,request_sha256=identity(self.request),
+        self.observed=dict(inputs=self.request['inputs'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=3,phase='running',verified=True,profiles=[identity(self.request['runtime_contract']['runtime'])],configurations={identity(self.request['runtime_contract']['runtime']):dict(sha256='e'*64,children={})}),format='halcyon-native-observation',version=1,request_sha256=identity(self.request),
             environment=dict(image_sha256='a'*64,kind='complete-login-session',packages={'cosmic-comp':'fixture'},graphics='software-virtio-single',dpkg_audit_clean=True,dependency_closure_verified=True),
             package_sha256='b'*64,bundle_sha256='c'*64,offline=True,no_host_mounts=True,secrets_present=False,artifacts=artifacts,scenarios=scenarios)
+    def test_missing_or_invalid_configuration_measurement_rejected(self):
+        for observed in (None, [], {}, {'sha256':'e'*64,'children':{'unexpected':0}}, {'sha256':'invalid','children':{}}):
+            raw=copy.deepcopy(self.observed)
+            raw['runtime_measurement']['configurations']={identity(self.request['runtime_contract']['runtime']):observed}
+            self.assertIn('runtime_measurement_mismatch',validate_result(self.request,raw,self.root))
     def test_schema_validation_is_not_native_execution(self):
         self.assertEqual(validate_result(self.request,self.observed,self.root),[])
     def test_socket_only_missing_bars_native_logout_notifications_fail(self):

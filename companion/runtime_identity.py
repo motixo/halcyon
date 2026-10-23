@@ -198,15 +198,27 @@ def _constraints(expected, proc, sysroot):
     return actual == expected
 
 
-def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroot=Path('/sys'), *, phase='running', host=None):
+def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroot=Path('/sys'), *, phase='running', host=None, configuration=None):
     session = os.environ.get('XDG_SESSION_ID') if session is None else session
     uid = os.getuid() if uid is None else uid
-    result = dict(format='halcyon-runtime-measurement', version=2, phase=phase, verified=False, profiles=[])
+    result = dict(format='halcyon-runtime-measurement', version=3, phase=phase, verified=False, profiles=[])
     if not session or phase not in ('prelaunch', 'running'):
         return result
+    snapshots = {}
+    owned_snapshots = []
     try:
         profiles = {runtime_id(r['runtime']): valid_runtime(r['runtime']) for r in catalog['cohorts'] if r.get('runtime')}
         names = {name for p in profiles.values() for name in p['processes']}
+        from panel_configuration import Snapshot, policy
+        for id, profile in profiles.items():
+            if configuration is not None:
+                snapshot = configuration
+                if snapshot.policy != policy(profile): continue
+            else:
+                try: snapshot = Snapshot(policy(profile))
+                except (OSError, ValueError, KeyError): continue
+                owned_snapshots.append(snapshot)
+            if not snapshot.changed(): snapshots[id] = snapshot
         if phase == 'running' and host is not None:
             if host_process(host['pid'], host['sha256'], proc, session, uid) != host:
                 return result
@@ -218,9 +230,14 @@ def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroo
             matches = []
             for id, profile in profiles.items():
                 required = profile['processes']
+                snapshot = snapshots.get(id)
+                if snapshot is None:
+                    continue
+                counts = {n: (0 if phase == 'prelaunch' else snapshot.counts[n]) if item['lifecycle']=='panel-child' else item['count']
+                          for n,item in required.items()}
                 if set(required) & (errors | second_errors):
                     continue
-                if any(found[n] != second[n] or len(found[n]) != (0 if phase == 'prelaunch' and item['lifecycle'] == 'panel-child' else item['count']) for n, item in required.items()):
+                if any(found[n] != second[n] or len(found[n]) != counts[n] for n, item in required.items()):
                     continue
                 try:
                     if not _constraints(profile['constraints'], proc, sysroot):
@@ -241,16 +258,19 @@ def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroo
                             valid &= all(item['mapped'].get(path) == sha for path, sha in observed['mapped'].items())
                             if item['lifecycle'] == 'panel-child':
                                 valid &= host is not None and _owned_by_host(observed, host, proc)
-                    if valid:
+                    if valid and (snapshot is None or not snapshot.changed()):
                         matches.append(id)
                 except (OSError, ValueError, IndexError):
                     continue
             if matches:
                 if phase == 'running' and host is not None and host_process(host['pid'], host['sha256'], proc, session, uid) != host:
                     return result
-                return {**result, 'verified': True, 'profiles': sorted(matches)}
+                return {**result, 'verified': True, 'profiles': sorted(matches),
+                        'configurations': {id: dict(sha256=snapshots[id].identity, children=snapshots[id].counts) for id in matches if id in snapshots}}
     except (OSError, KeyError, TypeError, ValueError):
         pass
+    finally:
+        for snapshot in owned_snapshots: snapshot.close()
     return result
 
 

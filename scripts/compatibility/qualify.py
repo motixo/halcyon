@@ -15,7 +15,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'companion'))
-from bundle_contract import canonical, digest, identity, verify_bundle, cohort_id
+from bundle_contract import canonical, digest, identity, verify_bundle, cohort_id, measured_configuration
 from native_scenarios import SCENARIOS, SYSTEM_UPDATES, validate
 
 
@@ -73,8 +73,9 @@ def validate_result(request, observed, root):
         reasons.append('isolation_unverified')
     runtime = observed.get('runtime_measurement', {})
     expected_runtime = request.get('runtime_contract')
-    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 2 or runtime.get('phase') != 'running'
-            or runtime.get('verified') is not True or identity(expected_runtime['runtime']) not in runtime.get('profiles', [])):
+    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 3 or runtime.get('phase') != 'running'
+            or runtime.get('verified') is not True or identity(expected_runtime['runtime']) not in runtime.get('profiles', [])
+            or not measured_configuration(runtime, expected_runtime['runtime'])):
         reasons.append('runtime_measurement_mismatch')
     artifacts = artifact_map(root, observed.get('artifacts'))
     if request.get('main'):

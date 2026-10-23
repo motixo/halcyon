@@ -13,7 +13,7 @@ import stat
 FORMAT = 'halcyon-islands-bundle'
 CATALOG = 'halcyon-islands-catalog'
 HELPERS = ('panel_launcher.py', 'bundle_contract.py', 'runtime_identity.py',
-           'install_status.py', 'install.py', 'refresh.py', 'selector.py')
+           'install_status.py', 'install.py', 'refresh.py', 'selector.py', 'panel_configuration.py')
 FILES = (*HELPERS, 'cosmic-panel-islands', 'catalog.json')
 HEX = re.compile(r'[0-9a-f]{64}')
 
@@ -65,7 +65,7 @@ def runtime_id(profile):
 
 
 def valid_runtime(profile):
-    if profile.get('version') != 2 or not profile.get('processes'):
+    if profile.get('version') != 3 or not profile.get('processes'):
         raise ValueError('runtime_schema')
     if not {'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= profile['processes'].keys():
         raise ValueError('runtime_required_processes')
@@ -78,11 +78,25 @@ def valid_runtime(profile):
             raise ValueError('runtime_core_lifecycle')
         if Path(item['executable']).name != name or not Path(item['executable']).is_absolute() or '..' in Path(item['executable']).parts:
             raise ValueError('runtime_executable')
-        if not HEX.fullmatch(item['sha256']) or type(item.get('count')) is not int or not 1 <= item['count'] <= 64 or not isinstance(item['mapped'], dict):
+        count_valid = item.get('count') == 'configured' if item['lifecycle'] == 'panel-child' else type(item.get('count')) is int and 1 <= item['count'] <= 64
+        if not HEX.fullmatch(item['sha256']) or not count_valid or not isinstance(item['mapped'], dict):
             raise ValueError('runtime_process')
         for path, sha in item['mapped'].items():
             if not Path(path).is_absolute() or '..' in Path(path).parts or not HEX.fullmatch(sha):
                 raise ValueError('runtime_mapping')
+    children = {n for n,p in profile['processes'].items() if p['lifecycle'] == 'panel-child'}
+    config = profile.get('configuration', {})
+    if (config.get('resolver') != 'cosmic-panel-ca20ce3-native-v1'
+            or type(config.get('max_outputs')) is not int or not 1 <= config['max_outputs'] <= 32
+            or not isinstance(config.get('applets'), dict)):
+        raise ValueError('runtime_configuration')
+    for desktop, entry in config['applets'].items():
+        if (not re.fullmatch(r'[A-Za-z0-9_.-]{1,200}', desktop) or entry['process'] not in children
+                or not isinstance(entry.get('args'), list) or len(entry['args']) > 64
+                or not all(isinstance(a, str) and len(a) <= 4096 and '\0' not in a for a in entry['args'])):
+            raise ValueError('runtime_applet')
+    if {a['process'] for a in config['applets'].values()} != children:
+        raise ValueError('runtime_applet_inventory')
     constraints = profile['constraints']
     if not isinstance(constraints, dict) or set(constraints) - {'kernel_release', 'kernel_version_sha256', 'module_versions'}:
         raise ValueError('runtime_constraints')
@@ -151,7 +165,7 @@ def valid_catalog(catalog):
         def roles(profile):
             return {n: (p['executable'], p['count'], p['lifecycle']) for n, p in profile['processes'].items()}
         for binding in row.get('runtime_compatibility', []):
-            if roles(profiles[binding['id']]) != roles(row['runtime']):
+            if roles(profiles[binding['id']]) != roles(row['runtime']) or profiles[binding['id']].get('configuration') != row['runtime'].get('configuration'):
                 raise ValueError('runtime_equivalence_lifecycle')
     return catalog
 
@@ -187,6 +201,18 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
     return manifest, catalog
 
 
+def measured_configuration(running, profile):
+    configurations = running.get('configurations')
+    if not isinstance(configurations, dict): return False
+    observed = configurations.get(runtime_id(profile), {})
+    if not isinstance(observed, dict): return False
+    children = {n for n,p in profile['processes'].items() if p['lifecycle']=='panel-child'}
+    counts = observed.get('children')
+    return (isinstance(observed.get('sha256'), str) and HEX.fullmatch(observed['sha256']) is not None
+            and isinstance(counts, dict) and set(counts)==children
+            and all(type(n) is int and 0 <= n <= 64 for n in counts.values()))
+
+
 def classify_compatibility(installed, running, manifest, catalog, *, phase='running'):
     def result(state, reason, cohort=None):
         return dict(version=1, state=state, reason=reason, cohort=cohort)
@@ -197,11 +223,13 @@ def classify_compatibility(installed, running, manifest, catalog, *, phase='runn
         admitted = {r['id']: r for r in catalog['cohorts'] if r['qualification'] == 'native-session'
                     and r['payload_sha256'] == manifest['payload_sha256']}
         current = installed.get('cohort') if installed.get('verified') is True else None
-        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 2 and running.get('phase') == phase and phase in ('prelaunch', 'running') else None
+        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 3 and running.get('phase') == phase and phase in ('prelaunch', 'running') else None
         if current not in admitted:
             return result('unsupported', 'installed_cohort_unqualified')
         if active is None:
             return result('logout_required', 'running_identity_unknown', current)
+        profiles = {runtime_id(r['runtime']): r['runtime'] for r in catalog['cohorts'] if r.get('runtime')}
+        active = [id for id in active if id in profiles and measured_configuration(running, profiles[id])]
         if not set(active).intersection(b['id'] for b in admitted[current]['runtime_compatibility']):
             return result('logout_required', 'installed_running_differ', current)
         if phase == 'prelaunch':

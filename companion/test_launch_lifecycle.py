@@ -26,6 +26,9 @@ from pathlib import Path
 sys.path.insert(0,sys.argv[1])
 import panel_launcher as launcher
 import runtime_identity as runtime
+import panel_configuration
+# Synthetic compositor output inventory only; real config/desktop IO and inotify.
+panel_configuration.output_names=lambda env=None:['fixture-output']
 import install_status
 from bundle_contract import classify_compatibility
 cfg=json.loads(Path(sys.argv[2]).read_bytes())
@@ -55,6 +58,10 @@ def observed_wait(child,done,wedged,admission=None):
     if cfg['mode']=='core-exit':os.kill(cfg['core_pid'],signal.SIGTERM)
     before=runtime.running_identity(cfg['catalog'],host=owner)
     Path(cfg['observations']+'-early').write_text(json.dumps({'ipc_owner_verified':owner is not None,'runtime':before,'monotonic_ns':time.monotonic_ns()}))
+    if cfg['mode'] in ('config-change','config-aba'):
+        config=Path(cfg['config_center']);old=config.read_bytes()
+        config.write_text('Some([])')
+        if cfg['mode']=='config-aba':config.write_bytes(old)
     Path(os.environ['FIXTURE_ALLOW_SPAWN']).touch()
     ready=real_wait(child,done,wedged,admission)
     if ready:
@@ -119,7 +126,7 @@ class LaunchLifecycle(unittest.TestCase):
             child=self.start_actor(path)
             observed=runtime_identity._process(Path('/proc')/str(child.pid))
             self.row['runtime']['processes'][name]={**{k:observed[k] for k in ('executable','sha256','mapped')},
-                'count':1,'lifecycle':'panel-child' if name=='cosmic-applet-audio' else 'session'}
+                'count':'configured' if name=='cosmic-applet-audio' else 1,'lifecycle':'panel-child' if name=='cosmic-applet-audio' else 'session'}
             self.row['packages'][name]=dict(version='fixture-1',sha256='b'*64,files={'/usr/bin/'+name:digest(path)})
             if name=='cosmic-applet-audio':child.terminate();child.wait()
         # The sample actor used to record maps is gone before any launcher call.
@@ -132,7 +139,24 @@ class LaunchLifecycle(unittest.TestCase):
         self.library=self.root/'library'
         self.manifest,_=bundle_fixture(self.library,'0.2.1~lifecycle')
         shutil.copy2(self.binary,self.library/'cosmic-panel-islands')
+        self.row['runtime']['configuration']=dict(resolver='cosmic-panel-ca20ce3-native-v1',max_outputs=1,
+            applets={'com.test.Audio':dict(process='cosmic-applet-audio',args=['90'])})
+        self.env['XDG_DATA_DIRS']=str(self.root/'system-data')
+        self.config_center=self.home/'.config/cosmic/com.system76.CosmicPanel.Panel/v1/plugins_center'
+        self.configure(1)
+        desktop=self.home/'.local/share/applications/com.test.Audio.desktop';desktop.parent.mkdir(parents=True,exist_ok=True)
+        desktop.write_text('[Desktop Entry]\nName=Audio\nExec='+str(self.applet)+' 90\n')
         self.finalize()
+
+    def configure(self,count):
+        root=self.home/'.config/cosmic';entries=['Panel']+(['Dock'] if count==2 else [])
+        container=root/'com.system76.CosmicPanel/v1';container.mkdir(parents=True,exist_ok=True)
+        (container/'entries').write_text(json.dumps(entries))
+        for name in entries:
+            bar=root/('com.system76.CosmicPanel.'+name)/'v1';bar.mkdir(parents=True,exist_ok=True)
+            (bar/'name').write_text(json.dumps(name));(bar/'output').write_text('All')
+            (bar/'plugins_wings').write_text('None')
+            (bar/'plugins_center').write_text('Some('+json.dumps(['com.test.Audio'] if count else [])+')')
 
     def tearDown(self):
         evidence=os.environ.get('HALCYON_LIFECYCLE_EVIDENCE')
@@ -141,6 +165,7 @@ class LaunchLifecycle(unittest.TestCase):
             destination.mkdir(parents=True,exist_ok=False)
             for name in ('events','observations','observations-early','runner.log','exit','runner.json'):
                 if (self.root/name).exists():shutil.copy2(self.root/name,destination/name)
+            for path in self.root.glob('layout-*'):shutil.copytree(path,destination/path.name)
             (destination/'NOT-NATIVE.json').write_bytes(canonical(dict(kind='synthetic real-procfs and actual launcher regression',native_qualification=False)))
 
     def cleanup(self):
@@ -180,9 +205,9 @@ class LaunchLifecycle(unittest.TestCase):
         (self.home/'installed-identity.json').write_bytes(canonical(dict(verified=True,cohort=self.row['id'])))
         with refresh.locked(self.home):
             staged=refresh.stage_locked(self.home,self.library,fixture=True,enable=True,session='previous-login')
-        self.assertEqual(staged['state'],'staged');self.assertEqual(staged['runtime_readiness'],'not_measured')
+        self.assertIn(staged['state'],('staged','unchanged'));self.assertEqual(staged['runtime_readiness'],'not_measured')
         bundle,_,_,pointer=refresh.selected_generation(self.home)
-        cfg=dict(mode=mode,core_pid=self.children[0].pid,installed_root=str(self.installed_root),versions=self.versions,system=self.system,
+        cfg=dict(mode=mode,config_center=str(self.config_center),core_pid=self.children[0].pid,installed_root=str(self.installed_root),versions=self.versions,system=self.system,
             stock=str(self.stock),catalog=self.catalog,home=str(self.home),library=str(self.library),bundle=str(bundle),pointer=pointer,
             binary_sha256=self.manifest['binary_sha256'],applet=str(self.applet),observations=str(self.root/'observations'),exit=str(self.root/'exit'))
         config=self.root/'runner.json';config.write_bytes(canonical(cfg));runner=self.root/'runner.py';runner.write_text(RUNNER)
@@ -211,12 +236,14 @@ class LaunchLifecycle(unittest.TestCase):
         self.successful_login()
 
     def successful_login(self,mode='success',count=1):
-        pre=runtime_identity.running_identity(self.catalog,session=self.env['XDG_SESSION_ID'],phase='prelaunch')
+        from unittest.mock import patch
+        with patch.dict(os.environ,self.env), patch('panel_configuration.output_names',return_value=['fixture-output']):
+            pre=runtime_identity.running_identity(self.catalog,session=self.env['XDG_SESSION_ID'],phase='prelaunch')
         self.assertTrue(pre['verified']);self.assertEqual(pre['phase'],'prelaunch')
         child=self.launch(mode);observed=self.await_file('observations',child)
         self.assertTrue(observed['ready'],(self.root/'runner.log').read_text())
         early=json.loads((self.root/'observations-early').read_bytes())
-        self.assertTrue(early['ipc_owner_verified']);self.assertFalse(early['runtime']['verified'])
+        self.assertTrue(early['ipc_owner_verified']);self.assertEqual(early['runtime']['verified'],count==0)
         self.assertEqual(observed['status']['status'],'Ready')
         self.assertEqual(observed['runtime']['phase'],'running')
         self.assertEqual(len(self.events_named('host')),1);self.assertEqual(len(self.events_named('applet')),count)
@@ -252,8 +279,64 @@ class LaunchLifecycle(unittest.TestCase):
         if mode=='foreign':self.assertEqual(json.loads((self.root/'exit').read_bytes())['foreign_survived'],[True])
 
     def test_declared_two_children_can_become_ready(self):
-        self.row['runtime']['processes']['cosmic-applet-audio']['count']=2;self.finalize()
+        self.configure(2)
         self.successful_login('excess',2)
+
+    def test_unconfigured_zero_children_is_ready_without_repacking(self):
+        self.configure(0);self.successful_login('missing',0)
+
+    def test_same_artifact_zero_one_two_layouts(self):
+        original=(self.library/'companion-manifest.json').read_bytes()
+        for count,mode in ((0,'missing'),(1,'success'),(2,'excess')):
+            self.configure(count)
+            self.successful_login(mode,count)
+            self.assertEqual((self.library/'companion-manifest.json').read_bytes(),original)
+            for name in ('events','observations','observations-early','exit'):
+                path=self.root/name
+                if path.exists():
+                    capture=self.root/('layout-'+str(count));capture.mkdir(exist_ok=True)
+                    shutil.copy2(path,capture/name)
+                    path.unlink()
+            self.events.touch()
+
+    def test_zero_configuration_still_blocks_old_existing_actor(self):
+        self.configure(0);foreign=self.start_actor(self.applet);self.blocked();self.assertIsNone(foreign.poll())
+
+    def test_config_change_does_not_persist_crash_latch(self):
+        self.config_race('config-change')
+
+    def test_config_aba_session_fallback_and_next_login_retry(self):
+        self.config_race('config-aba')
+        # Same session selects stock without a second host or notification reuse.
+        child=self.launch();self.assertEqual(child.wait(timeout=6),0)
+        self.assertEqual(len(self.events_named('host')),1);self.assertEqual(len(self.events_named('stock')),2)
+        # New login is eligible without clearing an enduring crash marker.
+        for child in self.children[:3]:child.terminate();child.wait()
+        self.env['XDG_SESSION_ID']+='-next-login'
+        for name in ('cosmic-comp','cosmic-session','cosmic-settings-daemon'):
+            self.start_actor(self.installed_root/'usr/bin'/name)
+        for name in ('observations','observations-early','exit','allow-spawn'):
+            path=self.root/name
+            if path.exists():path.unlink()
+        self.events.write_text('')
+        self.successful_login()
+
+    def config_race(self,mode):
+        child=self.launch(mode);self.assertEqual(child.wait(timeout=6),0,(self.root/'runner.log').read_text())
+        self.assertFalse(json.loads((self.root/'observations').read_bytes())['ready'])
+        self.assertEqual(len(self.events_named('stock')),1);self.assert_reaped()
+        state=self.home/'.local/state/desktop-cards-panel'
+        self.assertFalse((state/'failed').exists());self.assertTrue((state/'fallback-session').is_file())
+        from panel_launcher import session_identity
+        self.assertEqual((state/'fallback-session').read_text(),session_identity(self.env))
+
+    def test_crash_after_ready_and_layout_edit_still_persists_crash_latch(self):
+        child=self.launch();observed=self.await_file('observations',child);self.assertTrue(observed['ready'])
+        self.config_center.write_text('Some([])')
+        os.kill(observed['pid'],signal.SIGKILL)
+        self.assertEqual(child.wait(timeout=6),0)
+        self.assertTrue((self.home/'.local/state/desktop-cards-panel/failed').exists())
+        self.assertEqual(len(self.events_named('stock')),1);self.assert_reaped()
 
     def test_required_core_exit_after_launch_is_not_ignored(self):self.failure('core-exit')
 
@@ -295,7 +378,7 @@ class LaunchLifecycle(unittest.TestCase):
         row['runtime']['processes']['cosmic-panel-islands']=row['runtime']['processes'].pop('cosmic-applet-audio')
         with self.assertRaisesRegex(ValueError,'host_is_not_a_dependency'):valid_catalog(bad)
         bad=copy.deepcopy(self.catalog);other=copy.deepcopy(bad['cohorts'][0])
-        other['runtime']['processes'].pop('cosmic-applet-audio');other['processes'].pop('cosmic-applet-audio')
+        other['runtime']['processes'].pop('cosmic-applet-audio');other['runtime']['configuration']['applets']={};other['processes'].pop('cosmic-applet-audio')
         other['id']=cohort_id(other);other['runtime_compatibility'][0]['id']=runtime_id(other['runtime']);bad['cohorts'].append(other)
         bad['cohorts'][0]['runtime_compatibility'].append(other['runtime_compatibility'][0])
         with self.assertRaisesRegex(ValueError,'equivalence_lifecycle'):valid_catalog(bad)

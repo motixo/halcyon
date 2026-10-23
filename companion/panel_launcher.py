@@ -111,18 +111,30 @@ def prepare_launch(bundle):
     here; the supervisor supplies its actual child to the returned guard.
     """
     try:
+        # The manual installer copies this launcher without generation helpers.
+        # Decline legacy/invalid bundles before importing optional modules. Never
+        # restore unsafe version-only admission for that standalone shape.
+        header = json.loads((bundle/'manifest.json').read_bytes())
+        if header.get('format') != 'halcyon-islands-bundle' or header.get('version') != 2:
+            return None
         from bundle_contract import verify_bundle, classify_compatibility
         from runtime_identity import installed_identity, running_identity, host_process
+        from panel_configuration import Snapshot, policy
         manifest, catalog = verify_bundle(bundle)
         manifest = {**manifest, 'verified': True}
         installed = installed_identity(catalog)
-        prelaunch = running_identity(catalog, phase='prelaunch')
+        target = next((row for row in catalog['cohorts'] if row['id'] == installed.get('cohort')), None)
+        if target is None: return None
+        configuration = Snapshot(policy(target['runtime'])) if target['runtime'].get('configuration') else None
+        prelaunch = running_identity(catalog, phase='prelaunch', configuration=configuration)
         state = classify_compatibility(installed, prelaunch, manifest, catalog, phase='prelaunch')
         if state['state'] != 'eligible':
+            if configuration: configuration.close()
             return None
         target = next(row for row in catalog['cohorts'] if row['id'] == installed['cohort'])
         eligible = set(prelaunch['profiles']).intersection(b['id'] for b in target['runtime_compatibility'])
         owner = None
+        startup_complete = False
 
         def admitted(child):
             nonlocal owner
@@ -134,13 +146,21 @@ def prepare_launch(bundle):
                     owner = current
                 if current != owner:
                     return False
-                running = running_identity(catalog, phase='running', host=owner)
+                running = running_identity(catalog, phase='running', host=owner, configuration=configuration)
                 ready = classify_compatibility(installed, running, manifest, catalog)['state'] == 'ready'
                 return ready and bool(eligible.intersection(running['profiles'])) and child.poll() is None
             except (OSError, ValueError, KeyError, TypeError, IndexError):
                 return False
+        def accepted():
+            nonlocal startup_complete
+            startup_complete = True
+            if configuration: configuration.close()
+        admitted.accepted = accepted
+        admitted.invalidated = configuration.watch.changed if configuration else lambda: False
+        admitted.changed = lambda: not startup_complete and configuration is not None and configuration.changed()
+        admitted.close = configuration.close if configuration else lambda: None
         return admitted
-    except (OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+    except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
         return None
 
 
@@ -305,6 +325,11 @@ def wait_ready(child, done, wedged, admission=None):
                             admitted = measurement['ready']
                             measurement = None
                     if admitted and not done.is_set() and child.poll() is None and time.monotonic() < deadline:
+                        # Recheck the configuration watch at the acceptance
+                        # boundary; IPC polling must not admit a stale result.
+                        if admission is not None and getattr(admission, 'invalidated', lambda: False)():
+                            break
+                        if admission is not None: getattr(admission, 'accepted', lambda: None)()
                         return True
         except (OSError, ValueError, AttributeError, TypeError):
             pass
@@ -470,7 +495,10 @@ def main(bundle=None, pointer=None):
         try:
             value=int(os.environ[name]);os.fstat(value);inherited.append(value);os.set_inheritable(value,True)
         except (KeyError,ValueError,OSError):pass
-    if not enabled or (state/'failed').exists():
+    transient = None
+    try: transient = (state/'fallback-session').read_text()
+    except OSError: pass
+    if not enabled or (state/'failed').exists() or (transient is not None and transient == session_identity()):
         return stock_host(STOCK, tuple(inherited))
     admission = prepare_launch(bundle)
     if admission is None:
@@ -480,7 +508,18 @@ def main(bundle=None, pointer=None):
         return stock_host(STOCK, tuple(inherited))
     def failed():
         state.mkdir(parents=True,exist_ok=True,mode=0o700)
-        (state/'failed').write_text('The companion exited unexpectedly. Stock panel selected.\n')
-    return supervise(bundle/'cosmic-panel-islands',STOCK,tuple(inherited),failed,'PANEL_NOTIFICATIONS_FD' in os.environ,admission=admission)
+        if getattr(admission, 'changed', lambda: False)():
+            # A changing layout/output inventory is not a persistent crash.
+            # Scope fallback to this boot/login so cosmic-session can recreate
+            # notification descriptors without retrying Islands in a loop.
+            session = session_identity()
+            if session is None: raise ValueError('session_unknown')
+            (state/'fallback-session').write_text(session)
+        else:
+            (state/'failed').write_text('The companion exited unexpectedly. Stock panel selected.\n')
+    try:
+        return supervise(bundle/'cosmic-panel-islands',STOCK,tuple(inherited),failed,'PANEL_NOTIFICATIONS_FD' in os.environ,admission=admission)
+    finally:
+        getattr(admission, 'close', lambda: None)()
 
 if __name__=='__main__':sys.exit(main())
