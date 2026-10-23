@@ -1,12 +1,16 @@
 #!/bin/bash
 set -Eeuo pipefail
 mkdir -p "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/theme-packages"
+# Preserve tool-phase failures before any guest artifact is fetched. No set -x.
+exec > >(tee "$RUNNER_TEMP/cosmic/evidence/runner-prepare.log") 2>&1
+printf 'prepare-phase: runner-apt-update\n'
 sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
 if [ -f /etc/apt/apt-mirrors.txt ]; then
   printf 'https://archive.ubuntu.com/ubuntu\nhttps://apt.pop-os.org/ubuntu\n' | sudo tee /etc/apt/apt-mirrors.txt
 fi
-sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -q
-sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf python3-pil aria2 xorriso tesseract-ocr
+sudo timeout --kill-after=20s 600 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -q
+sudo timeout --kill-after=20s 600 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf python3-pil aria2 xorriso tesseract-ocr
+printf 'prepare-phase: authenticated-retained-inputs\n'
 # Anchor the API artifact digests to the independently reviewed handoff.
 python3 - <<'PY'
 import json,os,subprocess
