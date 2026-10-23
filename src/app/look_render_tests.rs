@@ -36,7 +36,10 @@ fn merge(base: &mut serde_json::Value, patch: &serde_json::Value) {
     match (base, patch) {
         (serde_json::Value::Object(base), serde_json::Value::Object(patch)) => {
             for (key, value) in patch {
-                merge(base.entry(key.clone()).or_insert(serde_json::Value::Null), value);
+                merge(
+                    base.entry(key.clone()).or_insert(serde_json::Value::Null),
+                    value,
+                );
             }
         }
         (base, patch) => *base = patch.clone(),
@@ -154,7 +157,12 @@ fn sample_data(cards: &mut Cards) {
 
 /// A COSMIC window in the look's native colors: title bar, sidebar, content
 /// lines and an accent button.
-fn window<'a>(background: Color, container_bg: Color, accent: Color, ink: Color) -> Element<'a, Message> {
+fn window<'a>(
+    background: Color,
+    container_bg: Color,
+    accent: Color,
+    ink: Color,
+) -> Element<'a, Message> {
     let fill = move |color: Color, radius: f32| {
         cosmic::theme::Container::custom(move |_| cosmic::iced::widget::container::Style {
             background: Some(Background::Color(color)),
@@ -175,9 +183,16 @@ fn window<'a>(background: Color, container_bg: Color, accent: Color, ink: Color)
     let faint = Color { a: 0.35, ..ink };
     let title = container(
         row::with_children(vec![
-            container(cosmic::iced::widget::space()).width(Length::Fill).into(),
-            text::body("Files").size(13).class(cosmic::theme::Text::Color(ink)).into(),
-            container(cosmic::iced::widget::space()).width(Length::Fill).into(),
+            container(cosmic::iced::widget::space())
+                .width(Length::Fill)
+                .into(),
+            text::body("Files")
+                .size(13)
+                .class(cosmic::theme::Text::Color(ink))
+                .into(),
+            container(cosmic::iced::widget::space())
+                .width(Length::Fill)
+                .into(),
             container(cosmic::iced::widget::space())
                 .width(12.)
                 .height(12.)
@@ -190,11 +205,15 @@ fn window<'a>(background: Color, container_bg: Color, accent: Color, ink: Color)
     .width(Length::Fill);
     let sidebar = container(
         column::with_children(vec![
-            container(text::body("Home").size(12).class(cosmic::theme::Text::Color(ink)))
-                .padding([4, 8])
-                .width(Length::Fill)
-                .class(fill(Color { a: 0.25, ..accent }, 6.))
-                .into(),
+            container(
+                text::body("Home")
+                    .size(12)
+                    .class(cosmic::theme::Text::Color(ink)),
+            )
+            .padding([4, 8])
+            .width(Length::Fill)
+            .class(fill(Color { a: 0.25, ..accent }, 6.))
+            .into(),
             line(90., faint),
             line(70., faint),
             line(80., faint),
@@ -210,24 +229,26 @@ fn window<'a>(background: Color, container_bg: Color, accent: Color, ink: Color)
         line(200., faint),
         line(230., faint),
         line(180., faint),
-        container(text::body("Open").size(12).class(cosmic::theme::Text::Color(
-            crate::desktop_theme::ink(ink, accent),
-        )))
+        container(
+            text::body("Open")
+                .size(12)
+                .class(cosmic::theme::Text::Color(crate::desktop_theme::ink(
+                    ink, accent,
+                ))),
+        )
         .padding([5, 14])
         .class(fill(accent, 14.))
         .into(),
     ])
     .spacing(14)
     .padding(16);
-    container(
-        column::with_children(vec![
-            title.into(),
-            row::with_children(vec![sidebar.into(), content.into()])
-                .padding([0, 10, 10, 10])
-                .height(Length::Fill)
-                .into(),
-        ]),
-    )
+    container(column::with_children(vec![
+        title.into(),
+        row::with_children(vec![sidebar.into(), content.into()])
+            .padding([0, 10, 10, 10])
+            .height(Length::Fill)
+            .into(),
+    ]))
     .width(640.)
     .height(400.)
     .class(cosmic::theme::Container::custom(move |_| {
@@ -284,10 +305,16 @@ fn look_renders() {
             if look["config"].pointer("/appearance/opacity").is_none() {
                 config.appearance.opacity = o;
             }
-            if look["config"].pointer("/appearance/corner_radius").is_none() {
+            if look["config"]
+                .pointer("/appearance/corner_radius")
+                .is_none()
+            {
                 config.appearance.corner_radius = r;
             }
-            if look["config"].pointer("/appearance/border_opacity").is_none() {
+            if look["config"]
+                .pointer("/appearance/border_opacity")
+                .is_none()
+            {
                 config.appearance.border_opacity = b;
             }
         }
@@ -389,23 +416,24 @@ fn look_renders() {
             "rounded" => 10.,
             _ => 0.,
         };
-        let piece = move |content: Element<'static, Message>, r: f32| -> Element<'static, Message> {
-            container(content)
-                .padding([0., 14.])
-                .height(panel_height)
-                .align_y(Alignment::Center)
-                .class(cosmic::theme::Container::custom(move |_| {
-                    cosmic::iced::widget::container::Style {
-                        background: Some(Background::Color(tone)),
-                        border: Border {
-                            radius: r.into(),
+        let piece =
+            move |content: Element<'static, Message>, r: f32| -> Element<'static, Message> {
+                container(content)
+                    .padding([0., 14.])
+                    .height(panel_height)
+                    .align_y(Alignment::Center)
+                    .class(cosmic::theme::Container::custom(move |_| {
+                        cosmic::iced::widget::container::Style {
+                            background: Some(Background::Color(tone)),
+                            border: Border {
+                                radius: r.into(),
+                                ..Default::default()
+                            },
                             ..Default::default()
-                        },
-                        ..Default::default()
-                    }
-                }))
-                .into()
-        };
+                        }
+                    }))
+                    .into()
+            };
         let dot = |color: Color, size: f32, radius: f32| -> Element<'static, Message> {
             container(cosmic::iced::widget::space())
                 .width(size)
@@ -454,7 +482,10 @@ fn look_renders() {
                 row::with_children(vec![
                     container(workspaces()).width(Length::Fill).into(),
                     clock(),
-                    container(tray()).width(Length::Fill).align_x(Alignment::End).into(),
+                    container(tray())
+                        .width(Length::Fill)
+                        .align_x(Alignment::End)
+                        .into(),
                 ])
                 .align_y(Alignment::Center)
                 .into(),
@@ -463,9 +494,14 @@ fn look_renders() {
         } else if separate {
             container(
                 row::with_children(vec![
-                    container(piece(workspaces(), radius)).width(Length::Fill).into(),
+                    container(piece(workspaces(), radius))
+                        .width(Length::Fill)
+                        .into(),
                     piece(clock(), radius),
-                    container(piece(tray(), radius)).width(Length::Fill).align_x(Alignment::End).into(),
+                    container(piece(tray(), radius))
+                        .width(Length::Fill)
+                        .align_x(Alignment::End)
+                        .into(),
                 ])
                 .align_y(Alignment::Center),
             )
@@ -503,7 +539,10 @@ fn look_renders() {
                 let color = if index == 0 {
                     accent
                 } else {
-                    Color { a: alpha, ..bar_ink }
+                    Color {
+                        a: alpha,
+                        ..bar_ink
+                    }
                 };
                 dot(color, 40., icon_radius)
             })

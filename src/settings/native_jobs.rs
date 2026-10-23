@@ -47,7 +47,10 @@ impl Settings {
     pub(super) fn dispatch_native(&mut self, message: &Message) -> Option<Task<Message>> {
         // Privacy lives outside desktop transactions and must not wait behind a
         // theme/profile operation. Its own worker never holds a desktop lock.
-        if matches!(message, Message::ShareUsage(_) | Message::UsageSaved(_) | Message::OpenPrivacy) {
+        if matches!(
+            message,
+            Message::ShareUsage(_) | Message::UsageSaved(_) | Message::OpenPrivacy
+        ) {
             return None;
         }
         if self.native_busy {

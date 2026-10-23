@@ -568,8 +568,7 @@ impl Cards {
         // Sidebar reordering only previews in config until release. Retiring its
         // surface cancels that preview before replacement geometry is computed.
         if let Some(drag) = self.sidebar.drag.take() {
-            self.config.widget_order =
-                drag.original_order.iter().map(|w| w.key().into()).collect();
+            self.config.widget_order = drag.original_order.iter().map(|w| w.key().into()).collect();
         }
         self.sidebar.hide();
         self.display_generation += 1;

@@ -61,10 +61,14 @@ impl Drop for Fonts {
 }
 pub fn fonts(body: Option<&str>, clock: Option<&str>) -> Fonts {
     let current = FAMILIES.get();
-    Fonts(FAMILIES.replace(Families {
-        body: body.map(intern).or(current.body),
-        clock: clock.map(intern).or(if body.is_some() { None } else { current.clock }),
-    }))
+    Fonts(
+        FAMILIES.replace(Families {
+            body: body.map(intern).or(current.body),
+            clock: clock
+                .map(intern)
+                .or(if body.is_some() { None } else { current.clock }),
+        }),
+    )
 }
 /// The style's border width and the shadow around a card drawn with
 /// palette `p` (no shadow without a background).
@@ -83,7 +87,11 @@ pub fn edge(p: Palette) -> (f32, cosmic::iced::Shadow) {
     let (width, kind) = CONTEXT
         .get()
         .map_or((1., Shadow::None), |r| (r.border_width, r.shadow));
-    let kind = if p.background.a == 0. { Shadow::None } else { kind };
+    let kind = if p.background.a == 0. {
+        Shadow::None
+    } else {
+        kind
+    };
     let shadow = match kind {
         Shadow::None => cosmic::iced::Shadow::default(),
         Shadow::Soft => cosmic::iced::Shadow {
@@ -92,7 +100,10 @@ pub fn edge(p: Palette) -> (f32, cosmic::iced::Shadow) {
             blur_radius: 10.,
         },
         Shadow::Hard => cosmic::iced::Shadow {
-            color: Color { a: 1., ..p.foreground },
+            color: Color {
+                a: 1.,
+                ..p.foreground
+            },
             offset: cosmic::iced::Vector::new(3., 3.),
             blur_radius: 0.,
         },
@@ -348,7 +359,11 @@ mod edge_tests {
             }
         }
         // The middle band covers the full width.
-        assert!(rects.iter().any(|rect| rect.width == w && rect.height == h - 2. * r));
+        assert!(
+            rects
+                .iter()
+                .any(|rect| rect.width == w && rect.height == h - 2. * r)
+        );
         // Square cards are one rectangle.
         assert_eq!(rounded_rects(0., 0., 100., 50., 0.).len(), 1);
     }
@@ -370,8 +385,16 @@ mod font_tests {
         {
             let _scope = scope(&config);
             assert_eq!(font().family, Family::Name("Inter"));
-            assert_eq!(clock_font().family, Family::Name("Inter"), "clock follows text");
-            assert_eq!(clock_font().weight, theme.1.weight, "the style's weight stays");
+            assert_eq!(
+                clock_font().family,
+                Family::Name("Inter"),
+                "clock follows text"
+            );
+            assert_eq!(
+                clock_font().weight,
+                theme.1.weight,
+                "the style's weight stays"
+            );
         }
         config.clock_font = Some("Noto Serif".into());
         {

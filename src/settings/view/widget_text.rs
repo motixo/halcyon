@@ -56,7 +56,10 @@ impl Settings {
             .filter(|name| all.iter().any(|family| family == *name))
             .map(|name| name.to_string())
             .collect();
-        ordered.extend(all.into_iter().filter(|name| !SUGGESTED.contains(&name.as_str())));
+        ordered.extend(
+            all.into_iter()
+                .filter(|name| !SUGGESTED.contains(&name.as_str())),
+        );
         ordered.retain(|name| query.is_empty() || name.to_lowercase().contains(&query));
         ordered
     }
@@ -154,11 +157,8 @@ impl Settings {
                 .on_press(Message::WidgetFont(target, value))
                 .into()
         };
-        let mut list: Vec<Element<'_, Message>> = vec![choice(
-            None,
-            label(default, 14., MUTED),
-            current.is_none(),
-        )];
+        let mut list: Vec<Element<'_, Message>> =
+            vec![choice(None, label(default, 14., MUTED), current.is_none())];
         let families = self.widget_font_families();
         let total = families.len();
         for name in families.into_iter().take(SHOWN) {

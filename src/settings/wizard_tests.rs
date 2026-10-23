@@ -57,11 +57,23 @@ fn seed_desktop() {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, value).unwrap();
     };
-    system("com.system76.CosmicPanel", "entries", "[\"Panel\",\"Dock\"]");
+    system(
+        "com.system76.CosmicPanel",
+        "entries",
+        "[\"Panel\",\"Dock\"]",
+    );
     system(DOCK, "anchor", "Bottom");
-    system(DOCK, "plugins_center", "Some([\"com.system76.CosmicAppList\"])");
+    system(
+        DOCK,
+        "plugins_center",
+        "Some([\"com.system76.CosmicAppList\"])",
+    );
     system(PANEL, "anchor", "Top");
-    system(PANEL, "plugins_wings", "Some(([\"com.system76.CosmicPanelWorkspacesButton\"], [\"com.system76.CosmicAppletTime\"]))");
+    system(
+        PANEL,
+        "plugins_wings",
+        "Some(([\"com.system76.CosmicPanelWorkspacesButton\"], [\"com.system76.CosmicAppletTime\"]))",
+    );
     let store = crate::desktop::DesktopStore::from_env().unwrap();
     let bundled = crate::desktop::wallpaper::bundled_dir(&store);
     std::fs::create_dir_all(&bundled).unwrap();
@@ -172,16 +184,16 @@ fn every_screen_fits_and_cancel_puts_the_desktop_back() {
         assert_eq!(step(&app), wizard::Step::Ready);
         shot(&app, &mut native, "5-ready");
         click(&mut app, &mut native, "wizard-cancel");
-        assert!(app.wizard.is_none(), "{:?}", app.wizard.as_ref().and_then(|w| w.error.clone()));
+        assert!(
+            app.wizard.is_none(),
+            "{:?}",
+            app.wizard.as_ref().and_then(|w| w.error.clone())
+        );
         let config = Config::load();
         assert!(config.onboarded);
         assert_eq!(config.appearance.family, None, "the look is undone");
         for key in ["autohide", "border_radius"] {
-            assert!(
-                user(DOCK, key).is_none(),
-                "{key}: {:?}",
-                user(DOCK, key)
-            );
+            assert!(user(DOCK, key).is_none(), "{key}: {:?}", user(DOCK, key));
         }
         // The next size starts from a fresh first run.
         Config::save_changes(serde_json::json!({"onboarded": false})).unwrap();
@@ -231,7 +243,11 @@ fn an_untouched_dock_and_panel_step_keeps_the_persons_own_setup() {
     seed_desktop();
     // Their own dock: hidden, square, attached.
     let own = |key: &str, value: &str| {
-        let path = desktop_root().join("config/cosmic").join(DOCK).join("v1").join(key);
+        let path = desktop_root()
+            .join("config/cosmic")
+            .join(DOCK)
+            .join("v1")
+            .join(key);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, value).unwrap();
     };
@@ -318,6 +334,10 @@ fn skipping_dock_and_panel_keeps_them_and_ready_says_so() {
     assert_ne!(app.wizard.as_ref().unwrap().bars, before);
     click(&mut app, &mut native, "wizard-skip");
     assert_eq!(step(&app), wizard::Step::Weather);
-    assert_eq!(app.wizard.as_ref().unwrap().bars, before, "the summary shows what's applied");
+    assert_eq!(
+        app.wizard.as_ref().unwrap().bars,
+        before,
+        "the summary shows what's applied"
+    );
     assert_eq!(user(DOCK, "border_radius"), None, "nothing was written");
 }

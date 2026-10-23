@@ -135,11 +135,16 @@ impl Cards {
     /// a track loaded (to see it and resume). Stopped or empty players don't
     /// count.
     fn music_present(&self) -> bool {
-        self.tools.players().iter().any(|player| match player.status {
-            music::Playback::Playing => true,
-            music::Playback::Paused => !player.title.trim().is_empty() || player.art_url.is_some(),
-            music::Playback::Stopped => false,
-        })
+        self.tools
+            .players()
+            .iter()
+            .any(|player| match player.status {
+                music::Playback::Playing => true,
+                music::Playback::Paused => {
+                    !player.title.trim().is_empty() || player.art_url.is_some()
+                }
+                music::Playback::Stopped => false,
+            })
     }
 
     /// Brings the Music card onto the desktop or takes it off when that
@@ -356,7 +361,11 @@ impl Cards {
             let saved = text.clone();
             let result = tokio::task::spawn_blocking(move || notes::save(&base, &text))
                 .await
-                .unwrap_or_else(|_| Err(notes::SaveError::Failed("saving stopped unexpectedly".into())));
+                .unwrap_or_else(|_| {
+                    Err(notes::SaveError::Failed(
+                        "saving stopped unexpectedly".into(),
+                    ))
+                });
             Message::NoteSaved(saved, result)
         })
     }
@@ -364,7 +373,12 @@ impl Cards {
     /// The draft as an implicit save would keep it (arranging, hiding): never
     /// over a newer note saved elsewhere.
     pub(super) fn save_note_quietly(&mut self) -> Task<Message> {
-        if self.tools.draft.as_ref().is_some_and(|draft| draft.conflicted) {
+        if self
+            .tools
+            .draft
+            .as_ref()
+            .is_some_and(|draft| draft.conflicted)
+        {
             return Task::none();
         }
         self.save_note()
@@ -600,7 +614,8 @@ impl Cards {
     fn tool_surface_size(&self, widget: Widget) -> [u32; 2] {
         if self.tool_shown(widget) {
             let (_, mu) = self.shadow_px();
-            self.widget_size(widget).map(|value| value.ceil() as u32 + mu)
+            self.widget_size(widget)
+                .map(|value| value.ceil() as u32 + mu)
         } else {
             [16, 16]
         }
@@ -1214,31 +1229,44 @@ mod tests {
             "app::tools::tests::music_control_refresh_keeps_progress_on_desktop",
             || {
                 use std::sync::atomic::Ordering;
-                tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
-                    let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap();
-                    let state = music::fixture::State::new();
-                    state.playing.store(true, Ordering::SeqCst);
-                    let _service = music::fixture::serve(&address, "org.mpris.MediaPlayer2.firefox", state.clone()).await;
-                    let client = music::connection().await.unwrap();
-                    let mut config = Config::default();
-                    config.music.enabled = true;
-                    let (mut cards, _) = Cards::init(Core::default(), config.clone());
-                    let _output = cards.test_output_ready();
-                    let players = music::snapshot(&client).await.unwrap();
-                    let _ = cards.music_feed(music::Feed::Players(players.clone()));
-                    state.broken_timing.store(true, Ordering::SeqCst);
-                    let players = music::snapshot(&client).await.unwrap();
-                    let _ = cards.update(Message::MusicControlDone(Ok(players.clone())));
-                    {
-                        let player = cards.current_player().unwrap();
-                        assert_eq!(player.length_us, Some(300_000_000));
-                        assert!(player.position_us.unwrap() >= 60_000_000);
-                        assert_eq!(player.seek_request(0.5).unwrap().position_us, 150_000_000);
-                    }
-                    let messages = click_music_control(&cards, "music-progress");
-                    assert!(messages.iter().any(|m| matches!(m, Message::Tool(Action::MusicSeek(_)))),
-                        "Progress must stay interactive after a broken control refresh");
-                });
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap();
+                        let state = music::fixture::State::new();
+                        state.playing.store(true, Ordering::SeqCst);
+                        let _service = music::fixture::serve(
+                            &address,
+                            "org.mpris.MediaPlayer2.firefox",
+                            state.clone(),
+                        )
+                        .await;
+                        let client = music::connection().await.unwrap();
+                        let mut config = Config::default();
+                        config.music.enabled = true;
+                        let (mut cards, _) = Cards::init(Core::default(), config.clone());
+                        let _output = cards.test_output_ready();
+                        let players = music::snapshot(&client).await.unwrap();
+                        let _ = cards.music_feed(music::Feed::Players(players.clone()));
+                        state.broken_timing.store(true, Ordering::SeqCst);
+                        let players = music::snapshot(&client).await.unwrap();
+                        let _ = cards.update(Message::MusicControlDone(Ok(players.clone())));
+                        {
+                            let player = cards.current_player().unwrap();
+                            assert_eq!(player.length_us, Some(300_000_000));
+                            assert!(player.position_us.unwrap() >= 60_000_000);
+                            assert_eq!(player.seek_request(0.5).unwrap().position_us, 150_000_000);
+                        }
+                        let messages = click_music_control(&cards, "music-progress");
+                        assert!(
+                            messages
+                                .iter()
+                                .any(|m| matches!(m, Message::Tool(Action::MusicSeek(_)))),
+                            "Progress must stay interactive after a broken control refresh"
+                        );
+                    });
             },
         );
     }

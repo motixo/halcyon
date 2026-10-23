@@ -10,7 +10,10 @@ fn send(message: well::Message) -> Message {
 
 fn dot<'a>(rgb: Option<[f32; 3]>, size: u16) -> Element<'a, Message> {
     fill(
-        cosmic::iced::widget::space().width(size).height(size).into(),
+        cosmic::iced::widget::space()
+            .width(size)
+            .height(size)
+            .into(),
         rgb.map_or(Color::TRANSPARENT, well::color),
         Color { a: 0.35, ..FG },
         1.,

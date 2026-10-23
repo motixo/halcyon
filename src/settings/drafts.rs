@@ -1059,9 +1059,17 @@ mod tests {
             // immutable snapshot cannot preserve a directory as raw key bytes.
             let native_before = crate::desktop::store::tests::tree(&fixture.0.join("config"));
             assert!(!page.apply());
-            assert!(matches!(&page.notice, Some(Notice::Error(text)) if text.contains("preserve the desktop")));
-            assert_eq!(crate::desktop::store::tests::tree(&fixture.0.join("config")), native_before);
-            assert!(file.is_dir(), "failed capture leaves the unreadable entry intact");
+            assert!(
+                matches!(&page.notice, Some(Notice::Error(text)) if text.contains("preserve the desktop"))
+            );
+            assert_eq!(
+                crate::desktop::store::tests::tree(&fixture.0.join("config")),
+                native_before
+            );
+            assert!(
+                file.is_dir(),
+                "failed capture leaves the unreadable entry intact"
+            );
             // An outside repair makes capture possible. This unlisted key is
             // still untouched by Apply; only the selected shared keys change.
             let repaired = entry("DP-1", Path::new("/repaired-outside.png"));
@@ -1077,7 +1085,11 @@ mod tests {
             assert_eq!(value(&list_key()), "[]");
             assert_eq!(value(&same_key()), "false");
             assert_eq!(source(page.draft().unwrap(), &Target::Shared), red);
-            assert_eq!(fs::read_to_string(&file).unwrap(), repaired, "the externally repaired key is kept");
+            assert_eq!(
+                fs::read_to_string(&file).unwrap(),
+                repaired,
+                "the externally repaired key is kept"
+            );
         }
     }
 

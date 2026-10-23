@@ -60,7 +60,10 @@ pub const BUNDLED: [(&str, &str); 13] = [
 
 /// The built-in wallpaper called `name`, as its static stem.
 pub fn bundled_name(name: &str) -> Option<&'static str> {
-    BUNDLED.iter().map(|(known, _)| *known).find(|known| *known == name)
+    BUNDLED
+        .iter()
+        .map(|(known, _)| *known)
+        .find(|known| *known == name)
 }
 pub const MAX_ROTATION: u64 = 604_800;
 /// The slideshow intervals COSMIC Settings offers, in seconds.

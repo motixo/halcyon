@@ -311,7 +311,9 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&value).unwrap(), "false\n");
         assert_eq!(
             std::fs::read_to_string(&log).unwrap(),
-            format!("get {SCHEMA} {KEY}\nget {SCHEMA} {KEY}\nset {SCHEMA} {KEY} false\nget {SCHEMA} {KEY}\n")
+            format!(
+                "get {SCHEMA} {KEY}\nget {SCHEMA} {KEY}\nset {SCHEMA} {KEY} false\nget {SCHEMA} {KEY}\n"
+            )
         );
         // Missing program or schema: unavailable, with a short reason.
         let missing = AppAnimations::with_program(fixture.0.join("absent"));

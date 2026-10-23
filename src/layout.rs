@@ -251,10 +251,18 @@ mod tests {
         assert!(!crowds(rect, notes, WIDGET_GAP), "{focus:?}");
         assert!((focus[0] - 1536.).abs() < 1. || (focus[1] - 488.).abs() < 1.);
         // Already clear: unchanged.
-        assert_eq!(free_spot([100., 100.], [200., 100.], &[notes], screen), Some([100., 100.]));
+        assert_eq!(
+            free_spot([100., 100.], [200., 100.], &[notes], screen),
+            Some([100., 100.])
+        );
         // Stays on screen.
-        let low =
-            free_spot([1536., 900.], [360., 192.], &[[1536., 850., 360., 200.]], screen).unwrap();
+        let low = free_spot(
+            [1536., 900.],
+            [360., 192.],
+            &[[1536., 850., 360., 200.]],
+            screen,
+        )
+        .unwrap();
         assert!(low[1] + 192. <= screen[1] && low[1] >= 0.);
         // No room anywhere: no spot, rather than on top of another.
         let full = [0., 0., screen[0], screen[1]];

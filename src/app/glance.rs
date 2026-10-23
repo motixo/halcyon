@@ -528,7 +528,10 @@ impl Cards {
                 };
                 let mut temperature = vec![
                     label(
-                        data::weather_icon(weather.current.weather_code, weather.current.is_day != 0),
+                        data::weather_icon(
+                            weather.current.weather_code,
+                            weather.current.is_day != 0,
+                        ),
                         if block { 22. } else { 18. },
                         p.accent,
                     ),
@@ -540,9 +543,13 @@ impl Cards {
                 ];
                 if let Some(dew_point) = dew_point {
                     temperature.push(
-                        container(label(dew_point, (temperature_size * 0.55).max(10.), p.muted))
-                            .id(cosmic::widget::Id::new("glance-dew-point"))
-                            .into(),
+                        container(label(
+                            dew_point,
+                            (temperature_size * 0.55).max(10.),
+                            p.muted,
+                        ))
+                        .id(cosmic::widget::Id::new("glance-dew-point"))
+                        .into(),
                     );
                 }
                 rows.push(
@@ -709,7 +716,11 @@ impl Cards {
                 }
                 if !sub.is_empty() {
                     rows.push(
-                        container(row::with_children(sub).spacing(8).align_y(Alignment::Center))
+                        container(
+                            row::with_children(sub)
+                                .spacing(8)
+                                .align_y(Alignment::Center),
+                        )
                         .width(Length::Fill)
                         .align_x(self.config.clock.alignment.layout())
                         .height(self.glance_date_height().max(self.glance_weather_height()))
@@ -1162,14 +1173,20 @@ mod tests {
         {
             let _fonts = crate::widget_style::fonts(None, None);
             assert_eq!(crate::widget_style::font().family, Family::Name("Inter"));
-            assert_eq!(crate::widget_style::clock_font().family, Family::Name("Lora"));
+            assert_eq!(
+                crate::widget_style::clock_font().family,
+                Family::Name("Lora")
+            );
         }
         config.glance.font = Some("Hack".into());
         {
             let _fonts = crate::widget_style::fonts(config.glance.font.as_deref(), None);
             assert_eq!(crate::widget_style::font().family, Family::Name("Hack"));
             // The glance clock follows the glance's own font.
-            assert_eq!(crate::widget_style::clock_font().family, Family::Name("Hack"));
+            assert_eq!(
+                crate::widget_style::clock_font().family,
+                Family::Name("Hack")
+            );
             let _clock = crate::widget_style::fonts(None, Some("Merriweather"));
             assert_eq!(
                 crate::widget_style::clock_font().family,
@@ -1177,7 +1194,10 @@ mod tests {
             );
         }
         assert_eq!(crate::widget_style::font().family, Family::Name("Inter"));
-        assert_eq!(crate::widget_style::clock_font().family, Family::Name("Lora"));
+        assert_eq!(
+            crate::widget_style::clock_font().family,
+            Family::Name("Lora")
+        );
     }
 
     #[test]
@@ -1275,11 +1295,13 @@ mod tests {
             let earlier = native.bounds(cards.glance(), "calendar-earlier");
             // On the TODAY line, not a row of its own below the day.
             assert!(
-                earlier.y + earlier.height
-                    <= cards.glance_padding() + DAY_HEADING_HEIGHT + 1.,
+                earlier.y + earlier.height <= cards.glance_padding() + DAY_HEADING_HEIGHT + 1.,
                 "{style:?}: {earlier:?}"
             );
-            assert!(earlier.x > 40., "{style:?} beside the day name: {earlier:?}");
+            assert!(
+                earlier.x > 40.,
+                "{style:?} beside the day name: {earlier:?}"
+            );
         }
     }
 
@@ -1565,7 +1587,9 @@ mod tests {
                 .iter()
                 .all(|r| r[1] as f32 >= clock_bottom.floor()),
             "clock bottom={clock_bottom}, size={:?}, header={}, rects={:?}",
-            cards.glance_size(), cards.glance_header_height(), cards.glance_input_rects()
+            cards.glance_size(),
+            cards.glance_header_height(),
+            cards.glance_input_rects()
         );
         cards.config.glance.show_calendar = false;
         cards.config.glance.show_weather = false;

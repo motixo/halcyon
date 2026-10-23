@@ -1522,16 +1522,20 @@ impl Settings {
                 self.refresh_usage();
             }
             Message::OpenPrivacy => {
-                return run_command("/usr/bin/xdg-open".into(),
-                    vec!["https://github.com/profilaz3/halcyon/blob/main/docs/PRIVACY.md".into()], "Privacy details opened");
+                return run_command(
+                    "/usr/bin/xdg-open".into(),
+                    vec!["https://github.com/profilaz3/halcyon/blob/main/docs/PRIVACY.md".into()],
+                    "Privacy details opened",
+                );
             }
             Message::DisplayOutput(event, handle) => {
                 self.displays.update(event, handle);
             }
             Message::WidgetDisplay(name) => {
-                if name != self.config.widget_display && name
-                    .as_deref()
-                    .is_some_and(|name| self.displays.unique(name).is_none())
+                if name != self.config.widget_display
+                    && name
+                        .as_deref()
+                        .is_some_and(|name| self.displays.unique(name).is_none())
                 {
                     self.failed(
                         "That display is no longer available with a unique connection name.".into(),
@@ -2912,24 +2916,27 @@ impl Settings {
                 self.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
                 let panel = self.desktop.selected;
                 let output = self.desktop.island_output();
-                return Task::batch([updates, cosmic::task::future(async move {
-                    let (state, runtime) = tokio::task::spawn_blocking(move || {
-                        let Ok(store) = crate::desktop::DesktopStore::from_env() else {
-                            return (Default::default(), Default::default());
-                        };
-                        let state = crate::desktop::islands::Installation::discover(&store);
-                        let runtime = desktop::islands::RuntimeStatus::read(
-                            &store,
-                            state.installed(),
-                            panel,
-                            output,
-                        );
-                        (state, runtime)
-                    })
-                    .await
-                    .unwrap_or_default();
-                    Message::InstallationChecked(generation, state, runtime)
-                })]);
+                return Task::batch([
+                    updates,
+                    cosmic::task::future(async move {
+                        let (state, runtime) = tokio::task::spawn_blocking(move || {
+                            let Ok(store) = crate::desktop::DesktopStore::from_env() else {
+                                return (Default::default(), Default::default());
+                            };
+                            let state = crate::desktop::islands::Installation::discover(&store);
+                            let runtime = desktop::islands::RuntimeStatus::read(
+                                &store,
+                                state.installed(),
+                                panel,
+                                output,
+                            );
+                            (state, runtime)
+                        })
+                        .await
+                        .unwrap_or_default();
+                        Message::InstallationChecked(generation, state, runtime)
+                    }),
+                ]);
             }
             Message::InstallationReady(generation, state) => {
                 if generation != self.installation_generation {
@@ -6038,7 +6045,10 @@ mod tests {
         let dock = app.desktop.current().expect("the seeded Dock resolves");
         assert_eq!(dock.anchor(), Setting::Known(Anchor::Right));
         assert_eq!(dock.size(), Setting::Known(PanelSize::L));
-        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Opacity(37)));
+        send_settings(
+            &mut app,
+            Message::DesktopEditor(desktop::Message::Opacity(37)),
+        );
         assert!(!app.desktop.can_apply());
         send_settings(&mut app, Message::DesktopEditor(desktop::Message::Apply));
         assert!(app.desktop.dirty(), "a refused Apply keeps the draft");
@@ -6047,7 +6057,10 @@ mod tests {
             Some(desktop::Notice::Error(text)) if text.starts_with("Preview mode")
         ));
         send_settings(&mut app, Message::DesktopEditor(desktop::Message::Recover));
-        send_settings(&mut app, Message::DesktopEditor(desktop::Message::KeepRecovery));
+        send_settings(
+            &mut app,
+            Message::DesktopEditor(desktop::Message::KeepRecovery),
+        );
         let mut tree = Tree::new(app.settings_view().as_widget());
         tree.diff(app.settings_view().as_widget_mut());
         assert!(!app.native_busy && app.native_deferred.is_empty());

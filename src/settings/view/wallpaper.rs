@@ -34,7 +34,6 @@ fn every_label(seconds: u64) -> String {
     }
 }
 
-
 /// A tile's picture: thumbnail, rendered colour, or a quiet placeholder.
 fn face<'a>(
     handle: Option<&cosmic::widget::image::Handle>,

@@ -206,10 +206,11 @@ mod tests {
     use super::*;
     #[test]
     fn material_sheen_settles_without_an_idle_animation_clock() {
-        let mut state=State::default();
-        assert_eq!(state.strength(),0.);
-        state.start=Some(std::time::Instant::now()); assert!(state.strength()>0.9);
-        state.start=Some(std::time::Instant::now()-std::time::Duration::from_millis(221));
-        assert_eq!(state.strength(),0.);
+        let mut state = State::default();
+        assert_eq!(state.strength(), 0.);
+        state.start = Some(std::time::Instant::now());
+        assert!(state.strength() > 0.9);
+        state.start = Some(std::time::Instant::now() - std::time::Duration::from_millis(221));
+        assert_eq!(state.strength(), 0.);
     }
 }

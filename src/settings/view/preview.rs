@@ -6,7 +6,11 @@ impl Settings {
     pub(super) fn preview_stage<'a>(&self, card: Element<'a, Message>) -> Element<'a, Message> {
         self.preview_stage_padded(card, 20)
     }
-    pub(super) fn preview_stage_padded<'a>(&self, card: Element<'a, Message>, padding: u16) -> Element<'a, Message> {
+    pub(super) fn preview_stage_padded<'a>(
+        &self,
+        card: Element<'a, Message>,
+        padding: u16,
+    ) -> Element<'a, Message> {
         let background: Element<'a, Message> = match self.profiles.home_image() {
             Some(handle) => cosmic::widget::image(handle.clone())
                 .width(Length::Fill)

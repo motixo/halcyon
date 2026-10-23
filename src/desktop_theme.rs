@@ -145,9 +145,24 @@ const SOFT: StyleSpec = StyleSpec {
     shadow: Shadow::None,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &[], generic: Generic::Sans, weight: Weight::Normal },
-    clock: FontSpec { names: &[], generic: Generic::Sans, weight: Weight::Light },
-    bar: BarSpec { opacity: 0.94, radius: 20, padding: 8, spacing: 6, island_gap: 12, floating: true },
+    body: FontSpec {
+        names: &[],
+        generic: Generic::Sans,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &[],
+        generic: Generic::Sans,
+        weight: Weight::Light,
+    },
+    bar: BarSpec {
+        opacity: 0.94,
+        radius: 20,
+        padding: 8,
+        spacing: 6,
+        island_gap: 12,
+        floating: true,
+    },
     wallpaper: ([18, 27, 29], [40, 73, 67]),
 };
 const OUTLINE: StyleSpec = StyleSpec {
@@ -162,9 +177,24 @@ const OUTLINE: StyleSpec = StyleSpec {
     shadow: Shadow::None,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &[], generic: Generic::Mono, weight: Weight::Normal },
-    clock: FontSpec { names: &[], generic: Generic::Mono, weight: Weight::Normal },
-    bar: BarSpec { opacity: 0.98, radius: 5, padding: 6, spacing: 4, island_gap: 8, floating: false },
+    body: FontSpec {
+        names: &[],
+        generic: Generic::Mono,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &[],
+        generic: Generic::Mono,
+        weight: Weight::Normal,
+    },
+    bar: BarSpec {
+        opacity: 0.98,
+        radius: 5,
+        padding: 6,
+        spacing: 4,
+        island_gap: 8,
+        floating: false,
+    },
     wallpaper: ([12, 16, 21], [32, 40, 51]),
 };
 const PAPER: StyleSpec = StyleSpec {
@@ -179,9 +209,24 @@ const PAPER: StyleSpec = StyleSpec {
     shadow: Shadow::None,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &[], generic: Generic::Sans, weight: Weight::Normal },
-    clock: FontSpec { names: &["Noto Serif"], generic: Generic::Serif, weight: Weight::Normal },
-    bar: BarSpec { opacity: 1., radius: 12, padding: 8, spacing: 6, island_gap: 12, floating: false },
+    body: FontSpec {
+        names: &[],
+        generic: Generic::Sans,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &["Noto Serif"],
+        generic: Generic::Serif,
+        weight: Weight::Normal,
+    },
+    bar: BarSpec {
+        opacity: 1.,
+        radius: 12,
+        padding: 8,
+        spacing: 6,
+        island_gap: 12,
+        floating: false,
+    },
     wallpaper: ([223, 222, 208], [240, 235, 223]),
 };
 const BARE: StyleSpec = StyleSpec {
@@ -196,9 +241,24 @@ const BARE: StyleSpec = StyleSpec {
     shadow: Shadow::None,
     frosted: false,
     transparent: true,
-    body: FontSpec { names: &[], generic: Generic::Sans, weight: Weight::Normal },
-    clock: FontSpec { names: &[], generic: Generic::Sans, weight: Weight::Light },
-    bar: BarSpec { opacity: 0.90, radius: 24, padding: 6, spacing: 8, island_gap: 16, floating: true },
+    body: FontSpec {
+        names: &[],
+        generic: Generic::Sans,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &[],
+        generic: Generic::Sans,
+        weight: Weight::Light,
+    },
+    bar: BarSpec {
+        opacity: 0.90,
+        radius: 24,
+        padding: 6,
+        spacing: 8,
+        island_gap: 16,
+        floating: true,
+    },
     wallpaper: ([21, 29, 26], [61, 68, 51]),
 };
 const GLASS: StyleSpec = StyleSpec {
@@ -213,9 +273,24 @@ const GLASS: StyleSpec = StyleSpec {
     shadow: Shadow::Soft,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &["Fira Sans"], generic: Generic::Sans, weight: Weight::Normal },
-    clock: FontSpec { names: &["Fira Sans"], generic: Generic::Sans, weight: Weight::ExtraLight },
-    bar: BarSpec { opacity: 0.72, radius: 18, padding: 8, spacing: 6, island_gap: 12, floating: true },
+    body: FontSpec {
+        names: &["Fira Sans"],
+        generic: Generic::Sans,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &["Fira Sans"],
+        generic: Generic::Sans,
+        weight: Weight::ExtraLight,
+    },
+    bar: BarSpec {
+        opacity: 0.72,
+        radius: 18,
+        padding: 8,
+        spacing: 6,
+        island_gap: 12,
+        floating: true,
+    },
     wallpaper: ([29, 43, 74], [91, 75, 138]),
 };
 const FROSTED: StyleSpec = StyleSpec {
@@ -238,10 +313,25 @@ const MIDNIGHT: StyleSpec = StyleSpec {
     shadow: Shadow::None,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &["Fira Sans"], generic: Generic::Sans, weight: Weight::Light },
+    body: FontSpec {
+        names: &["Fira Sans"],
+        generic: Generic::Sans,
+        weight: Weight::Light,
+    },
     // ExtraLight: Thin strokes vanish at widget sizes.
-    clock: FontSpec { names: &["Fira Sans"], generic: Generic::Sans, weight: Weight::ExtraLight },
-    bar: BarSpec { opacity: 1., radius: 10, padding: 6, spacing: 6, island_gap: 8, floating: false },
+    clock: FontSpec {
+        names: &["Fira Sans"],
+        generic: Generic::Sans,
+        weight: Weight::ExtraLight,
+    },
+    bar: BarSpec {
+        opacity: 1.,
+        radius: 10,
+        padding: 6,
+        spacing: 6,
+        island_gap: 8,
+        floating: false,
+    },
     wallpaper: ([0, 0, 0], [10, 10, 16]),
 };
 const TERMINAL: StyleSpec = StyleSpec {
@@ -266,7 +356,14 @@ const TERMINAL: StyleSpec = StyleSpec {
         generic: Generic::Mono,
         weight: Weight::Normal,
     },
-    bar: BarSpec { opacity: 1., radius: 0, padding: 4, spacing: 4, island_gap: 6, floating: false },
+    bar: BarSpec {
+        opacity: 1.,
+        radius: 0,
+        padding: 4,
+        spacing: 4,
+        island_gap: 6,
+        floating: false,
+    },
     wallpaper: ([4, 12, 7], [10, 32, 18]),
 };
 const NEON: StyleSpec = StyleSpec {
@@ -291,7 +388,14 @@ const NEON: StyleSpec = StyleSpec {
         generic: Generic::Sans,
         weight: Weight::Semibold,
     },
-    bar: BarSpec { opacity: 0.96, radius: 12, padding: 6, spacing: 6, island_gap: 10, floating: true },
+    bar: BarSpec {
+        opacity: 0.96,
+        radius: 12,
+        padding: 6,
+        spacing: 6,
+        island_gap: 10,
+        floating: true,
+    },
     wallpaper: ([11, 10, 20], [44, 14, 52]),
 };
 const EDITORIAL: StyleSpec = StyleSpec {
@@ -316,7 +420,14 @@ const EDITORIAL: StyleSpec = StyleSpec {
         generic: Generic::Serif,
         weight: Weight::Normal,
     },
-    bar: BarSpec { opacity: 1., radius: 2, padding: 6, spacing: 6, island_gap: 8, floating: false },
+    bar: BarSpec {
+        opacity: 1.,
+        radius: 2,
+        padding: 6,
+        spacing: 6,
+        island_gap: 8,
+        floating: false,
+    },
     wallpaper: ([242, 240, 234], [222, 218, 208]),
 };
 const RETRO: StyleSpec = StyleSpec {
@@ -331,9 +442,24 @@ const RETRO: StyleSpec = StyleSpec {
     shadow: Shadow::Hard,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &["URW Bookman", "P052"], generic: Generic::Serif, weight: Weight::Normal },
-    clock: FontSpec { names: &["URW Bookman", "P052"], generic: Generic::Serif, weight: Weight::Semibold },
-    bar: BarSpec { opacity: 1., radius: 8, padding: 6, spacing: 6, island_gap: 10, floating: true },
+    body: FontSpec {
+        names: &["URW Bookman", "P052"],
+        generic: Generic::Serif,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &["URW Bookman", "P052"],
+        generic: Generic::Serif,
+        weight: Weight::Semibold,
+    },
+    bar: BarSpec {
+        opacity: 1.,
+        radius: 8,
+        padding: 6,
+        spacing: 6,
+        island_gap: 10,
+        floating: true,
+    },
     wallpaper: ([246, 227, 200], [232, 199, 154]),
 };
 const PASTEL: StyleSpec = StyleSpec {
@@ -348,9 +474,24 @@ const PASTEL: StyleSpec = StyleSpec {
     shadow: Shadow::Soft,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &["Ubuntu", "Ubuntu Sans"], generic: Generic::Sans, weight: Weight::Normal },
-    clock: FontSpec { names: &["Ubuntu", "Ubuntu Sans"], generic: Generic::Sans, weight: Weight::Medium },
-    bar: BarSpec { opacity: 0.9, radius: 28, padding: 8, spacing: 8, island_gap: 14, floating: true },
+    body: FontSpec {
+        names: &["Ubuntu", "Ubuntu Sans"],
+        generic: Generic::Sans,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &["Ubuntu", "Ubuntu Sans"],
+        generic: Generic::Sans,
+        weight: Weight::Medium,
+    },
+    bar: BarSpec {
+        opacity: 0.9,
+        radius: 28,
+        padding: 8,
+        spacing: 8,
+        island_gap: 14,
+        floating: true,
+    },
     wallpaper: ([253, 238, 243], [233, 240, 255]),
 };
 const BAUHAUS: StyleSpec = StyleSpec {
@@ -365,9 +506,24 @@ const BAUHAUS: StyleSpec = StyleSpec {
     shadow: Shadow::None,
     frosted: false,
     transparent: false,
-    body: FontSpec { names: &["URW Gothic"], generic: Generic::Sans, weight: Weight::Normal },
-    clock: FontSpec { names: &["URW Gothic"], generic: Generic::Sans, weight: Weight::Bold },
-    bar: BarSpec { opacity: 1., radius: 0, padding: 6, spacing: 6, island_gap: 8, floating: false },
+    body: FontSpec {
+        names: &["URW Gothic"],
+        generic: Generic::Sans,
+        weight: Weight::Normal,
+    },
+    clock: FontSpec {
+        names: &["URW Gothic"],
+        generic: Generic::Sans,
+        weight: Weight::Bold,
+    },
+    bar: BarSpec {
+        opacity: 1.,
+        radius: 0,
+        padding: 6,
+        spacing: 6,
+        island_gap: 8,
+        floating: false,
+    },
     wallpaper: ([233, 228, 216], [214, 206, 190]),
 };
 
@@ -691,7 +847,11 @@ pub fn resolve(a: Appearance) -> Roles {
         warning: readable([224, 156, 45], bg),
         error: readable([215, 68, 70], bg),
         border_width: spec.border_width,
-        shadow: if transparent { Shadow::None } else { spec.shadow },
+        shadow: if transparent {
+            Shadow::None
+        } else {
+            spec.shadow
+        },
         frosted: spec.frosted && !transparent,
     }
 }
@@ -726,12 +886,16 @@ impl Config {
             .map_or_else(|| self.palette().on_wallpaper(), |r| r.wallpaper)
     }
     pub fn surface_palette(&self) -> Palette {
-        self.theme_roles()
-            .map_or_else(|| {
+        self.theme_roles().map_or_else(
+            || {
                 let mut p = self.palette();
-                if self.materials.widgets().is_some() { p.background.a = p.background.a.max(0.92); }
+                if self.materials.widgets().is_some() {
+                    p.background.a = p.background.a.max(0.92);
+                }
                 p
-            }, |r| r.surface)
+            },
+            |r| r.surface,
+        )
     }
     /// Whether At a glance draws a panel: its own choice without a widget
     /// style, or when it keeps its own background; otherwise the style's.

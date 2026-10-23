@@ -264,7 +264,10 @@ impl Settings {
             );
         }
         controls.push(self.color_button(
-            format!("theme-role-{}", role.title().to_lowercase().replace(' ', "-")),
+            format!(
+                "theme-role-{}",
+                role.title().to_lowercase().replace(' ', "-")
+            ),
             target,
             Some([current.red, current.green, current.blue]),
             true,
