@@ -17,6 +17,10 @@ cleanup() {
   mountpoint -q "$R" && umount "$R"
   mountpoint -q iso && umount iso
   [[ -n "$LOOP" ]] && losetup -d "$LOOP"
+  if [[ -f guest.raw && ! -f retain/cosmic-1.11.qcow2 ]]; then
+    qemu-img convert -O qcow2 -c guest.raw retain/partial-install.qcow2
+    sha256sum retain/partial-install.qcow2 > evidence/partial-install.sha256
+  fi
 }
 trap cleanup EXIT
 date -u; uname -a; df -B1 .; free -b
@@ -33,7 +37,9 @@ curl -fL --retry 3 https://raw.githubusercontent.com/pop-os/keyring/356a75e405d0
 gpg --show-keys --with-colons retain/pop.gpg | tee evidence/pop-key.txt
 gpg --show-keys --with-colons retain/pop.gpg | grep -q ':63C46DF0140D738961429F4E204DD8AEC33A7AFF:'
 gpgv --keyring "$WORK/retain/pop.gpg" retain/SHA256SUMS.gpg retain/SHA256SUMS 2>&1 | tee evidence/iso-signature.txt
-curl -fL --retry 3 "$BASE/pop-os_24.04_amd64_generic_28.iso" -o retain/pop-os_24.04_amd64_generic_28.iso
+aria2c --max-connection-per-server=8 --split=8 --min-split-size=16M \
+ --file-allocation=none --max-tries=3 --timeout=30 --summary-interval=60 \
+ --dir=retain --out=pop-os_24.04_amd64_generic_28.iso "$BASE/pop-os_24.04_amd64_generic_28.iso"
 (cd retain; sha256sum -c SHA256SUMS) | tee evidence/iso-checksum.txt
 mount -o loop,ro retain/pop-os_24.04_amd64_generic_28.iso iso
 cp iso/casper/filesystem.manifest evidence/iso-filesystem.manifest

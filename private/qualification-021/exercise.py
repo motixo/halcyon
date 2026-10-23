@@ -73,6 +73,15 @@ def text(value):
     for ch in value:
         key({'-':'minus',' ':'spc','.':'dot','/':'slash'}.get(ch,ch))
 
+def click(x,y):
+    record('pointer',x=x,y=y,width=1280,height=800)
+    q.call('input-send-event', {'events':[
+        {'type':'abs','data':{'axis':'x','value':round(x*32767/1280)}},
+        {'type':'abs','data':{'axis':'y','value':round(y*32767/800)}},
+        {'type':'btn','data':{'down':True,'button':'left'}}]})
+    time.sleep(.2)
+    q.call('input-send-event', {'events':[{'type':'btn','data':{'down':False,'button':'left'}}]})
+
 def user(command):
     import shlex
     return guest('runuser -u probe -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus bash -lc '+shlex.quote(command))
@@ -146,6 +155,7 @@ try:
     # Real physical input via QMP: launcher via Super and text, dismiss via Escape.
     key('meta_l');time.sleep(3);text('terminal');time.sleep(3)
     shot('03-input-launcher');key('esc')
+    click(640,16);time.sleep(3);shot('03-clock-applet');key('esc')
     rc,out=user("notify-send -a Qualification -t 20000 'Stock baseline notification' 'QMP and real session probe'")
     record('notification-send',exitcode=rc,output=out)
     if rc:raise RuntimeError('notification delivery command failed')

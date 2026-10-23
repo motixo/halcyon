@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/cosmic/retain"
           sudo env DEBIAN_FRONTEND=noninteractive apt-get update -q
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y qemu-system-x86 qemu-utils ovmf squashfs-tools gdisk dosfstools zstd python3-pil aria2
           sudo env WORK="$RUNNER_TEMP/cosmic" timeout --signal=TERM --kill-after=60s 100m bash private/qualification-021/build.sh 2>&1 | tee "$RUNNER_TEMP/cosmic/evidence/build.log"
       - name: Preserve bounded evidence on every outcome
         if: always()

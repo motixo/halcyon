@@ -18,7 +18,7 @@ for p in cache:
                source=v.source_name, source_version=v.source_version,
                unchanged_from_signed_iso=before.get((p.name.split(':')[0], v.architecture)) == v.version,
                origins=[dict(origin=o.origin,label=o.label,archive=o.archive,site=o.site,trusted=o.trusted) for o in v.origins],
-               filename=v.filename)
+               filename=v.filename, uris=v.uris)
     try:
         row['sha256'] = v.sha256
     except (ValueError, SystemError):
