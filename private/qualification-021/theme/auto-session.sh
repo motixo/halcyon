@@ -35,7 +35,7 @@ for phase in "${phases[@]}"; do
   cp "$ROOT/base-vars.fd" trial-vars.fd
   qemu-img create -f qcow2 -F qcow2 -b "$ROOT/base.qcow2" trial.qcow2
   media=()
-  if [[ $phase == candidate ]]; then
+  if [[ $run_lineage == candidate ]]; then
     media=(-drive "if=none,id=media,format=raw,readonly=on,file=$ROOT/candidate.iso" -device virtio-scsi-pci,id=scsi,addr=0x6 -device scsi-cd,drive=media,bus=scsi.0)
   fi
   qemu-system-x86_64 --version > evidence/qemu-version.txt
