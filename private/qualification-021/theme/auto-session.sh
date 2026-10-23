@@ -4,11 +4,11 @@ set -Eeuo pipefail
 SRC=$(realpath private/qualification-021/theme)
 ROOT=$WORK
 git rev-parse HEAD > "$ROOT/evidence/infra-commit.txt"
-sha256sum "$SRC"/{auto_session.py,auto-session.sh,calibrated_controls.py,followup_session.py,prepare.sh} > "$ROOT/evidence/harness-SHA256SUMS.txt"
+sha256sum "$SRC"/{auto_session.py,auto-session.sh,validate-auto-diagnostic.py,control.py,theme_session.py,calibrated_controls.py,followup_session.py,prepare.sh} > "$ROOT/evidence/harness-SHA256SUMS.txt"
 owned_pid=''
 cleanup() { if [[ -n $owned_pid ]]; then kill "$owned_pid" 2>/dev/null || true; fi; }
 trap cleanup EXIT
-cp "$SRC"/{auto_session.py,auto-session.sh,calibrated_controls.py,followup_session.py,upstream-daemon-time-655b14f.rs,upstream-daemon-location-655b14f.rs,upstream-daemon-theme-655b14f.rs} "$ROOT/evidence/"
+cp "$SRC"/{auto_session.py,auto-session.sh,validate-auto-diagnostic.py,control.py,theme_session.py,calibrated_controls.py,followup_session.py,upstream-daemon-time-655b14f.rs,upstream-daemon-location-655b14f.rs,upstream-daemon-theme-655b14f.rs} "$ROOT/evidence/"
 cp "$SRC/followup/control-calibration.json" "$ROOT/evidence/"
 phases=(candidate)
 [[ $HOST_KIND == stock ]] && phases=(untouched candidate islands)
@@ -56,7 +56,7 @@ for phase in "${phases[@]}"; do
   kill "$owned_pid" 2>/dev/null || true
   # Confirm termination before the next overlay. No second concurrent VM.
   for n in {1..20}; do [[ ! -e /proc/$owned_pid ]] && break; sleep 1; done
-  if [[ -e /proc/$owned_pid/cmdline ]] && [[ -s /proc/$owned_pid/cmdline ]]; then echo 'owned QEMU did not terminate'; exit 1; fi
+  if [[ -e /proc/$owned_pid/exe ]]; then echo 'owned QEMU did not terminate'; exit 1; fi
   owned_pid=''
   cp -a evidence "$ROOT/evidence/$phase"
 done
