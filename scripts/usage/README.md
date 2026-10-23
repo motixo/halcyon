@@ -48,14 +48,47 @@ to make an older client report again. Broken state fails closed.
 8. Preference revision (internal ordering/idempotency)
 9. Choice at (UTC): latest action time, including re-enable
 
-Migration adds missing columns, initializes E:I for old rows and is idempotent.
-It does not prune, sort, remove original rows or change spreadsheet timezone,
-sharing, Script Properties, formatting or historic aggregates. An interrupted
-migration can be rerun. No automatic backup duplicates identifiable data.
-Normal ingestion/maintenance then deduplicates and prunes expired records.
+Migration preflights **values and formulas** throughout E:I before any workbook
+write. A blank status header authorizes only a genuinely empty column, never an
+occupied body cell or a formula whose evaluated result looks empty/numeric.
+Recognized headers must contain coherent status/revision/timestamp records;
+formulas, orphan status cells and unrelated/incomplete non-default records are
+refused without changing any cells, dimensions or triggers. Ingestion and
+maintenance apply the same validation and require the migrated status headers.
+A historical formula evaluating to 42 cannot become a preference revision.
+
+A clean legacy extension can be initialized. Interrupted header writes and
+empty/partly initialized default rows (`enabled`, revision 0, no choice times)
+can be completed safely. Valid existing status rows—including off, positive
+revisions and Date-valued timestamps—are preserved exactly during setup, never
+replaced by defaults. Incomplete off/positive-revision records need owner
+recovery from authoritative data; setup will not invent missing consent state.
+
+Migration adds missing columns, initializes only the required default cells and
+is idempotent. It does not prune, sort, remove original rows or change original
+A:D values/formulas, spreadsheet timezone, sharing, Script Properties, formatting
+or historical aggregates. Normal ingestion/maintenance then deduplicates and
+prunes expired records. No automatic backup duplicates identifiable data.
 
 `Countries` and a dedicated `Reporting` tab show current snapshots excluding
 opted-out rows. The latter labels the retained 90-day opt-out count explicitly.
+`Reporting!A8` holds the literal ownership marker
+`halcyon:reporting:schema3:v1`; A1:B6 is the reserved current snapshot. A new or
+entirely empty tab may be claimed. An unmarked nonempty tab is **never adopted
+or overwritten**, even if it resembles a snapshot from the earlier local
+implementation. Formulas returning an empty result still make a tab occupied.
+Owned snapshots must retain their expected labels/count shapes and contain no
+formulas in the reserved cells; custom edits there cause refusal. Other cells
+on an owned tab are left untouched. The marker is written before migration so
+an interruption with an empty/partial snapshot can be retried safely.
+
+Setup, ingestion and maintenance check the destination and status columns before
+any writes. A conflict leaves the workbook unchanged; ingestion returns
+`ok:false`, and setup/maintenance throw a diagnostic error. This intentionally
+pauses collector writes until the owner resolves the collision, rather than
+sacrificing custom data or silently ignoring an opt-out. The local client choice
+and its bounded retry behavior are unchanged.
+
 `setup()` also updates only the three exact documented legacy `COUNTIFS`
 current-count formulas wherever they occur in `Summary`, adding
 `Installations!E2:E20001,"enabled"`. Custom formulas and historical values remain
@@ -73,12 +106,25 @@ formulas and add that same criterion; do not reinterpret historical aggregates.
 2. First exercise `setup()`, reports and maintenance on a separate **private test
    Sheet**, including duplicate rows and old/new status dates. Use synthetic
    tokens only. Verify original A:D values and all unrelated workbook settings
-   survive migration, repeated setup and a simulated interruption.
+   survive migration, repeated setup and a simulated interruption. Include an
+   occupied custom `Reporting` tab and formulas/literals below blank E:I headers;
+   verify refusal before **any** workbook write, plus a clean first revision-1
+   opt-out and a mixed valid-status/partially initialized migration.
 3. Upload `collector.gs` and the unchanged `appsscript.json` to the existing
    Apps Script project. Keep `SPREADSHEET_ID` pointing to the intended private
    workbook. Run `setup()` as owner before switching the live deployment.
-   Review Summary formula coverage and Reporting/Countries snapshots. Migration
-   preserves timezone; verify the intended UTC date conventions explicitly.
+   Before running setup, audit `Reporting` and E:I values **and formulas**. If a
+   collision exists, preserve it in the restricted backup and have the owner
+   relocate the unrelated content intact, verifying dependent formulas/links.
+   Do not clear custom cells or paste the ownership marker to bypass preflight.
+   Keep valid preference rows/revisions in place. Even a known old unmarked
+   Reporting snapshot must be retained/relocated before a new empty destination
+   can be claimed; setup does not guess ownership. If the former unsafe migration
+   was ever run, a literal revision such as 42 may already have replaced a
+   formula: reconcile it from authoritative records/backup, never lower real
+   consent revisions by guesswork. Then rerun setup and inspect Summary formula
+   coverage and Reporting/Countries snapshots. Migration preserves timezone;
+   verify the intended UTC date conventions explicitly.
 4. Create a new immutable Apps Script version and update the existing web-app
    deployment (owner execution, Anyone access). Keep the endpoint URL stable.
    Existing schema 1/2 clients remain supported throughout. Do **not** release
@@ -118,12 +164,15 @@ incomplete; local opt-out remains effective. No rollback here is executed live.
 ```sh
 cargo +1.93.0 test --locked --offline --target-dir /tmp/halcyon-app-target usage:: -- --test-threads=1
 cargo +1.93.0 test --locked --offline --target-dir /tmp/halcyon-app-target settings::privacy_tests:: -- --test-threads=1
-node --test scripts/usage/collector.test.cjs
+node --test scripts/usage/collector.test.cjs scripts/usage/collector.migration.test.cjs
 python3 -m unittest discover -s scripts/usage -p 'test_*.py'
 ```
 
 Rust tests use loopback HTTP only and isolated state. Node tests use fake Sheets,
-locks, properties and trigger services. Capture/debug network guards are retained.
+locks, properties and trigger services. The fixture stores evaluated values and
+formulas separately and can interrupt range writes after individual cells;
+these model recovery boundaries, not a guarantee of live Sheets atomicity.
+Capture/debug network guards are retained.
 The public endpoint is not authenticated: fabricated reports and copied/deleted
 local state can affect estimates. The token is pseudonymous, not an account or
 person count; a shared embedded secret would not authenticate installations.

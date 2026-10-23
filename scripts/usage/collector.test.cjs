@@ -32,49 +32,7 @@ test('existing identities can report at capacity, new ones cannot',()=>{
  assert.throws(()=>updateRows(rows,'new','0.2.0',21000));
 });
 
-function fixture() {
- const crypto=require('node:crypto');
- let rows=[['Installation hash','Last active (UTC)','Version']],maxRows=1,maxColumns=3,triggers=[],status='',locked=false,failWrite=false;
- const visible=()=>{let end=rows.length;while(end && rows[end-1].every(v=>v===''))end--;return rows.slice(0,end);};
- const raw={
-  getMaxRows:()=>maxRows,
-  getMaxColumns:()=>maxColumns,
-  insertColumnsAfter:(_,count)=>{maxColumns+=count;},
-  insertRowsAfter:(_,count)=>{maxRows+=count;},
-  setFrozenRows:()=>{},
-  getLastRow:()=>visible().length,
-  getRange:(start,col,count=1,width=1)=>{
-   if (typeof start==='string') {
-    assert.equal(start,'B2:B20001'); assert.ok(maxRows>=20001,'setup must expand an imported sheet');
-    return {setNumberFormat:()=>{}};
-   }
-   if(start+count-1>maxRows) throw Error('Outside sheet');
-   return {
-    getValues:()=>Array.from({length:count},(_,i)=>Array.from({length:width},(_,j)=>(rows[start-1+i]||[])[col-1+j]??'')),
-    setValues:values=>{values.forEach((row,i)=>{const existing=rows[start-1+i] || []; row.forEach((v,j)=>{existing[col-1+j]=v;}); rows[start-1+i]=existing;});if(failWrite){failWrite=false;throw Error('Interrupted after write');}},
-    clearContent:()=>{rows.splice(start-1,count);},
-   };
-  },
- };
- let countryRows=[],reportingRows=[];
- let summaryFormulas=[['=COUNTIFS(Installations!B2:B20001,">="&TODAY(),Installations!B2:B20001,"<="&TODAY())'], ['=SUM(Historical!B2:B30)']];
- const summary={getDataRange:()=>({getFormulas:()=>summaryFormulas}),getRange:(r,c)=>({setValue:value=>{status=value;},setFormula:value=>{summaryFormulas[r-1][c-1]=value;}})};
- const reporting={getRange:()=>({setValues:values=>{reportingRows=values.map(r=>r.slice());}})};
- const countries={getLastRow:()=>countryRows.length,getMaxRows:()=>1000,setFrozenRows:()=>{},
- getRange:()=>({setValues:values=>{countryRows=values.map(r=>r.slice());}})};
- const book={setSpreadsheetTimeZone:zone=>assert.equal(zone,'Etc/UTC'),getSheetByName:name=>name==='Installations'?raw:name==='Countries'?countries:name==='Reporting'?reporting:summary};
- const trigger={timeBased:()=>trigger,everyDays:()=>trigger,atHour:()=>trigger,create:()=>triggers.push({getHandlerFunction:()=> 'maintenance'})};
- const sandbox={module:{exports:{}},Date,JSON,
-  PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'private-sheet-id'})},
-  SpreadsheetApp:{openById:()=>book,flush:()=>{}},
-  ScriptApp:{getProjectTriggers:()=>triggers,newTrigger:()=>trigger},
-  LockService:{getScriptLock:()=>({tryLock:()=>{locked=true;return true;},hasLock:()=>locked,releaseLock:()=>{locked=false;}})},
-  ContentService:{MimeType:{JSON:'application/json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},
-  Utilities:{DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(_,value)=>[...crypto.createHash('sha256').update(value).digest()],formatDate:date=>date.toISOString().slice(0,10)},
- };
- vm.runInNewContext(fs.readFileSync(__dirname+'/collector.gs','utf8'),sandbox);
- return {sandbox,summary:()=>summaryFormulas,reporting:()=>reportingRows,countries:()=>countryRows,rows:visible,status:()=>status,triggers:()=>triggers,locked:()=>locked,seed:values=>{rows=[rows[0],...values.map(r=>r.slice())];},failAfterWrite:()=>{failWrite=true;}};
-}
+const {fixture}=require('./collector.fixture.cjs');
 test('setup prepares imported small sheets and creates only one retention trigger',()=>{
  const f=fixture();
  assert.equal(f.sandbox.setup().configured,true);

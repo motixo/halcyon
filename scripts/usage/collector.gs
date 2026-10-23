@@ -123,11 +123,88 @@ function book_() {
   if (!id) throw new Error('Collector not configured');
   return SpreadsheetApp.openById(id);
 }
-function rows_(sheet) {
-  const count = sheet.getLastRow()-1;
-  if (count < 1) return [];
-  if (count > MAX_INSTALLATIONS) throw Error('Capacity reached');
-  return sheet.getRange(2,1,count,WIDTH).getValues().map(normalize);
+// A header alone is not permission to consume owner data. Read both values
+// and formulas before any migration/ingestion/maintenance write. Missing headers
+// may only cover empty columns; recognized headings require coherent state.
+function statusPlan_(sheet, requireHeaders = false) {
+  const count = Math.max(1,sheet.getLastRow()), width = Math.min(WIDTH,sheet.getMaxColumns());
+  if (count > MAX_INSTALLATIONS+1) throw Error('Capacity reached');
+  const range=sheet.getRange(1,1,count,width);
+  const pad=row=>Array.from({length:WIDTH},(_,i)=>row[i] ?? '');
+  const values=range.getValues().map(pad),formulas=range.getFormulas().map(pad);
+  for (let col=4;col<WIDTH;col++) {
+    if (formulas.some(row=>row[col] !== '')) throw Error('Formula in reporting status column');
+    const header=values[0][col];
+    if (header !== HEADERS[col] && header !== '') throw Error('Unrecognized existing status column');
+    if (header === '' && (requireHeaders || values.slice(1).some(row=>row[col] !== '')))
+      throw Error('Occupied or unmigrated reporting status column');
+  }
+  const initialize=[];
+  for (let i=1;i<values.length;i++) {
+    const row=values[i],v=row.slice(4),empty=v.every(value=>value === '');
+    if (!row[0]) {
+      if (!empty) throw Error('Reporting status without an installation');
+      continue;
+    }
+    // A prefix of the default-state write is safe to finish. Never infer an
+    // off status, timestamp or positive revision from incomplete cells.
+    if ((v[0] === '' || v[0] === 'enabled') && (v[3] === '' || v[3] === 0)
+        && v[1] === '' && v[2] === '' && v[4] === '') {
+      if (v[0] !== 'enabled' || v[3] !== 0) initialize.push([i+1,['enabled','','',0,'']]);
+      continue;
+    }
+    const timestamp=value=>{
+      if (value === '') return '';
+      const date=value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
+      if (!date || !Number.isFinite(date.getTime()) || date.getTime()<0 || date.getTime()>253402300799999) return null;
+      const iso=date.toISOString();
+      return value instanceof Date || value === iso ? iso : null;
+    };
+    const opted=timestamp(v[1]),received=timestamp(v[2]),choice=timestamp(v[4]),revision=v[3];
+    if (!['enabled','opted_out'].includes(v[0]) || !Number.isSafeInteger(revision) || revision<=0
+        || [opted,received,choice].includes(null) || Boolean(received)!==Boolean(choice)
+        || (!received && opted) || (v[0] === 'opted_out' && (!received || !opted || opted!==choice)))
+      throw Error('Incoherent reporting status');
+  }
+  return {values,formulas,initialize,rows:values.slice(1).map(normalize)};
+}
+function rows_(sheet) { return statusPlan_(sheet,true).rows; }
+const REPORTING_OWNER = 'halcyon:reporting:schema3:v1';
+const REPORTING_LABELS = ['Reporting snapshot (UTC)','Active today (reporting enabled)',
+  'Active last 7 days (reporting enabled)','Active last 30 days (reporting enabled)',
+  'Currently opted out (status received in last 90 days)','Counts are retained installations, not lifetime users'];
+// A8 is outside the A1:B6 snapshot. An unmarked nonempty tab is never adopted,
+// even if its labels happen to resemble our snapshot or formulas display blank.
+function reporting_(book) {
+  const sheet=book.getSheetByName('Reporting');
+  if (!sheet) return null;
+  if (sheet.getMaxRows()>=8) {
+    const marker=sheet.getRange(8,1,1,1);
+    if (marker.getValues()[0][0] === REPORTING_OWNER && marker.getFormulas()[0][0] === '') {
+      if (sheet.getMaxColumns()<2) throw Error('Invalid Reporting snapshot');
+      const snapshot=sheet.getRange(1,1,6,2);
+      if (snapshot.getFormulas().some(row=>row.some(Boolean))) throw Error('Formula in Reporting snapshot');
+      snapshot.getValues().forEach(([label,value],i)=>{
+        // Accept empty prefixes left by interruption, but not owner edits inside
+        // the reserved snapshot. A copied marker alone cannot authorize them.
+        const validValue=value === '' || (i === 0 ? typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+          : i<5 && Number.isSafeInteger(value) && value>=0);
+        if ((label !== REPORTING_LABELS[i] && (label !== '' || value !== '')) || !validValue)
+          throw Error('Unrecognized Reporting snapshot contents');
+      });
+      return sheet;
+    }
+  }
+  if (sheet.getLastRow() !== 0) throw Error('Reporting destination is not collector-owned or empty');
+  return sheet;
+}
+function claimReporting_(book) {
+  const sheet=reporting_(book) || book.insertSheet('Reporting');
+  if (sheet.getMaxRows()<8) sheet.insertRowsAfter(sheet.getMaxRows(),8-sheet.getMaxRows());
+  if (sheet.getMaxColumns()<2) sheet.insertColumnsAfter(sheet.getMaxColumns(),2-sheet.getMaxColumns());
+  const marker=sheet.getRange(8,1,1,1);
+  if (marker.getValues()[0][0] !== REPORTING_OWNER) marker.setValue(REPORTING_OWNER);
+  return sheet;
 }
 function write_(sheet, before, after) {
   if (after.length === before.length && after.every((row,i)=>row[0] === before[i][0])) {
@@ -144,15 +221,12 @@ function write_(sheet, before, after) {
 function summary_(book, rows, today) {
   // Dedicated current snapshot. Do not overwrite existing historical aggregates
   // or any other Summary cells/formulas/layout owned by the private workbook.
-  const sheet = book.getSheetByName('Reporting') || book.insertSheet('Reporting');
+  const sheet = claimReporting_(book);
   const current = currentRows(rows,today), enabled = current.filter(r=>r[4] === 'enabled' && r[1] !== '' && r[1] <= today);
-  sheet.getRange(1,1,6,2).setValues([
-    ['Reporting snapshot (UTC)',new Date((today-25569)*86400000).toISOString().slice(0,10)],
-    ['Active today (reporting enabled)',enabled.filter(r=>r[1]===today).length],
-    ['Active last 7 days (reporting enabled)',enabled.filter(r=>r[1]>=today-6).length],
-    ['Active last 30 days (reporting enabled)',enabled.filter(r=>r[1]>=today-29).length],
-    ['Currently opted out (status received in last 90 days)',current.filter(r=>r[4]==='opted_out').length],
-    ['Counts are retained installations, not lifetime users','']]);
+  const values=[new Date((today-25569)*86400000).toISOString().slice(0,10),
+    enabled.filter(r=>r[1]===today).length,enabled.filter(r=>r[1]>=today-6).length,
+    enabled.filter(r=>r[1]>=today-29).length,current.filter(r=>r[4]==='opted_out').length,''];
+  sheet.getRange(1,1,6,2).setValues(REPORTING_LABELS.map((label,i)=>[label,values[i]]));
 }
 function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
 function doGet() { return json_({service:'halcyon-activity',schema:3}); }
@@ -165,7 +239,8 @@ function doPost(event) {
     lock = LockService.getScriptLock();
     if (!lock.tryLock(3000)) return json_({ok:false});
     const now=new Date(),today=dayNumber(now),book=book_(),sheet=book.getSheetByName('Installations');
-    const before=rows_(sheet),after=applyReport(before,id,report,now);
+    const before=rows_(sheet); reporting_(book); // read-only preflight before any write
+    const after=applyReport(before,id,report,now);
     write_(sheet,before,after);
     countries_(book,after,today); summary_(book,after,today);
     const row=after.find(r=>r[0]===id);
@@ -178,6 +253,7 @@ function maintenance() {
   const lock=LockService.getScriptLock(); if (!lock.tryLock(10000)) return;
   try {
     const book=book_(),sheet=book.getSheetByName('Installations'),before=rows_(sheet),today=dayNumber(new Date());
+    reporting_(book); // collisions must leave even Installations untouched
     const after=currentRows(before,today); write_(sheet,before,after);
     countries_(book,after,today); summary_(book,after,today);
   } finally { lock.releaseLock(); }
@@ -197,16 +273,23 @@ function setup() {
   const lock=LockService.getScriptLock(); if (!lock.tryLock(10000)) throw Error('Busy');
   try {
     const book=book_(),raw=book.getSheetByName('Installations');
-    const headers=raw.getRange(1,1,1,Math.min(raw.getMaxColumns(),WIDTH)).getValues()[0];
-    for (let i=4;i<headers.length;i++) {
-      if (headers[i] && headers[i] !== HEADERS[i]) throw Error('Unrecognized existing status column');
-    }
+    const plan=statusPlan_(raw);
+    reporting_(book); // finish both preflights before changing any workbook cell
+    claimReporting_(book); // recoverable even if the next write is interrupted
     if (raw.getMaxColumns() < WIDTH) raw.insertColumnsAfter(raw.getMaxColumns(),WIDTH-raw.getMaxColumns());
     if (raw.getMaxRows() < MAX_INSTALLATIONS+1) raw.insertRowsAfter(raw.getMaxRows(),MAX_INSTALLATIONS+1-raw.getMaxRows());
-    raw.getRange(1,1,1,WIDTH).setValues([HEADERS]);
-    const rows=rows_(raw);
-    // Only new cells are initialized: retain original dates/types/values in A:D.
-    if (rows.length) raw.getRange(2,5,rows.length,5).setValues(rows.map(r=>r.slice(4)));
+    raw.getRange(1,5,1,5).setValues([HEADERS.slice(4)]);
+    if (plan.values[0][3] === '' && plan.formulas[0][3] === '') raw.getRange(1,4).setValue(HEADERS[3]);
+    // Initialize only empty/default prefixes. Valid status values (including
+    // Date cells) and all original A:D cells remain exactly as they were.
+    // Batch adjacent legacy rows instead of issuing one Sheets call per row.
+    for (let i=0;i<plan.initialize.length;) {
+      const row=plan.initialize[i][0],values=[];
+      do { values.push(plan.initialize[i++][1]); }
+      while (i<plan.initialize.length && plan.initialize[i][0] === row+values.length);
+      raw.getRange(row,5,values.length,5).setValues(values);
+    }
+    const rows=plan.rows;
     SpreadsheetApp.flush();
     if (!ScriptApp.getProjectTriggers().some(t=>t.getHandlerFunction()==='maintenance'))
       ScriptApp.newTrigger('maintenance').timeBased().everyDays(1).atHour(3).create();
