@@ -5,6 +5,7 @@ No network except a loopback HTTP fixture, no host apt state, no real keys.
 Run: python3 -B scripts/apt/test_archive.py
 """
 import http.server
+import hashlib
 import importlib.util
 import json
 import os
@@ -361,6 +362,31 @@ class Acceptance(unittest.TestCase):
         self.assertEqual(digest, self.digest)
         rebuilt = enrollment.build(self.public, '1.0', self.root/'bootstrap', self.epoch)
         self.assertEqual([archive.sha(p) for p in rebuilt], [archive.sha(p) for p in self.bootstrap])
+
+    def test_enrollment_installed_checksums_cover_payload_and_detect_changes(self):
+        for path in (enrollment.KEY, enrollment.SOURCE, enrollment.PREFERENCES):
+            (self.apt.root/path.lstrip('/')).unlink(missing_ok=True)
+        self.apt.dpkg('--install', *self.bootstrap)
+        info = self.apt.root/'var/lib/dpkg/info'
+        recorded = {}
+        for name in enrollment.PACKAGES[2:]:
+            checksum_file = info/(name+'.md5sums')
+            self.assertTrue(checksum_file.is_file(), name+' lacks installed checksum records')
+            rows = checksum_file.read_text().splitlines()
+            self.assertTrue(rows)
+            for row in rows:
+                digest, relative = row.split(maxsplit=1)
+                self.assertFalse(relative.startswith('/'))
+                payload = self.apt.root/relative
+                self.assertEqual(hashlib.md5(payload.read_bytes()).hexdigest(), digest)
+                recorded['/'+relative] = digest
+            installed_files = (info/(name+'.list')).read_text().splitlines()
+            regular = {path for path in installed_files if (self.apt.root/path.lstrip('/')).is_file()}
+            self.assertTrue(regular.issubset(recorded))
+        for path in (enrollment.KEY, enrollment.SOURCE, enrollment.PREFERENCES):
+            self.assertIn(path, recorded)
+        self.apt.public.write_bytes(self.apt.public.read_bytes()+b'changed')
+        self.assertNotEqual(hashlib.md5(self.apt.public.read_bytes()).hexdigest(), recorded[enrollment.KEY])
 
     def test_immutable_versions_and_debian_equivalent_versions(self):
         for version in ('0.2.0', '0.2.0-0'):
