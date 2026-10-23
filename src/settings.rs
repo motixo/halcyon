@@ -7885,8 +7885,13 @@ mod tests {
             let applied = fixture_files(&fixture);
             assert_ne!(applied, before, "the wallpaper applies on its own");
             // Its Undo is offered right here, on the page that made the change.
+            let baseline = fixture.join("state/desktop-recovery/original/manifest.json");
+            let captured = std::fs::read(&baseline).unwrap();
             click(&mut app, &mut native, "settings-undo");
-            assert_eq!(fixture_files(&fixture), before, "Undo restores the wallpaper");
+            assert_eq!(std::fs::read(&baseline).unwrap(), captured, "Undo never rotates the immutable baseline");
+            let mut restored = fixture_files(&fixture);
+            if !before.contains_key(&baseline) { restored.remove(&baseline); }
+            assert_eq!(restored, before, "Undo restores the wallpaper and retains first-write evidence");
             // Colors are chosen on Colors & theme; that flow is covered by
             // unified_colors_native_links_apply_undo_and_recovered_wallpaper.
         }

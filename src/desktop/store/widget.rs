@@ -142,7 +142,7 @@ macro_rules! fields {
 }
 
 /// Every member a profile, its Undo or its recovery may write.
-pub static FIELDS: [WidgetField; 83] = fields![
+pub static FIELDS: [WidgetField; 84] = fields![
     "/material_motion", "Liquid widget motion", Style, boolean;
     "/materials/shared", "Shared material", Style, material;
     "/materials/widgets", "Widget material", Style, material;
@@ -152,6 +152,7 @@ pub static FIELDS: [WidgetField; 83] = fields![
     "/appearance/overrides", "Custom properties", Style, |v| v.as_u64().is_some();
 
     "/theme", "Card palette", Style, palette;
+    "/appearance/native_mode_palettes", "Native mode palettes", Style, |v| matches!(v.as_u64(), Some(0 | 1));
     "/appearance/family", "Theme family", Style, |v| serde_json::from_value::<Option<crate::desktop_theme::Family>>(v.clone()).is_ok();
     "/appearance/surface", "Widget surface", Style, |v| serde_json::from_value::<Option<crate::desktop_theme::Surface>>(v.clone()).is_ok();
     "/appearance/wallpaper_light", "Wallpaper text contrast", Style, boolean;

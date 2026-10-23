@@ -55,6 +55,161 @@ fn preview_refusal(links: Links) -> Option<String> {
     })
 }
 
+/// Controller requests carry app preferences and native changes through one
+/// transaction. The Python parent must not hold config.json.lock.
+#[derive(Clone, Copy, Debug)]
+pub enum ControllerRequest<'a> {
+    Palette(&'a str),
+    CosmicColors(bool),
+}
+
+pub fn controller(request: ControllerRequest<'_>) -> Result<(), String> {
+    if std::env::var_os("DESKTOP_CARDS_CONFIG").is_some() {
+        return Err("Desktop changes are disabled in an isolated preview".into());
+    }
+    let store = DesktopStore::from_env().map_err(|e| e.to_string())?;
+    let bundled = wallpaper::bundled_dir(&store);
+    controller_with(&store, request, &bundled)
+}
+
+pub fn controller_with(
+    store: &DesktopStore,
+    request: ControllerRequest<'_>,
+    bundled: &Path,
+) -> Result<(), String> {
+    use crate::desktop::store::{Owner, Source, WidgetPatch, widget};
+    let (raw, config) = wallpaper::automatic::read_config(store)?;
+    let mut widgets = WidgetPatch::new();
+    let (name, links) = match request {
+        ControllerRequest::Palette(name) => {
+            if !Palette::CHOICES.iter().any(|(key, _)| *key == name) {
+                return Err("Unknown Halcyon palette".into());
+            }
+            widgets.set("/theme", widget::get(&raw, "/theme"), Some(name.into()))?;
+            widgets.set(
+                "/appearance/accent",
+                widget::get(&raw, "/appearance/accent"),
+                None,
+            )?;
+            if config.appearance.color_source == crate::config::ColorSource::Desktop {
+                widgets.set(
+                    "/appearance/color_source",
+                    widget::get(&raw, "/appearance/color_source"),
+                    Some("custom".into()),
+                )?;
+            }
+            (
+                name,
+                Links {
+                    wallpaper: config.appearance.match_wallpaper,
+                    colors: config.appearance.match_cosmic_colors,
+                },
+            )
+        }
+        ControllerRequest::CosmicColors(on) => {
+            widgets.set(
+                "/appearance/match_cosmic_colors",
+                widget::get(&raw, "/appearance/match_cosmic_colors"),
+                Some(on.into()),
+            )?;
+            (
+                config.theme.as_str(),
+                Links {
+                    wallpaper: false,
+                    colors: on,
+                },
+            )
+        }
+    };
+    let mut patch = DesktopPatch::new();
+    if links.colors {
+        let color = Palette::named(name).accent;
+        patch = appearance::palette_patch(
+            &store
+                .load(&AppearanceDraft::keys())
+                .map_err(|e| e.to_string())?,
+            Srgb::new(color.r, color.g, color.b),
+        )?;
+    }
+    if links.wallpaper {
+        patch
+            .merge(background_patch(
+                store,
+                &wallpaper::bundled_path(bundled, name),
+            )?)
+            .map_err(|e| e.to_string())?;
+    }
+    // Planning is read-only. The same raw preferences are guarded under the
+    // config lock when native and app writes commit together.
+    for pointer in [
+        "/theme",
+        "/appearance/match_wallpaper",
+        "/appearance/match_cosmic_colors",
+        "/appearance/color_source",
+    ] {
+        if !widgets.iter().any(|(p, _)| p == pointer) {
+            let original = widget::get(&raw, pointer);
+            widgets.set(pointer, original.clone(), original)?;
+        }
+    }
+    store.preflight(&patch).map_err(|e| e.to_string())?;
+    if patch.is_empty() && widgets.is_empty() {
+        return Ok(());
+    }
+    // Preserve the old controller's restore-wallpaper entry point using the
+    // same immutable evidence; the collection itself no longer needs editing.
+    if links.wallpaper {
+        let baseline = crate::desktop::recovery::ensure_baseline(
+            store,
+            crate::desktop::recovery::BaselineKind::OriginalDesktop,
+        )
+        .map_err(|e| e.to_string())?;
+        if let Some(parent) = store.app_config().and_then(Path::parent) {
+            let saved = parent.join("original-background.ron");
+            let original = baseline
+                .domains
+                .iter()
+                .flat_map(|d| &d.native)
+                .find(|r| r.supported_key().as_ref() == Some(&wallpaper::shared_key()));
+            if let Some(bytes) = original
+                .map(|r| r.contents())
+                .transpose()
+                .map_err(|e| e.to_string())?
+                .flatten()
+            {
+                match fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .mode(0o600)
+                    .custom_flags(libc::O_NOFOLLOW)
+                    .open(saved)
+                {
+                    Ok(mut file) => {
+                        file.write_all(&bytes)
+                            .and_then(|_| file.sync_all())
+                            .map_err(|e| e.to_string())?;
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+                    Err(e) => return Err(e.to_string()),
+                }
+            }
+        }
+    }
+    store
+        .apply_action(
+            &patch,
+            Some(&widgets),
+            Owner::Appearance,
+            match request {
+                ControllerRequest::Palette(_) => "CLI palette",
+                ControllerRequest::CosmicColors(_) => "CLI COSMIC colors",
+            },
+            Source::Manual,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// The helper is deliberately separate from the GUI's preview configuration.
 pub fn apply(name: &str) -> Result<(), String> {
     apply_links(
@@ -159,6 +314,11 @@ pub fn apply_links_with(
         return Err(recovery_message(links));
     }
     let patch = plan()?;
+    crate::desktop::recovery::ensure_baseline(
+        store,
+        crate::desktop::recovery::BaselineKind::OriginalDesktop,
+    )
+    .map_err(text)?;
     let original = match &backup {
         Some(backup) => {
             let root = store
@@ -1057,5 +1217,109 @@ mod tests {
         assert!(result.success());
         assert!(!temp.0.join("config").exists());
         assert!(!temp.0.join("data").exists());
+    }
+}
+
+#[cfg(test)]
+mod controller_tests {
+    use super::*;
+    use crate::desktop::store::tests::Fixture;
+    fn fixture(name: &str) -> (Fixture, DesktopStore, PathBuf) {
+        let fixture = Fixture::new(name);
+        let store = fixture
+            .store()
+            .with_app_config(fixture.0.join("config.json"));
+        let bundled = fixture.0.join("pictures");
+        fs::create_dir_all(&bundled).unwrap();
+        fs::copy(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/rose.jpg"),
+            bundled.join("rose.jpg"),
+        )
+        .unwrap();
+        (fixture, store, bundled)
+    }
+    #[test]
+    fn fresh_cli_palette_captures_absent_app_and_preserves_wallpaper_collection() {
+        let (fixture, store, bundled) = fixture("cli-fresh");
+        fixture.user(
+            "com.system76.CosmicSettings.Wallpaper",
+            "custom-images",
+            "[\"/fixture/old.png\"]\n",
+        );
+        controller_with(&store, ControllerRequest::Palette("rose"), &bundled).unwrap();
+        let baseline = crate::desktop::recovery::load_baseline(&store)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            baseline.kind,
+            crate::desktop::recovery::BaselineKind::OriginalDesktop
+        );
+        assert!(!baseline.app_config_present);
+        let (raw, _) = wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(raw["theme"], "rose");
+        assert_eq!(
+            fixture
+                .read("com.system76.CosmicSettings.Wallpaper", "custom-images")
+                .unwrap(),
+            "[\"/fixture/old.png\"]\n"
+        );
+        let entry: wallpaper::BgEntry = store
+            .read_user(&wallpaper::shared_key())
+            .unwrap()
+            .unwrap()
+            .decode()
+            .unwrap();
+        assert_eq!(entry.source, BgSource::Path(bundled.join("rose.jpg")));
+    }
+    #[test]
+    fn cli_color_enable_and_palette_only_preserve_unrelated_preferences() {
+        let (_fixture, store, bundled) = fixture("cli-colors");
+        fs::write(store.app_config().unwrap(), r#"{"theme":"teal","appearance":{"color_source":"desktop","accent":[4,45,67],"match_wallpaper":false,"opacity":83},"future_setting":42}"#).unwrap();
+        controller_with(&store, ControllerRequest::CosmicColors(true), &bundled).unwrap();
+        controller_with(&store, ControllerRequest::Palette("ocean"), &bundled).unwrap();
+        let (raw, config) = wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(raw["future_setting"], 42);
+        assert_eq!(config.theme, "ocean");
+        assert_eq!(config.appearance.opacity, 83);
+        assert_eq!(
+            config.appearance.color_source,
+            crate::config::ColorSource::Custom
+        );
+        assert!(raw.pointer("/appearance/accent").is_none());
+        assert!(config.appearance.match_cosmic_colors);
+        assert!(store.read_user(&wallpaper::shared_key()).unwrap().is_none());
+        let before = fs::read(store.user_path(&appearance::theme::builder_key(
+            appearance::ThemeVariant::Dark,
+            "accent",
+        )))
+        .unwrap();
+        controller_with(&store, ControllerRequest::CosmicColors(false), &bundled).unwrap();
+        assert_eq!(
+            fs::read(store.user_path(&appearance::theme::builder_key(
+                appearance::ThemeVariant::Dark,
+                "accent"
+            )))
+            .unwrap(),
+            before
+        );
+    }
+    #[test]
+    fn cli_capture_failure_and_missing_wallpaper_leave_both_participants_unchanged() {
+        let (fixture, store, bundled) = fixture("cli-blocked");
+        fs::write(store.app_config().unwrap(), "{\"theme\":\"teal\"}\n").unwrap();
+        fixture.user(wallpaper::NAMESPACE, "all", "(output:\"all\",source:Color(Single((0.1,0.2,0.3))),filter:Linear,scaling:Zoom,rotation_frequency:300)");
+        let original = fs::read(store.app_config().unwrap()).unwrap();
+        assert!(controller_with(&store, ControllerRequest::Palette("ocean"), &bundled).is_err());
+        let damaged = store.state_dir().join("desktop-recovery/original");
+        fs::create_dir_all(&damaged).unwrap();
+        fs::write(damaged.join("manifest.json"), "broken").unwrap();
+        for request in [
+            ControllerRequest::Palette("rose"),
+            ControllerRequest::CosmicColors(true),
+        ] {
+            assert!(controller_with(&store, request, &bundled).is_err());
+            assert_eq!(fs::read(store.app_config().unwrap()).unwrap(), original);
+        }
+        assert_eq!(fs::read(damaged.join("manifest.json")).unwrap(), b"broken");
     }
 }

@@ -791,7 +791,8 @@ impl DesktopStore {
             live_system_roots(),
             data,
             Access::Live,
-        ))
+        )
+        .with_app_config_opt(crate::config::Config::path()))
     }
     /// Layout: `<root>/config/cosmic` (user), `<root>/system/cosmic` (system
     /// defaults, else the installed read-only defaults), `<root>/state`.
@@ -1043,13 +1044,59 @@ impl DesktopStore {
     /// persistent record only when `change` is still the latest one.
     pub fn undo_change(&self, change: &LatestChange) -> Result<AppliedChange, DesktopError> {
         let (patch, widget) = self.reversal(change)?;
-        let latest = self.latest_change()?.filter(|latest| latest.id == change.id);
+        let latest = self
+            .latest_change()?
+            .filter(|latest| latest.id == change.id);
         let record = match &latest {
             Some(latest) => Record::Clear(&latest.id),
             None => Record::Keep,
         };
         self.transact(&patch, widget.as_ref(), Operation::Undo, record)
             .map(|committed| committed.change)
+    }
+
+    pub(super) fn capture_baseline(
+        &self,
+        kind: super::recovery::BaselineKind,
+    ) -> Result<super::recovery::BaselineInfo, DesktopError> {
+        self.preflight(&DesktopPatch::new())?;
+        let _config = self
+            .app_config
+            .as_deref()
+            .map(config::lock_config)
+            .transpose()
+            .map_err(DesktopError::Io)?;
+        let _desktop = self.lock()?;
+        super::recovery::ensure_locked(self, kind)
+    }
+
+    /// Direct app preference writers already hold config.json.lock. This
+    /// sibling boundary takes only the desktop lock, so it cannot recurse.
+    pub(crate) fn capture_config_locked(&self) -> Result<(), DesktopError> {
+        self.preflight(&DesktopPatch::new())?;
+        let _desktop = self.lock()?;
+        super::recovery::ensure_locked(self, super::recovery::BaselineKind::OriginalDesktop)?;
+        Ok(())
+    }
+
+    /// The GSettings writer shares capture and writer serialization, while
+    /// retaining its own bounded backend operation and read-back verification.
+    pub(crate) fn mutate_motion<T>(
+        &self,
+        backend: &str,
+        capture: impl FnOnce() -> Result<Option<Vec<u8>>, String>,
+        write: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.preflight(&DesktopPatch::new())
+            .map_err(|e| e.to_string())?;
+        let _config = self
+            .app_config
+            .as_deref()
+            .map(config::lock_config)
+            .transpose()?;
+        let _desktop = self.lock().map_err(|e| e.to_string())?;
+        super::recovery::ensure_motion_locked(self, backend, capture).map_err(|e| e.to_string())?;
+        write()
     }
 
     fn ensure_writable(&self) -> Result<(), DesktopError> {
@@ -1075,7 +1122,9 @@ impl DesktopStore {
     /// confinement checks as the store's lock. Creates nothing.
     pub fn state_file(&self, name: &str) -> Result<PathBuf, DesktopError> {
         self.ensure_writable()?;
-        if !valid_name(name, 64) || [LOCK, JOURNAL, UNDO, PROFILES_DIR].contains(&name) {
+        if !valid_name(name, 64)
+            || [LOCK, JOURNAL, UNDO, PROFILES_DIR, "desktop-recovery"].contains(&name)
+        {
             return Err(DesktopError::InvalidKey(format!(
                 "Invalid state file name: {name}"
             )));
@@ -1135,9 +1184,8 @@ impl DesktopStore {
 
     /// Checks, locks and commits. Lock order, shared with the Python
     /// controller (`config_lock`) and the palette helper: `config.json.lock`
-    /// (only for a widget part), then the legacy palette lock (held by that
-    /// helper's own caller, which never passes a widget part), then
-    /// `desktop.lock`. The configuration lock is never taken while
+    /// (also for a native-only change), then `desktop.lock`. Legacy palette
+    /// helpers take their compatibility lock before entering this boundary. The configuration lock is never taken while
     /// `desktop.lock` is held.
     fn transact(
         &self,
@@ -1148,12 +1196,14 @@ impl DesktopStore {
     ) -> Result<Committed, DesktopError> {
         self.check(patch, operation)?;
         let widget = widget.filter(|widget| widget.iter().next().is_some());
-        let config_path = match widget {
-            Some(_) => Some(self.app_config.clone().ok_or_else(|| {
-                DesktopError::ReadOnly("Widget settings can’t be changed here".into())
-            })?),
-            None => None,
-        };
+        if widget.is_some() && self.app_config.is_none() {
+            return Err(DesktopError::ReadOnly(
+                "Widget settings can’t be changed here".into(),
+            ));
+        }
+        // Capture app appearance even for a native-only mutation. Every writer
+        // takes these locks in the same order; CLI parents hold neither.
+        let config_path = self.app_config.clone();
         self.confine(&self.state_dir.join(LOCK))?;
         self.confine(&self.journal_path())?;
         if !matches!(record, Record::Keep) {
@@ -1397,6 +1447,8 @@ impl DesktopStore {
             });
         }
         self.confine(&self.journal_path())?;
+        // Capture only after every read-only transaction validation succeeds.
+        super::recovery::ensure_locked(self, super::recovery::BaselineKind::OriginalDesktop)?;
         atomic_write(&self.journal_path(), &bytes, Some(0o600))
             .map_err(|error| io_error("Could not record the change journal", error))?;
         let mut written: Vec<&ConfigKey> = Vec::new();
@@ -1729,6 +1781,7 @@ impl DesktopStore {
         let Some(journal) = self.pending_recovery()? else {
             return Ok(RecoveryReport::default());
         };
+        super::recovery::ensure_locked(self, super::recovery::BaselineKind::CurrentDesktop)?;
         let entries = journal
             .entries
             .iter()
@@ -2621,9 +2674,16 @@ pub(crate) mod tests {
         let anchor = fixture.read(DOCK, "anchor");
         // COSMIC Settings saves the padding after the check, before its write.
         store.inject(Some(Fault::ChangedElsewhereBefore(1, "12")));
-        assert_eq!(store.apply(&patch), Err(DesktopError::Conflict(vec![keys[1].clone()])));
+        assert_eq!(
+            store.apply(&patch),
+            Err(DesktopError::Conflict(vec![keys[1].clone()]))
+        );
         store.inject(None);
-        assert_eq!(fixture.read(DOCK, "padding").as_deref(), Some("12"), "theirs stays");
+        assert_eq!(
+            fixture.read(DOCK, "padding").as_deref(),
+            Some("12"),
+            "theirs stays"
+        );
         assert_eq!(fixture.read(DOCK, "anchor"), anchor, "ours is put back");
         assert_eq!(fixture.read(DOCK, "size").as_deref(), Some("S"));
         assert_eq!(store.pending_recovery().unwrap(), None);

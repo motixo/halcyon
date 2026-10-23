@@ -755,6 +755,8 @@ pub enum ColorSource {
 pub struct Appearance {
     /// None preserves the pre-Themes rendering exactly.
     pub family: Option<crate::desktop_theme::Family>,
+    /// Explicit generation provenance. Legacy equal colors are not ownership.
+    pub native_mode_palettes: u8,
     /// Explicit source choice; None adopts the older release's inference once.
     pub color_policy: Option<ColorPolicy>,
     /// Explicit per-property customizations (desktop::actions owns bit names).
@@ -787,6 +789,7 @@ impl Default for Appearance {
     fn default() -> Self {
         Self {
             family: None,
+            native_mode_palettes: 0,
             color_policy: None,
             overrides: 0,
             surface: None,
@@ -1416,8 +1419,19 @@ pub(crate) fn patch_config(
     }
     let _lock = lock_config(path)?;
     let mut value = parse_config_text(read_config_text(path)?.as_deref())?;
+    let before = value.clone();
     change(&mut value)?;
     check_config_value(&value)?;
+    if Config::path().as_deref() == Some(path)
+        && crate::desktop::recovery::app_pointers()
+            .any(|pointer| before.pointer(pointer) != value.pointer(pointer))
+    {
+        let store = crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+        // Alternate app configs without a fixture remain local-only previews.
+        if store.writable() {
+            store.capture_config_locked().map_err(|e| e.to_string())?;
+        }
+    }
     write_config_text(path, Some(&config_text(&value)?))?;
     Ok(value)
 }

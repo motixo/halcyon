@@ -19,6 +19,7 @@ pub mod panels;
 // Consumed by the Profiles page (stage 3, Task 2) and later scheduling.
 #[allow(dead_code, unused_imports)]
 pub mod profiles;
+pub mod recovery;
 pub mod shortcuts;
 pub mod store;
 #[allow(dead_code)]
