@@ -117,7 +117,7 @@ impl Settings {
             rows.push(pages::section(vec![
                 self.material_slider("Transparency", format!("{}%", 100 - finish.opacity()), 0..=55, 100 - finish.opacity(), true),
                 self.material_slider("Color tint", format!("{}%", finish.tint), 0..=100, finish.tint, false),
-                split(label("Surface motion", 12., FG), toggler(self.config.material_motion).on_toggle(Message::MaterialMotion).into()),
+                split(label("Liquid widget motion", 12., FG), toggler(self.config.material_motion).on_toggle(Message::MaterialMotion).into()),
                 split(self.help("material-readability", "Widget readability", "Adds enough opacity for small text on bright or busy wallpaper. Your transparency setting is kept."),
                     container(toggler(self.config.appearance.contrast_assist).on_toggle(Message::ContrastAssist)).id(cosmic::widget::Id::new("material-readability")).into()),
             ]));

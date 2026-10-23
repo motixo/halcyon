@@ -387,8 +387,16 @@ fn material_native_chooser_adjust_reset_and_undo() {
         assert_eq!(Config::load().appearance, original.appearance);
         assert_eq!(Config::load().glance, original.glance);
         click(&mut native, &mut app, "material-adjust");
+        let motion = native.text_bounds(app.settings_view(), "Liquid widget motion");
+        assert!(
+            motion.y >= 0. && motion.y + motion.height <= native.size.height - 48.,
+            "Liquid widget motion fits above the footer: {motion:?}"
+        );
         let readability = native.bounds(app.settings_view(), "material-readability");
-        assert!(readability.y + readability.height <= native.size.height - 48., "Adjust fits above the footer: {readability:?}");
+        assert!(
+            readability.y + readability.height <= native.size.height - 48.,
+            "Adjust fits above the footer: {readability:?}"
+        );
         let b = native.bounds(app.settings_view(), "material-transparency");
         let p = cosmic::iced::Point::new(b.x + b.width * 0.4, b.center_y());
         let (messages, _) = native.event(

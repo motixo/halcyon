@@ -143,7 +143,7 @@ macro_rules! fields {
 
 /// Every member a profile, its Undo or its recovery may write.
 pub static FIELDS: [WidgetField; 83] = fields![
-    "/material_motion", "Surface motion", Style, boolean;
+    "/material_motion", "Liquid widget motion", Style, boolean;
     "/materials/shared", "Shared material", Style, material;
     "/materials/widgets", "Widget material", Style, material;
     "/materials/dock", "Dock material", Style, material;
@@ -373,8 +373,7 @@ impl WidgetPatch {
         original: Option<Value>,
         desired: Option<Value>,
     ) -> Result<(), String> {
-        let field =
-            field(pointer).ok_or_else(|| format!("Halcyon does not edit {pointer}"))?;
+        let field = field(pointer).ok_or_else(|| format!("Halcyon does not edit {pointer}"))?;
         if let Some(value) = &desired
             && original.as_ref() != Some(value)
             && !field.accepts(value)

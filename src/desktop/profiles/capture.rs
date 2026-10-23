@@ -374,10 +374,23 @@ fn capture_widgets(
     warnings: &mut Vec<String>,
 ) -> Value {
     let mut section = Value::Object(Default::default());
+    let has_materials = raw
+        .get("materials")
+        .and_then(Value::as_object)
+        .is_some_and(|members| members.values().any(|value| !value.is_null()));
     for field in widget::fields(group) {
         // Defaults alone must not raise an older setup's format version.
-        if field.pointer.starts_with("/materials/") && raw.get("materials").is_none_or(|v| v.as_object().is_none_or(|members| members.values().all(Value::is_null))) { continue; }
-        if field.pointer == "/material_motion" && effective.pointer(field.pointer).and_then(Value::as_bool) != Some(false) { continue; }
+        if field.pointer.starts_with("/materials/") && !has_materials {
+            continue;
+        }
+        // A material setup owns motion's effective default too. Omission on
+        // apply means leave unchanged, so keep both explicit boolean choices.
+        if field.pointer == "/material_motion"
+            && !has_materials
+            && raw.get("material_motion").is_none()
+        {
+            continue;
+        }
         if [
             "/appearance/family",
             "/appearance/surface",

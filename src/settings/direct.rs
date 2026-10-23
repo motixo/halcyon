@@ -152,7 +152,7 @@ pub(super) fn label(message: &Message) -> String {
             _ => "Appearance",
         },
         Message::MaterialChoose(_) | Message::MaterialSave => "Glass material",
-        Message::MaterialMotion(_) => "Surface motion",
+        Message::MaterialMotion(_) => "Liquid widget motion",
         Message::Widget(_, _) => "Widget visibility",
         Message::Placement(_) => "Widget arrangement",
         Message::ChooseCity(_) => "Weather city",

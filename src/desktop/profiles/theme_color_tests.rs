@@ -222,7 +222,12 @@ fn unset_window_surfaces_follow_the_style_and_wallpaper_tint() {
     // choice, so windows take the style's tint instead of staying gray.
     let (fixture, store, installed) = reported("theme-unset-surfaces", true);
     for key in ["bg_color", "primary_container_bg"] {
-        write_v2(&fixture, "com.system76.CosmicTheme.Dark.Builder", key, "None");
+        write_v2(
+            &fixture,
+            "com.system76.CosmicTheme.Dark.Builder",
+            key,
+            "None",
+        );
     }
     let mut config: serde_json::Value =
         serde_json::from_slice(&fs::read(store.app_config().unwrap()).unwrap()).unwrap();
@@ -241,10 +246,21 @@ fn unset_window_surfaces_follow_the_style_and_wallpaper_tint() {
             .flatten()
             .map(|c| [c.red, c.green, c.blue].map(|v| (v * 255.).round() as u8))
     };
-    assert_eq!(byte(ColorRole::Background), Some(Family::Soft.surface([90, 140, 200])));
-    assert_eq!(byte(ColorRole::Primary), Some(Family::Soft.container([90, 140, 200])));
+    assert_eq!(
+        byte(ColorRole::Background),
+        Some(Family::Soft.surface([90, 140, 200]))
+    );
+    assert_eq!(
+        byte(ColorRole::Primary),
+        Some(Family::Soft.container([90, 140, 200]))
+    );
     // An explicit background stays the user's own.
-    write_v2(&fixture, "com.system76.CosmicTheme.Dark.Builder", "bg_color", "Some(\"#102030FF\")");
+    write_v2(
+        &fixture,
+        "com.system76.CosmicTheme.Dark.Builder",
+        "bg_color",
+        "Some(\"#102030FF\")",
+    );
     let mut kept = AppearanceDraft::load(&store).unwrap();
     linked_colors(&mut kept, typed.appearance, [90, 140, 200]);
     assert!(!kept.edited(Control::Color(ThemeVariant::Dark, ColorRole::Background)));
@@ -274,9 +290,18 @@ fn material_survives_theme_apply_and_captured_setup_restores_native_bars() {
     assert_eq!(captured.written_version(), 8);
     crate::desktop::materials::apply(&store, Target::Shared, Some(Finish::new(Kind::Smoked)))
         .unwrap();
+    let path = store.app_config().unwrap();
+    let mut raw: serde_json::Value = serde_json::from_slice(&fs::read(path).unwrap()).unwrap();
+    raw["material_motion"] = false.into();
+    fs::write(path, raw.to_string()).unwrap();
     let proposal = plan(&store, &installed, &captured, &[Domain::WidgetStyle].into());
     assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
     let change = apply(&store, &proposal).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert!(
+        cfg.material_motion,
+        "the captured Liquid setup restores enabled motion"
+    );
     for bar in ["Dock", "Panel"] {
         let material = store
             .read_user(&crate::desktop::materials::key(bar))
@@ -289,4 +314,100 @@ fn material_survives_theme_apply_and_captured_setup_restores_native_bars() {
     store.undo_latest(&change.id).unwrap();
     let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
     assert_eq!(cfg.materials.shared.unwrap().kind, Kind::Smoked);
+    assert!(!cfg.material_motion, "Undo restores disabled motion");
+}
+
+#[test]
+fn material_motion_capture_restores_explicit_values_and_material_defaults() {
+    use serde_json::json;
+    // A configured preference belongs to the setup even without a finish.
+    // A finish also owns the effective default when motion was never configured.
+    for (has_material, configured, expected) in [
+        (false, Some(true), true),
+        (false, Some(false), false),
+        (true, Some(true), true),
+        (true, Some(false), false),
+        (true, None, true),
+    ] {
+        let fixture = Fixture::new(&format!("material-motion-{has_material}-{configured:?}"));
+        let path = fixture.0.join("config.json");
+        let mut raw = json!({"future":{"keep":true}});
+        if has_material {
+            raw["materials"] = json!({"widgets":{"kind":"liquid","opacity":null,"tint":35}});
+        }
+        if let Some(on) = configured {
+            raw["material_motion"] = on.into();
+        }
+        fs::write(&path, raw.to_string()).unwrap();
+        let store = fixture.store().with_app_config(path.clone());
+        let installed = Installed::discover(&store);
+        let captured = crate::desktop::profiles::capture(&store, "Motion setup")
+            .unwrap()
+            .profile;
+        assert_eq!(captured.version, 8);
+        assert_eq!(
+            captured.widget_style.as_ref().unwrap()["material_motion"],
+            expected
+        );
+        let imported = import_local(&export_local(&captured).unwrap()).unwrap();
+        assert_eq!(imported, captured);
+        let unchanged = plan(&store, &installed, &imported, &[Domain::WidgetStyle].into());
+        assert!(unchanged.blocking_reasons().is_empty());
+        assert!(
+            unchanged.is_empty(),
+            "capturing a default must not create a write"
+        );
+
+        raw["material_motion"] = (!expected).into();
+        fs::write(&path, raw.to_string()).unwrap();
+        let proposal = plan(&store, &installed, &imported, &[Domain::WidgetStyle].into());
+        assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
+        let change = apply(&store, &proposal).unwrap();
+        let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(cfg.material_motion, expected);
+        store.undo_latest(&change.id).unwrap();
+        let restored: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(
+            restored, raw,
+            "Undo restores motion and preserves unknown fields"
+        );
+    }
+}
+
+#[test]
+fn material_motion_capture_keeps_genuinely_legacy_setups_on_their_old_format() {
+    use serde_json::json;
+    for (name, raw) in [
+        ("absent", json!({})),
+        ("empty", json!({"materials":{}})),
+        (
+            "null",
+            json!({"materials":{"shared":null,"widgets":null,"dock":null,"panel":null}}),
+        ),
+    ] {
+        let fixture = Fixture::new(&format!("material-motion-legacy-{name}"));
+        let path = fixture.0.join("config.json");
+        fs::write(&path, raw.to_string()).unwrap();
+        let store = fixture.store().with_app_config(path.clone());
+        let installed = Installed::discover(&store);
+        let captured = crate::desktop::profiles::capture(&store, "Legacy setup")
+            .unwrap()
+            .profile;
+        assert_eq!(captured.version, 5, "default widget sizes retain format 5");
+        let style = captured.widget_style.as_ref().unwrap();
+        assert!(style.get("materials").is_none());
+        assert!(style.get("material_motion").is_none());
+        let imported = import_local(&export_local(&captured).unwrap()).unwrap();
+        assert_eq!(imported, captured);
+        let mut disabled = raw;
+        disabled["material_motion"] = false.into();
+        fs::write(&path, disabled.to_string()).unwrap();
+        let proposal = plan(&store, &installed, &imported, &[Domain::WidgetStyle].into());
+        assert!(proposal.blocking_reasons().is_empty());
+        assert!(
+            proposal.is_empty(),
+            "legacy omission leaves motion unchanged"
+        );
+    }
 }
