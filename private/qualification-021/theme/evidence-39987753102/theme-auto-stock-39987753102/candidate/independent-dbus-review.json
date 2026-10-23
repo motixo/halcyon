@@ -1,0 +1,249 @@
+{
+  "root": "private/qualification-021/theme/evidence-39987753102/theme-auto-stock-39987753102/candidate",
+  "total_messages": 34,
+  "all_properties_changed": [
+    {
+      "ordinal": 4,
+      "header": "signal time=1792773639.710567 sender=:1.48 -> destination=(null destination) serial=13 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+      "member": "PropertiesChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "NTP"
+      ],
+      "raw": "signal time=1792773639.710567 sender=:1.48 -> destination=(null destination) serial=13 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"NTP\"\n         variant             boolean false\n      )\n   ]\n   array [\n   ]"
+    },
+    {
+      "ordinal": 5,
+      "header": "signal time=1792773639.712030 sender=:1.48 -> destination=(null destination) serial=16 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+      "member": "PropertiesChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "Timezone"
+      ],
+      "raw": "signal time=1792773639.712030 sender=:1.48 -> destination=(null destination) serial=16 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"Timezone\"\n         variant             string \"Europe/London\"\n      )\n   ]\n   array [\n   ]"
+    },
+    {
+      "ordinal": 23,
+      "header": "signal time=1792753258.940878 sender=:1.163 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+      "member": "PropertiesChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "Timezone"
+      ],
+      "raw": "signal time=1792753258.940878 sender=:1.163 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"Timezone\"\n         variant             string \"Europe/Paris\"\n      )\n   ]\n   array [\n   ]"
+    },
+    {
+      "ordinal": 32,
+      "header": "signal time=1792789259.039511 sender=:1.174 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+      "member": "PropertiesChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "Timezone"
+      ],
+      "raw": "signal time=1792789259.039511 sender=:1.174 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"Timezone\"\n         variant             string \"Europe/London\"\n      )\n   ]\n   array [\n   ]"
+    }
+  ],
+  "service_owner_changes": [
+    {
+      "ordinal": 12,
+      "header": "signal time=1792792891.846087 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged",
+      "member": "NameOwnerChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        ":1.48",
+        ""
+      ],
+      "raw": "signal time=1792792891.846087 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged\n   string \"org.freedesktop.timedate1\"\n   string \":1.48\"\n   string \"\""
+    },
+    {
+      "ordinal": 14,
+      "header": "signal time=1792793074.120556 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged",
+      "member": "NameOwnerChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "",
+        ":1.154"
+      ],
+      "raw": "signal time=1792793074.120556 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged\n   string \"org.freedesktop.timedate1\"\n   string \"\"\n   string \":1.154\""
+    },
+    {
+      "ordinal": 18,
+      "header": "signal time=1792753230.041054 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged",
+      "member": "NameOwnerChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        ":1.154",
+        ""
+      ],
+      "raw": "signal time=1792753230.041054 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged\n   string \"org.freedesktop.timedate1\"\n   string \":1.154\"\n   string \"\""
+    },
+    {
+      "ordinal": 20,
+      "header": "signal time=1792753250.739176 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged",
+      "member": "NameOwnerChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "",
+        ":1.163"
+      ],
+      "raw": "signal time=1792753250.739176 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged\n   string \"org.freedesktop.timedate1\"\n   string \"\"\n   string \":1.163\""
+    },
+    {
+      "ordinal": 27,
+      "header": "signal time=1792789230.029127 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged",
+      "member": "NameOwnerChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        ":1.163",
+        ""
+      ],
+      "raw": "signal time=1792789230.029127 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged\n   string \"org.freedesktop.timedate1\"\n   string \":1.163\"\n   string \"\""
+    },
+    {
+      "ordinal": 29,
+      "header": "signal time=1792789250.832531 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged",
+      "member": "NameOwnerChanged",
+      "strings": [
+        "org.freedesktop.timedate1",
+        "",
+        ":1.174"
+      ],
+      "raw": "signal time=1792789250.832531 sender=org.freedesktop.DBus -> destination=(null destination) serial=4294967295 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameOwnerChanged\n   string \"org.freedesktop.timedate1\"\n   string \"\"\n   string \":1.174\""
+    }
+  ],
+  "stimulus_intervals": [
+    {
+      "stimulus": {
+        "ordinal": 2,
+        "header": "method call time=1792773639.487157 sender=:1.51 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetNTP",
+        "member": "SetNTP",
+        "strings": [],
+        "raw": "method call time=1792773639.487157 sender=:1.51 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetNTP\n   boolean false\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [],
+      "following_timezone_signal": false,
+      "following_time_usec_signal": false
+    },
+    {
+      "stimulus": {
+        "ordinal": 3,
+        "header": "method call time=1792773639.697015 sender=:1.52 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTimezone",
+        "member": "SetTimezone",
+        "strings": [
+          "Europe/London"
+        ],
+        "raw": "method call time=1792773639.697015 sender=:1.52 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTimezone\n   string \"Europe/London\"\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [
+        {
+          "ordinal": 4,
+          "header": "signal time=1792773639.710567 sender=:1.48 -> destination=(null destination) serial=13 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+          "member": "PropertiesChanged",
+          "strings": [
+            "org.freedesktop.timedate1",
+            "NTP"
+          ],
+          "raw": "signal time=1792773639.710567 sender=:1.48 -> destination=(null destination) serial=13 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"NTP\"\n         variant             boolean false\n      )\n   ]\n   array [\n   ]"
+        },
+        {
+          "ordinal": 5,
+          "header": "signal time=1792773639.712030 sender=:1.48 -> destination=(null destination) serial=16 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+          "member": "PropertiesChanged",
+          "strings": [
+            "org.freedesktop.timedate1",
+            "Timezone"
+          ],
+          "raw": "signal time=1792773639.712030 sender=:1.48 -> destination=(null destination) serial=16 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"Timezone\"\n         variant             string \"Europe/London\"\n      )\n   ]\n   array [\n   ]"
+        }
+      ],
+      "following_timezone_signal": true,
+      "following_time_usec_signal": false
+    },
+    {
+      "stimulus": {
+        "ordinal": 6,
+        "header": "method call time=1792773639.718516 sender=:1.53 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTime",
+        "member": "SetTime",
+        "strings": [],
+        "raw": "method call time=1792773639.718516 sender=:1.53 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTime\n   int64 1792792800000000\n   boolean false\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [],
+      "following_timezone_signal": false,
+      "following_time_usec_signal": false
+    },
+    {
+      "stimulus": {
+        "ordinal": 17,
+        "header": "method call time=1792793111.657457 sender=:1.160 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTime",
+        "member": "SetTime",
+        "strings": [],
+        "raw": "method call time=1792793111.657457 sender=:1.160 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTime\n   int64 1792753200000000\n   boolean false\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [],
+      "following_timezone_signal": false,
+      "following_time_usec_signal": false
+    },
+    {
+      "stimulus": {
+        "ordinal": 22,
+        "header": "method call time=1792753258.939433 sender=:1.167 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTimezone",
+        "member": "SetTimezone",
+        "strings": [
+          "Europe/Paris"
+        ],
+        "raw": "method call time=1792753258.939433 sender=:1.167 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTimezone\n   string \"Europe/Paris\"\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [
+        {
+          "ordinal": 23,
+          "header": "signal time=1792753258.940878 sender=:1.163 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+          "member": "PropertiesChanged",
+          "strings": [
+            "org.freedesktop.timedate1",
+            "Timezone"
+          ],
+          "raw": "signal time=1792753258.940878 sender=:1.163 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"Timezone\"\n         variant             string \"Europe/Paris\"\n      )\n   ]\n   array [\n   ]"
+        }
+      ],
+      "following_timezone_signal": true,
+      "following_time_usec_signal": false
+    },
+    {
+      "stimulus": {
+        "ordinal": 26,
+        "header": "method call time=1792753276.259650 sender=:1.172 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTime",
+        "member": "SetTime",
+        "strings": [],
+        "raw": "method call time=1792753276.259650 sender=:1.172 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTime\n   int64 1792789200000000\n   boolean false\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [],
+      "following_timezone_signal": false,
+      "following_time_usec_signal": false
+    },
+    {
+      "stimulus": {
+        "ordinal": 31,
+        "header": "method call time=1792789259.039016 sender=:1.178 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTimezone",
+        "member": "SetTimezone",
+        "strings": [
+          "Europe/London"
+        ],
+        "raw": "method call time=1792789259.039016 sender=:1.178 -> destination=org.freedesktop.timedate1 serial=2 path=/org/freedesktop/timedate1; interface=org.freedesktop.timedate1; member=SetTimezone\n   string \"Europe/London\"\n   boolean true"
+      },
+      "following_properties_changed_before_next_stimulus": [
+        {
+          "ordinal": 32,
+          "header": "signal time=1792789259.039511 sender=:1.174 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged",
+          "member": "PropertiesChanged",
+          "strings": [
+            "org.freedesktop.timedate1",
+            "Timezone"
+          ],
+          "raw": "signal time=1792789259.039511 sender=:1.174 -> destination=(null destination) serial=8 path=/org/freedesktop/timedate1; interface=org.freedesktop.DBus.Properties; member=PropertiesChanged\n   string \"org.freedesktop.timedate1\"\n   array [\n      dict entry(\n         string \"Timezone\"\n         variant             string \"Europe/London\"\n      )\n   ]\n   array [\n   ]"
+        }
+      ],
+      "following_timezone_signal": true,
+      "following_time_usec_signal": false
+    }
+  ]
+}

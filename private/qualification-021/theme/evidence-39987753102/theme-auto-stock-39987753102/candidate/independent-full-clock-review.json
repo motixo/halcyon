@@ -1,0 +1,1256 @@
+{
+  "method": "independent PNG crop at recorded clock-label bounds; compare observed surface/glyph pixels with native role in recorded config; no config writes or screenshot mutation",
+  "root": "private/qualification-021/theme/evidence-39987753102/theme-auto-stock-39987753102/candidate",
+  "phase": "candidate",
+  "host": "stock",
+  "observations": [
+    {
+      "frame": "006-selected-paper",
+      "portal": "v v u 2",
+      "variant": "Light",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        250,
+        242,
+        232
+      ],
+      "expected_native_foreground_role": [
+        41,
+        36,
+        28
+      ],
+      "observed_glyph_foreground": [
+        47,
+        42,
+        33
+      ],
+      "near_role_glyph_pixels": 89,
+      "observed_contrast": 12.843083819788777,
+      "actual_dominants": [
+        [
+          [
+            250,
+            242,
+            232
+          ],
+          876
+        ],
+        [
+          [
+            221,
+            213,
+            203
+          ],
+          20
+        ],
+        [
+          [
+            66,
+            61,
+            53
+          ],
+          15
+        ],
+        [
+          [
+            47,
+            42,
+            33
+          ],
+          15
+        ],
+        [
+          [
+            63,
+            58,
+            50
+          ],
+          12
+        ],
+        [
+          [
+            41,
+            36,
+            28
+          ],
+          12
+        ],
+        [
+          [
+            204,
+            197,
+            187
+          ],
+          11
+        ],
+        [
+          [
+            171,
+            165,
+            156
+          ],
+          10
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "009-paper-manual-dark-0",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        45,
+        40,
+        32
+      ],
+      "expected_native_foreground_role": [
+        255,
+        251,
+        245
+      ],
+      "observed_glyph_foreground": [
+        249,
+        245,
+        239
+      ],
+      "near_role_glyph_pixels": 89,
+      "observed_contrast": 13.465156784984956,
+      "actual_dominants": [
+        [
+          [
+            45,
+            40,
+            32
+          ],
+          876
+        ],
+        [
+          [
+            75,
+            69,
+            62
+          ],
+          20
+        ],
+        [
+          [
+            229,
+            225,
+            219
+          ],
+          15
+        ],
+        [
+          [
+            249,
+            245,
+            239
+          ],
+          15
+        ],
+        [
+          [
+            233,
+            228,
+            222
+          ],
+          12
+        ],
+        [
+          [
+            255,
+            251,
+            245
+          ],
+          12
+        ],
+        [
+          [
+            91,
+            86,
+            79
+          ],
+          11
+        ],
+        [
+          [
+            124,
+            119,
+            112
+          ],
+          10
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "012-paper-manual-light-1",
+      "portal": "v v u 2",
+      "variant": "Light",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        250,
+        242,
+        232
+      ],
+      "expected_native_foreground_role": [
+        41,
+        36,
+        28
+      ],
+      "observed_glyph_foreground": [
+        41,
+        36,
+        28
+      ],
+      "near_role_glyph_pixels": 97,
+      "observed_contrast": 13.885039504703252,
+      "actual_dominants": [
+        [
+          [
+            250,
+            242,
+            232
+          ],
+          856
+        ],
+        [
+          [
+            221,
+            213,
+            203
+          ],
+          20
+        ],
+        [
+          [
+            41,
+            36,
+            28
+          ],
+          18
+        ],
+        [
+          [
+            66,
+            61,
+            53
+          ],
+          15
+        ],
+        [
+          [
+            47,
+            42,
+            33
+          ],
+          15
+        ],
+        [
+          [
+            171,
+            165,
+            156
+          ],
+          11
+        ],
+        [
+          [
+            240,
+            233,
+            222
+          ],
+          10
+        ],
+        [
+          [
+            191,
+            184,
+            174
+          ],
+          9
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "015-paper-manual-dark-2",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        45,
+        40,
+        32
+      ],
+      "expected_native_foreground_role": [
+        255,
+        251,
+        245
+      ],
+      "observed_glyph_foreground": [
+        255,
+        251,
+        245
+      ],
+      "near_role_glyph_pixels": 97,
+      "observed_contrast": 14.185290545894151,
+      "actual_dominants": [
+        [
+          [
+            45,
+            40,
+            32
+          ],
+          856
+        ],
+        [
+          [
+            75,
+            69,
+            62
+          ],
+          20
+        ],
+        [
+          [
+            255,
+            251,
+            245
+          ],
+          18
+        ],
+        [
+          [
+            229,
+            225,
+            219
+          ],
+          15
+        ],
+        [
+          [
+            249,
+            245,
+            239
+          ],
+          15
+        ],
+        [
+          [
+            124,
+            119,
+            112
+          ],
+          11
+        ],
+        [
+          [
+            55,
+            50,
+            42
+          ],
+          10
+        ],
+        [
+          [
+            104,
+            100,
+            92
+          ],
+          9
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "022-selected-rose",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        76,
+        42,
+        46
+      ],
+      "expected_native_foreground_role": [
+        221,
+        181,
+        181
+      ],
+      "observed_glyph_foreground": [
+        221,
+        181,
+        181
+      ],
+      "near_role_glyph_pixels": 128,
+      "observed_contrast": 6.764985109613436,
+      "actual_dominants": [
+        [
+          [
+            76,
+            42,
+            46
+          ],
+          388
+        ],
+        [
+          [
+            77,
+            42,
+            46
+          ],
+          238
+        ],
+        [
+          [
+            78,
+            42,
+            46
+          ],
+          73
+        ],
+        [
+          [
+            76,
+            42,
+            45
+          ],
+          52
+        ],
+        [
+          [
+            76,
+            41,
+            46
+          ],
+          50
+        ],
+        [
+          [
+            221,
+            181,
+            181
+          ],
+          15
+        ],
+        [
+          [
+            217,
+            177,
+            178
+          ],
+          15
+        ],
+        [
+          [
+            204,
+            164,
+            164
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "025-rose-manual-dark-0",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        76,
+        42,
+        46
+      ],
+      "expected_native_foreground_role": [
+        221,
+        181,
+        181
+      ],
+      "observed_glyph_foreground": [
+        221,
+        181,
+        181
+      ],
+      "near_role_glyph_pixels": 128,
+      "observed_contrast": 6.764985109613436,
+      "actual_dominants": [
+        [
+          [
+            76,
+            42,
+            46
+          ],
+          388
+        ],
+        [
+          [
+            77,
+            42,
+            46
+          ],
+          238
+        ],
+        [
+          [
+            78,
+            42,
+            46
+          ],
+          73
+        ],
+        [
+          [
+            76,
+            42,
+            45
+          ],
+          52
+        ],
+        [
+          [
+            76,
+            41,
+            46
+          ],
+          50
+        ],
+        [
+          [
+            221,
+            181,
+            181
+          ],
+          15
+        ],
+        [
+          [
+            217,
+            177,
+            178
+          ],
+          15
+        ],
+        [
+          [
+            204,
+            164,
+            164
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "028-rose-manual-light-1",
+      "portal": "v v u 2",
+      "variant": "Light",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        212,
+        188,
+        191
+      ],
+      "expected_native_foreground_role": [
+        45,
+        33,
+        33
+      ],
+      "observed_glyph_foreground": [
+        45,
+        33,
+        33
+      ],
+      "near_role_glyph_pixels": 121,
+      "observed_contrast": 8.693048078917938,
+      "actual_dominants": [
+        [
+          [
+            212,
+            188,
+            191
+          ],
+          388
+        ],
+        [
+          [
+            213,
+            188,
+            191
+          ],
+          238
+        ],
+        [
+          [
+            214,
+            188,
+            191
+          ],
+          72
+        ],
+        [
+          [
+            212,
+            188,
+            190
+          ],
+          52
+        ],
+        [
+          [
+            212,
+            187,
+            191
+          ],
+          50
+        ],
+        [
+          [
+            45,
+            33,
+            33
+          ],
+          15
+        ],
+        [
+          [
+            50,
+            37,
+            38
+          ],
+          15
+        ],
+        [
+          [
+            66,
+            52,
+            52
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "031-rose-manual-dark-2",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        76,
+        42,
+        46
+      ],
+      "expected_native_foreground_role": [
+        221,
+        181,
+        181
+      ],
+      "observed_glyph_foreground": [
+        221,
+        181,
+        181
+      ],
+      "near_role_glyph_pixels": 128,
+      "observed_contrast": 6.764985109613436,
+      "actual_dominants": [
+        [
+          [
+            76,
+            42,
+            46
+          ],
+          387
+        ],
+        [
+          [
+            77,
+            42,
+            46
+          ],
+          238
+        ],
+        [
+          [
+            78,
+            42,
+            46
+          ],
+          73
+        ],
+        [
+          [
+            76,
+            42,
+            45
+          ],
+          52
+        ],
+        [
+          [
+            76,
+            41,
+            46
+          ],
+          52
+        ],
+        [
+          [
+            221,
+            181,
+            181
+          ],
+          19
+        ],
+        [
+          [
+            217,
+            177,
+            178
+          ],
+          15
+        ],
+        [
+          [
+            204,
+            164,
+            164
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "038-startup-night",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        76,
+        42,
+        46
+      ],
+      "expected_native_foreground_role": [
+        221,
+        181,
+        181
+      ],
+      "observed_glyph_foreground": [
+        221,
+        181,
+        181
+      ],
+      "near_role_glyph_pixels": 128,
+      "observed_contrast": 6.764985109613436,
+      "actual_dominants": [
+        [
+          [
+            76,
+            42,
+            46
+          ],
+          387
+        ],
+        [
+          [
+            77,
+            42,
+            46
+          ],
+          238
+        ],
+        [
+          [
+            78,
+            42,
+            46
+          ],
+          73
+        ],
+        [
+          [
+            76,
+            42,
+            45
+          ],
+          52
+        ],
+        [
+          [
+            76,
+            41,
+            46
+          ],
+          52
+        ],
+        [
+          [
+            221,
+            181,
+            181
+          ],
+          19
+        ],
+        [
+          [
+            217,
+            177,
+            178
+          ],
+          15
+        ],
+        [
+          [
+            204,
+            164,
+            164
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "039-live-noon",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        76,
+        42,
+        46
+      ],
+      "expected_native_foreground_role": [
+        221,
+        181,
+        181
+      ],
+      "observed_glyph_foreground": [
+        221,
+        181,
+        181
+      ],
+      "near_role_glyph_pixels": 131,
+      "observed_contrast": 6.764985109613436,
+      "actual_dominants": [
+        [
+          [
+            76,
+            42,
+            46
+          ],
+          389
+        ],
+        [
+          [
+            77,
+            42,
+            46
+          ],
+          238
+        ],
+        [
+          [
+            78,
+            42,
+            46
+          ],
+          73
+        ],
+        [
+          [
+            76,
+            42,
+            45
+          ],
+          51
+        ],
+        [
+          [
+            76,
+            41,
+            46
+          ],
+          51
+        ],
+        [
+          [
+            221,
+            181,
+            181
+          ],
+          17
+        ],
+        [
+          [
+            217,
+            177,
+            178
+          ],
+          16
+        ],
+        [
+          [
+            204,
+            164,
+            164
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "040-live-timezone-paris",
+      "portal": "v v u 2",
+      "variant": "Light",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        212,
+        188,
+        191
+      ],
+      "expected_native_foreground_role": [
+        45,
+        33,
+        33
+      ],
+      "observed_glyph_foreground": [
+        62,
+        50,
+        50
+      ],
+      "near_role_glyph_pixels": 120,
+      "observed_contrast": 6.879995892161644,
+      "actual_dominants": [
+        [
+          [
+            212,
+            188,
+            191
+          ],
+          402
+        ],
+        [
+          [
+            213,
+            188,
+            191
+          ],
+          221
+        ],
+        [
+          [
+            214,
+            188,
+            191
+          ],
+          87
+        ],
+        [
+          [
+            212,
+            187,
+            191
+          ],
+          58
+        ],
+        [
+          [
+            212,
+            188,
+            190
+          ],
+          50
+        ],
+        [
+          [
+            62,
+            50,
+            50
+          ],
+          15
+        ],
+        [
+          [
+            45,
+            33,
+            33
+          ],
+          15
+        ],
+        [
+          [
+            66,
+            52,
+            52
+          ],
+          14
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "041-live-night",
+      "portal": "v v u 2",
+      "variant": "Light",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        212,
+        188,
+        191
+      ],
+      "expected_native_foreground_role": [
+        45,
+        33,
+        33
+      ],
+      "observed_glyph_foreground": [
+        50,
+        37,
+        38
+      ],
+      "near_role_glyph_pixels": 127,
+      "observed_contrast": 8.223434552467783,
+      "actual_dominants": [
+        [
+          [
+            212,
+            188,
+            191
+          ],
+          387
+        ],
+        [
+          [
+            213,
+            188,
+            191
+          ],
+          238
+        ],
+        [
+          [
+            214,
+            188,
+            191
+          ],
+          72
+        ],
+        [
+          [
+            212,
+            188,
+            190
+          ],
+          51
+        ],
+        [
+          [
+            212,
+            187,
+            191
+          ],
+          51
+        ],
+        [
+          [
+            50,
+            37,
+            38
+          ],
+          15
+        ],
+        [
+          [
+            66,
+            52,
+            52
+          ],
+          14
+        ],
+        [
+          [
+            45,
+            33,
+            33
+          ],
+          12
+        ]
+      ],
+      "stopped_ui": true
+    },
+    {
+      "frame": "042-live-timezone-london",
+      "portal": "v v u 1",
+      "variant": "Dark",
+      "inside_bar_clock_group": [
+        590,
+        17,
+        691,
+        30
+      ],
+      "area": 1313,
+      "observed_surface": [
+        76,
+        42,
+        46
+      ],
+      "expected_native_foreground_role": [
+        221,
+        181,
+        181
+      ],
+      "observed_glyph_foreground": [
+        206,
+        167,
+        167
+      ],
+      "near_role_glyph_pixels": 131,
+      "observed_contrast": 5.786780358074169,
+      "actual_dominants": [
+        [
+          [
+            76,
+            42,
+            46
+          ],
+          397
+        ],
+        [
+          [
+            77,
+            42,
+            46
+          ],
+          238
+        ],
+        [
+          [
+            78,
+            42,
+            46
+          ],
+          73
+        ],
+        [
+          [
+            76,
+            41,
+            46
+          ],
+          49
+        ],
+        [
+          [
+            76,
+            42,
+            45
+          ],
+          43
+        ],
+        [
+          [
+            206,
+            167,
+            167
+          ],
+          15
+        ],
+        [
+          [
+            221,
+            181,
+            181
+          ],
+          14
+        ],
+        [
+          [
+            204,
+            164,
+            164
+          ],
+          13
+        ]
+      ],
+      "stopped_ui": true
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+[
+  {
+    "command": [
+      "python3",
+      "-m",
+      "py_compile",
+      "private/qualification-021/theme/auto-diagnosis/review-dbus.py",
+      "private/qualification-021/theme/auto-diagnosis/review-provenance.py",
+      "private/qualification-021/theme/auto-diagnosis/review-clock-pixels.py",
+      "private/qualification-021/theme/auto_session.py",
+      "private/qualification-021/theme/followup_session.py"
+    ],
+    "exitcode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "bash",
+      "-n",
+      "private/qualification-021/theme/auto-session.sh",
+      "private/qualification-021/theme/prepare.sh",
+      "private/qualification-021/theme/session.sh"
+    ],
+    "exitcode": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exitcode": 0,
+    "stdout": "",
+    "stderr": ""
+  }
+]
