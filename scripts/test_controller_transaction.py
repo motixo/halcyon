@@ -136,3 +136,43 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(captured['bytes']), old)
         self.assertEqual(native.read_bytes(), saved)
         self.assertEqual(json.loads(self.config.read_text())['theme'], 'teal')
+
+    def test_lock_links_refuse_before_native_or_app_mutation(self):
+        for which in ('config', 'desktop'):
+            for kind in ('dangling-leaf', 'ancestor', 'dangling-ancestor', 'fifo'):
+                with self.subTest(lock=which, kind=kind):
+                    # Every subcase gets wholly separate HOME/XDG paths.
+                    self.setUp()
+                    self.config.parent.mkdir(parents=True)
+                    original = b'{"theme":"teal","appearance":{"match_wallpaper":false}}\n'
+                    self.config.write_bytes(original)
+                    target = self.native / 'com.system76.CosmicPanel.Dock/v1/opacity'
+                    target.parent.mkdir(parents=True)
+                    lock = Path(str(self.config) + '.lock') if which == 'config' else self.manifest.parents[2] / 'desktop.lock'
+                    lock.parent.mkdir(parents=True, exist_ok=True)
+                    outside = self.root / 'outside'
+                    outside.mkdir()
+                    if kind == 'dangling-leaf':
+                        lock.symlink_to(target)
+                    elif kind == 'fifo':
+                        os.mkfifo(lock)
+                    else:
+                        if which == 'config':
+                            self.config.rename(outside / 'config.json')
+                        lock.parent.rmdir()
+                        lock.parent.symlink_to(outside if kind == 'ancestor' else outside / 'absent', target_is_directory=True)
+                    def outside_tree():
+                        return {p.relative_to(outside): None if p.is_dir() else p.read_bytes()
+                                for p in outside.rglob('*')}
+                    def native_tree():
+                        return {p.relative_to(self.native): p.read_bytes()
+                                for p in self.native.rglob('*') if p.is_file()}
+                    before = outside_tree()
+                    native_before = native_tree()
+                    self.run_cli('theme', 'rose', success=False)
+                    self.assertFalse(target.exists())
+                    self.assertFalse(self.manifest.exists())
+                    self.assertEqual(outside_tree(), before)
+                    self.assertEqual(native_tree(), native_before)
+                    if self.config.is_file():
+                        self.assertEqual(self.config.read_bytes(), original)

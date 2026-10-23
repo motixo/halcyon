@@ -551,3 +551,117 @@ fn corrupted_header_cannot_relabel_current_evidence_as_original() {
     assert_eq!(fs::read(&manifest).unwrap(), bytes);
     assert_eq!(fixture.read(DOCK, "opacity").unwrap(), "0.8");
 }
+
+#[test]
+fn review_r1_lock_links_cannot_create_native_state_before_capture() {
+    for which in ["config", "desktop"] {
+        let fixture = Fixture::new(&format!("review-r1-{which}-lock-link"));
+        let app = fixture.0.join("app/config.json");
+        fs::create_dir_all(app.parent().unwrap()).unwrap();
+        fs::write(&app, b"{\"theme\":\"teal\"}\n").unwrap();
+        let user = fixture.0.join("config/cosmic");
+        let state = fixture.0.join("state");
+        fs::create_dir_all(user.join(DOCK).join("v1")).unwrap();
+        fs::create_dir_all(&state).unwrap();
+        let target = user.join(DOCK).join("v1/opacity");
+        let lock = if which == "config" {
+            app.with_extension("json.lock")
+        } else {
+            state.join("desktop.lock")
+        };
+        symlink(&target, &lock).unwrap();
+        // Exercise live access semantics against entirely private roots;
+        // fixture preflight must not mask the live lock-opener defect.
+        let store = DesktopStore::with_roots(
+            user.clone(),
+            vec![],
+            state,
+            crate::desktop::store::Access::Live,
+        )
+        .with_app_config(app.clone());
+        let mut widget = crate::desktop::WidgetPatch::new();
+        widget
+            .set("/theme", Some("teal".into()), Some("rose".into()))
+            .unwrap();
+        assert!(
+            store
+                .apply_owned(
+                    &DesktopPatch::new(),
+                    Some(&widget),
+                    crate::desktop::Owner::Appearance,
+                    "Palette"
+                )
+                .is_err(),
+            "{which}"
+        );
+        assert!(!target.exists(), "{which} lock created its dangling target");
+        assert_eq!(fs::read(&app).unwrap(), b"{\"theme\":\"teal\"}\n");
+        assert!(!store.state_dir().join("desktop-recovery/original").exists());
+    }
+}
+
+#[test]
+fn review_r1_lock_ancestors_and_nonregular_leaves_are_rejected() {
+    for which in ["config", "desktop"] {
+        for kind in ["ancestor", "dangling-ancestor", "directory", "fifo"] {
+            let fixture = Fixture::new(&format!("review-r1-lock-{which}-{kind}"));
+            let outside = Fixture::new("review-r1-lock-outside");
+            let app = fixture.0.join("app/config.json");
+            fs::create_dir_all(app.parent().unwrap()).unwrap();
+            fs::write(&app, b"{\"theme\":\"teal\"}\n").unwrap();
+            let state = fixture.0.join("state");
+            fs::create_dir_all(&state).unwrap();
+            let (parent, name) = if which == "config" {
+                (app.parent().unwrap().to_path_buf(), "config.json.lock")
+            } else {
+                (state.clone(), "desktop.lock")
+            };
+            if kind.ends_with("ancestor") {
+                if which == "config" {
+                    fs::rename(&app, outside.0.join("config.json")).unwrap();
+                }
+                fs::remove_dir(&parent).unwrap();
+                symlink(
+                    if kind == "ancestor" {
+                        outside.0.clone()
+                    } else {
+                        outside.0.join("absent")
+                    },
+                    &parent,
+                )
+                .unwrap();
+            } else if kind == "directory" {
+                fs::create_dir(parent.join(name)).unwrap();
+            } else {
+                let name =
+                    std::ffi::CString::new(parent.join(name).as_os_str().as_bytes()).unwrap();
+                assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+            }
+            let before = outside.tree();
+            let store = DesktopStore::with_roots(
+                fixture.0.join("config/cosmic"),
+                vec![],
+                state.clone(),
+                crate::desktop::store::Access::Live,
+            )
+            .with_app_config(app.clone());
+            let result = if which == "config" {
+                crate::config::lock_config(&app)
+                    .map(drop)
+                    .map_err(|e| e.to_string())
+            } else {
+                store
+                    .capture_baseline(BaselineKind::OriginalDesktop)
+                    .map(drop)
+                    .map_err(|e| e.to_string())
+            };
+            assert!(result.is_err(), "{which} {kind}");
+            assert_eq!(
+                outside.tree(),
+                before,
+                "{which} {kind}: outside target changed"
+            );
+            assert!(!state.join("desktop-recovery/original").exists());
+        }
+    }
+}

@@ -296,6 +296,66 @@ impl Directory {
         self.0.sync_all()
     }
 }
+/// Open a stable lock inode without traversing untrusted ancestors or leaves.
+/// Existing special files are inspected through O_PATH before any read/write
+/// open; reopening our own descriptor cannot race a pathname replacement.
+pub(crate) fn open_lock_file(path: &Path) -> io::Result<File> {
+    let path = std::path::absolute(path)?;
+    if path
+        .components()
+        .any(|part| !matches!(part, Component::RootDir | Component::Normal(_)))
+    {
+        return Err(io::Error::other("unsafe lock path"));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| io::Error::other("missing lock parent"))?;
+    let dir =
+        Directory::open(parent, true)?.ok_or_else(|| io::Error::other("missing lock directory"))?;
+    let name = component(
+        path.file_name()
+            .ok_or_else(|| io::Error::other("missing lock name"))?
+            .as_bytes(),
+    )?;
+    // An absent leaf is created exclusively: even a dangling link is EEXIST.
+    let fd = unsafe {
+        libc::openat(
+            dir.0.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDWR | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            0o600,
+        )
+    };
+    if fd >= 0 {
+        // SAFETY: openat returned a newly owned regular-file descriptor.
+        return Ok(unsafe { File::from_raw_fd(fd) });
+    }
+    let error = io::Error::last_os_error();
+    if error.kind() != io::ErrorKind::AlreadyExists {
+        return Err(error);
+    }
+    // O_PATH neither opens a device nor waits for a FIFO peer. O_NOFOLLOW
+    // returns a link's own descriptor, which the regular-file check rejects.
+    let fd = unsafe {
+        libc::openat(
+            dir.0.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_PATH | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let entry = unsafe { File::from_raw_fd(fd) };
+    if !entry.metadata()?.is_file() {
+        return Err(io::Error::other("lock is not a regular file"));
+    }
+    fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(format!("/proc/self/fd/{}", entry.as_raw_fd()))
+}
+
 fn read_path(path: &Path, max: usize) -> Result<Option<(Vec<u8>, u32)>, DesktopError> {
     let parent = path.parent().ok_or_else(|| failed("missing parent"))?;
     match Directory::open(parent, false).map_err(failed)? {

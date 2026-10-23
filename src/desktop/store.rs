@@ -1938,19 +1938,7 @@ impl DesktopStore {
 
     fn lock(&self) -> Result<fs::File, DesktopError> {
         self.confine(&self.state_dir.join(LOCK))?;
-        fs::create_dir_all(&self.state_dir).map_err(|error| {
-            io_error(
-                format!("Could not create {}", self.state_dir.display()),
-                error,
-            )
-        })?;
-        let lock = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .mode(0o600)
-            .open(self.state_dir.join(LOCK))
+        let lock = super::recovery::open_lock_file(&self.state_dir.join(LOCK))
             .map_err(|error| io_error("Could not lock desktop settings", error))?;
         loop {
             // SAFETY: `lock` owns a valid descriptor for the guard's lifetime.

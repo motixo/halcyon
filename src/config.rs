@@ -1287,23 +1287,9 @@ pub struct ConfigLock {
 /// lock inode stays stable across atomic renames of the file itself.
 pub fn lock_config(path: &std::path::Path) -> Result<ConfigLock, String> {
     use std::os::fd::AsRawFd;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let mut lock_name = path.as_os_str().to_os_string();
     lock_name.push(".lock");
-    let lock = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .mode(0o600)
-        .open(lock_name)
+    let lock = crate::desktop::recovery::open_lock_file(std::path::Path::new(&lock_name))
         .map_err(|e| e.to_string())?;
     loop {
         // SAFETY: lock owns a valid descriptor and remains alive through rename.
