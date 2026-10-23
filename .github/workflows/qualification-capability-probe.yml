@@ -1,0 +1,39 @@
+name: Qualification runner capability probe
+
+on:
+  push:
+    branches: [ci/qualification-probe-021]
+
+permissions:
+  contents: read
+
+jobs:
+  capability:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Inspect disposable runner and test KVM creation
+        shell: bash
+        run: |
+          uname -a
+          lscpu
+          df -B1 / /mnt
+          free -b
+          if [ -e /dev/kvm ]; then ls -l /dev/kvm; fi
+          sudo python3 - <<'PY'
+          import fcntl, json, os, shutil
+          result = {'disk': shutil.disk_usage('/')._asdict(), 'kvm_present': os.path.exists('/dev/kvm')}
+          try:
+              fd = os.open('/dev/kvm', os.O_RDWR | os.O_CLOEXEC)
+              try:
+                  result['kvm_api'] = fcntl.ioctl(fd, 0xAE00, 0)
+                  vm = fcntl.ioctl(fd, 0xAE01, 0)
+                  os.close(vm)
+                  result['vm_created'] = True
+              finally:
+                  os.close(fd)
+          except OSError as error:
+              result['error'] = str(error)
+              result['vm_created'] = False
+          print('HALCYON_RUNNER_PROBE=' + json.dumps(result, sort_keys=True))
+          PY
