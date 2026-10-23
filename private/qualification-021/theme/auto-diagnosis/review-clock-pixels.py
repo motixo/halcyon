@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """Controller-only independent observation of real glyph/surface pixels.
-Fixed clock groups are bounded inside the actual native bar, not wallpaper.
+Fixed clock-label regions are bounded inside the actual native bar, not wallpaper.
 Original screenshot/OCR metrics remain unmodified.
 """
 import importlib.util,json,pathlib,sys
@@ -22,6 +22,6 @@ for arg in sys.argv[1:]:
   fg=Counter(matching).most_common(1)[0][0] if matching else None
   contrast=(max(a.luminance(bg),a.luminance(fg))+.05)/(min(a.luminance(bg),a.luminance(fg))+.05) if fg else None
   rows.append({'frame':name,'portal':portal,'variant':variant,'inside_bar_clock_group':box,'area':len(pixels),'observed_surface':bg,'expected_native_foreground_role':role,'observed_glyph_foreground':fg,'near_role_glyph_pixels':len(matching),'observed_contrast':contrast,'actual_dominants':Counter(pixels).most_common(8),'stopped_ui':frame['stopped']})
- result={'method':'independent PNG crop at complete actual clock text bounds; compare observed surface/glyph pixels with native role in recorded config; no config writes or screenshot mutation','root':str(root),'phase':r.get('phase'),'host':r['host'],'observations':rows}
+ result={'method':'independent PNG crop at recorded clock-label bounds; compare observed surface/glyph pixels with native role in recorded config; no config writes or screenshot mutation','root':str(root),'phase':r.get('phase'),'host':r['host'],'observations':rows}
  (root/'independent-full-clock-review.json').write_text(json.dumps(result,indent=2)+'\n')
  print(json.dumps({'root':str(root),'frames':len(rows),'contrast':[(v['frame'],v['observed_contrast'],v['near_role_glyph_pixels']) for v in rows]},indent=2))

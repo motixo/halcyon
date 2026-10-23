@@ -63,7 +63,22 @@ try:
  # Initial state must precede any user settings daemon. No Halcyon in baseline.
  h.command('prelogin-user-processes',"ps -u probe -o pid,args; dpkg-query -W cosmic-ext-halcyon cosmic-ext-halcyon-islands 2>&1; test ! -e /usr/bin/halcyon; test ! -e /home/probe/.config/halcyon; ip -brief addr; ip route",required=False)
  if phase=='untouched':
-  h.command('untouched-absence-assertion','test ! -e /usr/bin/halcyon && test ! -e /home/probe/.config/halcyon && ! pgrep -u 1000 -f /usr/bin/cosmic-settings-daemon && test ! -e /dev/sr0')
+  devices=c.q.call('query-block')
+  (ev/'untouched-block-devices.json').write_text(json.dumps(devices,indent=2)+'\n')
+  # QEMU may create an implicit EMPTY DVD drive. Reject inserted removable
+  # media, not the harmless existence of its /dev/sr0 device node.
+  if any(d.get('removable') and d.get('inserted') for d in devices):raise RuntimeError('Untouched overlay has inserted removable media')
+  h.command('untouched-absence-assertion',"""python3 - <<'ABSENCE'
+import json,os,pathlib
+checks={'halcyon_binary_absent':not pathlib.Path('/usr/bin/halcyon').exists(),'halcyon_config_absent':not pathlib.Path('/home/probe/.config/halcyon').exists(),'user_settings_daemon_absent':True}
+for p in pathlib.Path('/proc').iterdir():
+ if not p.name.isdigit():continue
+ try:
+  if p.stat().st_uid==1000 and os.readlink(p/'exe')=='/usr/bin/cosmic-settings-daemon':checks['user_settings_daemon_absent']=False
+ except OSError:pass
+print(json.dumps(checks,indent=2))
+raise SystemExit(0 if all(checks.values()) else 1)
+ABSENCE""")
  h.command('prelogin-clock','timedatectl set-ntp false && timedatectl set-timezone Europe/London && timedatectl set-time "2026-10-23 23:00:00" && timedatectl && date --iso-8601=ns')
  c.shot('000-prelogin-clock-configured')
  if host=='islands':h.command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
