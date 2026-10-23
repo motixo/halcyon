@@ -10,7 +10,7 @@ repo='repos/profilaz3/halcyon'
 response=json.loads(subprocess.check_output(['gh','api',repo+'/actions/runs/'+run+'/artifacts']))
 (root/'artifacts.json').write_text(json.dumps(response,indent=2)+'\n')
 for item in response['artifacts']:
- if not item['name'].startswith(('theme-session-','theme-followup-')):continue
+ if not item['name'].startswith(('theme-session-','theme-followup-','theme-auto-')):continue
  assert not item['expired'] and item['size_in_bytes']<150000000
  dest=root/item['name'];marker=dest/'controller-verified-artifact.json'
  if marker.exists() and json.loads(marker.read_text())['digest']==item['digest']:continue

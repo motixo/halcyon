@@ -3,13 +3,27 @@ set -Eeuo pipefail
 mkdir -p "$RUNNER_TEMP/cosmic/evidence" "$RUNNER_TEMP/theme-packages"
 # Preserve tool-phase failures before any guest artifact is fetched. No set -x.
 exec > >(tee "$RUNNER_TEMP/cosmic/evidence/runner-prepare.log") 2>&1
-printf 'prepare-phase: runner-apt-update\n'
-sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/*.sources 2>/dev/null || true
-if [ -f /etc/apt/apt-mirrors.txt ]; then
-  printf 'https://archive.ubuntu.com/ubuntu\nhttps://apt.pop-os.org/ubuntu\n' | sudo tee /etc/apt/apt-mirrors.txt
+printf 'prepare-phase: runner-prerequisite-inventory\n'
+missing=()
+for pair in qemu-system-x86_64:qemu-system-x86 qemu-img:qemu-utils aria2c:aria2 xorriso:xorriso tesseract:tesseract-ocr; do
+  command -v "${pair%%:*}" >/dev/null || missing+=("${pair#*:}")
+done
+python3 -c 'from PIL import Image' 2>/dev/null || missing+=(python3-pil)
+[[ -f /usr/share/OVMF/OVMF_CODE_4M.fd ]] || missing+=(ovmf)
+printf 'missing prerequisite packages: %s\n' "${missing[*]:-none}"
+if ((${#missing[@]})); then
+  # Use the runner's authenticated Ubuntu sources only; unrelated vendor
+  # repositories must not stall preparation. Bound the whole apt operations.
+  test -f /etc/apt/sources.list.d/ubuntu.sources
+  sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
+  if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+    printf 'https://archive.ubuntu.com/ubuntu\n' | sudo tee /etc/apt/apt-mirrors.txt
+  fi
+  apt_options=(-o Dir::Etc::sourcelist=/etc/apt/sources.list.d/ubuntu.sources -o Dir::Etc::sourceparts=- -o Acquire::Retries=0 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15 -o DPkg::Lock::Timeout=20)
+  sudo timeout --kill-after=10s 180 apt-get "${apt_options[@]}" update -q
+  sudo timeout --kill-after=10s 300 apt-get "${apt_options[@]}" install --no-install-recommends -y "${missing[@]}"
 fi
-sudo timeout --kill-after=20s 600 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update -q
-sudo timeout --kill-after=20s 600 apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y qemu-system-x86 qemu-utils ovmf python3-pil aria2 xorriso tesseract-ocr
+printf 'prepare-phase: prerequisite-ready\n'
 printf 'prepare-phase: authenticated-retained-inputs\n'
 # Anchor the API artifact digests to the independently reviewed handoff.
 python3 - <<'PY'

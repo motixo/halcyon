@@ -136,47 +136,50 @@ def automatic():
  h.summary['automatic'].update(native='PASS: native UI Auto; real timedated night-noon-night; native mode and portal assertions passed',injected_events=False,stimulus='real timedated wall clock / Europe/London timezone, offline',family=family,palette=palette)
  h.save()
 
-try:
- c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
- c.shot('000-followup-greeter')
- if host=='islands':h.command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
- c.login('followup-login');c.capture('baseline')
- h.command('offline-interfaces','ip -brief addr; ip route; systemctl is-active dbus',required=True)
- h.command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
- approved=(ev/'approved-inputs.sha256').read_text()
- h.command('independent-input-check',"cd /mnt/candidate && sha256sum -c /dev/stdin <<'INPUTS'\n"+approved+'INPUTS\n')
- h.install('candidate')
- if host=='islands':
-  h.command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
-  h.command('enable-islands','halcyon-islands enable',True)
-  c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
-  time.sleep(15);c.login('followup-islands-login')
-  h.command('islands-status','halcyon-islands status',True)
-  state=h.snapshot('islands-running')
-  if not any(p['exe'].endswith('/cosmic-panel-islands') and p['sha256']=='f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31' for p in state['processes']):raise RuntimeError('Matching released Islands executable not running')
- # Each look is independent evidence. Record a blocked case and continue with
- # the next actual selection; no retry of a failed action or broader matrix.
- for look in ['calm','evening','focus','paper','rose']:
-  try:select(look);cycle(look)
+def main():
+ try:
+  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
+  c.shot('000-followup-greeter')
+  if host=='islands':h.command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
+  c.login('followup-login');c.capture('baseline')
+  h.command('offline-interfaces','ip -brief addr; ip route; systemctl is-active dbus',required=True)
+  h.command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
+  approved=(ev/'approved-inputs.sha256').read_text()
+  h.command('independent-input-check',"cd /mnt/candidate && sha256sum -c /dev/stdin <<'INPUTS'\n"+approved+'INPUTS\n')
+  h.install('candidate')
+  if host=='islands':
+   h.command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
+   h.command('enable-islands','halcyon-islands enable',True)
+   c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
+   time.sleep(15);c.login('followup-islands-login')
+   h.command('islands-status','halcyon-islands status',True)
+   state=h.snapshot('islands-running')
+   if not any(p['exe'].endswith('/cosmic-panel-islands') and p['sha256']=='f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31' for p in state['processes']):raise RuntimeError('Matching released Islands executable not running')
+  # Each look is independent evidence. Record a blocked case and continue with
+  # the next actual selection; no retry of a failed action or broader matrix.
+  for look in ['calm','evening','focus','paper','rose']:
+   try:select(look);cycle(look)
+   except Exception as error:
+    h.summary['errors'].append({'look':look,'blocked':str(error)})
+    traceback.print_exc();h.screen('blocked-'+look);h.snapshot('blocked-'+look)
+    h.stop_ui();dismiss_popup('blocked-'+look);h.save()
+  try:automatic()
   except Exception as error:
-   h.summary['errors'].append({'look':look,'blocked':str(error)})
-   traceback.print_exc();h.screen('blocked-'+look);h.snapshot('blocked-'+look)
-   h.stop_ui();dismiss_popup('blocked-'+look);h.save()
- try:automatic()
+   h.summary['automatic'].update(native='BLOCKED: '+str(error),injected_events=False)
+   traceback.print_exc();h.screen('blocked-automatic');h.snapshot('blocked-automatic')
+   h.command('automatic-blocker-journal','timedatectl; readlink -f /etc/localtime; journalctl -b --no-pager -n 3500',required=False)
+  h.stop_ui();c.capture('final')
+  h.summary['execution_complete']=True
  except Exception as error:
-  h.summary['automatic'].update(native='BLOCKED: '+str(error),injected_events=False)
-  traceback.print_exc();h.screen('blocked-automatic');h.snapshot('blocked-automatic')
-  h.command('automatic-blocker-journal','timedatectl; readlink -f /etc/localtime; journalctl -b --no-pager -n 3500',required=False)
- h.stop_ui();c.capture('final')
- h.summary['execution_complete']=True
-except Exception as error:
- h.summary['errors'].append({'fatal':str(error)});traceback.print_exc()
- try:h.screen('fatal');h.snapshot('fatal');c.capture('fatal')
- except Exception:traceback.print_exc()
-finally:
- h.save()
- try:c.guest('sync; systemctl poweroff',5)
- except Exception:pass
- time.sleep(8)
-passed=h.summary.get('execution_complete') and not h.summary['errors'] and h.summary['automatic']['native'].startswith('PASS')
-sys.exit(0 if passed else 1)
+  h.summary['errors'].append({'fatal':str(error)});traceback.print_exc()
+  try:h.screen('fatal');h.snapshot('fatal');c.capture('fatal')
+  except Exception:traceback.print_exc()
+ finally:
+  h.save()
+  try:c.guest('sync; systemctl poweroff',5)
+  except Exception:pass
+  time.sleep(8)
+ passed=h.summary.get('execution_complete') and not h.summary['errors'] and h.summary['automatic']['native'].startswith('PASS')
+ sys.exit(0 if passed else 1)
+
+if __name__ == "__main__":main()

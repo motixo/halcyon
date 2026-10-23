@@ -1,6 +1,9 @@
 #!/bin/bash
 set -Eeuo pipefail
 SRC=$(realpath private/qualification-021/theme)
+if [[ ${SCENARIO_SET:-original} == auto-diagnosis ]]; then
+  exec bash "$SRC/auto-session.sh"
+fi
 cd "$WORK"
 cleanup() {
   if [[ -f qemu.pid ]]; then
