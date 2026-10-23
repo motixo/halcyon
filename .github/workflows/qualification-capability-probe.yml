@@ -2,6 +2,10 @@ name: Offline native theme development session
 on:
   workflow_dispatch:
     inputs:
+      lockup:
+        description: "Released 0.2.0 responsiveness: serial stock/main/Islands one-hour offline sessions"
+        default: false
+        type: boolean
       acceptance:
         description: "One host: stock baseline/natural only OR independent Islands manual/natural"
         default: false
@@ -40,7 +44,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   package:
-    if: ${{ !inputs.acceptance && !inputs.auto_diagnosis && !inputs.followup && inputs.package_run == '' }}
+    if: ${{ !inputs.lockup && !inputs.acceptance && !inputs.auto_diagnosis && !inputs.followup && inputs.package_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -64,18 +68,19 @@ jobs:
     needs: package
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        lineage: ${{ fromJSON((inputs.acceptance || inputs.auto_diagnosis || inputs.followup) && '["candidate"]' || inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
+        lineage: ${{ fromJSON(inputs.lockup && '["public"]' || (inputs.acceptance || inputs.auto_diagnosis || inputs.followup) && '["candidate"]' || inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
         exclude: ${{ fromJSON(!inputs.followup && inputs.host_filter == 'remaining' && '[{"lineage":"candidate","host":"stock"}]' || '[]') }}
-        host: ${{ fromJSON((inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'stock' && '["stock"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'islands' && '["islands"]' || inputs.followup && '["stock","islands"]' || inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
+        host: ${{ fromJSON(inputs.lockup && '["stock","main","islands"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'stock' && '["stock"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'islands' && '["islands"]' || inputs.followup && '["stock","islands"]' || inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: ${{ inputs.lockup && 100 || 120 }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
       - name: Enforce scoped follow-up inputs
-        if: inputs.followup || inputs.auto_diagnosis || inputs.acceptance
+        if: inputs.lockup || inputs.followup || inputs.auto_diagnosis || inputs.acceptance
         env:
           PACKAGE_RUN: ${{ inputs.package_run }}
           AUTO_DIAGNOSIS: ${{ inputs.auto_diagnosis || inputs.acceptance }}
@@ -86,22 +91,64 @@ jobs:
           test "$BUILD_ONLY" = false
           if [[ "$AUTO_DIAGNOSIS" = true ]]; then [[ "$HOST_FILTER" = stock || "$HOST_FILTER" = islands ]]; fi
       - name: Tools, authenticated retained guest and finalized input media
-        timeout-minutes: 30
+        timeout-minutes: 15
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           PACKAGE_RUN: ${{ inputs.package_run || github.run_id }}
         run: bash private/qualification-021/theme/prepare.sh
       - name: One offline VM; independent clean scenario overlays
+        if: ${{ !inputs.lockup }}
         timeout-minutes: 75
         run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" SCENARIO_SET="${{ inputs.acceptance && 'acceptance' || inputs.auto_diagnosis && 'auto-diagnosis' || inputs.followup && 'followup' || 'original' }}" bash private/qualification-021/theme/session.sh
+      - name: Initialize released responsiveness session
+        if: inputs.lockup
+        timeout-minutes: 8
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" COHORT="${{ matrix.host }}" bash private/qualification-021/lockup/start.sh
+      - name: Native input and resource observation through minute 20
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 1200
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-20-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Native input and resource observation through minute 40
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 2400
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-40-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Native input and resource observation through minute 61
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 3660
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-61-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Final input and bounded suspend observation
+        if: inputs.lockup
+        timeout-minutes: 4
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" finish
+      - name: Stop only owned disposable responsiveness VM
+        if: ${{ always() && inputs.lockup }}
+        run: sudo python3 private/qualification-021/lockup/stop.py "$RUNNER_TEMP/cosmic"
       - name: Readable evidence
         if: always()
         run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: ${{ inputs.acceptance && format('theme-acceptance-{0}-{1}', matrix.host, github.run_id) || inputs.auto_diagnosis && format('theme-auto-{0}-{1}', matrix.host, github.run_id) || inputs.followup && format('theme-followup-{0}-{1}', matrix.host, github.run_id) || format('theme-session-{0}-{1}-{2}', matrix.lineage, matrix.host, github.run_id) }}
+          name: ${{ inputs.lockup && format('lockup-session-{0}-{1}', matrix.host, github.run_id) || inputs.acceptance && format('theme-acceptance-{0}-{1}', matrix.host, github.run_id) || inputs.auto_diagnosis && format('theme-auto-{0}-{1}', matrix.host, github.run_id) || inputs.followup && format('theme-followup-{0}-{1}', matrix.host, github.run_id) || format('theme-session-{0}-{1}-{2}', matrix.lineage, matrix.host, github.run_id) }}
           path: ${{ runner.temp }}/cosmic/evidence/
           retention-days: 7
           compression-level: 6
