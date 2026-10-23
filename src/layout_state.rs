@@ -29,7 +29,15 @@ pub struct WidgetGeometry {
     pub position: [f32; 2],
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DisplayState {
+    pub output: Option<String>,
+    pub ready: bool,
+    pub epoch: u64,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
+    #[serde(default)]
+    pub display: Option<DisplayState>,
     pub screen: [f32; 2],
     pub widgets: Vec<WidgetGeometry>,
 }
@@ -71,6 +79,7 @@ impl Snapshot {
 
 fn fallback(config: &Config) -> Snapshot {
     Snapshot {
+        display: None,
         screen: [1920., 1080.],
         widgets: Widget::ALL
             .into_iter()

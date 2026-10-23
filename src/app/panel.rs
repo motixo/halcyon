@@ -145,7 +145,11 @@ impl Cards {
             .reconcile(&cfg.devbox, cfg.widget_visible(Widget::Devbox));
         let notes_shown = cfg.widget_visible(Widget::Notes);
         let notes_changed = notes_shown != self.config.widget_visible(Widget::Notes);
+        let display_changed = self.config.widget_display != cfg.widget_display;
         self.config = cfg;
+        if display_changed {
+            tasks.push(self.reconcile_output());
+        }
         tasks.push(self.wallpaper_colors_changed());
         if !self.config.widget_visible(Widget::Music) {
             // Followed again from scratch when shown.

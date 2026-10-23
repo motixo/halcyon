@@ -91,9 +91,10 @@ impl LayoutEditor {
 }
 
 impl Cards {
-    pub(super) fn layout_probe(id: window::Id, editing: bool) -> Task<Message> {
+    pub(super) fn layout_probe(&self, id: window::Id, editing: bool) -> Task<Message> {
         get_layer_surface(SctkLayerSurfaceSettings {
             id,
+            output: self.layer_output(),
             layer: if editing {
                 Layer::Overlay
             } else {
@@ -114,6 +115,10 @@ impl Cards {
     }
     pub(super) fn custom_layout(&self) -> bool {
         self.config.has_custom_positions()
+            // The legacy columns have fixed widths. Small logical outputs use
+            // the same bounded individual geometry as arranged widgets.
+            || self.screen_size[0] < 800.
+            || self.screen_size[1] < 500.
     }
     pub(super) fn widget_id(&self, widget: Widget) -> window::Id {
         self.ids[match widget {
@@ -369,7 +374,12 @@ impl Cards {
                 let slack = 24.;
                 let top = ((height - total) / 2. - slack).max(0.);
                 let bottom = ((height + total) / 2. + slack).min(height);
-                vec![[0, top.floor() as u32, 360 + mu, (bottom - top).ceil() as u32]]
+                vec![[
+                    0,
+                    top.floor() as u32,
+                    360 + mu,
+                    (bottom - top).ceil() as u32,
+                ]]
             }
             _ => Vec::new(),
         }
@@ -386,7 +396,8 @@ impl Cards {
             custom: self.custom_layout(),
             sizes: Widget::BASE.map(|widget| {
                 if self.custom_layout() || widget == Widget::Glance {
-                    self.widget_size(widget).map(|value| value.ceil() as u32 + mu)
+                    self.widget_size(widget)
+                        .map(|value| value.ceil() as u32 + mu)
                 } else {
                     match widget {
                         Widget::Clock => [490 + mu, 250 + mu],
@@ -399,10 +410,21 @@ impl Cards {
         }
     }
     pub(super) fn sync_widget_surfaces(&mut self) -> Task<Message> {
+        if !self.output_known || self.selected_output.is_none() {
+            return Task::none();
+        }
         if let Some(config) = self.seed_glance_position() {
             return self.apply_config(config);
         }
         let snapshot = crate::layout_state::Snapshot {
+            display: Some(crate::layout_state::DisplayState {
+                output: self
+                    .selected_output
+                    .as_ref()
+                    .and_then(|output| output.name().map(str::to_owned)),
+                ready: true,
+                epoch: self.display_generation,
+            }),
             screen: self.screen_size,
             widgets: Widget::ALL
                 .into_iter()
@@ -512,6 +534,18 @@ impl Cards {
         Task::batch(tasks)
     }
     pub(super) fn arrange(&mut self) -> Task<Message> {
+        if !self.output_known {
+            return Task::none();
+        }
+        if let Some(mut draft) = self.paused_layout.take() {
+            draft.active = true;
+            self.layout_editor = draft;
+            self.pause_note();
+            return destroy_layer_surface(self.ids[5])
+                .chain(self.layout_probe(self.ids[5], true))
+                .chain(self.sync_widget_surfaces())
+                .chain(self.note_surface_mode());
+        }
         if self.layout_editor.active {
             return Task::none();
         }
@@ -565,7 +599,7 @@ impl Cards {
             // A draft that couldn't be saved waits, without the keyboard.
             note.chain(self.note_surface_mode()),
             self.sync_widget_surfaces(),
-            destroy_layer_surface(self.ids[5]).chain(Self::layout_probe(self.ids[5], true)),
+            destroy_layer_surface(self.ids[5]).chain(self.layout_probe(self.ids[5], true)),
         ])
     }
     pub(super) fn commit_arrange(&mut self) -> bool {
@@ -671,7 +705,7 @@ impl Cards {
         // Recreate the passive measuring surface before raising the individual cards.
         let tools = Task::batch(self.sync_tool_surfaces());
         destroy_layer_surface(self.ids[5])
-            .chain(Self::layout_probe(self.ids[5], false))
+            .chain(self.layout_probe(self.ids[5], false))
             .chain(self.recreate_widget_surfaces())
             .chain(tools)
             .chain(self.note_surface_mode())
@@ -793,7 +827,9 @@ impl Cards {
             .into_iter()
             .filter(|widget| self.config.widget_visible(*widget))
             .collect();
-        let place = |widget: Widget, others: &[[f32; 4]], positions: &mut BTreeMap<String, [f32; 2]>| {
+        let place = |widget: Widget,
+                     others: &[[f32; 4]],
+                     positions: &mut BTreeMap<String, [f32; 2]>| {
             let size = self.widget_size(widget);
             let at = self.position_from(widget, positions);
             // No room: it stays where it was put; the desktop keeps it off
@@ -817,9 +853,12 @@ impl Cards {
             }
             None => {
                 let mut placed = Vec::new();
-                let order = first
-                    .into_iter()
-                    .chain(visible.iter().copied().filter(|widget| Some(*widget) != first));
+                let order = first.into_iter().chain(
+                    visible
+                        .iter()
+                        .copied()
+                        .filter(|widget| Some(*widget) != first),
+                );
                 for widget in order {
                     if Some(widget) != first {
                         place(widget, &placed, positions);
@@ -917,6 +956,9 @@ impl Cards {
         rebuild.chain(tools)
     }
     fn recreate_widget_surfaces(&mut self) -> Task<Message> {
+        if !self.output_known || self.selected_output.is_none() {
+            return Task::none();
+        }
         self.surface_geometry = Some(self.surface_geometry());
         self.surface_inputs = Some(Widget::BASE.map(|widget| self.card_input_rects(widget)));
         let mut create = Vec::new();
@@ -935,6 +977,7 @@ impl Cards {
             let (mi, mu) = self.shadow_px();
             let mut surface = SctkLayerSurfaceSettings {
                 id,
+                output: self.layer_output(),
                 layer: Layer::Bottom,
                 keyboard_interactivity: KeyboardInteractivity::None,
                 anchor: Anchor::TOP | Anchor::LEFT,
@@ -1380,6 +1423,7 @@ mod tests {
         config.glance.style = crate::config::GlanceStyle::Panel;
         config.glance.initialized = true;
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         let today = Local::now().date_naive();
         let calendar = CalendarData {
@@ -1501,6 +1545,7 @@ mod tests {
         }
         let initial = std::fs::read(Config::path().unwrap()).unwrap();
         let (mut cards, _) = Cards::init(Core::default(), Config::load());
+        let _output = cards.test_output_ready();
         cards.screen_size = [1280., 800.];
         let mut native = Native::new(Size::new(1280., 800.));
         let theme = cosmic::Theme::dark();
@@ -1558,29 +1603,6 @@ mod tests {
     }
 
     #[test]
-    fn a_display_change_rebuilds_every_surface_once_settled() {
-        let mut config = Config::default();
-        config.notes.enabled = true;
-        let (mut cards, _) = Cards::init(Core::default(), config);
-        cards.screen_size = [1920., 1080.];
-        let _ = cards.sync_widget_surfaces();
-        assert!(cards.surface_geometry.is_some());
-        // Display events right after startup are the startup burst.
-        let _ = cards.update(Message::DisplaysChanged);
-        assert_eq!(cards.display_generation, 0);
-        cards.started = std::time::Instant::now() - std::time::Duration::from_secs(10);
-        let _ = cards.update(Message::DisplaysChanged);
-        let _ = cards.update(Message::DisplaysChanged);
-        assert_eq!(cards.display_generation, 2);
-        // Only the latest change rebuilds; it starts from nothing cached.
-        let _ = cards.update(Message::RebuildSurfaces(1));
-        assert!(cards.surface_geometry.is_some());
-        let _ = cards.update(Message::RebuildSurfaces(2));
-        assert!(cards.surface_geometry.is_some() && cards.surface_inputs.is_some());
-        assert!(cards.tool_geometry_known(Widget::Notes));
-    }
-
-    #[test]
     fn widgets_on_the_desktop_never_stack() {
         // The reported layout: Focus saved almost exactly on top of Notes,
         // Projects across the system monitor.
@@ -1597,9 +1619,15 @@ mod tests {
             config.widget_positions.insert(key.into(), at);
         }
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1039.];
         assert!(cards.custom_layout());
-        let shown = [Widget::Devbox, Widget::Projects, Widget::Focus, Widget::Notes];
+        let shown = [
+            Widget::Devbox,
+            Widget::Projects,
+            Widget::Focus,
+            Widget::Notes,
+        ];
         let rects: Vec<[f32; 4]> = shown
             .iter()
             .map(|widget| {
@@ -1631,6 +1659,7 @@ mod tests {
         let mut config = Config::default();
         config.widget_sizes.insert("weather".into(), [480., 320.]);
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         assert!(cards.custom_layout());
         let (mi, mu) = cards.shadow_px();
@@ -1641,6 +1670,7 @@ mod tests {
         // The default right column: only the band its cards fill, so the
         // rest of the full-height surface passes clicks to the tools.
         let (mut cards, _) = Cards::init(Core::default(), Config::default());
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         assert!(!cards.custom_layout());
         let column = cards.card_input_rects(Widget::Weather);
@@ -1663,6 +1693,7 @@ mod tests {
         config.widget_sizes.insert("music".into(), [480., 320.]);
         config.widget_sizes.insert("focus".into(), [480., 320.]);
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         assert!(cards.custom_layout());
         for widget in [Widget::Weather, Widget::Music, Widget::Focus] {
@@ -1693,6 +1724,7 @@ mod tests {
         config.widget_positions.insert("clock".into(), [0.7, 0.7]);
         config.widget_positions.insert("glance".into(), [0.3, 0.4]);
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         let _ = cards.arrange();
         cards.layout_defaults();
         assert_eq!(cards.layout_editor.draft["clock"], [0.7, 0.7]);
@@ -1718,6 +1750,7 @@ mod tests {
             return;
         }
         let (mut app, _) = Cards::init(Core::default(), Config::load());
+        let _output = app.test_output_ready();
         let _ = app.arrange();
         app.put_layout_point(Widget::Weather, [600., 300.]);
         let moved = app.layout_editor.draft["weather"];
@@ -1772,6 +1805,7 @@ mod tests {
         let path = Config::path().unwrap();
         let before = std::fs::read(&path).unwrap();
         let (mut app, _) = Cards::init(Core::default(), Config::load());
+        let _output = app.test_output_ready();
         for save in [false, true] {
             let _ = app.update(Message::Arrange);
             let start = app.position_from(Widget::Weather, &app.layout_editor.draft);

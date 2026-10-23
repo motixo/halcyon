@@ -35,6 +35,7 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
     let mut fields = Vec::new();
     let mut add = |parts: &[&str]| fields.push(pointer(parts));
     match message {
+        Message::WidgetDisplay(_) => add(&["widget_display"]),
         Message::Widget(widget, _) if widget.is_tool() => add(&[widget.key(), "enabled"]),
         Message::Widget(Widget::Glance, visible) => {
             add(&["glance", "enabled"]);

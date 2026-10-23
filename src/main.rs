@@ -6,6 +6,7 @@ mod data;
 mod desktop;
 mod desktop_theme;
 mod drawer;
+mod displays;
 mod layout;
 mod layout_state;
 mod materials;

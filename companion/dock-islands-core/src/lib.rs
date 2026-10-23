@@ -638,3 +638,13 @@ pub fn rounded_region(x: i32, y: i32, width: i32, height: i32, radius: f64) -> V
     }
     rects
 }
+
+/// A missing named output falls back deterministically, without changing its pin.
+pub fn output_order(name: &str) -> (bool, String) {
+    (
+        !["eDP", "LVDS", "DSI"]
+            .iter()
+            .any(|prefix| name.starts_with(prefix)),
+        name.to_owned(),
+    )
+}

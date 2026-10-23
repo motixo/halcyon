@@ -630,6 +630,7 @@ impl Cards {
         let editing = widget == Widget::Notes && self.note_lifted();
         get_layer_surface(SctkLayerSurfaceSettings {
             id: self.widget_id(widget),
+            output: self.layer_output(),
             layer: if editing { Layer::Top } else { Layer::Bottom },
             keyboard_interactivity: if editing {
                 KeyboardInteractivity::Exclusive
@@ -664,6 +665,9 @@ impl Cards {
 
     /// Positions each tool, recreating only a surface whose size changed.
     pub(super) fn sync_tool_surfaces(&mut self) -> Vec<Task<Message>> {
+        if !self.output_known || self.selected_output.is_none() {
+            return Vec::new();
+        }
         // Every sync places Music as it should be now.
         self.tools.music_shown = self.tool_shown(Widget::Music);
         let mut tasks = Vec::new();
@@ -777,6 +781,7 @@ mod tests {
     fn toggling_a_tool_writes_only_its_section() {
         isolated("toggling_a_tool_writes_only_its_section", || {
             let (mut cards, _) = Cards::init(Core::default(), Config::load());
+            let _output = cards.test_output_ready();
             let _ = cards.update(Message::ToggleWidget(Widget::Focus));
             let raw: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(Config::path().unwrap()).unwrap()).unwrap();
@@ -797,6 +802,7 @@ mod tests {
                 let mut config = Config::load();
                 config.focus.enabled = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 let before = std::fs::read(Config::path().unwrap()).unwrap();
                 let _ = cards.update(Message::Tool(Action::FocusToggle));
                 assert!(cards.tools.focus.running());
@@ -834,6 +840,7 @@ mod tests {
                 let mut config = Config::load();
                 config.notes.enabled = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 assert_eq!(cards.tools.note, Ok(notes::Note::default()));
                 let _ = cards.update(Message::Tool(Action::NoteEdit));
                 assert!(cards.tools.draft.is_some());
@@ -904,6 +911,7 @@ mod tests {
                 config.focus.enabled = true;
                 config.focus.auto_start_breaks = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 let _ = cards.update(Message::Tool(Action::FocusToggle));
                 let focus::Status::Running { ends_at } = cards.tools.focus.status else {
                     panic!("the round should run");
@@ -980,6 +988,7 @@ mod tests {
                 let mut config = Config::load();
                 config.notes.enabled = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 let type_char = |cards: &mut Cards, c| {
                     let _ = cards.update(Message::Tool(Action::NoteAction(
                         text_editor::Action::Edit(text_editor::Edit::Insert(c)),
@@ -1055,6 +1064,7 @@ mod tests {
         let mut config = Config::default();
         config.music.enabled = true;
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         let player = |status| music::Player {
             bus: format!("{}spotify", music::PREFIX),
             key: "spotify".into(),
@@ -1111,6 +1121,7 @@ mod tests {
         let mut config = Config::default();
         config.music.enabled = true;
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         assert!(cards.current_player().is_none());
         let player = |key: &str, status| music::Player {
             bus: format!("{}{key}", music::PREFIX),
@@ -1212,6 +1223,7 @@ mod tests {
                     let mut config = Config::default();
                     config.music.enabled = true;
                     let (mut cards, _) = Cards::init(Core::default(), config.clone());
+                    let _output = cards.test_output_ready();
                     let players = music::snapshot(&client).await.unwrap();
                     let _ = cards.music_feed(music::Feed::Players(players.clone()));
                     state.broken_timing.store(true, Ordering::SeqCst);
@@ -1261,6 +1273,7 @@ mod tests {
                         let mut config = Config::default();
                         config.music.enabled = true;
                         let (mut cards, _) = Cards::init(Core::default(), config);
+                        let _output = cards.test_output_ready();
                         let _ = cards.music_feed(music::Feed::Players(
                             music::snapshot(&client).await.unwrap(),
                         ));
@@ -1308,6 +1321,7 @@ mod tests {
                         let mut config = Config::default();
                         config.music.enabled = true;
                         let (mut cards, _) = Cards::init(Core::default(), config);
+                        let _output = cards.test_output_ready();
                         let _ = cards.music_feed(music::Feed::Players(
                             music::snapshot(&client).await.unwrap(),
                         ));
@@ -1346,6 +1360,7 @@ mod tests {
                         let mut config = Config::default();
                         config.music.enabled = true;
                         let (mut cards, _) = Cards::init(Core::default(), config);
+                        let _output = cards.test_output_ready();
                         let _ = cards.music_feed(music::Feed::Players(
                             music::snapshot(&client).await.unwrap(),
                         ));

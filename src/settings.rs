@@ -18,6 +18,8 @@ mod colors;
 mod desktop;
 mod desktop_icons;
 mod direct;
+#[cfg(test)]
+mod display_tests;
 mod drafts;
 mod legacy;
 mod motion;
@@ -421,6 +423,8 @@ pub enum FontTarget {
 }
 #[derive(Debug, Clone)]
 pub enum Message {
+    WidgetDisplay(Option<String>),
+    DisplayOutput(crate::displays::OutputEvent, crate::displays::WlOutput),
     Wizard(wizard::Message),
     /// Starts first-run setup again (App settings).
     OpenWizard,
@@ -594,6 +598,7 @@ pub enum Message {
 }
 
 pub struct Settings {
+    displays: crate::displays::Registry,
     core: Core,
     page: Page,
     /// First-run setup, shown instead of the pages while it runs.
@@ -801,6 +806,7 @@ impl cosmic::Application for Settings {
             .swap(false, std::sync::atomic::Ordering::Relaxed)
             .then(open_wizard);
         let mut app = Self {
+            displays: Default::default(),
             core,
             page,
             wizard,
@@ -960,6 +966,14 @@ impl cosmic::Application for Settings {
             .chain(crate::tools::focus::Session::path())
             .collect();
         let mut subscriptions = vec![
+            cosmic::iced::event::listen_with(|event, _, _| match event {
+                cosmic::iced::Event::PlatformSpecific(
+                    cosmic::iced::event::PlatformSpecific::Wayland(
+                        cosmic::iced::event::wayland::Event::Output(event, handle),
+                    ),
+                ) => Some(Message::DisplayOutput(event, handle)),
+                _ => None,
+            }),
             crate::watch::files(paths).map(|_| Message::Tick),
             window::resize_events().map(|(_, size)| Message::Resized(size)),
             self.config
@@ -1474,6 +1488,21 @@ impl Settings {
             return task;
         }
         match message {
+            Message::DisplayOutput(event, handle) => {
+                self.displays.update(event, handle);
+            }
+            Message::WidgetDisplay(name) => {
+                if name != self.config.widget_display && name
+                    .as_deref()
+                    .is_some_and(|name| self.displays.unique(name).is_none())
+                {
+                    self.failed(
+                        "That display is no longer available with a unique connection name.".into(),
+                    );
+                } else {
+                    self.save(serde_json::json!({"widget_display": name}));
+                }
+            }
             Message::Preview => return Task::none(),
             Message::NativeDone(done) => return self.finish_native(done),
             Message::InstallationChecked(generation, state, runtime) => {

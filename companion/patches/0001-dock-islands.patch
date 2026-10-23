@@ -1230,7 +1230,7 @@
 +            .outputs
 +            .iter()
 +            .find(|o| o.1.name() == *wanted)
-+            .or_else(|| state.space.outputs.first())
++            .or_else(|| state.space.outputs.iter().min_by_key(|o| dock_islands_core::output_order(&o.1.name())))
 +            .map(|o| o.1.name());
 +        let Some(target) = target else {
 +            continue;
@@ -2275,7 +2275,7 @@
 +use_small_heuristics = "Default"
 --- /dev/null
 +++ b/dock-islands-core/src/lib.rs
-@@ -0,0 +1,640 @@
+@@ -0,0 +1,650 @@
 +//! Versioned settings, wire contract and logical geometry shared by the two
 +//! native applications. This crate has no toolkit or compositor dependencies.
 +pub mod material;
@@ -2916,6 +2916,17 @@
 +    }
 +    rects
 +}
++
++/// A missing named output falls back deterministically, without changing its pin.
++pub fn output_order(name: &str) -> (bool, String) {
++    (
++        !["eDP", "LVDS", "DSI"]
++            .iter()
++            .any(|prefix| name.starts_with(prefix)),
++        name.to_owned(),
++    )
++}
+
 --- /dev/null
 +++ b/dock-islands-core/src/material.rs
 @@ -0,0 +1,135 @@
@@ -3056,7 +3067,7 @@
 +}
 --- /dev/null
 +++ b/dock-islands-core/src/tests.rs
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,187 @@
 +use super::*;
 +
 +fn settings(mode: Placement, gap: u16) -> Settings {
@@ -3222,4 +3233,25 @@
 +        assert!(x >= 0 && y >= 0 && x + w <= 8 && y + h <= 6);
 +        assert!(w > 0 && h > 0);
 +    }
++}
++
++#[test]
++fn monitor_pinning_fallback_order_and_layouts() {
++    for names in [["DP-2", "DP-1", "eDP-1"], ["eDP-1", "DP-2", "DP-1"]] {
++        assert_eq!(
++            names
++                .into_iter()
++                .min_by_key(|name| super::output_order(name)),
++            Some("eDP-1")
++        );
++    }
++    for name in ["LVDS-1", "DSI-1"] {
++        assert!(super::output_order(name) < super::output_order("DP-1"));
++    }
++    let mut settings = super::Settings::default();
++    settings.layout_mut("DP-2");
++    let before = serde_json::to_vec(&settings).unwrap();
++    let _ = settings.layout("eDP-1");
++    let _ = settings.layout("DP-2");
++    assert_eq!(serde_json::to_vec(&settings).unwrap(), before);
 +}

@@ -46,6 +46,8 @@ pub struct Config {
     pub weather: WeatherPreferences,
     pub glance: GlancePreferences,
     pub devbox: DevboxPreferences,
+    /// Local compositor connection name; None chooses a deterministic fallback.
+    pub widget_display: Option<String>,
     pub widget_positions: std::collections::BTreeMap<String, [f32; 2]>,
     /// Explicit logical-pixel dimensions; absence preserves content-sized layout.
     pub widget_sizes: std::collections::BTreeMap<String, [f32; 2]>,
@@ -92,6 +94,7 @@ impl Default for Config {
             weather: WeatherPreferences::default(),
             glance: GlancePreferences::default(),
             devbox: DevboxPreferences::default(),
+            widget_display: None,
             widget_positions: std::collections::BTreeMap::new(),
             widget_sizes: Default::default(),
             placement: PlacementPreferences::default(),
@@ -152,6 +155,13 @@ impl Config {
         }
     }
     fn validate(&self) -> Result<(), String> {
+        if self
+            .widget_display
+            .as_deref()
+            .is_some_and(|name| !crate::displays::valid_name(name))
+        {
+            return Err("Choose a valid display connection name".into());
+        }
         if !matches!(self.placement.columns, 12 | 16 | 24) {
             return Err("Choose a supported desktop grid size".into());
         }
