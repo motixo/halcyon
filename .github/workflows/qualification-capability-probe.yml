@@ -2,6 +2,10 @@ name: Offline native theme development session
 on:
   workflow_dispatch:
     inputs:
+      followup:
+        description: 'Only remaining five looks and native automatic mode; exactly two host jobs'
+        default: false
+        type: boolean
       package_run:
         description: 'Existing finalized theme-packages run (blank builds exact frozen SHA)'
         default: ''
@@ -28,7 +32,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   package:
-    if: inputs.package_run == ''
+    if: ${{ !inputs.followup && inputs.package_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -53,15 +57,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lineage: ${{ fromJSON(inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
-        exclude: ${{ fromJSON(inputs.host_filter == 'remaining' && '[{"lineage":"candidate","host":"stock"}]' || '[]') }}
-        host: ${{ fromJSON(inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
+        lineage: ${{ fromJSON(inputs.followup && '["candidate"]' || inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
+        exclude: ${{ fromJSON(!inputs.followup && inputs.host_filter == 'remaining' && '[{"lineage":"candidate","host":"stock"}]' || '[]') }}
+        host: ${{ fromJSON(inputs.followup && '["stock","islands"]' || inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
+      - name: Enforce scoped follow-up inputs
+        if: inputs.followup
+        env:
+          PACKAGE_RUN: ${{ inputs.package_run }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+        run: |
+          test "$PACKAGE_RUN" = 39966537804
+          test "$BUILD_ONLY" = false
       - name: Tools, authenticated retained guest and finalized input media
         timeout-minutes: 35
         env:
@@ -71,14 +83,14 @@ jobs:
         run: bash private/qualification-021/theme/prepare.sh
       - name: One offline VM; independent clean scenario overlays
         timeout-minutes: 75
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" bash private/qualification-021/theme/session.sh
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" SCENARIO_SET="${{ inputs.followup && 'followup' || 'original' }}" bash private/qualification-021/theme/session.sh
       - name: Readable evidence
         if: always()
         run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: theme-session-${{ matrix.lineage }}-${{ matrix.host }}-${{ github.run_id }}
+          name: ${{ inputs.followup && format('theme-followup-{0}-{1}', matrix.host, github.run_id) || format('theme-session-{0}-{1}-{2}', matrix.lineage, matrix.host, github.run_id) }}
           path: ${{ runner.temp }}/cosmic/evidence/
           retention-days: 7
           compression-level: 6

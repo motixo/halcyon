@@ -26,4 +26,11 @@ qemu-system-x86_64 -machine pc-q35-8.2 -accel kvm -cpu host -smp 4 -m 6144 \
  -qmp unix:qmp.sock,server=on,wait=off -serial file:evidence/serial.log \
  -pidfile qemu.pid -daemonize -D evidence/qemu.log
 tr '\0' ' ' < "/proc/$(cat qemu.pid)/cmdline" > evidence/vm-command.txt
-python3 "$SRC/theme_session.py" "$WORK" "$LINEAGE" "$HOST_KIND" 2>&1 | tee evidence/theme-exercise.log
+SCRIPT=theme_session.py
+if [[ ${SCENARIO_SET:-original} == followup ]]; then
+  SCRIPT=followup_session.py
+  cp "$SRC/followup/control-calibration.json" evidence/control-calibration.json
+  cp "$SRC/followup/calibration-local-verification.txt" evidence/
+  cp "$SRC/calibrated_controls.py" "$SRC/followup_session.py" evidence/
+fi
+python3 "$SRC/$SCRIPT" "$WORK" "$LINEAGE" "$HOST_KIND" 2>&1 | tee evidence/theme-exercise.log

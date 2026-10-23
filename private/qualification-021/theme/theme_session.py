@@ -91,7 +91,7 @@ def snapshot(label):
  script=r'''python3 - <<'SNAP'
 import os,pathlib,json,hashlib,subprocess
 home=pathlib.Path('/home/probe'); rows={}
-for sub in ['.config/cosmic','.config/halcyon','.config/cosmic-desktop-cards','.local/state/halcyon','.local/state/cosmic-desktop-cards']:
+for sub in ['.config/cosmic','.config/halcyon','.config/cosmic-desktop-cards','.local/state/halcyon','.local/state/cosmic-desktop-cards','.local/share/halcyon']:
  root=home/sub
  if root.exists():
   for p in sorted(root.rglob('*')):
@@ -210,80 +210,81 @@ def install(which):
  command('payload-'+which,"echo "+shlex.quote(encoded)+" | base64 -d | sha256sum -c -",timeout=120)
  snapshot('installed-'+which)
 
-try:
- c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
- c.shot('000-greeter')
- if host=='islands':command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
- c.login('login');c.capture('baseline')
- command('actual-session-environment',"printf 'PATH=%s\\nXDG_SESSION_ID=%s\\nWAYLAND_DISPLAY=%s\\n' \"$PATH\" \"$XDG_SESSION_ID\" \"$WAYLAND_DISPLAY\"",True)
- command('offline','ip -brief addr; ip route; cat /proc/net/route; systemctl is-active dbus; pgrep -a cosmic-settings-daemon; pgrep -a xdg-desktop-portal',required=False)
- command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
- approved=(ev/'approved-inputs.sha256').read_text()
- checks='cd /mnt/candidate && sha256sum -c /dev/stdin <<\'INPUTS\'\n'+approved+'INPUTS\n'
- command('independent-input-check',checks)
- install(lineage)
- if host=='islands':
-  command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
-  command('enable-islands','halcyon-islands enable',True)
-  c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
-  time.sleep(15);c.login('islands-login')
-  command('islands-status','halcyon-islands status',True)
-  st=snapshot('islands-process')
-  if not any(p['exe'].endswith('/cosmic-panel-islands') for p in st['processes']):raise RuntimeError('Matching released Islands host did not actually start')
- looks=['halcyon','calm','evening','focus','paper','rose'] if lineage=='candidate' else ['halcyon']
- for look in looks:
-  select_look(look);cycle(look)
- if lineage=='public':
-  # Real native reset/default path in COSMIC Settings, before upgrade. Do not
-  # delete configs as a surrogate for Reset. Failure is retained explicitly.
-  try:
-   launch('/usr/bin/cosmic-settings',['panel'],'cosmic-ui')
-   scroll(True,18)
-   if target('native-reset','Reset to default',True):
-    screen('native-reset-confirmation');target('native-reset-confirm','Reset',True)
-    stop_ui();frame('public-native-reset');cycle('public-native-reset')
-    c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
-    time.sleep(15);c.login('public-reset-relogin');frame('public-reset-after-relogin')
-    summary['scenarios'].append({'scenario':'public native panel Reset','execution':'control activated; visual review required'})
-   else:
-    summary['scenarios'].append({'scenario':'public native panel Reset','execution':'BLOCKED: no visible Reset control; no config deletion substituted'})
-   stop_ui()
-  except Exception as e:summary['errors'].append({'reset':str(e)});stop_ui()
-  install('candidate')
-  before=snapshot('legacy-before-open')
-  launch('/usr/bin/halcyon',['--settings','themes'])
-  target('legacy-explicit-repair','Repair theme matching')
-  screen('legacy-repair-preview');snapshot('legacy-repair-preview-running')
-  # The public UI calls the existing Apply action 'Use theme'. Maximize
-  # with its observed titlebar control so the sticky footer fits the screen.
-  c.record('observed-maximize-control',x=1002,y=101)
-  c.click(1002,101);time.sleep(3);screen('legacy-repair-maximized')
-  target('legacy-repair-apply','Use theme')
-  stop_ui();frame('legacy-after-repair');cycle('legacy-repaired')
-  summary['scenarios'].append({'scenario':'actual legacy explicit Repair','execution':'complete; raw baseline and provenance retained'})
- else:
-  # Native automatic mode uses the daemon and system clock. Merely writing
-  # is_dark with auto_switch=true would be synthetic, so do not do that.
-  try:
-   mode('Auto','native-auto-selected')
-   command('native-auto-services','timedatectl; systemctl status systemd-timedated --no-pager; journalctl -b --no-pager -n 2000',required=False)
-   # Clock advancement is fixture stimulus to the real timedated/daemon path;
-   # not an injected theme event. Record both attempted times and mode results.
-   command('native-auto-disable-ntp','timedatectl set-ntp false',required=False)
-   for hour in ['12:00:00','23:00:00']:
-    command('native-auto-time-'+hour.replace(':',''),'timedatectl set-time "2026-10-23 '+hour+'"',required=False)
-    time.sleep(15);frame('native-auto-clock-'+hour.replace(':',''))
-   summary['automatic']['native']='native UI Auto selected; noon/night system-clock stimuli observed; inspect state for actual switching'
-  except Exception as e:summary['automatic']['native']='BLOCKED: '+str(e);stop_ui()
- c.capture('final')
- summary['execution_complete']=True
-except Exception as e:
- summary['errors'].append({'fatal':str(e)});traceback.print_exc()
- try:screen('failure');snapshot('failure');c.capture('failure')
- except Exception:traceback.print_exc()
-finally:
- save()
- try:c.guest('sync; systemctl poweroff',5)
- except Exception:pass
- time.sleep(8)
-sys.exit(0 if summary.get('execution_complete') else 1)
+if __name__=='__main__':
+ try:
+  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
+  c.shot('000-greeter')
+  if host=='islands':command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
+  c.login('login');c.capture('baseline')
+  command('actual-session-environment',"printf 'PATH=%s\\nXDG_SESSION_ID=%s\\nWAYLAND_DISPLAY=%s\\n' \"$PATH\" \"$XDG_SESSION_ID\" \"$WAYLAND_DISPLAY\"",True)
+  command('offline','ip -brief addr; ip route; cat /proc/net/route; systemctl is-active dbus; pgrep -a cosmic-settings-daemon; pgrep -a xdg-desktop-portal',required=False)
+  command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
+  approved=(ev/'approved-inputs.sha256').read_text()
+  checks='cd /mnt/candidate && sha256sum -c /dev/stdin <<\'INPUTS\'\n'+approved+'INPUTS\n'
+  command('independent-input-check',checks)
+  install(lineage)
+  if host=='islands':
+   command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
+   command('enable-islands','halcyon-islands enable',True)
+   c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
+   time.sleep(15);c.login('islands-login')
+   command('islands-status','halcyon-islands status',True)
+   st=snapshot('islands-process')
+   if not any(p['exe'].endswith('/cosmic-panel-islands') for p in st['processes']):raise RuntimeError('Matching released Islands host did not actually start')
+  looks=['halcyon','calm','evening','focus','paper','rose'] if lineage=='candidate' else ['halcyon']
+  for look in looks:
+   select_look(look);cycle(look)
+  if lineage=='public':
+   # Real native reset/default path in COSMIC Settings, before upgrade. Do not
+   # delete configs as a surrogate for Reset. Failure is retained explicitly.
+   try:
+    launch('/usr/bin/cosmic-settings',['panel'],'cosmic-ui')
+    scroll(True,18)
+    if target('native-reset','Reset to default',True):
+     screen('native-reset-confirmation');target('native-reset-confirm','Reset',True)
+     stop_ui();frame('public-native-reset');cycle('public-native-reset')
+     c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
+     time.sleep(15);c.login('public-reset-relogin');frame('public-reset-after-relogin')
+     summary['scenarios'].append({'scenario':'public native panel Reset','execution':'control activated; visual review required'})
+    else:
+     summary['scenarios'].append({'scenario':'public native panel Reset','execution':'BLOCKED: no visible Reset control; no config deletion substituted'})
+    stop_ui()
+   except Exception as e:summary['errors'].append({'reset':str(e)});stop_ui()
+   install('candidate')
+   before=snapshot('legacy-before-open')
+   launch('/usr/bin/halcyon',['--settings','themes'])
+   target('legacy-explicit-repair','Repair theme matching')
+   screen('legacy-repair-preview');snapshot('legacy-repair-preview-running')
+   # The public UI calls the existing Apply action 'Use theme'. Maximize
+   # with its observed titlebar control so the sticky footer fits the screen.
+   c.record('observed-maximize-control',x=1002,y=101)
+   c.click(1002,101);time.sleep(3);screen('legacy-repair-maximized')
+   target('legacy-repair-apply','Use theme')
+   stop_ui();frame('legacy-after-repair');cycle('legacy-repaired')
+   summary['scenarios'].append({'scenario':'actual legacy explicit Repair','execution':'complete; raw baseline and provenance retained'})
+  else:
+   # Native automatic mode uses the daemon and system clock. Merely writing
+   # is_dark with auto_switch=true would be synthetic, so do not do that.
+   try:
+    mode('Auto','native-auto-selected')
+    command('native-auto-services','timedatectl; systemctl status systemd-timedated --no-pager; journalctl -b --no-pager -n 2000',required=False)
+    # Clock advancement is fixture stimulus to the real timedated/daemon path;
+    # not an injected theme event. Record both attempted times and mode results.
+    command('native-auto-disable-ntp','timedatectl set-ntp false',required=False)
+    for hour in ['12:00:00','23:00:00']:
+     command('native-auto-time-'+hour.replace(':',''),'timedatectl set-time "2026-10-23 '+hour+'"',required=False)
+     time.sleep(15);frame('native-auto-clock-'+hour.replace(':',''))
+    summary['automatic']['native']='native UI Auto selected; noon/night system-clock stimuli observed; inspect state for actual switching'
+   except Exception as e:summary['automatic']['native']='BLOCKED: '+str(e);stop_ui()
+  c.capture('final')
+  summary['execution_complete']=True
+ except Exception as e:
+  summary['errors'].append({'fatal':str(e)});traceback.print_exc()
+  try:screen('failure');snapshot('failure');c.capture('failure')
+  except Exception:traceback.print_exc()
+ finally:
+  save()
+  try:c.guest('sync; systemctl poweroff',5)
+  except Exception:pass
+  time.sleep(8)
+ sys.exit(0 if summary.get('execution_complete') else 1)

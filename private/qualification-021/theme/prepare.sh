@@ -17,6 +17,12 @@ for k,v in expected.items():
 PY
 REUSE_RUN=39963889546 bash private/qualification-021/restore.sh
 python3 private/qualification-021/artifact-fetch.py "$GH_REPO" "$PACKAGE_RUN" "theme-packages-$PACKAGE_RUN" "$RUNNER_TEMP/theme-packages"
+python3 - <<'PIN'
+import json,os,subprocess
+r=json.loads(subprocess.check_output(['gh','api','repos/'+os.environ['GH_REPO']+'/actions/runs/'+os.environ['PACKAGE_RUN']+'/artifacts']))
+a=next(a for a in r['artifacts'] if a['id']==12507891179)
+assert not a['expired'] and a['digest']=='sha256:2cdea1fd0ba584bc1c0891033764042b07692b370392fc4f4896d4fef7e11f65'
+PIN
 cd "$RUNNER_TEMP/cosmic"
 gpgv --keyring "$PWD/retain/pop.gpg" retain/SHA256SUMS.gpg retain/SHA256SUMS 2>&1 | tee evidence/theme-iso-signature.txt
 (cd retain && sha256sum -c SHA256SUMS) | tee evidence/theme-iso-checksum.txt
