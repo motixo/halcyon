@@ -84,6 +84,8 @@ def build(args):
         usr = root / "usr"
         install(binary, usr / "bin/halcyon", 0o755)
         install(REPO / "scripts/desktop-cards", usr / "bin/halcyon-ctl", 0o755)
+        install(REPO / "companion/panel_launcher.py", usr / "lib" / PACKAGE / "panel_launcher.py")
+        install(REPO / "companion/install_status.py", usr / "lib" / PACKAGE / "islands-status.py", 0o755)
         for name in ("calendar-sync.py", "project-status.py"):
             install(REPO / "scripts" / name, usr / "lib" / PACKAGE / name, 0o755)
         install(REPO / "docs/google-calendar-setup.html",

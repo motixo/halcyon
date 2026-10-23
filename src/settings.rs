@@ -565,7 +565,15 @@ pub enum Message {
     SetupDismissed(bool),
     SetupOpen(bool),
     OpenWeatherSource,
+    DesktopRestorePreview,
+    DesktopRestorePlanned(Result<crate::desktop::recovery::RestorePlan, String>),
+    DesktopRestoreConfirm(bool),
+    DesktopRestoreDone(Result<(), String>),
+    ExportRecovery,
+    RecoveryExported(Result<Option<PathBuf>, String>),
     OpenIslandsGuide,
+    RefreshInstallation,
+    InstallationReady(u64, crate::desktop::islands::Installation),
     ShowControls,
     Restore(bool),
     Capture,
@@ -606,6 +614,8 @@ pub struct Settings {
     native_property: u64,
     session_drafts: session_drafts::SessionDrafts,
     recovery_sheet: legacy::Recovery,
+    desktop_recovery: recovery::DesktopRecovery,
+    installation_generation: u64,
     config: Config,
     samples: crate::app::SettingsSamples,
     notice: u16,
@@ -801,6 +811,8 @@ impl cosmic::Application for Settings {
             native_property: 0,
             session_drafts: session_drafts::SessionDrafts::default(),
             recovery_sheet: legacy::Recovery::load(),
+            desktop_recovery: recovery::DesktopRecovery::default(),
+            installation_generation: 0,
             notice: config.meeting_notice_minutes.clamp(1, 60) as u16,
             material_target: Default::default(),
             material_adjust: false,
@@ -913,9 +925,11 @@ impl cosmic::Application for Settings {
             Task::none()
         };
         let motion = app.handle(Message::ReadSystemMotion);
+        app.desktop_recovery.refresh();
+        let installation = app.handle(Message::RefreshInstallation);
         (
             app,
-            Task::batch([title, service, media, tools, calendar, motion]),
+            Task::batch([title, service, media, tools, calendar, motion, installation]),
         )
     }
     fn subscription(&self) -> Subscription<Message> {
@@ -948,6 +962,7 @@ impl cosmic::Application for Settings {
             subscriptions.push(cosmic::iced::event::listen_with(|event, status, _| {
                 use cosmic::iced::{Event, keyboard};
                 match event {
+                    Event::Window(window::Event::Focused) => Some(Message::RefreshInstallation),
                     Event::Keyboard(keyboard::Event::KeyPressed {
                         key: keyboard::Key::Character(ref key),
                         modifiers,
@@ -1222,29 +1237,32 @@ impl cosmic::Application for Settings {
             .apply(cosmic::widget::container)
             .width(Length::Fill)
             .height(Length::Fill)
-            .class(cosmic::theme::Container::custom(move |theme: &cosmic::Theme| {
-                let cosmic = theme.cosmic();
-                let base: cosmic::iced::Color = cosmic.background(theme.transparent).base.into();
-                // Inside libcosmic's 1px window border, with its corners.
-                let radius = if maximized {
-                    0.
-                } else {
-                    let r = cosmic.radius_s()[0];
-                    (if r < 4. { r } else { r + 4. } - 1.).max(0.)
-                };
-                cosmic::iced::widget::container::Style {
-                    background: Some(cosmic::iced::Background::Color(cosmic::iced::Color {
-                        a: 1.,
-                        ..base
-                    })),
-                    text_color: Some(cosmic.background(theme.transparent).on.into()),
-                    border: cosmic::iced::Border {
-                        radius: radius.into(),
+            .class(cosmic::theme::Container::custom(
+                move |theme: &cosmic::Theme| {
+                    let cosmic = theme.cosmic();
+                    let base: cosmic::iced::Color =
+                        cosmic.background(theme.transparent).base.into();
+                    // Inside libcosmic's 1px window border, with its corners.
+                    let radius = if maximized {
+                        0.
+                    } else {
+                        let r = cosmic.radius_s()[0];
+                        (if r < 4. { r } else { r + 4. } - 1.).max(0.)
+                    };
+                    cosmic::iced::widget::container::Style {
+                        background: Some(cosmic::iced::Background::Color(cosmic::iced::Color {
+                            a: 1.,
+                            ..base
+                        })),
+                        text_color: Some(cosmic.background(theme.transparent).on.into()),
+                        border: cosmic::iced::Border {
+                            radius: radius.into(),
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            }))
+                    }
+                },
+            ))
             .into()
     }
     fn on_app_exit(&mut self) -> Option<Message> {
@@ -1676,7 +1694,11 @@ impl Settings {
             Message::Wallpaper(message) => return self.update_wallpaper(message),
             Message::ColorWell(message) => return self.update_color_well(message),
             Message::FontMenu(target) => {
-                self.font_menu = if self.font_menu == target { None } else { target };
+                self.font_menu = if self.font_menu == target {
+                    None
+                } else {
+                    target
+                };
                 self.font_search.clear();
                 if self.font_menu.is_some() && self.font_catalog.is_none() {
                     self.font_catalog =
@@ -2317,7 +2339,8 @@ impl Settings {
             Message::StyleFilter(filter) => self.style_filter = filter,
             Message::StyleBars(on) => {
                 self.save(json!({"appearance": {"style_bars": on}}));
-                self.profiles.set_style_bars(self.config.appearance.style_bars);
+                self.profiles
+                    .set_style_bars(self.config.appearance.style_bars);
             }
             Message::GlanceDensity(value) => self.save_glance(json!({"density": value})),
             Message::GlanceOpacity(value) => self.save_glance(json!({"opacity": value})),
@@ -2400,7 +2423,11 @@ impl Settings {
                 self.material_draft = None;
                 self.material_baseline = None;
                 let current = self.config.materials.effective(self.material_target);
-                self.apply_material(kind.map(|kind| current.filter(|f| f.kind == kind).unwrap_or_else(|| crate::materials::Finish::new(kind))));
+                self.apply_material(kind.map(|kind| {
+                    current
+                        .filter(|f| f.kind == kind)
+                        .unwrap_or_else(|| crate::materials::Finish::new(kind))
+                }));
             }
             Message::MaterialAdjust(open) => self.material_adjust = open,
             Message::MaterialValue(opacity, value) => {
@@ -2688,6 +2715,116 @@ impl Settings {
                     "Calendar opened",
                 );
             }
+            Message::DesktopRestorePreview => {
+                if self.desktop_recovery.busy {
+                    return Task::none();
+                }
+                self.desktop_recovery.busy = true;
+                return cosmic::task::future(async {
+                    let result = tokio::task::spawn_blocking(|| {
+                        let store =
+                            crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+                        let mut domains = crate::desktop::recovery::RecoveryDomain::ALL.to_vec();
+                        domains.push(crate::desktop::recovery::RecoveryDomain::AppAnimations);
+                        crate::desktop::recovery::plan_restore(&store, &domains)
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|v| v);
+                    Message::DesktopRestorePlanned(result)
+                });
+            }
+            Message::DesktopRestorePlanned(result) => {
+                self.desktop_recovery.busy = false;
+                match result {
+                    Ok(plan) => self.desktop_recovery.plan = Some(plan),
+                    Err(error) => self.failed(error),
+                }
+            }
+            Message::DesktopRestoreConfirm(confirmed) => {
+                let Some(plan) = self.desktop_recovery.plan.take() else {
+                    return Task::none();
+                };
+                if !confirmed {
+                    return Task::none();
+                }
+                self.desktop_recovery.busy = true;
+                return cosmic::task::future(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        let store =
+                            crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+                        crate::desktop::recovery::apply_restore(&store, &plan)
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|v| v);
+                    Message::DesktopRestoreDone(result)
+                });
+            }
+            Message::DesktopRestoreDone(result) => {
+                self.desktop_recovery.busy = false;
+                self.desktop_recovery.refresh();
+                match result {
+                    Ok(()) => {
+                        self.config = Config::load();
+                        self.saved();
+                        self.status = "Desktop restored · Undo is available".into();
+                        return self.after_desktop_change();
+                    }
+                    Err(error) => self.failed(error),
+                }
+            }
+            Message::ExportRecovery => return recovery::export_task(),
+            Message::RecoveryExported(result) => match result {
+                Ok(Some(_)) => {
+                    self.status = "Desktop recovery exported".into();
+                    self.error = false;
+                }
+                Ok(None) => {}
+                Err(error) => self.failed(error),
+            },
+            Message::RefreshInstallation => {
+                self.desktop_recovery.refresh();
+                self.installation_generation += 1;
+                let generation = self.installation_generation;
+                self.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
+                return Task::perform(
+                    async {
+                        tokio::task::spawn_blocking(|| {
+                            crate::desktop::DesktopStore::from_env()
+                                .ok()
+                                .map(|s| crate::desktop::islands::Installation::discover(&s))
+                                .unwrap_or_default()
+                        })
+                        .await
+                        .unwrap_or_default()
+                    },
+                    move |state| cosmic::Action::App(Message::InstallationReady(generation, state)),
+                );
+            }
+            Message::InstallationReady(generation, state) => {
+                if generation != self.installation_generation {
+                    return Task::none();
+                }
+                self.desktop.islands.installation = state;
+                self.desktop.check_islands();
+                if !self.desktop.islands.installation.installed()
+                    && matches!(
+                        self.material_target,
+                        crate::materials::Target::Dock | crate::materials::Target::Panel
+                    )
+                {
+                    self.material_target = crate::materials::Target::Widgets;
+                    self.material_draft = None;
+                    self.material_adjust = false;
+                }
+                if let Some(wizard) = &mut self.wizard {
+                    wizard.islands_available = self.desktop.islands.installation.installed();
+                }
+            }
             Message::OpenIslandsGuide => {
                 return run_command(
                     "/usr/bin/xdg-open".into(),
@@ -2771,7 +2908,7 @@ fn desktop_write_message(message: &Message) -> bool {
         Message::DesktopIcons(message) => message.writes(),
         Message::WindowRules(message) => message.writes(),
         Message::Shortcuts(message) => message.writes(),
-        Message::CommandDone(..) | Message::UndoDesktop => true,
+        Message::CommandDone(..) | Message::UndoDesktop | Message::DesktopRestoreDone(..) => true,
         _ => false,
     }
 }
@@ -2975,8 +3112,7 @@ impl Settings {
     /// A chosen color reaches its editor as the text its field received.
     fn update_color_well(&mut self, message: color_well::Message) -> Task<Message> {
         use color_well::{Outcome, Target};
-        let Outcome::Chosen(target, rgb) = color_well::update(&mut self.color_well, message)
-        else {
+        let Outcome::Chosen(target, rgb) = color_well::update(&mut self.color_well, message) else {
             return Task::none();
         };
         let text = color_well::text(target, rgb);
@@ -4280,9 +4416,7 @@ fn desktop_command(action: &'static str, status: &'static str) -> Task<Message> 
                     .output()
                     .map_err(|error| format!("Could not show desktop widgets: {error}"))?;
                 if !output.status.success() {
-                    return Err(
-                        "Could not show desktop widgets. Check the Halcyon service.".into(),
-                    );
+                    return Err("Could not show desktop widgets. Check the Halcyon service.".into());
                 }
             }
             let path = path.ok_or_else(|| "Desktop session unavailable".to_string())?;
@@ -4406,11 +4540,11 @@ fn service_task() -> Task<Message> {
 #[cfg(test)]
 mod onboarding_tests;
 #[cfg(test)]
-mod wizard_tests;
-#[cfg(test)]
 mod theme_journey_tests;
 #[cfg(test)]
 mod ux_tests;
+#[cfg(test)]
+mod wizard_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5503,9 +5637,7 @@ mod tests {
         )));
         assert!(!app.desktop.dirty());
         let _ = app.update(Message::Page(Page::DesktopProfiles));
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
-            "focus",
-        ))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("focus"))));
         let _ = app.update(Message::Profiles(Look::Include(
             crate::desktop::profiles::Domain::Dock,
             false,
@@ -5555,7 +5687,9 @@ mod tests {
         assert!(app.error);
         let _ = app.update(Message::Page(Page::DesktopProfiles));
         assert!(app.error, "the Projects error is still showing");
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("evening"))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
+            "evening",
+        ))));
         let _ = app.update(Message::Profiles(Look::Apply));
         assert!(app.profiles.can_undo(), "{:?}", app.profiles.notice);
         assert_eq!(Config::load().theme, "lavender");
@@ -5572,7 +5706,9 @@ mod tests {
         // A pending card edit that can't be saved stops the profile, and
         // nothing is written for it.
         let _ = app.update(Message::Profiles(Look::Select(Selection::Current)));
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("evening"))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
+            "evening",
+        ))));
         let _ = app.update(Message::Profiles(Look::Include(Domain::WidgetStyle, false)));
         assert!(!app.profiles.apply_domains().is_empty());
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Opacity, 90));
@@ -5604,7 +5740,9 @@ mod tests {
         }
         use profiles::{Message as Look, Selection};
         let (mut app, _) = Settings::init(Core::default(), Page::DesktopProfiles);
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("evening"))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
+            "evening",
+        ))));
         let _ = app.update(Message::Profiles(Look::Apply));
         let _ = app.update(Message::Page(Page::DesktopDock));
         let _ = app.update(Message::DesktopEditor(desktop::Message::Anchor(
@@ -5613,9 +5751,7 @@ mod tests {
         assert!(!app.desktop.dirty());
         assert_eq!(app.last_desktop_change.as_ref().unwrap().1, "Dock position");
         let _ = app.update(Message::Page(Page::DesktopProfiles));
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
-            "focus",
-        ))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("focus"))));
         assert!(app.profile_waits().is_empty());
         let _ = app.update(Message::UndoDesktop);
         assert!(!app.error, "{}", app.status);
@@ -6638,8 +6774,14 @@ mod tests {
         let _ = app.update(Message::GlanceStyle(GlanceStyle::Transparent));
         assert!(app.config.glance.own_background, "{}", app.status);
         assert_eq!(app.config.glance.style, GlanceStyle::Transparent);
-        let _ = app.update(Message::WidgetFont(FontTarget::GlanceText, Some("Hack".into())));
-        let _ = app.update(Message::WidgetFont(FontTarget::GlanceClock, Some("Lora".into())));
+        let _ = app.update(Message::WidgetFont(
+            FontTarget::GlanceText,
+            Some("Hack".into()),
+        ));
+        let _ = app.update(Message::WidgetFont(
+            FontTarget::GlanceClock,
+            Some("Lora".into()),
+        ));
         let saved = Config::try_load().unwrap();
         assert!(saved.glance.own_background);
         assert_eq!(saved.glance.font.as_deref(), Some("Hack"));
@@ -7888,10 +8030,37 @@ mod tests {
             let baseline = fixture.join("state/desktop-recovery/original/manifest.json");
             let captured = std::fs::read(&baseline).unwrap();
             click(&mut app, &mut native, "settings-undo");
-            assert_eq!(std::fs::read(&baseline).unwrap(), captured, "Undo never rotates the immutable baseline");
+            assert_eq!(
+                std::fs::read(&baseline).unwrap(),
+                captured,
+                "Undo never rotates the immutable baseline"
+            );
+            let ledger = fixture.join("state/desktop-recovery/created-native-keys.json");
+            let created: Vec<crate::desktop::ConfigKey> =
+                serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+            assert_eq!(
+                created,
+                vec![
+                    crate::desktop::ConfigKey::new(crate::desktop::wallpaper::NAMESPACE, 1, "all")
+                        .unwrap()
+                ]
+            );
+            assert_eq!(
+                std::fs::read(&ledger).unwrap(),
+                applied[&ledger],
+                "Undo retains exact creation evidence"
+            );
             let mut restored = fixture_files(&fixture);
-            if !before.contains_key(&baseline) { restored.remove(&baseline); }
-            assert_eq!(restored, before, "Undo restores the wallpaper and retains first-write evidence");
+            if !before.contains_key(&ledger) {
+                restored.remove(&ledger);
+            }
+            if !before.contains_key(&baseline) {
+                restored.remove(&baseline);
+            }
+            assert_eq!(
+                restored, before,
+                "Undo restores the wallpaper and retains first-write evidence"
+            );
             // Colors are chosen on Colors & theme; that flow is covered by
             // unified_colors_native_links_apply_undo_and_recovered_wallpaper.
         }
@@ -8635,7 +8804,11 @@ mod tests {
             if size.width >= 1024. {
                 assert!(preview.width >= 420., "large preview at {size:?}");
             }
-            for id in ["wallpaper-choose-picture", "wallpaper-preview", "nav-general"] {
+            for id in [
+                "wallpaper-choose-picture",
+                "wallpaper-preview",
+                "nav-general",
+            ] {
                 visible(native.bounds(app.settings_view(), id), size, id);
             }
             for (name, theme) in &themes {
@@ -9860,6 +10033,94 @@ mod tests {
         assert!(
             store.latest_change().unwrap().is_none(),
             "one actual click creates one Undo"
+        );
+    }
+    #[test]
+    fn task2_native_recovery_confirmation_and_installed_only_addons() {
+        if desktop_test_child(
+            "task2_native_recovery_confirmation_and_installed_only_addons",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let key =
+            crate::desktop::ConfigKey::new("com.system76.CosmicPanel.Dock", 1, "opacity").unwrap();
+        let before = store.read_user(&key).unwrap();
+        let mut patch = crate::desktop::DesktopPatch::new();
+        patch.set(
+            key.clone(),
+            before.clone(),
+            Some(crate::desktop::RawValue::parse("0.71").unwrap()),
+        );
+        store.apply(&patch).unwrap();
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        let size = Size::new(1024., 1800.);
+        send_settings(&mut app, Message::Resized(size));
+        let mut native = crate::native_test::Native::new(size);
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_some()
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            "task2-addons-absent",
+        );
+        app.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_none()
+        );
+        crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
+        send_settings(&mut app, Message::RefreshInstallation);
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_none()
+        );
+        native_click(&mut app, &mut native, "restore-desktop");
+        assert_eq!(
+            store.read_user(&key).unwrap().unwrap().as_str(),
+            "0.71",
+            "preview is read-only"
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            "task2-recovery-confirm",
+        );
+        native_click(&mut app, &mut native, "restore-desktop-confirm");
+        assert_eq!(
+            store.read_user(&key).unwrap().as_ref().map(|v| v.as_str()),
+            before.as_ref().map(|v| v.as_str())
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            "task2-recovery-after",
+        );
+        send_settings(&mut app, Message::UndoDesktop);
+        assert_eq!(store.read_user(&key).unwrap().unwrap().as_str(), "0.71");
+        std::fs::remove_file(
+            store
+                .fixture_root()
+                .unwrap()
+                .join("islands-installation.json"),
+        )
+        .unwrap();
+        send_settings(&mut app, Message::RefreshInstallation);
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_some()
         );
     }
 }

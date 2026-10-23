@@ -15,18 +15,26 @@ impl Settings {
                     container(
                         button::custom(
                             column::with_children(vec![
-                                self.material_specimen(selected.filter(|f| f.kind == kind).unwrap_or_else(|| Finish::new(kind))),
+                                self.material_specimen(
+                                    selected
+                                        .filter(|f| f.kind == kind)
+                                        .unwrap_or_else(|| Finish::new(kind)),
+                                ),
                                 label(kind.title(), 13., FG),
-                                if self.material_adjust { cosmic::widget::space().height(0).into() } else { label(
-                                    match kind {
-                                        Kind::Frosted => "Soft & balanced",
-                                        Kind::Clear => "Light & luminous",
-                                        Kind::Smoked => "Quiet & dense",
-                                        Kind::Liquid => "Polished & rounded",
-                                    },
-                                    10.,
-                                    MUTED,
-                                ) },
+                                if self.material_adjust {
+                                    cosmic::widget::space().height(0).into()
+                                } else {
+                                    label(
+                                        match kind {
+                                            Kind::Frosted => "Soft & balanced",
+                                            Kind::Clear => "Light & luminous",
+                                            Kind::Smoked => "Quiet & dense",
+                                            Kind::Liquid => "Polished & rounded",
+                                        },
+                                        10.,
+                                        MUTED,
+                                    )
+                                },
                             ])
                             .spacing(5),
                         )
@@ -46,6 +54,10 @@ impl Settings {
         let scopes = segmented(
             Target::ALL
                 .into_iter()
+                .filter(|t| {
+                    self.desktop.islands.installation.installed()
+                        || matches!(t, Target::Shared | Target::Widgets)
+                })
                 .map(|t| {
                     (
                         t.title().to_owned(),
@@ -58,7 +70,18 @@ impl Settings {
         );
         let state = if self.config.materials.get(target).is_some() {
             if target == Target::Shared {
-                if [self.config.materials.widgets, self.config.materials.dock, self.config.materials.panel].into_iter().any(|f| f.is_some()) { "Shared material · some surfaces use their own" } else { "Shared by widgets, dock and panel" }
+                if [
+                    self.config.materials.widgets,
+                    self.config.materials.dock,
+                    self.config.materials.panel,
+                ]
+                .into_iter()
+                .any(|f| f.is_some())
+                {
+                    "Shared material · some surfaces use their own"
+                } else {
+                    "Shared by widgets, dock and panel"
+                }
             } else {
                 "Uses its own material"
             }
@@ -125,7 +148,7 @@ impl Settings {
         rows.push(label(if self.material_native {
             "Shared finish · compositor blur when available. Previews show tint and finish."
         } else {
-            "Widgets use native blur when available. Dock & panel materials need the updated Islands add-on."
+            if self.desktop.islands.installation.installed() { "Widgets use native blur when available. Dock & panel materials need a running capable host." } else { "Widgets use native blur when available." }
         }, 11., MUTED));
         rows.push(self.preview_stage(self.card_preview()));
         rows.push(split(

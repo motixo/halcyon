@@ -1,4 +1,5 @@
 use super::*;
+use crate::desktop::Owner;
 use crate::desktop::store::tests::Fixture;
 use crate::desktop::wallpaper::{BgEntry, NAMESPACE};
 use cosmic::cosmic_theme::palette::Srgba;
@@ -420,4 +421,141 @@ fn explicit_policy_and_override_intent_invalidate_inflight_colors() {
         commit(&store, plan).is_err(),
         "an equal-valued manual override is still newer intent"
     );
+}
+
+#[test]
+fn task2_restore_invalidates_prepared_palette_even_when_all_values_match() {
+    let (f, store) = fixture("epoch-prepared");
+    let prepared = prepare(&store).unwrap().unwrap();
+    crate::desktop::recovery::ensure_baseline(
+        &store,
+        crate::desktop::recovery::BaselineKind::CurrentDesktop,
+    )
+    .unwrap();
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    crate::desktop::recovery::apply_restore(&store, &plan).unwrap();
+    let before = fs::read(store.app_config().unwrap()).unwrap();
+    assert!(
+        commit(&store, prepared).is_err(),
+        "matching values do not grant stale ownership"
+    );
+    assert_eq!(fs::read(store.app_config().unwrap()).unwrap(), before);
+    assert!(
+        prepare(&store).unwrap().is_none(),
+        "manual restore owns this wallpaper"
+    );
+    set_color(&f, [0.8, 0.3, 0.2]);
+    assert!(
+        prepare(&store).unwrap().is_some(),
+        "the next wallpaper must still update"
+    );
+}
+
+#[test]
+fn task2_noop_ack_cannot_cross_restore_or_its_undo() {
+    let (f, store) = fixture("epoch-noop");
+    commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+    // Delete only observation evidence to prepare a genuine no-op result.
+    let mut history: serde_json::Value =
+        serde_json::from_slice(&fs::read(store.state_dir().join("desktop-undo.json")).unwrap())
+            .unwrap();
+    history.as_object_mut().unwrap().remove("palette_ack");
+    fs::write(
+        store.state_dir().join("desktop-undo.json"),
+        serde_json::to_vec(&history).unwrap(),
+    )
+    .unwrap();
+    let _ = fs::remove_file(store.state_dir().join(ACK));
+    let prepared = prepare(&store).unwrap().unwrap();
+    assert!(prepared.patch.is_empty() && prepared.widgets.is_empty());
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    let restored = crate::desktop::recovery::apply_restore(&store, &plan).unwrap();
+    assert!(commit(&store, prepared.clone()).is_err());
+    store.undo_latest(&restored.id).unwrap();
+    assert!(commit(&store, prepared).is_err());
+    let restarted = f.store().with_app_config(f.0.join("config.json"));
+    assert!(prepare(&restarted).unwrap().is_none());
+    set_color(&f, [0.4, 0.7, 0.2]);
+    assert!(prepare(&restarted).unwrap().is_some());
+}
+
+#[test]
+fn task2_interrupted_palette_never_acknowledges_before_its_transaction() {
+    for fault in [
+        crate::desktop::store::Fault::InterruptBeforeRecord,
+        crate::desktop::store::Fault::InterruptAfterRecord,
+    ] {
+        let (f, store) = fixture("palette-killed");
+        let prepared = prepare(&store).unwrap().unwrap();
+        store.inject(Some(fault));
+        assert!(commit(&store, prepared).is_err());
+        let restarted = f.store().with_app_config(f.0.join("config.json"));
+        assert!(restarted.pending_recovery().unwrap().is_some());
+        restarted.recover().unwrap();
+        assert!(
+            prepare(&restarted).unwrap().is_some(),
+            "recovery must restore both colors and observation"
+        );
+    }
+}
+
+#[test]
+fn task2_manual_undo_preserves_latest_palette_observation() {
+    let (f, store) = fixture("manual-undo-observation");
+    commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+    let mut widgets = WidgetPatch::new();
+    widgets
+        .set("/appearance/opacity", None, Some(serde_json::json!(90)))
+        .unwrap();
+    let manual = store
+        .apply_action(
+            &DesktopPatch::new(),
+            Some(&widgets),
+            Owner::Preferences,
+            "Opacity",
+            crate::desktop::store::Source::Manual,
+        )
+        .unwrap();
+    set_color(&f, [0.8, 0.3, 0.2]);
+    commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+    store.undo_latest(&manual.id).unwrap();
+    assert!(
+        prepare(&store).unwrap().is_none(),
+        "Undo must retain the latest source observation"
+    );
+}
+
+#[test]
+fn task2_interrupted_restore_recovery_keeps_manual_colors_and_invalidates_worker() {
+    let (f, store) = fixture("restore-crash-observation");
+    let stale = prepare(&store).unwrap().unwrap();
+    crate::desktop::recovery::ensure_baseline(
+        &store,
+        crate::desktop::recovery::BaselineKind::CurrentDesktop,
+    )
+    .unwrap();
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    store.inject(Some(crate::desktop::store::Fault::InterruptBeforeRecord));
+    assert!(crate::desktop::recovery::apply_restore(&store, &plan).is_err());
+    let restarted = f.store().with_app_config(f.0.join("config.json"));
+    restarted.recover().unwrap();
+    assert!(commit(&restarted, stale).is_err());
+    assert!(
+        prepare(&restarted).unwrap().is_none(),
+        "recovery is still a manual choice"
+    );
+    set_color(&f, [0.8, 0.3, 0.2]);
+    assert!(prepare(&restarted).unwrap().is_some());
 }

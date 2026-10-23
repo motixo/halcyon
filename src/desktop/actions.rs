@@ -7,6 +7,7 @@ use crate::config;
 use serde_json::Value;
 use std::cell::RefCell;
 
+thread_local! { static EPOCH: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) }; }
 thread_local! { static SCHEDULE: RefCell<Option<Option<String>>> = const { RefCell::new(None) }; }
 thread_local! { static GUARD: RefCell<Option<Value>> = const { RefCell::new(None) }; }
 thread_local! { static PROPERTY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
@@ -44,6 +45,16 @@ pub fn scheduled<T>(expected: Option<String>, run: impl FnOnce() -> T) -> T {
     }
     let _restore = Restore(SCHEDULE.with(|slot| slot.replace(Some(expected))));
     run()
+}
+pub fn scheduled_epoch<T>(epoch: u64, expected: Option<String>, run: impl FnOnce() -> T) -> T {
+    struct Reset(Option<u64>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            EPOCH.with(|v| v.set(self.0));
+        }
+    }
+    let _reset = Reset(EPOCH.with(|v| v.replace(Some(epoch))));
+    scheduled(expected, run)
 }
 pub fn property<T>(mask: u64, run: impl FnOnce() -> T) -> T {
     struct Restore(u64);
@@ -139,6 +150,7 @@ pub fn commit(
     let mut patch = patch.clone();
     if source == Source::Scheduled {
         patch.manual_guard = SCHEDULE.with(|slot| slot.borrow().clone());
+        patch.epoch_guard = EPOCH.with(|v| v.get());
     }
     let label = if source == Source::Manual {
         action_label(&patch, owner, label)

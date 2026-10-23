@@ -21,6 +21,7 @@ pub enum Edit {
 }
 #[derive(Default)]
 pub struct State {
+    pub installation: crate::desktop::islands::Installation,
     pub compatible: bool,
     pub status: Option<String>,
     pub selected: Option<Section>,
@@ -67,6 +68,17 @@ impl DesktopEditor {
             .map(|configured| (self.selected, configured, actual));
     }
     pub fn check_islands(&mut self) {
+        if let Some(store) = self.store().filter(|s| s.fixture_root().is_some()) {
+            self.islands.installation = crate::desktop::islands::Installation::discover(store);
+        }
+        if !self.islands.installation.installed() {
+            self.islands.lease = None;
+            self.islands.geometry = None;
+            self.islands.measured_output = None;
+            self.islands.compatible = false;
+            self.islands.status = None;
+            return;
+        }
         let result = self
             .store()
             .ok_or_else(|| "Desktop settings are unavailable".to_string())
@@ -94,9 +106,7 @@ impl DesktopEditor {
     pub fn islands_can_apply(&self) -> bool {
         !self.arranging()
             && self.drafts.values().all(|d| {
-                !d.edited().any(|name| name == "islands")
-                    || d.islands().known().is_none_or(|s| !s.enabled)
-                    || self.islands.compatible
+                !d.edited().any(|name| name == "islands") || self.islands.installation.installed()
             })
     }
     fn sync_island_lease(&mut self) -> bool {
@@ -192,6 +202,14 @@ impl DesktopEditor {
         self.edit(|d| d.set_islands(s));
     }
     pub fn island_edit(&mut self, edit: Edit) {
+        if !matches!(edit, Edit::Cancel | Edit::Check)
+            && !self
+                .store()
+                .is_some_and(|s| crate::desktop::islands::Installation::discover(s).installed())
+        {
+            self.check_islands();
+            return;
+        }
         match edit {
             Edit::Enabled(enabled) => {
                 if self.arranging() {

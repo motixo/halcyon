@@ -3,7 +3,7 @@
 //! `plan` reads the current desktop and builds one checked patch through
 //! the domain drafts (a fresh `PanelDraft` per panel, one `AppearanceDraft`
 //! for every Appearance edit) plus one widget patch against the current raw
-//! configuration. It writes nothing and runs no helper. `apply` commits the
+//! configuration. It writes nothing and never starts the add-on. `apply` commits the
 //! plan as a single owned transaction of the store, which re-reads every
 //! original under lock, so a plan that went stale conflicts instead of
 //! overwriting newer changes.
@@ -228,6 +228,40 @@ pub struct ProfilePlan {
 }
 
 impl ProfilePlan {
+    /// The setup wizard's explicit choice may enable or disable Islands.
+    /// Profiles and automatic switches preserve the existing enabled state.
+    pub(crate) fn choose_islands(
+        &mut self,
+        store: &DesktopStore,
+        kind: PanelKind,
+        enabled: bool,
+    ) -> Result<(), DesktopError> {
+        if !crate::desktop::islands::Installation::discover(store).installed() {
+            return Err(DesktopError::Io("Islands is no longer installed".into()));
+        }
+        let key = crate::desktop::islands::key(kind);
+        let original = if let Some(entry) = self.patch.get(&key) {
+            entry.original.clone()
+        } else if let Some((_, original)) = self.patch.guards().find(|(guard, _)| **guard == key) {
+            original.clone()
+        } else {
+            store.read_user(&key)?
+        };
+        let raw = self
+            .patch
+            .get(&key)
+            .and_then(|entry| entry.desired.as_ref())
+            .or(original.as_ref());
+        let mut settings = raw
+            .map(RawValue::decode::<dock_islands_core::Settings>)
+            .transpose()
+            .map_err(|e| DesktopError::Io(e.to_string()))?
+            .unwrap_or_default();
+        settings.enabled = enabled;
+        self.patch
+            .set(key, original, Some(RawValue::encode(&settings)?));
+        Ok(())
+    }
     /// Whether nothing would be written.
     pub fn is_empty(&self) -> bool {
         self.patch.is_empty() && self.widget.is_empty()
@@ -280,7 +314,7 @@ impl ProfilePlan {
 }
 
 /// Plans applying exactly the `selected` domains of `profile` to the
-/// current desktop. Reads only; never creates files or runs helpers.
+/// current desktop. Reads only; installation discovery never starts the add-on.
 pub fn plan(
     store: &DesktopStore,
     installed: &Installed,
@@ -552,6 +586,7 @@ pub fn plan(
             })
             .and_then(|()| config::check_config_value(&value).map(drop));
         if outcome.is_ok()
+            && crate::desktop::islands::Installation::discover(store).installed()
             && result
                 .widget
                 .changes()
@@ -665,33 +700,24 @@ fn plan_panel(
             kind.title()
         ));
     }
-    if let Some(gap) = look.island_gap {
-        if let Some(mut islands) = draft.islands().known().cloned().filter(|s| s.enabled) {
-            if crate::desktop::islands::Client::connect(store)
-                .and_then(|mut c| c.capabilities())
-                .is_ok()
-            {
-                islands.gap = gap;
-                draft.set_islands(islands);
-            } else {
-                part.warnings
-                    .push("Islands spacing is kept because its component is unavailable".into());
-            }
+    let installed_islands = crate::desktop::islands::Installation::discover(store).installed();
+    if let Some(gap) = look.island_gap.filter(|_| installed_islands) {
+        if let Some(mut islands) = draft.islands().known().cloned() {
+            islands.gap = gap;
+            draft.set_islands(islands);
         }
     }
-    if let Some(islands) = &look.islands {
-        if islands.enabled
-            && crate::desktop::islands::Client::connect(store)
-                .and_then(|mut c| c.capabilities())
-                .is_err()
-        {
-            part.blocked
-                .push("A compatible Islands panel component is required".into());
-        } else if let Some(current) = draft.islands().known().cloned() {
-            draft.set_islands(keep_arrangement(islands.clone(), current));
-        } else {
-            part.blocked
-                .push("Unsupported island settings are kept".into());
+    if installed_islands {
+        if let Some(islands) = &look.islands {
+            if let Some(current) = draft.islands().known().cloned() {
+                // Applying a look does not activate an installed but disabled add-on.
+                let mut desired = keep_arrangement(islands.clone(), current.clone());
+                desired.enabled = current.enabled;
+                draft.set_islands(desired);
+            } else {
+                part.blocked
+                    .push("Unsupported island settings are kept".into());
+            }
         }
     }
     let values = match look.values() {
@@ -1589,11 +1615,7 @@ fn apply_with_source(
             )
         })
         .collect();
-    let mut component = if islands.iter().any(|(_, s)| s.enabled) {
-        let mut c = crate::desktop::islands::Client::connect(store).map_err(DesktopError::Io)?;
-        c.capabilities().map_err(DesktopError::Io)?;
-        Some(c)
-    } else if !islands.is_empty() {
+    let mut component = if !islands.is_empty() {
         crate::desktop::islands::Client::connect(store).ok()
     } else {
         None

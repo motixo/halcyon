@@ -318,12 +318,16 @@ impl Settings {
             items.push(self.panel_style(draft));
             items.push(self.panel_appearance(draft));
             items.push(self.panel_contents(draft));
-            if draft.islands().known().is_some_and(|s| s.enabled) {
+            if self.desktop.islands.installation.installed()
+                && draft.islands().known().is_some_and(|s| s.enabled)
+            {
                 items.push(self.islands_section(draft));
             }
         } else {
             items.push(self.layout_section(draft));
-            items.push(self.islands_section(draft));
+            if self.desktop.islands.installation.installed() {
+                items.push(self.islands_section(draft));
+            }
             items.push(self.applets_section(draft));
             items.push(self.installed_applets(draft));
         }
@@ -385,7 +389,9 @@ impl Settings {
             .width(Length::FillPortion(1))
             .into(),
         ];
-        if !draft.islands().known().is_some_and(|s| s.enabled) {
+        if !self.desktop.islands.installation.installed()
+            || !draft.islands().known().is_some_and(|s| s.enabled)
+        {
             toggle_items.push(
                 container(self.desktop_switch(
                     if horizontal {

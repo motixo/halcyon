@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 pub(super) const FORMAT: &str = "desktop-cards-undo";
 pub(super) const VERSION: u32 = 1;
 const MAX_LABEL: usize = 120;
-const MAX_ENTRIES: usize = 1024;
+const MAX_ENTRIES: usize = crate::desktop::recovery::MAX_FILES;
 pub(super) const HISTORY_LIMIT: usize = 24;
 
 /// Provenance is durable and independent of the user-facing label.
@@ -29,6 +29,7 @@ pub enum Source {
 /// Which part of the app made a change. A page offers Undo only for its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Owner {
+    Recovery,
     /// The Dock & Panel page.
     DockPanel,
     Preferences,
@@ -53,6 +54,7 @@ pub enum Owner {
 impl Owner {
     pub fn key(self) -> &'static str {
         match self {
+            Self::Recovery => "recovery",
             Self::DockPanel => "dock-panel",
             Self::Preferences => "preferences",
             Self::Appearance => "appearance",
@@ -65,7 +67,8 @@ impl Owner {
             Self::DesktopIcons => "desktop-icons",
         }
     }
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 11] = [
+        Self::Recovery,
         Self::DockPanel,
         Self::Preferences,
         Self::Appearance,
@@ -114,6 +117,8 @@ pub(super) struct UndoFile {
     pub transaction_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub manual_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palette_ack: Option<(u64, u64)>,
 }
 
 /// The validated latest change, ready for Undo.
@@ -156,6 +161,7 @@ impl LatestChange {
             derived_widget: Vec::new(),
             transaction_id: None,
             manual_at: Some(self.created.clone()),
+            palette_ack: None,
         }
     }
     /// Validates a record read from disk. Anything unexpected, including a
@@ -194,7 +200,8 @@ impl LatestChange {
         }
         if entries.is_empty()
             && file.widget.is_none()
-            && (file.source == Source::Manual || file.transaction_id.is_none())
+            && ((file.source == Source::Manual && owner != Owner::Recovery)
+                || file.transaction_id.is_none())
         {
             return Err(invalid("The saved Undo record is empty."));
         }

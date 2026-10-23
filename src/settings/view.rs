@@ -12,6 +12,7 @@ mod navigation;
 mod pages;
 mod preview;
 pub(super) mod profiles;
+mod recovery;
 mod reveal;
 mod setup;
 mod shortcuts;

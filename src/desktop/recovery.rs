@@ -262,6 +262,9 @@ impl Directory {
         Ok(Some((bytes, meta.permissions().mode() & 0o777)))
     }
     fn write_new(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.write_new_mode(name, bytes, 0o600)
+    }
+    fn write_new_mode(&self, name: &str, bytes: &[u8], mode: u32) -> io::Result<()> {
         let name = component(name.as_bytes())?;
         let fd = unsafe {
             libc::openat(
@@ -275,6 +278,7 @@ impl Directory {
             return Err(io::Error::last_os_error());
         }
         let mut file = unsafe { File::from_raw_fd(fd) };
+        file.set_permissions(fs::Permissions::from_mode(mode))?;
         file.write_all(bytes)?;
         file.sync_all()
     }
@@ -356,7 +360,7 @@ pub(crate) fn open_lock_file(path: &Path) -> io::Result<File> {
         .open(format!("/proc/self/fd/{}", entry.as_raw_fd()))
 }
 
-fn read_path(path: &Path, max: usize) -> Result<Option<(Vec<u8>, u32)>, DesktopError> {
+pub(crate) fn read_path(path: &Path, max: usize) -> Result<Option<(Vec<u8>, u32)>, DesktopError> {
     let parent = path.parent().ok_or_else(|| failed("missing parent"))?;
     match Directory::open(parent, false).map_err(failed)? {
         Some(dir) => dir
@@ -966,3 +970,8 @@ fn promote(store: &DesktopStore, next: BaselineInfo) -> Result<BaselineInfo, Des
 
 #[cfg(test)]
 mod tests;
+
+mod restore;
+pub use restore::{RestorePlan, apply_restore, export_baseline, plan_restore};
+pub(crate) use restore::{read_native, record_created, write_native, write_scoped};
+pub(super) use restore::{save_pre_restore, verify_plan};

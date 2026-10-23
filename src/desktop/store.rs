@@ -45,6 +45,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 mod history;
+mod ownership;
 pub use history::UndoReview;
 mod undo;
 pub mod widget;
@@ -198,7 +199,7 @@ impl RawValue {
     pub fn as_str(&self) -> &str {
         &self.0
     }
-    fn from_disk(text: String) -> Self {
+    pub(crate) fn from_disk(text: String) -> Self {
         Self(text)
     }
     fn check(&self) -> Result<(), String> {
@@ -432,6 +433,9 @@ pub struct DesktopPatch {
     entries: BTreeMap<ConfigKey, PatchEntry>,
     guards: BTreeMap<ConfigKey, Option<RawValue>>,
     pub manual_guard: Option<Option<String>>,
+    pub(crate) exact: bool,
+    pub(crate) epoch_guard: Option<u64>,
+    pub(crate) palette_ack: Option<u64>,
     // Verified reversals, including semantic restorations that become no-ops.
     // Kept-current conflicts are deliberately absent from this attribution.
     reversed_native: std::collections::BTreeSet<ConfigKey>,
@@ -442,8 +446,21 @@ impl DesktopPatch {
     pub fn new() -> Self {
         Self::default()
     }
+    pub(crate) fn exact() -> Self {
+        Self {
+            exact: true,
+            ..Self::default()
+        }
+    }
+    fn equal(&self, a: &Option<RawValue>, b: &Option<RawValue>) -> bool {
+        if self.exact {
+            exact_equal(a, b)
+        } else {
+            a == b
+        }
+    }
     pub fn set(&mut self, key: ConfigKey, original: Option<RawValue>, desired: Option<RawValue>) {
-        if original == desired {
+        if self.equal(&original, &desired) {
             self.entries.remove(&key);
             self.guards.insert(key, original);
         } else {
@@ -897,7 +914,8 @@ impl DesktopStore {
         Ok(snapshot)
     }
     pub fn read_user(&self, key: &ConfigKey) -> Result<Option<RawValue>, DesktopError> {
-        read_value(&self.user_path(key))
+        self.confine(&self.user_path(key))?;
+        super::recovery::read_native(self, key)
     }
     fn read_system(&self, key: &ConfigKey) -> Option<RawValue> {
         self.system_roots
@@ -916,7 +934,7 @@ impl DesktopStore {
     /// use the persistent `undo_latest`.)
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn undo(&self, change: &AppliedChange) -> Result<AppliedChange, DesktopError> {
-        let mut patch = DesktopPatch::new();
+        let mut patch = DesktopPatch::exact();
         for entry in &change.entries {
             patch.set(entry.key.clone(), entry.after.clone(), entry.before.clone());
         }
@@ -1007,11 +1025,15 @@ impl DesktopStore {
         Ok(Some(file))
     }
     pub fn manual_at(&self) -> Option<String> {
-        self.history_file().ok().flatten().and_then(|file| {
+        let history = self.history_file().ok().flatten().and_then(|file| {
             file.manual_at
                 .clone()
                 .or_else(|| file.manual().map(|f| f.created.clone()))
-        })
+        });
+        history
+            .into_iter()
+            .chain(self.epoch().ok().and_then(|e| e.manual_at))
+            .max_by_key(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
     }
     /// Undoes the latest change, which must still be the one with `id` (the
     /// one the caller showed), so a newer operation is never undone by
@@ -1053,6 +1075,43 @@ impl DesktopStore {
         };
         self.transact(&patch, widget.as_ref(), Operation::Undo, record)
             .map(|committed| committed.change)
+    }
+
+    pub(super) fn restore_desktop(
+        &self,
+        plan: &super::recovery::RestorePlan,
+    ) -> Result<LatestChange, DesktopError> {
+        self.check(&plan.patch, Operation::Apply)?;
+        let _config = self
+            .app_config
+            .as_deref()
+            .map(config::lock_config)
+            .transpose()
+            .map_err(DesktopError::Io)?;
+        let _desktop = self.lock()?;
+        super::recovery::verify_plan(self, plan)?;
+        let id = format!(
+            "restore-{}",
+            getrandom::u64().map_err(|e| DesktopError::Io(e.to_string()))?
+        );
+        let committed = self.commit_locked(
+            &plan.patch,
+            self.app_config
+                .as_deref()
+                .filter(|_| plan.widgets.iter().next().is_some())
+                .map(|p| (&plan.widgets, p)),
+            Operation::Apply,
+            Record::Set(Owner::Recovery, "Restore desktop", Source::Manual),
+            id,
+        )?;
+        Ok(LatestChange {
+            id: committed.change.id.clone(),
+            owner: Owner::Recovery,
+            label: "Restore desktop".into(),
+            created: committed.created,
+            change: committed.change,
+            widget: committed.widget,
+        })
     }
 
     pub(super) fn capture_baseline(
@@ -1215,7 +1274,14 @@ impl DesktopStore {
             std::process::id(),
             NEXT_FILE.fetch_add(1, Ordering::Relaxed)
         );
-        if patch.is_empty() && widget.is_none() && !matches!(record, Record::Clear(_)) {
+        if patch.is_empty()
+            && widget.is_none()
+            && !matches!(
+                record,
+                Record::Clear(_) | Record::Set(Owner::Recovery, _, _)
+            )
+            && patch.palette_ack.is_none()
+        {
             return Ok(Committed::empty(id));
         }
         let _config_lock = config_path
@@ -1243,6 +1309,22 @@ impl DesktopStore {
         record: Record,
         id: String,
     ) -> Result<Committed, DesktopError> {
+        if patch.keys().any(|key| {
+            key.namespace() == dock_islands_core::NAMESPACE
+                || key.namespace() == dock_islands_core::material::NAMESPACE
+        }) && !super::islands::Installation::discover(self).installed()
+        {
+            return Err(DesktopError::Io(
+                "Islands is not installed. Saved add-on preferences were kept.".into(),
+            ));
+        }
+        if let Some(expected) = patch.epoch_guard {
+            if self.restore_epoch()? != expected {
+                return Err(DesktopError::Io(
+                    "A desktop restore superseded this automatic work".into(),
+                ));
+            }
+        }
         if let Some(expected) = &patch.manual_guard {
             if self.manual_at() != *expected {
                 return Err(DesktopError::Io(
@@ -1266,7 +1348,7 @@ impl DesktopStore {
             .map(|(key, entry)| (key, &entry.original))
             .chain(patch.guards())
         {
-            if self.read_user(key)? != *original {
+            if !patch.equal(&self.read_user(key)?, original) {
                 conflicts.push(key.clone());
             }
         }
@@ -1285,7 +1367,14 @@ impl DesktopStore {
         if !conflicts.is_empty() {
             return Err(DesktopError::Conflict(conflicts));
         }
-        if patch.is_empty() && write.is_none() && !matches!(record, Record::Clear(_)) {
+        if patch.is_empty()
+            && write.is_none()
+            && !matches!(
+                record,
+                Record::Clear(_) | Record::Set(Owner::Recovery, _, _)
+            )
+            && patch.palette_ack.is_none()
+        {
             return Ok(Committed::empty(id));
         }
         // The record as found, kept until this transaction fully succeeds.
@@ -1309,6 +1398,11 @@ impl DesktopStore {
                 after: entry.desired.clone(),
             })
             .collect();
+        let restore_boundary = matches!(record, Record::Set(Owner::Recovery, _, _))
+            || (operation == Operation::Undo
+                && self
+                    .latest_change()?
+                    .is_some_and(|c| c.owner == Owner::Recovery));
         let journal = Journal {
             format: JOURNAL_FORMAT.into(),
             version: match (&undo, &write) {
@@ -1317,9 +1411,11 @@ impl DesktopStore {
                 (None, None) => 1,
             },
             id: id.clone(),
-            operation: match operation {
-                Operation::Apply => "apply",
-                Operation::Undo => "undo",
+            operation: match (operation, restore_boundary) {
+                (Operation::Apply, true) => "restore",
+                (Operation::Undo, true) => "undo_restore",
+                (Operation::Apply, false) => "apply",
+                (Operation::Undo, false) => "undo",
             }
             .into(),
             created: created.clone(),
@@ -1331,7 +1427,7 @@ impl DesktopStore {
             .map_err(|error| DesktopError::Io(error.to_string()))?;
         let change = AppliedChange { id, entries };
         let widget_change = write.as_ref().map(|write| write.change.clone());
-        let new_record = match record {
+        let mut new_record = match record {
             Record::Set(owner, label, source) => {
                 let mut next = LatestChange {
                     id: change.id.clone(),
@@ -1346,6 +1442,7 @@ impl DesktopStore {
                 // Invalid legacy records are still preserved in the journal;
                 // they cannot be interpreted as useful history.
                 if let Ok(Some(mut previous)) = self.history_file() {
+                    next.palette_ack = previous.palette_ack;
                     if source == Source::Derived {
                         // Every relevant manual action retains its own continuous
                         // derivation, including actions below unrelated controls.
@@ -1358,6 +1455,9 @@ impl DesktopStore {
                 } else if source != Source::Manual {
                     next.manual_at = None;
                 }
+                if let Some(stamp) = patch.palette_ack {
+                    next.palette_ack = Some((self.restore_epoch()?, stamp));
+                }
                 next.transaction_id = Some(change.id.clone());
                 Some(
                     serde_json::to_vec_pretty(&next)
@@ -1368,6 +1468,7 @@ impl DesktopStore {
                 let mut file = self
                     .history_file()?
                     .ok_or_else(|| DesktopError::UndoUnavailable("No history".into()))?;
+                let palette_ack = file.palette_ack;
                 let mut history = std::mem::take(&mut file.history);
                 if file.source == Source::Manual {
                     history.push(file);
@@ -1425,6 +1526,7 @@ impl DesktopStore {
                     empty
                 });
                 previous.history = history;
+                previous.palette_ack = palette_ack;
                 previous.transaction_id = Some(change.id.clone());
                 previous.manual_at = Some(created.clone());
                 Some(
@@ -1447,10 +1549,16 @@ impl DesktopStore {
             });
         }
         self.confine(&self.journal_path())?;
+        if matches!(record, Record::Set(Owner::Recovery, _, _)) {
+            super::recovery::save_pre_restore(self)?;
+        }
         // Capture only after every read-only transaction validation succeeds.
         super::recovery::ensure_locked(self, super::recovery::BaselineKind::OriginalDesktop)?;
         atomic_write(&self.journal_path(), &bytes, Some(0o600))
             .map_err(|error| io_error("Could not record the change journal", error))?;
+        if restore_boundary {
+            self.advance_restore_epoch()?;
+        }
         let mut written: Vec<&ConfigKey> = Vec::new();
         for (index, (key, entry)) in order.into_iter().enumerate() {
             #[cfg(test)]
@@ -1469,7 +1577,7 @@ impl DesktopStore {
             // since the check above. Never overwrite that: put back what this
             // change wrote so far and report the conflict.
             match self.read_user(key) {
-                Ok(current) if current == entry.original => {}
+                Ok(current) if patch.equal(&current, &entry.original) => {}
                 Ok(_) => {
                     return Err(match self.fail(patch, &written, None, String::new()) {
                         DesktopError::RolledBack(_) => DesktopError::Conflict(vec![key.clone()]),
@@ -1483,6 +1591,11 @@ impl DesktopStore {
                 return Err(self.fail(patch, &written, None, error.to_string()));
             }
             written.push(key);
+            if entry.original.is_none() && entry.desired.is_some() {
+                if let Err(error) = super::recovery::record_created(self, key) {
+                    return Err(self.fail(patch, &written, None, error.to_string()));
+                }
+            }
         }
         #[cfg(test)]
         if matches!(*self.fault.borrow(), Some(Fault::InterruptBeforeWidget)) {
@@ -1496,6 +1609,35 @@ impl DesktopStore {
         #[cfg(test)]
         if matches!(*self.fault.borrow(), Some(Fault::InterruptBeforeRecord)) {
             return Err(DesktopError::Io("Simulated interruption".into()));
+        }
+        if restore_boundary {
+            let draft = super::wallpaper::WallpaperDraft::load(self)
+                .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
+            let epoch = self
+                .restore_epoch()
+                .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
+            let ack = Some((
+                epoch,
+                super::wallpaper::automatic::source(self, &draft).stamp,
+            ));
+            if let Some(bytes) = &mut new_record {
+                let mut next: undo::UndoFile = serde_json::from_slice(bytes)
+                    .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
+                next.palette_ack = ack;
+                *bytes = serde_json::to_vec_pretty(&next)
+                    .map_err(|e| self.fail(patch, &written, write.as_ref(), e.to_string()))?;
+            }
+        }
+        if new_record
+            .as_ref()
+            .is_some_and(|bytes| bytes.len() as u64 > MAX_RECORD_BYTES)
+        {
+            return Err(self.fail(
+                patch,
+                &written,
+                write.as_ref(),
+                "Updated recovery history is too large".into(),
+            ));
         }
         if let Err(error) = self.update_record(record, new_record.as_deref()) {
             return Err(self.fail(patch, &written, write.as_ref(), error));
@@ -1697,8 +1839,8 @@ impl DesktopStore {
                 continue;
             };
             match self.read_user(key) {
-                Ok(current) if current == entry.original => {}
-                Ok(current) if current == entry.desired => {
+                Ok(current) if patch.equal(&current, &entry.original) => {}
+                Ok(current) if patch.equal(&current, &entry.desired) => {
                     #[cfg(test)]
                     if matches!(&*self.fault.borrow(), Some(Fault::FailWriteAndRollback { rollback, .. }) if rollback == *key)
                     {
@@ -1747,8 +1889,8 @@ impl DesktopStore {
                         .as_ref()
                         .is_none_or(|text| text.len() as u64 <= MAX_RECORD_BYTES)
                         && match journal.operation.as_str() {
-                            "apply" => true,
-                            "undo" => undo.record.is_some(),
+                            "apply" | "restore" => true,
+                            "undo" | "undo_restore" => undo.record.is_some(),
                             _ => false,
                         }
                 }
@@ -1804,9 +1946,9 @@ impl DesktopStore {
         let mut report = RecoveryReport::default();
         for ChangeEntry { key, before, after } in entries {
             let current = self.read_user(&key)?;
-            if current == before {
+            if exact_equal(&current, &before) {
                 report.unchanged.push(key);
-            } else if current == after {
+            } else if exact_equal(&current, &after) {
                 self.write_key(&key, before.as_ref())
                     .map_err(|error| io_error(format!("Could not restore {key}"), error))?;
                 report.restored.push(key);
@@ -1834,6 +1976,9 @@ impl DesktopStore {
                 }
             }
         }
+        if matches!(journal.operation.as_str(), "restore" | "undo_restore") {
+            self.acknowledge_recovered_restore(&journal.id)?;
+        }
         fs::remove_file(self.journal_path())
             .map_err(|error| io_error("Could not clear the change journal", error))?;
         Ok(report)
@@ -1854,13 +1999,14 @@ impl DesktopStore {
             return Ok(true);
         }
         let ours = match (journal.operation.as_str(), &current) {
-            ("apply" | "undo", Some(bytes)) => serde_json::from_slice::<undo::UndoFile>(bytes)
-                .is_ok_and(|file| {
+            ("apply" | "undo" | "restore" | "undo_restore", Some(bytes)) => {
+                serde_json::from_slice::<undo::UndoFile>(bytes).is_ok_and(|file| {
                     file.format == undo::FORMAT
                         && (file.transaction_id.as_deref() == Some(&journal.id)
                             || file.id == journal.id)
-                }),
-            ("undo", None) => true,
+                })
+            }
+            ("undo" | "undo_restore", None) => true,
             _ => false,
         };
         if !ours {
@@ -1971,26 +2117,18 @@ impl DesktopStore {
         }
         self.confine(&path)
             .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error.to_string()))?;
-        match value {
-            Some(value) => {
-                if let Some(parent) = path.parent() {
-                    fs::create_dir_all(parent)?;
-                }
-                atomic_write(&path, value.0.as_bytes(), None)
-            }
-            None => match fs::remove_file(&path) {
-                Ok(()) => path.parent().map_or(Ok(()), sync_dir),
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-                Err(error) => Err(error),
-            },
-        }
-        .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))
+        super::recovery::write_native(&path, value.map(|v| v.as_str().as_bytes()))
+            .map_err(|error| io::Error::new(error.kind(), format!("{}: {error}", path.display())))
     }
 
     #[cfg(test)]
     pub(crate) fn inject(&self, fault: Option<Fault>) {
         *self.fault.borrow_mut() = fault;
     }
+}
+
+fn exact_equal(a: &Option<RawValue>, b: &Option<RawValue>) -> bool {
+    a.as_ref().map(RawValue::as_str) == b.as_ref().map(RawValue::as_str)
 }
 
 fn read_value(path: &Path) -> Result<Option<RawValue>, DesktopError> {

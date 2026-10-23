@@ -340,6 +340,8 @@ fn material_native_chooser_adjust_reset_and_undo() {
     use crate::materials::{Kind, Target};
     use cosmic::iced::{Event, mouse};
     wallpaper(&amber());
+    let store = crate::desktop::DesktopStore::from_env().unwrap();
+    crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
     let click = |native: &mut Native, app: &mut Settings, id: &str| {
         let b = native.bounds(app.settings_view(), id);
         assert!(
@@ -366,6 +368,10 @@ fn material_native_chooser_adjust_reset_and_undo() {
     let original = Config::load();
     for size in [Size::new(820., 600.), Size::new(1280., 900.)] {
         let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
+        let _ = app.update(Message::InstallationReady(
+            app.installation_generation,
+            crate::desktop::islands::Installation::discover(&store),
+        ));
         let _ = app.update(Message::Resized(size));
         goto(&mut app, Page::Appearance);
         // libcosmic reserves a 48 px native window header outside settings_view.

@@ -283,13 +283,9 @@ impl Settings {
                 .into(),
         ];
         let mut empty = error.is_none();
-        if let Some((_, label, _)) = self
-            .last_desktop_change
-            .as_ref()
-            .filter(|(owner, _, id)| {
-                owns(*owner, self.page) && self.undo_baseline.as_ref() != Some(id)
-            })
-        {
+        if let Some((_, label, _)) = self.last_desktop_change.as_ref().filter(|(owner, _, id)| {
+            owns(*owner, self.page) && self.undo_baseline.as_ref() != Some(id)
+        }) {
             empty = false;
             items.push(
                 button::text(format!("Undo {}", label.to_lowercase()))
@@ -318,12 +314,17 @@ impl Settings {
 fn owns(owner: crate::desktop::Owner, page: Page) -> bool {
     use crate::desktop::Owner;
     match owner {
+        Owner::Recovery => false,
         Owner::DockPanel => page == Page::DesktopDock,
         Owner::Preferences => {
             page.sidebar() == Page::Widgets
                 || matches!(
                     page,
-                    Page::Glance | Page::Overview | Page::WidgetLayout | Page::Appearance | Page::Themes
+                    Page::Glance
+                        | Page::Overview
+                        | Page::WidgetLayout
+                        | Page::Appearance
+                        | Page::Themes
                 )
         }
         Owner::Appearance => matches!(page, Page::Themes | Page::DesktopAppearance),

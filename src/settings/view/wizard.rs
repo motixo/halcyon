@@ -28,7 +28,11 @@ fn backdrop(welcome: bool) -> Option<Handle> {
     let decode = |bytes: &[u8]| {
         let image = image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg).ok()?;
         let rgba = image.to_rgba8();
-        Some(Handle::from_rgba(rgba.width(), rgba.height(), rgba.into_raw()))
+        Some(Handle::from_rgba(
+            rgba.width(),
+            rgba.height(),
+            rgba.into_raw(),
+        ))
     };
     DECODED.get_or_init(|| {
         [
@@ -65,8 +69,8 @@ fn band(look: Option<&str>, aspect: f32) -> Option<Handle> {
         } else {
             (w, ((w as f32) / aspect) as u32)
         };
-        let part = image::imageops::crop_imm(&*image, (w - cw) / 2, (h - ch) / 2, cw, ch)
-            .to_image();
+        let part =
+            image::imageops::crop_imm(&*image, (w - cw) / 2, (h - ch) / 2, cw, ch).to_image();
         Handle::from_rgba(part.width(), part.height(), part.into_raw())
     });
     cropped.push((key, handle.clone()));
@@ -267,12 +271,9 @@ fn panel_drawing<'a>(islands: bool, shape: Shape, width: f32, height: f32) -> El
     let tone = Color::from_rgba(0.08, 0.08, 0.2, 0.88);
     let piece = |w: Length| -> Element<'a, Message> {
         fill_box(
-            row::with_children(vec![
-                shape_dot(height * 0.32),
-                shape_dot(height * 0.32),
-            ])
-            .spacing(height * 0.2)
-            .into(),
+            row::with_children(vec![shape_dot(height * 0.32), shape_dot(height * 0.32)])
+                .spacing(height * 0.2)
+                .into(),
             tone,
             EDGE,
             corner(shape, height),
@@ -305,8 +306,8 @@ fn shape_dot<'a>(size: f32) -> Element<'a, Message> {
 
 /// The dock: a short row of icons in its shape.
 fn dock_drawing<'a>(shape: Shape, icon: f32) -> Element<'a, Message> {
-    let icons = row::with_children((0..5).map(|_| shape_dot(icon)).collect::<Vec<_>>())
-        .spacing(icon * 0.5);
+    let icons =
+        row::with_children((0..5).map(|_| shape_dot(icon)).collect::<Vec<_>>()).spacing(icon * 0.5);
     fill_box(
         icons.into(),
         Color::from_rgba(0.08, 0.08, 0.2, 0.88),
@@ -363,9 +364,9 @@ impl Settings {
             words(Screen::Welcome.hint(), 19., LAVENDER),
             cosmic::iced::widget::space().height(18.).into(),
             row::with_children(actions)
-            .spacing(16)
-            .align_y(Alignment::Center)
-            .into(),
+                .spacing(16)
+                .align_y(Alignment::Center)
+                .into(),
         ])
         .spacing(6);
         column::with_children(vec![
@@ -431,9 +432,13 @@ impl Settings {
         parts.push(cosmic::iced::widget::space().height(6.).into());
         parts.push(
             row::with_children(vec![
-                container(row::with_children(left).spacing(8).align_y(Alignment::Center))
-                    .width(Length::FillPortion(2))
-                    .into(),
+                container(
+                    row::with_children(left)
+                        .spacing(8)
+                        .align_y(Alignment::Center),
+                )
+                .width(Length::FillPortion(2))
+                .into(),
                 container(dots(step))
                     .width(Length::FillPortion(2))
                     .align_x(Alignment::Center)
@@ -493,7 +498,10 @@ impl Settings {
                 ])
                 .spacing(6),
             )
-            .id(cosmic::widget::Id::new(format!("wizard-look-{}", preset.id)))
+            .id(cosmic::widget::Id::new(format!(
+                "wizard-look-{}",
+                preset.id
+            )))
             .class(button_style(
                 if selected {
                     Color::from_rgba(0.60, 0.53, 0.98, 0.16)
@@ -521,18 +529,20 @@ impl Settings {
     }
 
     fn wizard_bars<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
-        let bars = wizard.bars;
+        let mut bars = wizard.bars;
+        bars.islands &= self.desktop.islands.installation.installed();
         let column_width = (self.wizard_inner_width() - 18.) / 2.;
         let tile_width = (column_width - 8. * 2.) / 3.;
         let draw = tile_width - 24.;
-        let line = |name: &'static str, choices: Vec<Element<'a, Message>>| -> Element<'a, Message> {
-            column::with_children(vec![
-                words(name, 12., SOFT),
-                row::with_children(choices).spacing(8).into(),
-            ])
-            .spacing(4)
-            .into()
-        };
+        let line =
+            |name: &'static str, choices: Vec<Element<'a, Message>>| -> Element<'a, Message> {
+                column::with_children(vec![
+                    words(name, 12., SOFT),
+                    row::with_children(choices).spacing(8).into(),
+                ])
+                .spacing(4)
+                .into()
+            };
         let shapes = |current: Shape, part: &'static str, message: fn(Shape) -> Step| {
             Shape::ALL
                 .into_iter()
@@ -547,41 +557,34 @@ impl Settings {
                 })
                 .collect::<Vec<_>>()
         };
-        let mut panel = vec![
-            words("Panel", 15., INK),
-            line(
-                "Style",
-                vec![
-                    choice(
-                        panel_drawing(false, bars.panel_shape, draw, 12.),
-                        "Bar",
-                        "wizard-panel-bar".into(),
-                        !bars.islands,
-                        Some(go(Step::Islands(false))),
-                    ),
-                    choice(
-                        panel_drawing(true, bars.panel_shape, draw, 12.),
-                        "Islands",
-                        "wizard-panel-islands".into(),
-                        bars.islands,
-                        wizard.islands_available.then(|| go(Step::Islands(true))),
-                    ),
-                ],
-            ),
-            line("Shape", shapes(bars.panel_shape, "panel", Step::PanelShape)),
-        ];
-        if !wizard.islands_available {
-            panel.push(words(
-                "Islands needs the Halcyon panel component, which isn’t running here.",
-                12.,
-                SOFT,
+        let mut styles = vec![choice(
+            panel_drawing(false, bars.panel_shape, draw, 12.),
+            "Bar",
+            "wizard-panel-bar".into(),
+            !bars.islands,
+            Some(go(Step::Islands(false))),
+        )];
+        if wizard.islands_available && self.desktop.islands.installation.installed() {
+            styles.push(choice(
+                panel_drawing(true, bars.panel_shape, draw, 12.),
+                "Islands",
+                "wizard-panel-islands".into(),
+                bars.islands,
+                Some(go(Step::Islands(true))),
             ));
         }
+        let panel = vec![
+            words("Panel", 15., INK),
+            line("Style", styles),
+            line("Shape", shapes(bars.panel_shape, "panel", Step::PanelShape)),
+        ];
         let edge = || shape(46., 2., 1., Color::from_rgba(1., 1., 1., 0.35));
         let position = |floating: bool| -> Element<'a, Message> {
             column::with_children(vec![
                 dock_drawing(bars.dock_shape, 5.),
-                cosmic::iced::widget::space().height(if floating { 5. } else { 0. }).into(),
+                cosmic::iced::widget::space()
+                    .height(if floating { 5. } else { 0. })
+                    .into(),
                 edge(),
             ])
             .align_x(Alignment::Center)
@@ -629,8 +632,14 @@ impl Settings {
         column::with_children(vec![
             self.wizard_bars_preview(wizard),
             row::with_children(vec![
-                column::with_children(panel).spacing(10).width(column_width).into(),
-                column::with_children(dock).spacing(10).width(column_width).into(),
+                column::with_children(panel)
+                    .spacing(10)
+                    .width(column_width)
+                    .into(),
+                column::with_children(dock)
+                    .spacing(10)
+                    .width(column_width)
+                    .into(),
             ])
             .spacing(18)
             .into(),
@@ -642,10 +651,14 @@ impl Settings {
     /// The chosen look's wallpaper, full width, with the panel on top and
     /// the dock below as they will look.
     fn wizard_bars_preview<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
-        let bars = wizard.bars;
+        let mut bars = wizard.bars;
+        bars.islands &= self.desktop.islands.installation.installed();
         let w = self.wizard_inner_width();
         // What the window height leaves above the two choice columns.
-        let h = (self.window.height - 520.).min(w * 0.24).clamp(80., 190.).floor();
+        let h = (self.window.height - 520.)
+            .min(w * 0.24)
+            .clamp(80., 190.)
+            .floor();
         let background: Element<'a, Message> = match band(wizard.look, w / h) {
             Some(handle) => cosmic::widget::image(handle)
                 .width(w)
@@ -656,11 +669,16 @@ impl Settings {
         };
         let panel_gap = if bars.islands { 6. } else { 0. };
         let overlay = column::with_children(vec![
-            container(panel_drawing(bars.islands, bars.panel_shape, w - 2. * panel_gap - 16., 18.))
-                .width(Length::Fill)
-                .padding([panel_gap, 8. + panel_gap])
-                .align_x(Alignment::Center)
-                .into(),
+            container(panel_drawing(
+                bars.islands,
+                bars.panel_shape,
+                w - 2. * panel_gap - 16.,
+                18.,
+            ))
+            .width(Length::Fill)
+            .padding([panel_gap, 8. + panel_gap])
+            .align_x(Alignment::Center)
+            .into(),
             cosmic::iced::widget::space().height(Length::Fill).into(),
             container(if bars.hides {
                 shape(60., 4., 2., Color::from_rgba(1., 1., 1., 0.5))
@@ -742,7 +760,8 @@ impl Settings {
     }
 
     fn wizard_ready<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
-        let bars = wizard.bars;
+        let mut bars = wizard.bars;
+        bars.islands &= self.desktop.islands.installation.installed();
         let look = wizard
             .look
             .and_then(|id| {

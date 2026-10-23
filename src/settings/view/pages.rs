@@ -1263,6 +1263,8 @@ impl Settings {
                     "Briefly reveals options when you expand a section. Reduce motion in Accessibility always takes precedence."),
                     toggler(self.config.settings_animations).on_toggle(Message::SettingsAnimations).into())),
             ]),
+            self.desktop_recovery_section(),
+            self.addons_section(),
             section(vec![
                 heading("Privacy", ""),
                 detail("Daily activity report", crate::usage::DISCLOSURE),

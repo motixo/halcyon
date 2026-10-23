@@ -56,7 +56,14 @@ pub(super) fn tile_style(selected: bool, _accent: Color) -> cosmic::theme::Butto
 
 /// The bundled wallpaper a starter look shows, by palette name.
 fn bundled_name(profile: &crate::desktop::profiles::Profile) -> Option<&str> {
-    match profile.wallpaper.as_ref()?.background.as_ref()?.source.as_ref()? {
+    match profile
+        .wallpaper
+        .as_ref()?
+        .background
+        .as_ref()?
+        .source
+        .as_ref()?
+    {
         crate::desktop::profiles::SourceLook::Bundled(name) => Some(name),
         _ => None,
     }
@@ -72,7 +79,10 @@ pub(super) fn look_rgba(id: &str, wallpaper: bool) -> Option<std::sync::Arc<imag
     static DECODED: Mutex<Vec<((String, bool), Option<Arc<image::RgbaImage>>)>> =
         Mutex::new(Vec::new());
     let mut decoded = DECODED.lock().ok()?;
-    if let Some((_, image)) = decoded.iter().find(|(key, _)| key.0 == id && key.1 == wallpaper) {
+    if let Some((_, image)) = decoded
+        .iter()
+        .find(|(key, _)| key.0 == id && key.1 == wallpaper)
+    {
         return image.clone();
     }
     macro_rules! looks {
@@ -98,7 +108,10 @@ fn look_image(id: &str, wallpaper: bool) -> Option<cosmic::widget::image::Handle
     static HANDLES: std::sync::Mutex<Vec<((String, bool), Option<Handle>)>> =
         std::sync::Mutex::new(Vec::new());
     let mut handles = HANDLES.lock().ok()?;
-    if let Some((_, handle)) = handles.iter().find(|(key, _)| key.0 == id && key.1 == wallpaper) {
+    if let Some((_, handle)) = handles
+        .iter()
+        .find(|(key, _)| key.0 == id && key.1 == wallpaper)
+    {
         return handle.clone();
     }
     let handle = look_rgba(id, wallpaper)
@@ -196,7 +209,11 @@ pub(in crate::settings) fn card<'a>(
     let edge = {
         let _style = crate::widget_style::scope(config);
         crate::widget_style::edge(Palette {
-            background: if transparent { Color::TRANSPARENT } else { palette.background },
+            background: if transparent {
+                Color::TRANSPARENT
+            } else {
+                palette.background
+            },
             ..palette
         })
     };
@@ -288,7 +305,11 @@ pub(in crate::settings) fn card<'a>(
                 background: Some(Background::Color(background)),
                 border: Border {
                     color: border,
-                    width: if transparent { 1. } else { (edge.0 * scale * 2.).max(1.) },
+                    width: if transparent {
+                        1.
+                    } else {
+                        (edge.0 * scale * 2.).max(1.)
+                    },
                     radius: radius.into(),
                 },
                 shadow: cosmic::iced::Shadow {
@@ -550,6 +571,7 @@ impl Settings {
                 );
             }
             layers.extend(super::desktop::preview::bars(
+                self.desktop.islands.installation.installed(),
                 bars.iter().collect(),
                 &editor.installed.applets,
                 None,
@@ -719,13 +741,13 @@ impl Settings {
             parts.push(label(preset.description, 11., MUTED));
         }
         button::custom(column::with_children(parts).spacing(6))
-        .id(cosmic::widget::Id::new(format!("preset-{}", preset.id)))
-        .class(tile_style(selected, self.settings_accent()))
-        .selected(selected)
-        .padding(8)
-        .width(self.tile_width())
-        .on_press(edit(Edit::Select(Selection::Preset(preset.id))))
-        .into()
+            .id(cosmic::widget::Id::new(format!("preset-{}", preset.id)))
+            .class(tile_style(selected, self.settings_accent()))
+            .selected(selected)
+            .padding(8)
+            .width(self.tile_width())
+            .on_press(edit(Edit::Select(Selection::Preset(preset.id))))
+            .into()
     }
 
     pub(super) fn name_field(&self, save: &'static str) -> Element<'_, Message> {
@@ -944,14 +966,9 @@ impl Settings {
         }
         let mut info = vec![title];
         if let Selection::Preset(id) = selection
-            && let Some(hint) = crate::desktop::profiles::preset(id)
-                .and_then(|preset| {
-                    crate::desktop::profiles::missing(
-                        &preset,
-                        &editor.bundled_dir(),
-                        editor.islands(),
-                    )
-                })
+            && let Some(hint) = crate::desktop::profiles::preset(id).and_then(|preset| {
+                crate::desktop::profiles::missing(&preset, &editor.bundled_dir(), editor.islands())
+            })
         {
             info.push(label(hint, 12., WARN));
         }
@@ -1236,8 +1253,7 @@ impl Settings {
             .presets()
             .iter()
             .filter(|preset| {
-                !preset.profile.appearance_only
-                    && preset.id != crate::desktop::profiles::CLEAN
+                !preset.profile.appearance_only && preset.id != crate::desktop::profiles::CLEAN
             })
             .map(|preset| self.preset_tile(preset))
             .collect();

@@ -271,7 +271,8 @@ fn unset_window_surfaces_follow_the_style_and_wallpaper_tint() {
 #[test]
 fn material_survives_theme_apply_and_captured_setup_restores_native_bars() {
     use crate::materials::{Finish, Kind, Target};
-    let (_fixture, store, installed) = reported("material-profile", true);
+    let (fixture, store, installed) = reported("material-profile", true);
+    crate::desktop::islands::fixture_installed(&fixture.0);
     crate::desktop::materials::apply(&store, Target::Shared, Some(Finish::new(Kind::Liquid)))
         .unwrap();
     let theme = record(Family::Soft);

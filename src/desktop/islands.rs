@@ -176,6 +176,11 @@ pub struct Client {
 }
 impl Client {
     pub fn connect(store: &DesktopStore) -> Result<Self, String> {
+        if !Installation::discover(store).installed() {
+            return Err(
+                "Islands is not installed or its installation could not be verified".into(),
+            );
+        }
         let runtime = std::env::var_os("XDG_RUNTIME_DIR")
             .map(PathBuf::from)
             .ok_or("No desktop session")?;
@@ -481,6 +486,7 @@ mod tests {
     #[test]
     fn sidecar_apply_conflict_and_persistent_undo_preserve_native_lists() {
         let fixture = Fixture::new("islands-transaction");
+        fixture_installed(&fixture.0);
         fixture.system(
             "com.system76.CosmicPanel.Dock",
             "plugins_center",
@@ -550,5 +556,62 @@ mod tests {
             f.read(NAMESPACE, "Dock").as_deref(),
             Some("(version:99,new_field:true)")
         );
+    }
+}
+
+#[cfg(test)]
+mod installation_tests {
+    use super::*;
+    use crate::desktop::store::tests::Fixture;
+    #[test]
+    fn task2_absent_islands_cannot_write_even_a_disabled_sidecar() {
+        let f = Fixture::new("absent-islands-write");
+        let store = f.store();
+        let mut patch = super::super::DesktopPatch::new();
+        patch.set(
+            key(PanelKind::Dock),
+            None,
+            Some(RawValue::encode(&Settings::default()).unwrap()),
+        );
+        assert!(
+            store.apply(&patch).is_err(),
+            "leftovers/default settings must not install a sidecar"
+        );
+        assert!(!store.user_path(&key(PanelKind::Dock)).exists());
+    }
+}
+
+mod installation;
+pub use installation::Installation;
+#[cfg(test)]
+pub(crate) use installation::fixture_installed;
+
+#[cfg(test)]
+mod installation_races {
+    use super::*;
+    #[test]
+    fn task2_removal_after_preview_blocks_sidecar_but_preserves_stored_preferences() {
+        let f = crate::desktop::store::tests::Fixture::new("islands-removed");
+        fixture_installed(&f.0);
+        let store = f.store();
+        let mut patch = crate::desktop::DesktopPatch::new();
+        let key = key(PanelKind::Panel);
+        patch.set(
+            key.clone(),
+            None,
+            Some(RawValue::encode(&Settings::default()).unwrap()),
+        );
+        store.apply(&patch).unwrap();
+        let saved = std::fs::read(store.user_path(&key)).unwrap();
+        let mut changed = Settings::default();
+        changed.gap = 42;
+        patch.set(
+            key.clone(),
+            store.read_user(&key).unwrap(),
+            Some(RawValue::encode(&changed).unwrap()),
+        );
+        std::fs::remove_file(f.0.join("islands-installation.json")).unwrap();
+        assert!(store.apply(&patch).is_err());
+        assert_eq!(std::fs::read(store.user_path(&key)).unwrap(), saved);
     }
 }

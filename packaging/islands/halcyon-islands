@@ -166,6 +166,7 @@ def change(command, home, fixture, launcher, installer):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, epilog='Run as your desktop user, without sudo.')
     parser.add_argument('--root', type=Path, help=argparse.SUPPRESS)
+    parser.add_argument('--json', action='store_true', help='Versioned installation capability (status only)')
     parser.add_argument('command', choices=['status', 'enable', 'disable'])
     args = parser.parse_args()
     home = (args.root or Path.home()).resolve()
@@ -173,6 +174,19 @@ def main():
         # Fixture mode keeps even inherited XDG paths inside the fixture.
         os.environ.update(HOME=str(home), XDG_DATA_HOME=str(home / '.local/share'),
                           XDG_STATE_HOME=str(home / '.local/state'), XDG_CONFIG_HOME=str(home / '.config'))
+    if args.command == 'status' and args.json:
+        helper = LIBRARY / 'install_status.py'
+        if not helper.is_file():
+            helper = Path('/usr/lib/cosmic-ext-halcyon/islands-status.py')
+        if not helper.is_file():
+            print(json.dumps(dict(format='halcyon-islands-installation', version=1,
+                                  installation='absent', provenance=None, enabled=False,
+                                  compatible=None, running=None, healthy=None)))
+            return 0
+        command = [sys.executable, '-B', str(helper)]
+        if args.root:
+            command += ['--root', str(home), '--library', str(LIBRARY)]
+        return subprocess.run(command, timeout=8, check=False).returncode
     if not (LIBRARY / 'panel_launcher.py').is_file() or not (LIBRARY / 'install.py').is_file():
         print('Islands package is not installed completely. Install or reinstall cosmic-ext-halcyon-islands.', file=sys.stderr)
         return 1

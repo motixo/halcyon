@@ -109,11 +109,11 @@ class IslandsPackage(unittest.TestCase):
         self.preference.parent.mkdir(parents=True)
         self.preference.write_bytes(b'untouched native preferences\n')
 
-    def cli(self, command, expected=0, fixture=True):
+    def cli(self, command, expected=0, fixture=True, options=()):
         args = [self.command]
         if fixture:
             args += ['--root', self.home]
-        result = run([*args, command], env=self.env)
+        result = run([*args, command, *options], env=self.env)
         self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
         self.assertNotIn('FAKE PANEL MUST NOT RUN', result.stdout + result.stderr)
         self.assertEqual(self.preference.read_bytes(), b'untouched native preferences\n')
@@ -121,6 +121,17 @@ class IslandsPackage(unittest.TestCase):
 
     def journals(self):
         return sorted((self.home / '.local/share/cosmic-desktop-cards/backups').glob('panel-*/install-record.json'))
+
+    def test_structured_status_never_enabled_and_removed_payload(self):
+        result = self.cli('status', options=['--json'])
+        status = json.loads(result.stdout)
+        self.assertEqual(status['installation'], 'installed')
+        self.assertEqual(status['provenance'], 'package')
+        self.assertFalse(status['enabled'])
+        self.assertIsNone(status['running'])
+        (self.library / 'cosmic-panel-islands').unlink()
+        status = json.loads(self.cli('status', options=['--json']).stdout)
+        self.assertEqual(status['installation'], 'absent')
 
     def test_reviewed_source_rebuild_needs_new_probe_bundle(self):
         versions = {k: v.replace('~24.04~', '~26.04~') for k, v in panel_launcher.PACKAGES.items()}
@@ -148,6 +159,7 @@ class IslandsPackage(unittest.TestCase):
             f'usr/lib/{PACKAGE}/cosmic-panel-islands': 0o755,
             f'usr/lib/{PACKAGE}/companion-manifest.json': 0o644,
             f'usr/lib/{PACKAGE}/install.py': 0o755,
+            f'usr/lib/{PACKAGE}/install_status.py': 0o644,
             f'usr/lib/{PACKAGE}/panel_launcher.py': 0o755,
             'usr/bin/halcyon-islands': 0o755,
             f'usr/share/doc/{PACKAGE}/copyright': 0o644,

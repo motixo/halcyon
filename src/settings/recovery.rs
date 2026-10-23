@@ -15,6 +15,7 @@ const SHORT: usize = 3;
 #[cfg(test)]
 pub fn owner_page(owner: Owner) -> super::Page {
     match owner {
+        Owner::Recovery => super::Page::General,
         Owner::Preferences => super::Page::Widgets,
         Owner::DockPanel => super::Page::DesktopDock,
         Owner::Appearance => super::Page::DesktopAppearance,
@@ -137,4 +138,78 @@ mod tests {
         };
         assert_eq!(summary(&quiet), "Interrupted change undone");
     }
+}
+
+#[derive(Default)]
+pub(super) struct DesktopRecovery {
+    pub info: Option<crate::desktop::recovery::BaselineInfo>,
+    pub problem: Option<String>,
+    pub plan: Option<crate::desktop::recovery::RestorePlan>,
+    pub busy: bool,
+}
+impl DesktopRecovery {
+    pub fn refresh(&mut self) {
+        match crate::desktop::DesktopStore::from_env()
+            .and_then(|s| crate::desktop::recovery::load_baseline(&s))
+        {
+            Ok(info) => {
+                self.info = info;
+                self.problem = None;
+            }
+            Err(error) => {
+                self.info = None;
+                self.problem = Some(error.to_string());
+            }
+        }
+    }
+    pub fn summary(&self) -> String {
+        self.info.as_ref().map_or_else(
+            || "Saved before the first desktop change".into(),
+            |info| {
+                let kind = match info.kind {
+                    crate::desktop::recovery::BaselineKind::OriginalDesktop => "Original desktop",
+                    crate::desktop::recovery::BaselineKind::CurrentDesktop => "Desktop snapshot",
+                };
+                format!(
+                    "{kind} · {} · {} scopes",
+                    info.captured_at
+                        .split('T')
+                        .next()
+                        .unwrap_or(&info.captured_at),
+                    info.domains.len()
+                )
+            },
+        )
+    }
+}
+
+pub(super) fn export_task() -> cosmic::app::Task<super::Message> {
+    cosmic::task::future(async {
+        let result = async {
+            let store = crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+            let bytes =
+                crate::desktop::recovery::export_baseline(&store).map_err(|e| e.to_string())?;
+            let response = cosmic::dialog::file_chooser::save::Dialog::new()
+                .title("Export desktop recovery".to_string())
+                .file_name("halcyon-desktop-recovery.json".to_string())
+                .save_file()
+                .await;
+            match response {
+                Ok(response) => {
+                    let Some(url) = response.url() else {
+                        return Ok(None);
+                    };
+                    let path = url
+                        .to_file_path()
+                        .map_err(|_| "Choose a local file".to_string())?;
+                    super::profiles::write_export(&path, bytes.as_bytes(), store.fixture_root())?;
+                    Ok(Some(path))
+                }
+                Err(cosmic::dialog::file_chooser::Error::Cancelled) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        .await;
+        super::Message::RecoveryExported(result)
+    })
 }

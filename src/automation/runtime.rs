@@ -30,6 +30,7 @@ pub const HOLD_CHECK: Duration = Duration::from_secs(15);
 pub struct Job {
     pub due: Vec<Due>,
     pub held: BTreeSet<Domain>,
+    pub epoch: u64,
 }
 
 impl Job {
@@ -42,10 +43,12 @@ impl Job {
         for due in self.due {
             let expected = store.manual_at();
             let manual = manual_at(store, None);
-            let ran = if let Some(at) = manual.filter(|at| at.timestamp() >= due.at) {
+            let ran = if store.restore_epoch().ok() != Some(self.epoch) {
+                Ran::KeptManual(chrono::Utc::now().timestamp())
+            } else if let Some(at) = manual.filter(|at| at.timestamp() >= due.at) {
                 Ran::KeptManual(at.timestamp())
             } else {
-                crate::desktop::actions::scheduled(expected, || {
+                crate::desktop::actions::scheduled_epoch(self.epoch, expected, || {
                     run(
                         store,
                         &installed,
@@ -229,6 +232,14 @@ impl Automator {
         }
         let settings = self.settings.clone()?;
         let store = self.store.as_ref()?;
+        let epoch = match store.restore_epoch() {
+            Ok(epoch) => epoch,
+            Err(_) => {
+                // Do not consume a due event or mark a nonexistent job busy.
+                self.wake = Some(instant + HOLD_CHECK);
+                return None;
+            }
+        };
         // A Settings window that ended without releasing its hold (killed or
         // crashed) leaves the file unchanged: look whether it still runs.
         if !self.held.is_empty() {
@@ -306,6 +317,7 @@ impl Automator {
         }
         self.busy = true;
         Some(Job {
+            epoch,
             due,
             held: self.held.clone(),
         })

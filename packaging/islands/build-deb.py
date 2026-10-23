@@ -64,6 +64,7 @@ def build(binary, manifest, version, out, licenses=None):
         (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
         for name in ('install.py', 'panel_launcher.py'):
             stage_file(COMPANION / name, library / name, 0o755)
+        stage_file(COMPANION / 'install_status.py', library / 'install_status.py')
         stage_file(HERE / 'halcyon-islands', staging / 'usr/bin/halcyon-islands', 0o755)
         docs = staging / 'usr/share/doc' / PACKAGE
         stage_file(HERE / 'copyright', docs / 'copyright')

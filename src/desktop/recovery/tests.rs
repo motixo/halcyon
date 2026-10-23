@@ -665,3 +665,207 @@ fn review_r1_lock_ancestors_and_nonregular_leaves_are_rejected() {
         }
     }
 }
+
+#[test]
+fn task2_undo_rejects_even_whitespace_only_external_edits() {
+    let f = Fixture::new("restore-exact-guard");
+    f.user(DOCK, "opacity", " 0.8\n");
+    let store = f.store();
+    let applied = store.apply(&change(&store, "0.5")).unwrap();
+    f.user(DOCK, "opacity", " 0.5\n");
+    assert!(
+        store.undo(&applied).is_err(),
+        "Undo must not claim externally rewritten bytes"
+    );
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), " 0.5\n");
+}
+
+#[test]
+fn task2_restore_is_selective_exact_and_undoable_after_restart() {
+    let f = Fixture::new("restore-selective");
+    f.user(DOCK, "opacity", " \n0.8\n ");
+    f.user(DOCK, "anchor", "Bottom");
+    let app = f.0.join("config.json");
+    fs::write(
+        &app,
+        r#"{"appearance":{"opacity":85},"notes":{"text":"private"}}"#,
+    )
+    .unwrap();
+    let store = f.store().with_app_config(app.clone());
+    store.apply(&change(&store, "0.5")).unwrap();
+    let original = fs::read(
+        store
+            .state_dir()
+            .join("desktop-recovery/original/manifest.json"),
+    )
+    .unwrap();
+    fs::write(
+        &app,
+        r#"{"appearance":{"opacity":75},"notes":{"text":"new private"}}"#,
+    )
+    .unwrap();
+    let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+    let restored = apply_restore(&store, &plan).unwrap();
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), " \n0.8\n ");
+    assert!(fs::read_to_string(&app).unwrap().contains("new private"));
+    let reopened = f.store().with_app_config(app);
+    reopened.undo_latest(&restored.id).unwrap();
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.5");
+    assert_eq!(
+        fs::read(
+            store
+                .state_dir()
+                .join("desktop-recovery/original/manifest.json")
+        )
+        .unwrap(),
+        original
+    );
+    assert!(
+        store
+            .state_dir()
+            .join("desktop-recovery/pre-restore")
+            .is_dir()
+    );
+}
+
+#[test]
+fn task2_restore_keeps_opaque_evidence_and_rejects_changed_preview() {
+    let f = Fixture::new("restore-opaque");
+    f.user(DOCK, "opacity", "0.8");
+    let opaque = f.0.join("config/cosmic").join(DOCK).join("v1/size");
+    fs::write(&opaque, b"\xff\x00").unwrap();
+    let store = f.store();
+    store.apply(&change(&store, "0.5")).unwrap();
+    let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+    assert!(!plan.skipped.is_empty());
+    f.user(DOCK, "opacity", " 0.5\n");
+    assert!(apply_restore(&store, &plan).is_err());
+    assert_eq!(fs::read(opaque).unwrap(), b"\xff\x00");
+    let exported = export_baseline(&store).unwrap();
+    assert!(exported.contains("/wA="));
+    assert!(!exported.contains("desktop-journal"));
+}
+
+#[test]
+fn task2_restore_interruption_retains_pre_restore_and_recovers_exact_bytes() {
+    let f = Fixture::new("restore-interrupt");
+    f.user(DOCK, "opacity", " 0.8\n");
+    let store = f.store();
+    store.apply(&change(&store, "0.5")).unwrap();
+    let mut patch = DesktopPatch::new();
+    let key = ConfigKey::new(DOCK, 1, "anchor").unwrap();
+    patch.set(key, None, Some(RawValue::parse("Top").unwrap()));
+    store.apply(&patch).unwrap();
+    let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+    store.inject(Some(crate::desktop::store::Fault::InterruptAfter(1)));
+    assert!(apply_restore(&store, &plan).is_err());
+    let reopened = f.store();
+    assert!(reopened.pending_recovery().unwrap().is_some());
+    reopened.recover().unwrap();
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.5");
+    assert_eq!(f.read(DOCK, "anchor").unwrap(), "Top");
+}
+
+#[test]
+fn task2_corrupt_manifest_is_preserved_and_scoped_evidence_is_exportable() {
+    let f = Fixture::new("restore-corrupt-export");
+    f.user(DOCK, "opacity", "0.8");
+    let store = f.store();
+    store.apply(&change(&store, "0.5")).unwrap();
+    let path = store
+        .state_dir()
+        .join("desktop-recovery/original/manifest.json");
+    let mut info: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    info["domains"][0]["sha256"] = "broken".into();
+    info["tokens"] = "must not export".into();
+    fs::write(&path, serde_json::to_vec(&info).unwrap()).unwrap();
+    assert!(plan_restore(&store, &[RecoveryDomain::DockPanel]).is_err());
+    let export = export_baseline(&store).unwrap();
+    assert!(export.contains("MC44"));
+    assert!(!export.contains("must not export"));
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.5");
+}
+
+#[test]
+fn task2_restore_removes_only_owned_dynamic_keys_and_keeps_other_scopes() {
+    let f = Fixture::new("restore-dynamic");
+    f.user(DOCK, "opacity", "0.8");
+    let store = f.store();
+    store.apply(&change(&store, "0.5")).unwrap();
+    let output = ConfigKey::new(crate::desktop::wallpaper::NAMESPACE, 1, "output.DP-9").unwrap();
+    let entry = crate::desktop::wallpaper::BgEntry::new(
+        "output.DP-9",
+        crate::desktop::wallpaper::BgSource::Color(crate::desktop::wallpaper::BgColor::Single([
+            0.1, 0.2, 0.3,
+        ])),
+    );
+    let mut patch = DesktopPatch::new();
+    patch.set(
+        output.clone(),
+        None,
+        Some(RawValue::encode(&entry).unwrap()),
+    );
+    store.apply(&patch).unwrap();
+    f.user(
+        crate::desktop::wallpaper::NAMESPACE,
+        "output.DP-8",
+        &ron::to_string(&entry).unwrap(),
+    );
+    let plan = plan_restore(&store, &[RecoveryDomain::Wallpaper]).unwrap();
+    apply_restore(&store, &plan).unwrap();
+    assert!(!store.user_path(&output).exists());
+    assert!(
+        f.read(crate::desktop::wallpaper::NAMESPACE, "output.DP-8")
+            .is_some()
+    );
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.5");
+}
+
+#[test]
+fn task2_missing_wallpaper_after_preview_is_rejected() {
+    let f = Fixture::new("restore-missing-wallpaper");
+    let path = f.0.join("saved.png");
+    fs::write(&path, "image evidence").unwrap();
+    let entry = crate::desktop::wallpaper::BgEntry::new(
+        "all",
+        crate::desktop::wallpaper::BgSource::Path(path.clone()),
+    );
+    f.user(
+        crate::desktop::wallpaper::NAMESPACE,
+        "all",
+        &ron::to_string(&entry).unwrap(),
+    );
+    let store = f.store();
+    store.apply(&change(&store, "0.5")).unwrap();
+    let plan = plan_restore(&store, &[RecoveryDomain::Wallpaper]).unwrap();
+    fs::remove_file(path).unwrap();
+    assert!(apply_restore(&store, &plan).is_err());
+}
+
+#[test]
+fn task2_restore_undo_review_keeps_newer_app_field_and_reverses_native() {
+    let f = Fixture::new("restore-review-fields");
+    f.user(DOCK, "opacity", "0.8");
+    let path = f.0.join("config.json");
+    fs::write(&path, r#"{"appearance":{"opacity":80}}"#).unwrap();
+    let store = f.store().with_app_config(path.clone());
+    store.apply(&change(&store, "0.5")).unwrap();
+    fs::write(&path, r#"{"appearance":{"opacity":90}}"#).unwrap();
+    let plan = plan_restore(
+        &store,
+        &[RecoveryDomain::DockPanel, RecoveryDomain::WidgetAppearance],
+    )
+    .unwrap();
+    let restored = apply_restore(&store, &plan).unwrap();
+    fs::write(&path, r#"{"appearance":{"opacity":95}}"#).unwrap();
+    assert!(store.undo_latest(&restored.id).is_err());
+    let review = store.review_undo(&restored.id).unwrap();
+    assert!(!review.conflicts.is_empty());
+    store.accept_undo_review(&review).unwrap();
+    assert_eq!(f.read(DOCK, "opacity").unwrap(), "0.5");
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(path).unwrap()).unwrap()["appearance"]
+            ["opacity"],
+        95
+    );
+}

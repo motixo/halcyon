@@ -5,10 +5,11 @@ use super::{BgColor, BgSource, Target, WallpaperDraft, media, palette};
 use crate::config::{self, Config};
 use crate::desktop::appearance::AppearanceDraft;
 use crate::desktop::profiles::Domain;
-use crate::desktop::store::{DesktopPatch, DesktopStore, LatestChange, Owner, WidgetPatch, widget};
+use crate::desktop::store::{DesktopPatch, DesktopStore, LatestChange, WidgetPatch, widget};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
 const ACK: &str = "wallpaper-colors-seen.json";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -21,6 +22,7 @@ enum Input {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Source {
     pub stamp: u64,
+    epoch: Option<u64>,
     pub label: String,
     /// The effective entry, also used by shared-theme previews.
     pub background: Option<super::BgEntry>,
@@ -86,6 +88,7 @@ pub fn source(store: &DesktopStore, draft: &WallpaperDraft) -> Source {
     let bytes = Sha256::digest(fingerprint.as_bytes());
     let stamp = u64::from_be_bytes(bytes[..8].try_into().expect("eight digest bytes")).max(1);
     Source {
+        epoch: store.restore_epoch().ok(),
         stamp,
         label,
         background: background.known().cloned(),
@@ -204,6 +207,7 @@ pub struct Prepared {
 /// acknowledged source is skipped, so overrides and Undo survive restart
 /// without suppressing a later return to an older wallpaper.
 pub fn prepare(store: &DesktopStore) -> Result<Option<Prepared>, String> {
+    let epoch = store.restore_epoch().map_err(|e| e.to_string())?;
     let (raw, config) = read_config(store)?;
     if !store.writable()
         || (!config.appearance.wallpaper_colors && config.appearance.family.is_none())
@@ -214,12 +218,12 @@ pub fn prepare(store: &DesktopStore) -> Result<Option<Prepared>, String> {
         return Err("Automatic colors will continue when the current gesture finishes".into());
     }
     let draft = WallpaperDraft::load(store).map_err(|error| error.to_string())?;
-    let source = source(store, &draft);
-    let seen = std::fs::read_to_string(store.state_dir().join(ACK))
-        .ok()
-        .filter(|text| text.len() <= 64)
-        .and_then(|text| text.trim().parse::<u64>().ok());
-    if seen == Some(source.stamp) {
+    let mut source = source(store, &draft);
+    source.epoch = Some(epoch);
+    if store
+        .palette_seen(epoch, source.stamp)
+        .map_err(|e| e.to_string())?
+    {
         return Ok(None);
     }
     let suggestion = source.analyse()?;
@@ -298,47 +302,37 @@ pub fn commit(store: &DesktopStore, prepared: Prepared) -> Result<Option<LatestC
     if source(store, &current).stamp != prepared.source.stamp {
         return Err("The wallpaper changed while colors were being found".into());
     }
-    if prepared.patch.is_empty() && prepared.widgets.is_empty() {
-        // A return after Undo can already have the right colors. Advance
-        // the observation without replacing Undo, but still reject a stale
-        // plan or a read-only store before writing acknowledgement state.
-        store
-            .preflight(&prepared.patch)
-            .map_err(|error| error.to_string())?;
-        for (key, original) in prepared.patch.guards() {
-            if store.read_user(key).map_err(|error| error.to_string())? != *original {
-                return Err("Wallpaper colors changed while they were being checked".into());
-            }
-        }
-        let (raw, _) = read_config(store)?;
-        if prepared
-            .widgets
-            .iter()
-            .any(|(pointer, entry)| widget::get(&raw, pointer) != entry.original)
-        {
-            return Err("Widget colors changed while they were being checked".into());
-        }
-        acknowledge(store, prepared.source.stamp)?;
-        return Ok(None);
-    }
-    let change = store
-        .apply_action(
+    store
+        .apply_palette(
             &prepared.patch,
-            Some(&prepared.widgets),
-            Owner::Wallpaper,
-            "Automatic wallpaper colors",
-            crate::desktop::store::Source::Derived,
+            &prepared.widgets,
+            prepared
+                .source
+                .epoch
+                .ok_or("Cannot read restore ownership")?,
+            prepared.source.stamp,
         )
-        .map_err(|error| error.to_string())?;
-    // This is an observation, separate from Undo. Otherwise undoing the
-    // colors of an external wallpaper would immediately reapply them.
-    acknowledge(store, prepared.source.stamp)?;
-    Ok(Some(change))
+        .map_err(|e| e.to_string())
 }
 
-fn acknowledge(store: &DesktopStore, stamp: u64) -> Result<(), String> {
-    let path = store.state_file(ACK).map_err(|error| error.to_string())?;
-    config::write_config_text(&path, Some(&stamp.to_string()))
+fn acknowledge(store: &DesktopStore, analyzed: &Source) -> Result<(), String> {
+    let draft = WallpaperDraft::load(store).map_err(|e| e.to_string())?;
+    if source(store, &draft).stamp != analyzed.stamp {
+        return Err("Wallpaper changed before acknowledgement".into());
+    }
+    let mut patch = DesktopPatch::new();
+    for key in draft.watch_keys() {
+        patch.guard(key.clone(), draft.snapshot().user(&key).cloned());
+    }
+    store
+        .apply_palette(
+            &patch,
+            &WidgetPatch::new(),
+            analyzed.epoch.ok_or("Cannot read restore ownership")?,
+            analyzed.stamp,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// A theme may have planned a different wallpaper. Never acknowledge a
@@ -346,7 +340,7 @@ fn acknowledge(store: &DesktopStore, stamp: u64) -> Result<(), String> {
 pub fn acknowledge_analyzed(store: &DesktopStore, analyzed: &Source) -> Result<(), String> {
     let draft = WallpaperDraft::load(store).map_err(|error| error.to_string())?;
     if source(store, &draft).stamp == analyzed.stamp {
-        acknowledge(store, analyzed.stamp)?;
+        acknowledge(store, analyzed)?;
     }
     Ok(())
 }
@@ -361,7 +355,7 @@ pub fn keep_manual_colors(store: &DesktopStore) -> Result<(), String> {
     let config = read_config(store)?.1;
     if config.appearance.wallpaper_colors || config.appearance.family.is_some() {
         let draft = WallpaperDraft::load(store).map_err(|error| error.to_string())?;
-        acknowledge(store, source(store, &draft).stamp)?;
+        acknowledge(store, &source(store, &draft))?;
     }
     Ok(())
 }
