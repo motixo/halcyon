@@ -20,6 +20,7 @@ from unittest.mock import patch
 import archive_io as aio
 import discover
 import catalog_capacity as capacity
+from transport_test_support import response_worker
 
 FIXTURE = Path(__file__).parent / 'fixtures'
 
@@ -108,9 +109,8 @@ class LargeInputs(unittest.TestCase):
         checksum,size,_=next(line.split() for line in row['Checksums-Sha256'].splitlines() if line.endswith('.dsc'))
         data=(FIXTURE/'linux-7.2.6.dsc').read_bytes()
         self.assertEqual((sha(data),len(data)),(checksum,int(size)))
-        response=io.BytesIO(data);response.url='https://fixture/source'
-        with patch('urllib.request.urlopen',return_value=response):
-            aio.verify_stream(aio.fetch,response.url,checksum,int(size),'source-archive',self.limits)
+        with response_worker(data):
+            aio.verify_stream(aio.fetch,'https://fixture/source',checksum,int(size),'source-archive',self.limits)
         get=self.retained(data)
         # The same file succeeds beyond a scaled metadata cap via open(), while
         # the bounded metadata call still rejects it. No global cap increase.
@@ -334,11 +334,10 @@ class LargeInputs(unittest.TestCase):
         self.assertLess(peak,3*aio.CHUNK)
         print(json.dumps(dict(streamed_test_bytes=size,python_peak_bytes=peak,native_qualification=False)))
 
-    def test_payload_deadline_uses_single_socket_reads(self):
-        response=io.BytesIO(b'x'*100);response.url='https://fixture/source'
-        with patch('urllib.request.urlopen',return_value=response),patch.object(aio.time,'monotonic',side_effect=[0,0,2]):
+    def test_payload_deadline_cancels_worker_during_open(self):
+        with response_worker(b'x'*100,delay=30):
             with self.assertRaisesRegex(ValueError,'payload_timeout'):
-                aio.verify_stream(aio.fetch,response.url,sha(b'x'*100),100,'source-archive',replace(self.limits,payload_seconds=1))
+                aio.verify_stream(aio.fetch,'https://fixture/source',sha(b'x'*100),100,'source-archive',replace(self.limits,payload_seconds=1))
 
     def test_resource_config_cannot_relax_policy_and_http_is_rejected(self):
         for values in ({'unknown':1},{'source_bytes':0},{'source_bytes':True},{'source_bytes':2**60}):
@@ -346,8 +345,7 @@ class LargeInputs(unittest.TestCase):
         self.assertEqual(aio.Limits.configured({'source_bytes':123}).source_bytes,123)
         with self.assertRaisesRegex(ValueError,'https_required'):
             with aio.https_open('http://fixture/source'):self.fail('opened')
-        response=io.BytesIO(b'x');response.url='http://fixture/source'
-        with patch('urllib.request.urlopen',return_value=response):
+        with response_worker(b'x',final_url='http://fixture/source'):
             with self.assertRaisesRegex(ValueError,'insecure_redirect'):
                 aio.verify_stream(aio.fetch,'https://fixture/source',sha(b'x'),1,'source-archive',self.limits)
 

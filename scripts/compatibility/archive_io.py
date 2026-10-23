@@ -15,7 +15,7 @@ import tarfile
 import tempfile
 import time
 import urllib.parse
-import urllib.request
+from http_transport import open_https as https_open
 
 CHUNK = 1024 * 1024
 METADATA_BYTES = 512 * 1024 * 1024
@@ -29,6 +29,7 @@ class Limits:
     total_payload_bytes: int = 32 * 1024**3
     expanded_package_bytes: int = 8 * 1024**3
     member_bytes: int = 4 * 1024**3
+    member_metadata_bytes: int = 1024**2
     package_members: int = 250_000
     path_bytes: int = 4096
     inventory_json_bytes: int = 64 * 1024**2
@@ -55,19 +56,9 @@ def signed_object(checksum, size, kind, limits):
         raise ValueError('signed_object_limit')
 
 
-@contextmanager
-def https_open(url):
-    if urllib.parse.urlparse(url).scheme != 'https':
-        raise ValueError('https_required')
-    with urllib.request.urlopen(url, timeout=30) as stream:
-        if urllib.parse.urlparse(stream.url).scheme != 'https':
-            raise ValueError('insecure_redirect')
-        yield stream
-
-
 def read_chunk(stream, size):
-    # HTTPResponse.read1 returns after one socket read, allowing the absolute
-    # deadline to be checked even if the server trickles a long body.
+    # Production network streams are cancellable pipe readers; retained files
+    # and small local fixtures can expose either bounded read interface.
     return getattr(stream, 'read1', stream.read)(size)
 
 
@@ -94,6 +85,7 @@ def fetch(url, limit=METADATA_BYTES):
 
 
 fetch.open = https_open
+fetch.open_deadline = https_open
 
 
 class RetainedFetch:
@@ -143,10 +135,13 @@ class HashReader:
 
 
 @contextmanager
-def input_stream(get, url):
+def input_stream(get, url, deadline=None):
     # Byte-returning callbacks remain a small-fixture API. Production online and
     # retained adapters always expose open(), so payloads never use read_bytes.
-    if hasattr(get, 'open'):
+    if hasattr(get, 'open_deadline'):
+        with get.open_deadline(url, deadline=deadline, timeout_code='payload_timeout' if deadline is not None else 'metadata_timeout') as stream:
+            yield stream
+    elif hasattr(get, 'open'):
         with get.open(url) as stream:
             yield stream
     else:
@@ -160,7 +155,7 @@ def verify_stream(get, url, checksum, size, kind, limits, output=None):
         raise ValueError('streaming_transport_required')
     deadline = time.monotonic() + limits.payload_seconds
     count, hasher = 0, hashlib.sha256()
-    with input_stream(get, url) as stream:
+    with input_stream(get, url, deadline=deadline) as stream:
         while True:
             if time.monotonic() >= deadline:
                 raise ValueError('payload_timeout')
@@ -241,10 +236,15 @@ class BoundedTarInfo(tarfile.TarInfo):
         archive._bounded_depth = depth
         if count > self.limits.package_members or self.size < 0 or self.size > self.limits.member_bytes:
             raise ValueError('package_member_limit')
-        if depth > 16 or self.type in (tarfile.XGLTYPE, tarfile.GNUTYPE_SPARSE) or self.type not in tarfile.SUPPORTED_TYPES:
+        extensions = (tarfile.XHDTYPE, tarfile.SOLARIS_XHDTYPE, tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK)
+        if depth > 16 or self.type in (tarfile.XGLTYPE, tarfile.GNUTYPE_SPARSE) or self.type not in (*tarfile.SUPPORTED_TYPES, *extensions):
             raise ValueError('package_archive_extension')
-        if self.type in (tarfile.XHDTYPE, tarfile.SOLARIS_XHDTYPE, tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK) and self.size > CHUNK:
-            raise ValueError('package_archive_extension')
+        if depth == 1:
+            archive._bounded_extension_bytes = 0
+        if self.type in extensions:
+            archive._bounded_extension_bytes += self.size
+            if self.size > CHUNK or archive._bounded_extension_bytes > self.limits.member_metadata_bytes:
+                raise ValueError('package_archive_extension')
         try:
             return super()._proc_member(archive)
         finally:
@@ -296,12 +296,23 @@ def package_files(package, *, limits=None, stats=None):
                                stderr=subprocess.DEVNULL, start_new_session=True)
     reader = TarReader(process.stdout, limits)
     files, seen, count, inventory_bytes, regular_bytes, path_bytes, max_member = {}, set(), 0, 2, 0, 0, 0
+    max_metadata = 0
     try:
         # ignore_zeros scans concatenated/trailing blocks rather than silently
         # ignoring payload after the first end marker. The reader bounds all IO.
         policy = type('PolicyTarInfo', (BoundedTarInfo,), {'limits': limits})
         with tarfile.open(fileobj=reader, mode='r|', ignore_zeros=True, tarinfo=policy) as archive:
             for member in archive:
+                # r| still caches every TarInfo on Python 3.12. We never resolve
+                # links/getmembers, so discard that unused history immediately.
+                archive.members.clear()
+                metadata = [member.linkname, member.uname, member.gname]
+                metadata.extend(member.pax_headers.keys())
+                metadata.extend(member.pax_headers.values())
+                metadata_bytes = sum(len(value.encode('utf-8', 'surrogateescape')) for value in metadata)
+                if metadata_bytes > limits.member_metadata_bytes:
+                    raise ValueError('package_metadata_limit')
+                max_metadata = max(max_metadata, metadata_bytes)
                 count += 1
                 if count > limits.package_members:
                     raise ValueError('package_member_limit')
@@ -344,7 +355,7 @@ def package_files(package, *, limits=None, stats=None):
         if stats is not None:
             stats.update(expanded_bytes=reader.count, regular_bytes=regular_bytes,
                          members=count, inventory_files=len(files), inventory_json_bytes=inventory_bytes,
-                         max_regular_file_bytes=max_member)
+                         max_regular_file_bytes=max_member, max_member_metadata_bytes=max_metadata)
         return files
     except (tarfile.TarError, EOFError) as error:
         raise ValueError('invalid_deb') from error

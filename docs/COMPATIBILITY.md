@@ -65,8 +65,13 @@ bytes mean no `files` inventory and cannot form an admissible catalog row.
 Authenticated binaries and sources use `archive_io` streaming adapters. Each
 object must match the **exact signed Size and SHA256**, independently of HTTP
 headers or a retained map's digest. Reads are at most 1 MiB; short, overlong and
-same-size changed bodies fail. The online adapter uses single socket reads
-(30-second socket timeout); deadlines are checked between reads. Sources are
+same-size changed bodies fail. The online adapter runs DNS/connect/TLS, response
+headers, chunk framing/trailers and body reading in an owned worker process. The
+caller polls only its body pipe against an absolute deadline; it can kill/reap
+the worker even when urllib/HTTPResponse is blocked inside framing or header
+parsing. The worker retains a 30-second socket inactivity timeout as an additional
+bound. EOF is successful only after worker exit zero; errors are sanitized. No
+production reader thread or socket survives scope exit. Sources are
 hashed without spooling or extracting. A binary is streamed to a private file
 beside the output, then inventoried from those verified bytes. With
 `retain_packages: true`, only a fully verified/inventoried snapshot is atomically
@@ -85,11 +90,12 @@ Policy ceilings are separate from each object's signed size. Configuration may
 | `total_payload_bytes` | 32 GiB reserved per run (successful source reuse is counted once) |
 | `expanded_package_bytes` | 8 GiB of complete tar stream per package |
 | `member_bytes` | 4 GiB per tar member |
+| `member_metadata_bytes` | 1 MiB decoded link/owner/PAX metadata per member, and 1 MiB aggregate encoded extensions in its chain |
 | `package_members` | 250,000 headers/members per package |
 | `path_bytes` | 4,096 UTF-8 bytes per normalized path |
 | `inventory_json_bytes` | 64 MiB per-package path/inventory budget and aggregate file-map JSON |
 | `disk_reserve_bytes` | 256 MiB free beyond the current signed binary size |
-| `payload_seconds` | 1,800 seconds per object (plus at most one socket timeout) |
+| `payload_seconds` | 1,800 seconds absolute across all HTTPS stages; separate kill/reap cleanup bound of 1 second |
 | `package_seconds` | 900 seconds per inventory/decompressor |
 
 InRelease stays bounded to 4 MiB; compressed and expanded indexes stay bounded to
@@ -106,18 +112,27 @@ and records every regular runtime file in those two namespaces. All tar bytes,
 including headers, padding and trailers, count toward the expanded bound. It
 rejects traversal, normalized duplicate paths, oversized members/extension
 headers, malformed/truncated headers and unsupported global/sparse extensions;
-ordinary GNU long names and bounded per-file PAX metadata are supported. Unknown
-archive constructs fail rather than disappearing from an inventory. Extension
+ordinary GNU long names and bounded per-file PAX `x`/Solaris `X` metadata are
+supported. Unknown archive constructs fail rather than disappearing from an inventory. Extension
 headers are bounded before tarfile allocates them, recursive extension chains
-are limited to 16, and timeouts terminate the owned decompressor process group.
+are limited to 16 with an aggregate allocation budget. Processed TarInfo history
+is discarded immediately (Python `r|` otherwise retains it); link/owner/PAX
+metadata has its own per-member bound, including for out-of-scope files. This
+preserves the no-link-follow policy while avoiding metadata accumulation across
+members. Timeouts terminate the owned decompressor process group.
 No package content or maintainer script is extracted/executed. Existing mutable
 configuration and symlink/hardlink policy is unchanged; link targets are not
 followed. Native runtime ownership and readiness checks are unchanged.
 
 `fetch(url)` remains a bounded metadata/small-fixture interface. Payload callers
 use `get.open(url)` as a context manager returning a readable binary stream; both
-production HTTPS and `retained_fetch` implement it. Byte-returning injected
-callbacks cannot handle objects above the metadata ceiling. The retained adapter
+production HTTPS and `retained_fetch` implement it. HTTPS additionally exposes
+`open_deadline(url, deadline, timeout_code)`, which discovery uses to pass the
+absolute monotonic object deadline before any worker connection work begins.
+The worker is the sibling `http_transport.py`, launched with the current Python
+interpreter in isolated mode; ship that file alongside `archive_io.py`. Custom
+in-process test adapters do not confer the production HTTPS deadline guarantee.
+Byte-returning injected callbacks cannot handle objects above the metadata ceiling. The retained adapter
 hashes the same opened regular file while it is consumed, checks its local map
 hash and file stability, and independently enforces the signed object size/hash.
 Missing retained inputs never fall back to network. Relative map paths remain
@@ -126,8 +141,8 @@ remote runner. The map itself is bounded to 16 MiB.
 
 The candidate's nonidentity `resources` object reports the effective limits,
 reserved payload bytes/objects, and each package's measured expanded/regular
-bytes, largest regular member, header/member and inventory counts. It also
-reports `capacity` measurements. Candidate output is streamed atomically with a
+bytes, largest regular member, largest decoded member metadata, header/member
+and inventory counts. It also reports `capacity` measurements. Candidate output is streamed atomically with a
 128 MiB record ceiling; partial output cannot masquerade as success. A resource
 failure is a blocked discovery error, never permission to omit files or packages.
 
