@@ -490,3 +490,197 @@ fn arrange_receipts_exclude_another_writers_newer_history() {
     assert_eq!(Config::load().widget_positions["weather"], [0.2, 0.2]);
     assert_eq!(Config::load().theme, "ocean");
 }
+
+// Reproduce the recovery-before-watcher ordering with two real client proxies.
+// 0: failed exit reads the new pin; 1: Keep reads it; 2: successful Retry reads it.
+fn recovery_pin_before_watcher(path: u8) {
+    use crate::displays::{OutputEvent, test_support::info};
+    Config::save_changes(serde_json::json!({"widget_display":"test-output"})).unwrap();
+    let (mut cards, wire) = moved();
+    let output_b = wire.output(2);
+    let task = cards.update(Message::OutputChanged(
+        OutputEvent::Created(Some(info(Some("DP-B"), (1280, 720)))),
+        output_b.clone(),
+    ));
+    assert!(emitted(&mut cards, task).1.is_empty());
+    let draft = cards.layout_editor.draft.clone();
+    let receipts = cards.layout_editor.session_actions.clone();
+    let guard = cards.layout_editor.guard.clone();
+    let history_len = cards.layout_editor.history.len();
+    let config_path = Config::path().unwrap();
+    let publish_pin = || {
+        Config::save_changes(serde_json::json!({
+            "widget_display":"DP-B", "theme":"ocean", "devbox":{"network":false}
+        }))
+        .unwrap();
+    };
+    if path != 0 {
+        // Keep has a real field conflict. Retry first fails on a held lock.
+        let holder = if path == 2 {
+            Some(Holder::new(&config_path.with_extension("json.lock")))
+        } else {
+            Config::save_changes(serde_json::json!({"widget_positions":{"weather":[0.9,0.9]}}))
+                .unwrap();
+            None
+        };
+        let captured = cards.ids[5];
+        let task = escape(&mut cards);
+        released(&mut cards, captured, task);
+        assert_eq!(
+            cards.selected_output.as_ref().unwrap().name(),
+            Some("test-output")
+        );
+        drop(holder);
+    }
+    let old_ids = cards.ids;
+    let old_epoch = cards.display_generation;
+    publish_pin(); // Deliberately no FilesChanged before the recovery action.
+    let holder = (path == 0).then(|| Holder::new(&config_path.with_extension("json.lock")));
+    let start = Instant::now();
+    let task = match path {
+        0 => escape(&mut cards),
+        1 => cards.update(Message::LayoutKeepSaved),
+        2 => cards.update(Message::LayoutRetryCancel),
+        _ => unreachable!(),
+    };
+    assert!(start.elapsed() < Duration::from_secs(2));
+    let (mut destroyed, mut created) = emitted(&mut cards, task);
+    drop(holder);
+    let task = cards.update(Message::FilesChanged);
+    let (watch_destroyed, watch_created) = emitted(&mut cards, task);
+    destroyed.extend(watch_destroyed);
+    created.extend(watch_created);
+    eprintln!(
+        "recovery path {path}: config pin {:?}, selected {:?}, epoch {} -> {}, created {} surfaces",
+        cards.config.widget_display,
+        cards.selected_output.as_ref().unwrap().name(),
+        old_epoch,
+        cards.display_generation,
+        created.len()
+    );
+    assert_eq!(cards.config.widget_display.as_deref(), Some("DP-B"));
+    assert_eq!(
+        cards.selected_output.as_ref().unwrap().handle,
+        output_b,
+        "recovery must migrate the externally saved pin before the watcher consumes B == B"
+    );
+    assert!(
+        old_ids.iter().all(|id| destroyed.contains(id)),
+        "retire every A surface, including the captured probe"
+    );
+    assert!(cards.ids.iter().all(|id| !old_ids.contains(id)));
+    assert!(
+        !cards.output_known,
+        "B must get its own measurement before widgets appear"
+    );
+    assert_eq!(
+        created.len(),
+        1,
+        "one fresh migration probe, no stale Arrange replacement"
+    );
+    assert_eq!(created[0].id, cards.ids[5]);
+    assert_eq!(created[0].namespace, "halcyon-arrange");
+    assert!(created[0].input_zone.as_ref().is_some_and(Vec::is_empty));
+    let current_ids = cards.ids;
+    let task = cards.update(Message::SurfaceResized(
+        cards.ids[5],
+        cosmic::iced::Size::new(1280., 720.),
+    ));
+    created.extend(emitted(&mut cards, task).1);
+    assert!(
+        created.len() > 1,
+        "ready B gets actual widget/controls surfaces"
+    );
+    for surface in &created {
+        assert!(
+            matches!(&surface.output, IcedOutput::Output(output) if output == &output_b),
+            "{} bound to B",
+            surface.namespace
+        );
+        assert!(cards.ids.contains(&surface.id));
+        assert_eq!(surface.keyboard_interactivity, KeyboardInteractivity::None);
+    }
+    // Deliver late continuations after B is ready, when output_known cannot
+    // mask an epoch-order bug. Failed exit also scheduled an intermediate epoch.
+    let mut stale_epochs = vec![old_epoch];
+    if path == 0 {
+        stale_epochs.push(old_epoch + 1);
+    }
+    for epoch in stale_epochs {
+        let task = cards.update(Message::ArrangeSurface(epoch));
+        let (destroyed, created) = emitted(&mut cards, task);
+        assert!(destroyed.is_empty() && created.is_empty());
+    }
+    let task = cards.update(Message::SurfaceMessage(
+        old_epoch,
+        Box::new(Message::LayoutResume),
+    ));
+    assert!(emitted(&mut cards, task).1.is_empty());
+    let task = cards.update(Message::SurfaceResized(
+        old_ids[5],
+        cosmic::iced::Size::new(1920., 1080.),
+    ));
+    let (destroyed, created) = emitted(&mut cards, task);
+    assert_eq!(destroyed, vec![old_ids[5]]);
+    assert!(created.is_empty());
+    assert_eq!(cards.ids, current_ids);
+    assert!(cards.output_known && !cards.layout_editor.active);
+    if path == 0 {
+        let paused = cards.paused_layout.as_ref().unwrap();
+        assert!(!paused.active && paused.exit_failed && paused.error.is_some());
+        assert_eq!(paused.draft, draft);
+        assert_eq!(paused.session_actions, receipts);
+        assert_eq!(paused.guard, guard);
+        assert_eq!(paused.history.len(), history_len);
+    } else {
+        assert!(cards.paused_layout.is_none());
+    }
+    let saved = Config::load();
+    assert_eq!(saved.widget_display.as_deref(), Some("DP-B"));
+    assert_eq!(saved.theme, "ocean");
+    assert!(!saved.devbox.network);
+    assert_eq!(cards.config.theme, saved.theme);
+    assert_eq!(
+        saved.widget_positions["weather"],
+        match path {
+            0 => draft["weather"],
+            1 => [0.9, 0.9],
+            _ => [0.2, 0.2],
+        }
+    );
+    let raw: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
+    assert_eq!(raw["future_option"], 42);
+    let latest = crate::desktop::actions::history_store()
+        .unwrap()
+        .latest_change()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        latest.label,
+        if path == 2 {
+            "Cancel arrangement"
+        } else {
+            "Widget arrangement"
+        }
+    );
+}
+
+#[test]
+fn arrange_recovery_pin_failed_exit_before_watcher() {
+    if !isolated("arrange_recovery_pin_failed_exit_before_watcher") {
+        recovery_pin_before_watcher(0);
+    }
+}
+#[test]
+fn arrange_recovery_pin_keep_before_watcher() {
+    if !isolated("arrange_recovery_pin_keep_before_watcher") {
+        recovery_pin_before_watcher(1);
+    }
+}
+#[test]
+fn arrange_recovery_pin_retry_before_watcher() {
+    if !isolated("arrange_recovery_pin_retry_before_watcher") {
+        recovery_pin_before_watcher(2);
+    }
+}

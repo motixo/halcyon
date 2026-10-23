@@ -728,12 +728,17 @@ impl Cards {
             self.paused_layout = Some(editor);
             self.sidebar.show(Instant::now());
         }
+        // Retire the captured probe before applying config. A changed display
+        // pin then advances the epoch again, invalidating this Arrange
+        // continuation while keeping migration's fresh probe/IDs intact.
+        let release = self.replace_arrange_surface();
         // A no-op exit preserves the current in-memory configuration, as
         // before; only a transaction or failure needs a storage refresh.
         if reload && let Ok(config) = Config::try_load() {
-            self.config = config;
+            release.chain(self.apply_config(config))
+        } else {
+            release
         }
-        self.replace_arrange_surface()
     }
 
     pub(super) fn retry_arrange_cancel(&mut self) -> Task<Message> {
@@ -745,7 +750,7 @@ impl Cards {
                 Ok(()) => {
                     self.paused_layout = None;
                     if let Ok(config) = Config::try_load() {
-                        self.config = config;
+                        return self.apply_config(config);
                     }
                     self.sync_widget_surfaces()
                 }
@@ -768,7 +773,7 @@ impl Cards {
         if self.paused_layout.as_ref().is_some_and(|e| e.exit_failed) {
             self.paused_layout = None;
             if let Ok(config) = Config::try_load() {
-                self.config = config;
+                return self.apply_config(config);
             }
             return self.sync_widget_surfaces();
         }
