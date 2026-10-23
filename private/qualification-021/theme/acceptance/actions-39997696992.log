@@ -1,0 +1,488 @@
+session (candidate, islands)	Set up job	﻿2026-10-23T17:45:37.3633964Z Current runner version: '2.338.0'
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3671576Z ##[group]Runner Image Provisioner
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3672954Z Hosted Compute Agent
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3673944Z Version: 20261012.601
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3675141Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3676351Z Build Date: 2026-10-12T17:48:21Z
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3677561Z Worker ID: {87daf23a-2cd6-4edb-9ca4-3c81e1752eb8}
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3678863Z Region: eastus
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3679816Z Cloud: Azure
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3681026Z ##[endgroup]
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3683374Z ##[group]Operating System
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3685089Z Ubuntu
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3685979Z 24.04.5
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3686848Z LTS
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3687718Z ##[endgroup]
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3688712Z ##[group]Runner Image
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3689791Z Image: ubuntu-24.04
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3691074Z Version: 20261012.334.1
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3693113Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3696059Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3697928Z ##[endgroup]
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3699838Z ##[group]GITHUB_TOKEN Permissions
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3703476Z Actions: read
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3704424Z Contents: read
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3705497Z Metadata: read
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3706427Z ##[endgroup]
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3709598Z Secret source: Actions
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3711451Z Cache mode: write
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.3712991Z Prepare workflow directory
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.4209002Z Prepare all required actions
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.4282937Z Getting action download info
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.6503219Z Download action repository 'actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683' (SHA:11bd71901bbe5b1630ceea73d27597364c9af683)
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.7719191Z Download action repository 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+session (candidate, islands)	Set up job	2026-10-23T17:45:37.9947191Z Complete job name: session (candidate, islands)
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	﻿2026-10-23T17:45:38.0793578Z ##[group]Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0794710Z with:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0795194Z   persist-credentials: false
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0795749Z   repository: profilaz3/halcyon
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0799538Z   token: ***
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0800340Z   ssh-strict: true
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0800948Z   ssh-user: git
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0801398Z   clean: true
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0801870Z   sparse-checkout-cone-mode: true
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0802450Z   fetch-depth: 1
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0802900Z   fetch-tags: false
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0803363Z   show-progress: true
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0803839Z   lfs: false
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0804269Z   submodules: false
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0804729Z   set-safe-directory: true
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.0805602Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.1895242Z Syncing repository: profilaz3/halcyon
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.1898021Z ##[group]Getting Git version info
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.1903433Z Working directory is '/home/runner/work/halcyon/halcyon'
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.1905317Z [command]/usr/bin/git version
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2038753Z git version 2.55.0
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2062133Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2078469Z Temporarily overriding HOME='/home/runner/work/_temp/bd776fef-9380-47ef-b9e0-d86cabb3108d' before making global git config changes
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2081241Z Adding repository directory to the temporary git global config as a safe directory
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2085175Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/halcyon/halcyon
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2148026Z Deleting the contents of '/home/runner/work/halcyon/halcyon'
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2159747Z ##[group]Initializing the repository
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2160984Z [command]/usr/bin/git init /home/runner/work/halcyon/halcyon
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2300989Z hint: Using 'master' as the name for the initial branch. This default branch name
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2305245Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2309005Z hint: to use in all of your new repositories, which will suppress this warning,
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2311217Z hint: call:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2312406Z hint:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2313737Z hint: 	git config --global init.defaultBranch <name>
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2315211Z hint:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2316494Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2319602Z hint: 'development'. The just-created branch can be renamed via this command:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2321611Z hint:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2322602Z hint: 	git branch -m <name>
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2323618Z hint:
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2324870Z hint: Disable this message with "git config set advice.defaultBranchName false"
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2326915Z Initialized empty Git repository in /home/runner/work/halcyon/halcyon/.git/
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2330591Z [command]/usr/bin/git remote add origin https://github.com/profilaz3/halcyon
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2404415Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2406952Z ##[group]Disabling automatic garbage collection
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2410524Z [command]/usr/bin/git config --local gc.auto 0
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2449201Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2450836Z ##[group]Setting up auth
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2461282Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2498419Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2929789Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.2971585Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.3211983Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.3262266Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.3263765Z ##[group]Fetching the repository
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:38.3274003Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +2a4392b082f7587b2ed67f9347f11200ca39c2a3:refs/remotes/origin/ci/qualification-probe-021
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9889060Z From https://github.com/profilaz3/halcyon
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9901865Z  * [new ref]         2a4392b082f7587b2ed67f9347f11200ca39c2a3 -> origin/ci/qualification-probe-021
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9906126Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9907573Z ##[group]Determining the checkout info
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9909146Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9912288Z [command]/usr/bin/git sparse-checkout disable
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:39.9983837Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.0031751Z ##[group]Checking out the ref
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.0036448Z [command]/usr/bin/git checkout --progress --force -B ci/qualification-probe-021 refs/remotes/origin/ci/qualification-probe-021
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1759582Z Switched to a new branch 'ci/qualification-probe-021'
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1766356Z branch 'ci/qualification-probe-021' set up to track 'origin/ci/qualification-probe-021'.
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1780549Z ##[endgroup]
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1832386Z [command]/usr/bin/git log -1 --format=%H
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1866528Z 2a4392b082f7587b2ed67f9347f11200ca39c2a3
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1877655Z ##[group]Removing auth
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1881821Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.1919346Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.2162935Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.2195072Z http.https://github.com/.extraheader
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.2205082Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.2244948Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+session (candidate, islands)	Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T17:45:40.2477785Z ##[endgroup]
+session (candidate, islands)	Enforce scoped follow-up inputs	﻿2026-10-23T17:45:40.2771781Z ##[group]Run test "$PACKAGE_RUN" = 39966537804
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.2773289Z [36;1mtest "$PACKAGE_RUN" = 39966537804[0m
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.2774549Z [36;1mtest "$BUILD_ONLY" = false[0m
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.2776411Z [36;1mif [[ "$AUTO_DIAGNOSIS" = true ]]; then [[ "$HOST_FILTER" = stock || "$HOST_FILTER" = islands ]]; fi[0m
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3091216Z shell: /usr/bin/bash -e {0}
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3092620Z env:
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3093636Z   PACKAGE_RUN: 39966537804
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3094913Z   AUTO_DIAGNOSIS: true
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3096088Z   HOST_FILTER: islands
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3097187Z   BUILD_ONLY: false
+session (candidate, islands)	Enforce scoped follow-up inputs	2026-10-23T17:45:40.3098092Z ##[endgroup]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	﻿2026-10-23T17:45:40.3315485Z ##[group]Run bash private/qualification-021/theme/prepare.sh
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3317232Z [36;1mbash private/qualification-021/theme/prepare.sh[0m
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3384199Z shell: /usr/bin/bash -e {0}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3385214Z env:
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3395401Z   GH_TOKEN: ***
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3396310Z   GH_REPO: profilaz3/halcyon
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3397303Z   PACKAGE_RUN: 39966537804
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3398222Z ##[endgroup]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.3539424Z prepare-phase: runner-prerequisite-inventory
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.4778788Z missing prerequisite packages: qemu-system-x86 qemu-utils xorriso tesseract-ocr python3-pil ovmf
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.4934013Z https://archive.ubuntu.com/ubuntu
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:40.5812111Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [34 B]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:41.0611019Z Hit:2 https://archive.ubuntu.com/ubuntu noble InRelease
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:41.1475234Z Get:3 https://archive.ubuntu.com/ubuntu noble-updates InRelease [126 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:41.4550714Z Get:4 https://archive.ubuntu.com/ubuntu noble-backports InRelease [126 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:41.6301063Z Get:5 https://archive.ubuntu.com/ubuntu noble-security InRelease [126 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:41.7495742Z Get:6 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 Packages [1401 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.1559829Z Get:7 https://archive.ubuntu.com/ubuntu noble-updates/main Translation-en [310 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.2518876Z Get:8 https://archive.ubuntu.com/ubuntu noble-updates/universe amd64 Packages [1706 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.4523210Z Get:9 https://archive.ubuntu.com/ubuntu noble-updates/universe Translation-en [342 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.5422347Z Get:10 https://archive.ubuntu.com/ubuntu noble-updates/restricted amd64 Packages [1805 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.6750835Z Get:11 https://archive.ubuntu.com/ubuntu noble-updates/restricted Translation-en [411 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.7656490Z Get:12 https://archive.ubuntu.com/ubuntu noble-security/main amd64 Packages [1146 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.8755401Z Get:13 https://archive.ubuntu.com/ubuntu noble-security/main Translation-en [231 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:42.9612646Z Get:14 https://archive.ubuntu.com/ubuntu noble-security/universe amd64 Packages [1222 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:43.0736105Z Get:15 https://archive.ubuntu.com/ubuntu noble-security/universe Translation-en [246 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:43.2802933Z Get:16 https://archive.ubuntu.com/ubuntu noble-security/restricted amd64 Packages [1713 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:43.4039681Z Get:17 https://archive.ubuntu.com/ubuntu noble-security/restricted Translation-en [392 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:45.5569853Z Fetched 11.3 MB in 3s (3811 kB/s)
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.3221185Z Reading package lists...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.3538228Z Reading package lists...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.5309459Z Building dependency tree...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.5318144Z Reading state information...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6826071Z The following additional packages will be installed:
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6827439Z   ipxe-qemu libbrlapi0.8 libburn4t64 libcacard0 libdaxctl1 libfdt1 libgif7
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6828845Z   libimagequant0 libisoburn1t64 libisofs6t64 liblept5 libndctl6 libpcsclite1
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6830408Z   libpmem1 libraqm0 librdmacm1t64 libtesseract5 liburing2
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6832491Z   libusbredirparser1t64 qemu-system-common qemu-system-data seabios
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6833311Z   tesseract-ocr-eng tesseract-ocr-osd
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6840856Z Suggested packages:
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6841606Z   pcscd python-pil-doc samba vde2 xorriso-tcltk jigit cdck
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6842234Z Recommended packages:
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6842642Z   python3-olefile ipxe-qemu-256k-compat-efi-roms qemu-system-gui
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6843210Z   qemu-system-modules-spice qemu-system-modules-opengl qemu-block-extra
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.6844045Z   cpu-checker
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7076670Z The following NEW packages will be installed:
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7081508Z   ipxe-qemu libbrlapi0.8 libburn4t64 libcacard0 libdaxctl1 libfdt1 libgif7
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7091103Z   libimagequant0 libisoburn1t64 libisofs6t64 liblept5 libndctl6 libpcsclite1
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7111581Z   libpmem1 libraqm0 librdmacm1t64 libtesseract5 liburing2
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7131357Z   libusbredirparser1t64 ovmf python3-pil qemu-system-common qemu-system-data
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7132593Z   qemu-system-x86 qemu-utils seabios tesseract-ocr tesseract-ocr-eng
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7133463Z   tesseract-ocr-osd xorriso
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7284554Z 0 upgraded, 30 newly installed, 0 to remove and 98 not upgraded.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7285708Z Need to get 33.8 MB of archives.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7286617Z After this operation, 139 MB of additional disk space will be used.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:46.7287376Z Get:1 file:/etc/apt/apt-mirrors.txt Mirrorlist [34 B]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:47.1826952Z Get:2 https://archive.ubuntu.com/ubuntu noble/main amd64 ipxe-qemu all 1.21.1+git-20220113.fbbdc3926-0ubuntu2 [1565 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:47.9025687Z Get:3 https://archive.ubuntu.com/ubuntu noble/main amd64 libbrlapi0.8 amd64 6.6-4ubuntu5 [31.4 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:47.9797890Z Get:4 https://archive.ubuntu.com/ubuntu noble/main amd64 libburn4t64 amd64 1.5.6-1.1build1 [158 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.0639629Z Get:5 https://archive.ubuntu.com/ubuntu noble/main amd64 libpcsclite1 amd64 2.0.3-1build1 [21.4 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.1410769Z Get:6 https://archive.ubuntu.com/ubuntu noble/main amd64 libcacard0 amd64 1:2.8.0-3build4 [36.5 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.2191800Z Get:7 https://archive.ubuntu.com/ubuntu noble/main amd64 libdaxctl1 amd64 77-2ubuntu2 [21.4 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.2962450Z Get:8 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 libgif7 amd64 5.2.2-1ubuntu1.2 [35.6 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.3740795Z Get:9 https://archive.ubuntu.com/ubuntu noble/main amd64 libimagequant0 amd64 2.18.0-1build1 [36.3 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.4521374Z Get:10 https://archive.ubuntu.com/ubuntu noble/main amd64 libisofs6t64 amd64 1.5.6.pl01-1.1ubuntu2 [220 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.5400592Z Get:11 https://archive.ubuntu.com/ubuntu noble/main amd64 libisoburn1t64 amd64 1:1.5.6-1.1ubuntu3 [405 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.6368675Z Get:12 https://archive.ubuntu.com/ubuntu noble/universe amd64 liblept5 amd64 1.82.0-3build4 [1099 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.8061081Z Get:13 https://archive.ubuntu.com/ubuntu noble/main amd64 libndctl6 amd64 77-2ubuntu2 [62.8 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.8844875Z Get:14 https://archive.ubuntu.com/ubuntu noble/main amd64 libpmem1 amd64 1.13.1-1.1ubuntu2 [84.8 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:48.9626957Z Get:15 https://archive.ubuntu.com/ubuntu noble/main amd64 libraqm0 amd64 0.10.1-1build1 [15.0 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.0397293Z Get:16 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 librdmacm1t64 amd64 50.0-2ubuntu0.2 [70.7 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.1182936Z Get:17 https://archive.ubuntu.com/ubuntu noble/universe amd64 libtesseract5 amd64 5.3.4-1build5 [1291 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.2377628Z Get:18 https://archive.ubuntu.com/ubuntu noble/main amd64 liburing2 amd64 2.5-1build1 [21.1 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.3146704Z Get:19 https://archive.ubuntu.com/ubuntu noble/main amd64 libusbredirparser1t64 amd64 0.13.0-2.1build1 [16.5 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.3913747Z Get:20 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 python3-pil amd64 10.2.0-1ubuntu1.3 [452 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.5991084Z Get:21 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 qemu-system-common amd64 1:8.2.2+ds-0ubuntu1.18 [1255 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.7152475Z Get:22 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 qemu-system-data all 1:8.2.2+ds-0ubuntu1.18 [1796 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.8488668Z Get:23 https://archive.ubuntu.com/ubuntu noble/main amd64 libfdt1 amd64 1.7.0-2build1 [20.1 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:49.9257938Z Get:24 https://archive.ubuntu.com/ubuntu noble/main amd64 seabios all 1.16.3-2 [175 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.0065593Z Get:25 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 qemu-system-x86 amd64 1:8.2.2+ds-0ubuntu1.18 [11.2 MB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.2954471Z Get:26 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 qemu-utils amd64 1:8.2.2+ds-0ubuntu1.18 [2221 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.3881916Z Get:27 https://archive.ubuntu.com/ubuntu noble/universe amd64 tesseract-ocr-eng all 1:4.1.0-2 [1818 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.4770278Z Get:28 https://archive.ubuntu.com/ubuntu noble/universe amd64 tesseract-ocr-osd all 1:4.1.0-2 [3841 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.5792757Z Get:29 https://archive.ubuntu.com/ubuntu noble/universe amd64 tesseract-ocr amd64 5.3.4-1build5 [328 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.6588920Z Get:30 https://archive.ubuntu.com/ubuntu noble/main amd64 xorriso amd64 1:1.5.6-1.1ubuntu3 [297 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:50.7377629Z Get:31 https://archive.ubuntu.com/ubuntu noble-updates/main amd64 ovmf all 2024.02-2ubuntu0.10 [5188 kB]
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8424193Z Fetched 33.8 MB in 4s (8336 kB/s)
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8652097Z Selecting previously unselected package ipxe-qemu.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8982325Z (Reading database ... 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8982882Z (Reading database ... 5%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8983362Z (Reading database ... 10%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8983732Z (Reading database ... 15%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8984048Z (Reading database ... 20%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8984344Z (Reading database ... 25%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8984634Z (Reading database ... 30%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8984933Z (Reading database ... 35%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8985230Z (Reading database ... 40%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8986236Z (Reading database ... 45%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.8986714Z (Reading database ... 50%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:51.9043037Z (Reading database ... 55%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.0166941Z (Reading database ... 60%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.1660240Z (Reading database ... 65%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.3687923Z (Reading database ... 70%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.5706238Z (Reading database ... 75%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.7087394Z (Reading database ... 80%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.8501595Z (Reading database ... 85%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:52.9932435Z (Reading database ... 90%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1277861Z (Reading database ... 95%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1278659Z (Reading database ... 100%
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1279637Z (Reading database ... 203540 files and directories currently installed.)
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1325513Z Preparing to unpack .../00-ipxe-qemu_1.21.1+git-20220113.fbbdc3926-0ubuntu2_all.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1355000Z Unpacking ipxe-qemu (1.21.1+git-20220113.fbbdc3926-0ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1737006Z Selecting previously unselected package libbrlapi0.8:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1872556Z Preparing to unpack .../01-libbrlapi0.8_6.6-4ubuntu5_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.1893977Z Unpacking libbrlapi0.8:amd64 (6.6-4ubuntu5) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2127196Z Selecting previously unselected package libburn4t64:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2262978Z Preparing to unpack .../02-libburn4t64_1.5.6-1.1build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2277278Z Unpacking libburn4t64:amd64 (1.5.6-1.1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2547011Z Selecting previously unselected package libpcsclite1:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2684156Z Preparing to unpack .../03-libpcsclite1_2.0.3-1build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2694105Z Unpacking libpcsclite1:amd64 (2.0.3-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.2924527Z Selecting previously unselected package libcacard0:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3059019Z Preparing to unpack .../04-libcacard0_1%3a2.8.0-3build4_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3069291Z Unpacking libcacard0:amd64 (1:2.8.0-3build4) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3296919Z Selecting previously unselected package libdaxctl1:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3429522Z Preparing to unpack .../05-libdaxctl1_77-2ubuntu2_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3440306Z Unpacking libdaxctl1:amd64 (77-2ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3662882Z Selecting previously unselected package libgif7:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3792561Z Preparing to unpack .../06-libgif7_5.2.2-1ubuntu1.2_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.3802634Z Unpacking libgif7:amd64 (5.2.2-1ubuntu1.2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4044445Z Selecting previously unselected package libimagequant0:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4180178Z Preparing to unpack .../07-libimagequant0_2.18.0-1build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4190801Z Unpacking libimagequant0:amd64 (2.18.0-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4426888Z Selecting previously unselected package libisofs6t64:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4558601Z Preparing to unpack .../08-libisofs6t64_1.5.6.pl01-1.1ubuntu2_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4570249Z Unpacking libisofs6t64:amd64 (1.5.6.pl01-1.1ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4820963Z Selecting previously unselected package libisoburn1t64:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4953426Z Preparing to unpack .../09-libisoburn1t64_1%3a1.5.6-1.1ubuntu3_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.4965206Z Unpacking libisoburn1t64:amd64 (1:1.5.6-1.1ubuntu3) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.5239802Z Selecting previously unselected package liblept5:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.5374332Z Preparing to unpack .../10-liblept5_1.82.0-3build4_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.5384867Z Unpacking liblept5:amd64 (1.82.0-3build4) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.5734575Z Selecting previously unselected package libndctl6:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.5867712Z Preparing to unpack .../11-libndctl6_77-2ubuntu2_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.5877720Z Unpacking libndctl6:amd64 (77-2ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6111053Z Selecting previously unselected package libpmem1:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6243569Z Preparing to unpack .../12-libpmem1_1.13.1-1.1ubuntu2_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6252606Z Unpacking libpmem1:amd64 (1.13.1-1.1ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6526625Z Selecting previously unselected package libraqm0:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6683676Z Preparing to unpack .../13-libraqm0_0.10.1-1build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6693509Z Unpacking libraqm0:amd64 (0.10.1-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.6919016Z Selecting previously unselected package librdmacm1t64:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7048850Z Preparing to unpack .../14-librdmacm1t64_50.0-2ubuntu0.2_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7059005Z Unpacking librdmacm1t64:amd64 (50.0-2ubuntu0.2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7292993Z Selecting previously unselected package libtesseract5:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7420359Z Preparing to unpack .../15-libtesseract5_5.3.4-1build5_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7429314Z Unpacking libtesseract5:amd64 (5.3.4-1build5) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7836757Z Selecting previously unselected package liburing2:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7965277Z Preparing to unpack .../16-liburing2_2.5-1build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.7974098Z Unpacking liburing2:amd64 (2.5-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.8191792Z Selecting previously unselected package libusbredirparser1t64:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.8321341Z Preparing to unpack .../17-libusbredirparser1t64_0.13.0-2.1build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.8330267Z Unpacking libusbredirparser1t64:amd64 (0.13.0-2.1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.8541742Z Selecting previously unselected package python3-pil:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.8669246Z Preparing to unpack .../18-python3-pil_10.2.0-1ubuntu1.3_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.8677850Z Unpacking python3-pil:amd64 (10.2.0-1ubuntu1.3) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.9567785Z Selecting previously unselected package qemu-system-common.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.9698134Z Preparing to unpack .../19-qemu-system-common_1%3a8.2.2+ds-0ubuntu1.18_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:53.9707992Z Unpacking qemu-system-common (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.0462730Z Selecting previously unselected package qemu-system-data.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.0594359Z Preparing to unpack .../20-qemu-system-data_1%3a8.2.2+ds-0ubuntu1.18_all.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.0603103Z Unpacking qemu-system-data (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.1281594Z Selecting previously unselected package libfdt1:amd64.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.1415274Z Preparing to unpack .../21-libfdt1_1.7.0-2build1_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.1424787Z Unpacking libfdt1:amd64 (1.7.0-2build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.1632050Z Selecting previously unselected package seabios.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.1761961Z Preparing to unpack .../22-seabios_1.16.3-2_all.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.1775477Z Unpacking seabios (1.16.3-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.2042899Z Selecting previously unselected package qemu-system-x86.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.2172840Z Preparing to unpack .../23-qemu-system-x86_1%3a8.2.2+ds-0ubuntu1.18_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.2245819Z Unpacking qemu-system-x86 (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.4285533Z Selecting previously unselected package qemu-utils.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.4414033Z Preparing to unpack .../24-qemu-utils_1%3a8.2.2+ds-0ubuntu1.18_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.4422479Z Unpacking qemu-utils (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.4985786Z Selecting previously unselected package tesseract-ocr-eng.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.5116369Z Preparing to unpack .../25-tesseract-ocr-eng_1%3a4.1.0-2_all.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.5125858Z Unpacking tesseract-ocr-eng (1:4.1.0-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.5495219Z Selecting previously unselected package tesseract-ocr-osd.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.5625197Z Preparing to unpack .../26-tesseract-ocr-osd_1%3a4.1.0-2_all.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.5633641Z Unpacking tesseract-ocr-osd (1:4.1.0-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.6265350Z Selecting previously unselected package tesseract-ocr.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.6396788Z Preparing to unpack .../27-tesseract-ocr_5.3.4-1build5_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.6406261Z Unpacking tesseract-ocr (5.3.4-1build5) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.6755373Z Selecting previously unselected package xorriso.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.6886606Z Preparing to unpack .../28-xorriso_1%3a1.5.6-1.1ubuntu3_amd64.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.6895827Z Unpacking xorriso (1:1.5.6-1.1ubuntu3) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.7150262Z Selecting previously unselected package ovmf.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.7282435Z Preparing to unpack .../29-ovmf_2024.02-2ubuntu0.10_all.deb ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.7292575Z Unpacking ovmf (2024.02-2ubuntu0.10) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8212298Z Setting up tesseract-ocr-eng (1:4.1.0-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8234083Z Setting up libfdt1:amd64 (1.7.0-2build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8254866Z Setting up ovmf (2024.02-2ubuntu0.10) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8276025Z Setting up libraqm0:amd64 (0.10.1-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8298549Z Setting up libimagequant0:amd64 (2.18.0-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8319412Z Setting up libpcsclite1:amd64 (2.0.3-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8341741Z Setting up libdaxctl1:amd64 (77-2ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8361799Z Setting up qemu-system-data (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8378235Z Setting up seabios (1.16.3-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8395445Z Setting up libgif7:amd64 (5.2.2-1ubuntu1.2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8414360Z Setting up libisofs6t64:amd64 (1.5.6.pl01-1.1ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8431076Z Setting up libusbredirparser1t64:amd64 (0.13.0-2.1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8449230Z Setting up ipxe-qemu (1.21.1+git-20220113.fbbdc3926-0ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8466581Z Setting up libburn4t64:amd64 (1.5.6-1.1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8483465Z Setting up libndctl6:amd64 (77-2ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8500823Z Setting up librdmacm1t64:amd64 (50.0-2ubuntu0.2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8518622Z Setting up libbrlapi0.8:amd64 (6.6-4ubuntu5) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8536169Z Setting up tesseract-ocr-osd (1:4.1.0-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8553929Z Setting up liburing2:amd64 (2.5-1build1) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8574105Z Setting up libisoburn1t64:amd64 (1:1.5.6-1.1ubuntu3) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8591709Z Setting up xorriso (1:1.5.6-1.1ubuntu3) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8608767Z Setting up libpmem1:amd64 (1.13.1-1.1ubuntu2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8626360Z Setting up libcacard0:amd64 (1:2.8.0-3build4) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8643864Z Setting up liblept5:amd64 (1.82.0-3build4) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:54.8662267Z Setting up python3-pil:amd64 (10.2.0-1ubuntu1.3) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.1658594Z Setting up libtesseract5:amd64 (5.3.4-1build5) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.1677466Z Setting up qemu-utils (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.1695115Z Setting up qemu-system-common (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.2899332Z Created symlink /etc/systemd/system/multi-user.target.wants/qemu-kvm.service → /usr/lib/systemd/system/qemu-kvm.service.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.2900573Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.6273036Z Setting up qemu-system-x86 (1:8.2.2+ds-0ubuntu1.18) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.6345860Z Setting up tesseract-ocr (5.3.4-1build5) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:55.6369424Z Processing triggers for hicolor-icon-theme (0.17-2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:56.0363207Z Processing triggers for libc-bin (2.39-0ubuntu8.9) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:56.0732598Z Processing triggers for man-db (2.12.0-4build2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:56.0755709Z Not building database; man-db/auto-update is not 'true'.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:56.0769869Z Processing triggers for install-info (7.1-3build2) ...
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5988401Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5989087Z Running kernel seems to be up-to-date.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5989419Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5989559Z No services need to be restarted.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5989799Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5990475Z No containers need to be restarted.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5990776Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5990944Z No user sessions are running outdated binaries.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5991227Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:57.5991489Z No VM guests are running outdated hypervisor (qemu) binaries on this host.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:59.4416561Z prepare-phase: prerequisite-ready
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:45:59.4417534Z prepare-phase: authenticated-retained-inputs
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:46:00.2780540Z {"artifact": 12507125311, "bytes": 9881941, "attempt": 1, "phase": "parallel-download"}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:46:00.8226127Z {"artifact": 12507125311, "phase": "download-result", "returncode": 0, "seconds": 1}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:46:00.8674587Z {"artifact": 12507125311, "phase": "verified-and-extracted", "digest": "sha256:47c57f02d9d2807cdabadd31b387e0e336a21441cd6acb1b99043fe043660b06"}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:46:01.3590472Z {"artifact": 12506756949, "bytes": 15065458881, "attempt": 1, "phase": "parallel-download"}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:46:42.5695899Z {"artifact": 12506756949, "phase": "download-result", "returncode": 0, "seconds": 41}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:47:56.9117318Z {"artifact": 12506756949, "phase": "verified-and-extracted", "digest": "sha256:e87c617f179da525d7d06e3e74b862fa87dcefabdbcbcb02f2e7258802a6ccd4"}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:47:56.9310536Z retain/OVMF_CODE_4M.fd: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:47:56.9312423Z retain/README.md: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:47:56.9313789Z retain/SHA256SUMS: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:47:56.9315670Z retain/SHA256SUMS.all: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:47:56.9317520Z retain/SHA256SUMS.gpg: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:01.4327186Z retain/apt-closure.tar.zst: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:01.4327751Z retain/artifact-fetch.py: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:01.4329513Z retain/build-api.json: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:01.4331949Z retain/build.sh: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:24.8065586Z retain/cosmic-1.11.qcow2: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:24.8079538Z retain/cosmic-vars.fd: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:24.8082138Z retain/exercise.py: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:24.8083913Z retain/guest-prepare.sh: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:24.8085679Z retain/package-map.py: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:35.8116294Z retain/pop-os_24.04_amd64_generic_28.iso: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:35.8117769Z retain/pop.gpg: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:35.8132392Z retain/preboot-vars.fd: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:35.8133727Z retain/restore.sh: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:35.8135927Z retain/test_artifact_fetch.py: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:43.1587115Z {"artifact": 12507891179, "bytes": 45747779, "attempt": 1, "phase": "parallel-download"}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:43.5268727Z {"artifact": 12507891179, "phase": "download-result", "returncode": 0, "seconds": 0}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:43.6153731Z {"artifact": 12507891179, "phase": "verified-and-extracted", "digest": "sha256:2cdea1fd0ba584bc1c0891033764042b07692b370392fc4f4896d4fef7e11f65"}
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:43.9520777Z gpgv: Signature made Thu Sep 17 21:01:47 2026 UTC
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:43.9521466Z gpgv:                using RSA key 63C46DF0140D738961429F4E204DD8AEC33A7AFF
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:43.9526613Z gpgv: Good signature from "Pop OS (ISO Signing Key) <info@system76.com>"
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:46.5510734Z pop-os_24.04_amd64_generic_28.iso: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.3662626Z cosmic-ext-halcyon-islands_0.2.0_amd64.deb: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.3805419Z cosmic-ext-halcyon_0.2.0_amd64.deb: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.3947768Z cosmic-ext-halcyon_0.2.1~dev.0b688c8_amd64.deb: OK
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4045410Z xorriso 1.5.6 : RockRidge filesystem manipulator, libburnia project.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4046074Z 
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4068854Z Drive current: -outdev 'stdio:/home/runner/work/_temp/cosmic/candidate.iso'
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4069789Z Media current: stdio file, overwriteable
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4070598Z Media status : is blank
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4071184Z Media summary: 0 sessions, 0 data blocks, 0 data, 71.4g free
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4072235Z Added to ISO image: directory '/'='/home/runner/work/_temp/theme-packages/media'
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4072805Z xorriso : UPDATE :       7 files added in 1 seconds
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.4075438Z xorriso : UPDATE :       7 files added in 1 seconds
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.5084436Z ISO image produced: 22476 sectors
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.5085292Z Written to medium : 22476 sectors at LBA 0
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.5086201Z Writing to 'stdio:/home/runner/work/_temp/cosmic/candidate.iso' completed successfully.
+session (candidate, islands)	Tools, authenticated retained guest and finalized input media	2026-10-23T17:48:53.5086784Z 
+session (candidate, islands)	One offline VM; independent clean scenario overlays	﻿2026-10-23T17:48:53.5580853Z ##[group]Run sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="candidate" HOST_KIND="islands" SCENARIO_SET="acceptance" bash private/qualification-021/theme/session.sh
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:48:53.5582052Z [36;1msudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="candidate" HOST_KIND="islands" SCENARIO_SET="acceptance" bash private/qualification-021/theme/session.sh[0m
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:48:53.5648462Z shell: /usr/bin/bash -e {0}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:48:53.5648758Z ##[endgroup]
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:48:53.6502300Z {"event": "phase-start", "phase": {"name": "untouched-clock", "lineage": "untouched", "host": "stock", "task": "clock"}, "media": false, "host_time": 1792777733.650022}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:48:53.6696273Z Formatting '/home/runner/work/_temp/cosmic/acceptance-untouched-clock/trial.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=42949672960 backing_file=/home/runner/work/_temp/cosmic/base.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:53:44.6623508Z {"event": "phase-end", "phase": "untouched-clock", "outcome": {"exitcode": 0}, "host_time": 1792778024.662105}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:53:44.6625358Z {"event": "phase-start", "phase": {"name": "untouched-natural", "lineage": "untouched", "host": "stock", "task": "natural"}, "media": false, "host_time": 1792778024.6621563}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T17:53:44.6683068Z Formatting '/home/runner/work/_temp/cosmic/acceptance-untouched-natural/trial.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=42949672960 backing_file=/home/runner/work/_temp/cosmic/base.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:03:05.5135418Z {"event": "phase-end", "phase": "untouched-natural", "outcome": {"exitcode": 0}, "host_time": 1792778585.51322}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:03:05.5138417Z {"event": "phase-start", "phase": {"name": "candidate-islands-manual", "lineage": "candidate", "host": "islands", "task": "manual"}, "media": true, "host_time": 1792778585.5132763}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:03:05.5197022Z Formatting '/home/runner/work/_temp/cosmic/acceptance-candidate-islands-manual/trial.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=42949672960 backing_file=/home/runner/work/_temp/cosmic/base.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:16:16.5892873Z {"event": "phase-end", "phase": "candidate-islands-manual", "outcome": {"exitcode": 0}, "host_time": 1792779376.5889726}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:16:16.5894407Z {"event": "phase-start", "phase": {"name": "candidate-islands-natural", "lineage": "candidate", "host": "islands", "task": "natural"}, "media": true, "host_time": 1792779376.589043}
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:16:16.5951961Z Formatting '/home/runner/work/_temp/cosmic/acceptance-candidate-islands-natural/trial.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=42949672960 backing_file=/home/runner/work/_temp/cosmic/base.qcow2 backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+session (candidate, islands)	One offline VM; independent clean scenario overlays	2026-10-23T18:25:41.1291129Z {"event": "phase-end", "phase": "candidate-islands-natural", "outcome": {"exitcode": 0}, "host_time": 1792779941.1287897}
+session (candidate, islands)	Readable evidence	﻿2026-10-23T18:25:41.1511866Z ##[group]Run sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
+session (candidate, islands)	Readable evidence	2026-10-23T18:25:41.1512359Z [36;1msudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"[0m
+session (candidate, islands)	Readable evidence	2026-10-23T18:25:41.1575863Z shell: /usr/bin/bash -e {0}
+session (candidate, islands)	Readable evidence	2026-10-23T18:25:41.1576133Z ##[endgroup]
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	﻿2026-10-23T18:25:41.1842741Z ##[group]Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1843179Z with:
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1843421Z   name: theme-acceptance-islands-39997696992
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1843757Z   path: /home/runner/work/_temp/cosmic/evidence/
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1844050Z   retention-days: 7
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1844266Z   compression-level: 6
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1844493Z   if-no-files-found: warn
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1844727Z   overwrite: false
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1844952Z   include-hidden-files: false
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.1845195Z ##[endgroup]
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.5681173Z (node:4404) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.5682499Z (Use `node --trace-deprecation ...` to show where the warning was created)
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.6953862Z With the provided path, there will be 759 files uploaded
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.6960258Z Artifact name is valid!
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.6961084Z Root directory input is valid!
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:41.9424874Z Beginning upload of artifact content to blob storage
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:42.2913236Z (node:4404) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:42.4718261Z Uploaded bytes 8388608
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:42.6749721Z Uploaded bytes 16777216
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:42.9740235Z Uploaded bytes 25165824
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:43.2090052Z Uploaded bytes 33554432
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:43.5409465Z Uploaded bytes 41943040
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:43.7617970Z Uploaded bytes 50331648
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:44.0338754Z Uploaded bytes 58720256
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:44.3459910Z Uploaded bytes 67108864
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:44.7681976Z Uploaded bytes 75497472
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:45.0369471Z Uploaded bytes 83886080
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:45.4432429Z Uploaded bytes 92274688
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:45.6814257Z Uploaded bytes 100663296
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.0252999Z Uploaded bytes 109051904
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.2786867Z Uploaded bytes 116315384
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.2977868Z Finished uploading artifact content to blob storage!
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.2982190Z SHA256 digest of uploaded artifact zip is 2460847c5681fb683c84c8c7c4d1f52bb42be9a595e922d805eb9220125b4d7f
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.2983875Z Finalizing artifact upload
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.7647277Z Artifact theme-acceptance-islands-39997696992.zip successfully finalized. Artifact ID 12521924667
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.7649877Z Artifact theme-acceptance-islands-39997696992 has been successfully uploaded! Final size is 116315384 bytes. Artifact ID is 12521924667
+session (candidate, islands)	Run actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02	2026-10-23T18:25:46.7661164Z Artifact download URL: https://github.com/profilaz3/halcyon/actions/runs/39997696992/artifacts/12521924667
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	﻿2026-10-23T18:25:46.7947141Z Post job cleanup.
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8806260Z [command]/usr/bin/git version
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8853614Z git version 2.55.0
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8895188Z Temporarily overriding HOME='/home/runner/work/_temp/0d95315a-6f2b-4df6-8df1-9ba16a7929fc' before making global git config changes
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8896868Z Adding repository directory to the temporary git global config as a safe directory
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8901054Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/halcyon/halcyon
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8940213Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.8979151Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.9251248Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+session (candidate, islands)	Post Run actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683	2026-10-23T18:25:46.9294021Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+session (candidate, islands)	Complete job	﻿2026-10-23T18:25:46.9774706Z Cleaning up orphan processes
+session (candidate, islands)	Complete job	2026-10-23T18:25:47.0219491Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683, actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

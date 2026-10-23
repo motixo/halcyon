@@ -1,0 +1,3405 @@
+{
+  "artifact": {
+    "id": 12521924667,
+    "name": "theme-acceptance-islands-39997696992",
+    "digest": "sha256:2460847c5681fb683c84c8c7c4d1f52bb42be9a595e922d805eb9220125b4d7f",
+    "size_in_bytes": 116315384,
+    "expires_at": "2026-10-30T18:25:41Z"
+  },
+  "executed_infra": "2a4392b082f7587b2ed67f9347f11200ca39c2a3",
+  "verified_harness_files": {
+    "acceptance_wrapper.py": "bb8c9c0b2f068f0db38ed4df8a2cfb5df5058212409129e011cfc4828da4d121",
+    "acceptance_session.py": "700899afe2c49698d983fd5a52b350202a6036a5180371c4408b8f5bcd77fd77",
+    "auto_session.py": "a668f61e650f0df908a09a1fda8e85c4e7f0fd17480d188bd533587be068fca1",
+    "followup_session.py": "06a51a7bdd902173c4bbe78728d141d1db76ce194cd737ef7ea8fa445b6b7a3a",
+    "theme_session.py": "01af1be15a6be6c6b95d54ff6b59dc3c6b1c807b723691ec6ec7f0c4e894caa0",
+    "control.py": "5441ef85023c81466720bcc329da360b4de34234dac531b02d62aeff3bfffa9b",
+    "calibrated_controls.py": "0658a6f2f3a16bb9e2e98156be0351f0ec27b039e9991ca6d7c1ce278474889d",
+    "prepare.sh": "aa9d882dfda7d3ddab656e8edea2105acd418bce9a7d19b835510a1539d8c4d2",
+    "session.sh": "daeeaeac20e6d8b3c40f8bb4f4ce15225b377ac1280c2f130226fdd3a48ccb1c",
+    "followup/control-calibration.json": "0388c4d50a68b8593367cf8f1ea67f0d60ee655ec04ceb02c915b42c36204eb7",
+    "acceptance/solar-boundary.json": "30b3659ba473d25f9376f4626305ae274555e6d0cc16b5803d4ae7d81523dc16",
+    "acceptance/solar-provenance.json": "6e801c4cbb51409cdcb55ef0fecf39665f7ae9108bfbb2ff515e783176e802dd",
+    "acceptance/source/data-timezone-geodata.bitcode-v0-6": "910a6c8b4e16ffa875a0aca47bd9c215ddee19941ab7f0012b6106fffe66b3b9",
+    "acceptance/source/Cargo.toml": "d4ed9b70222d64ea1ebf4aee4198560e86fe3967e4f56c4e9460e3005bf7733f",
+    "acceptance/source/Cargo.lock": "5c637b6096f2bd39ec3de2370470cb34e1b215824250feba371b96296d1b82e2",
+    "acceptance/source/geonames-lib.rs": "c7aa7052d01f8e76171ab7ceae3c3543461ec4bc48b473fc426f43116f6600c7",
+    "acceptance/solar-calculator/Cargo.toml": "accfa290a2a8c4ac5eafa9275dd9b624b0f2b99520ba745c1c07780498690336",
+    "acceptance/solar-calculator/Cargo.lock": "6776038b77d32c8f56cdf0db2818c2f4075992c996e23395ec5e6c34e9bc2806",
+    "acceptance/solar-calculator/src/main.rs": "75c1d4c82597ab637ee8945222224d30bb8d25500a61905a717c1cdd4a042953",
+    "upstream-daemon-time-655b14f.rs": "02445e02e10318da578c48bfd8c1d62b939777be82dbe5029b70d815e33682e9",
+    "upstream-daemon-theme-655b14f.rs": "4c124d1d7dbc33c86a0e18194c82226c03f1a535dc5b22e38f51ab3a3a5ab3dd",
+    "upstream-daemon-location-655b14f.rs": "063e74495f5250962c08b67c87465fb949d9bff5acc6a9bbf2e9be9c6e892c18"
+  },
+  "phases": {
+    "candidate-islands-manual": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "calm native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "evening native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "focus native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "paper native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "rose native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        }
+      ],
+      "automatic": {
+        "native": "not observed in this phase",
+        "injected_events": false,
+        "observations": []
+      },
+      "media": {
+        "expected_candidate_media": "/home/runner/work/_temp/cosmic/candidate.iso",
+        "inserted_removable_media": [
+          {
+            "io-status": "ok",
+            "device": "media",
+            "locked": true,
+            "removable": true,
+            "inserted": {
+              "iops_rd": 0,
+              "detect_zeroes": "off",
+              "image": {
+                "virtual-size": 46030848,
+                "filename": "/home/runner/work/_temp/cosmic/candidate.iso",
+                "format": "raw",
+                "actual-size": 46030848,
+                "dirty-flag": false
+              },
+              "iops_wr": 0,
+              "ro": true,
+              "node-name": "#block972",
+              "backing_file_depth": 0,
+              "drv": "raw",
+              "iops": 0,
+              "bps_wr": 0,
+              "write_threshold": 0,
+              "encrypted": false,
+              "bps": 0,
+              "bps_rd": 0,
+              "cache": {
+                "no-flush": false,
+                "direct": false,
+                "writeback": true
+              },
+              "file": "/home/runner/work/_temp/cosmic/candidate.iso"
+            },
+            "qdev": "/machine/peripheral-anon/device[7]",
+            "tray_open": false,
+            "type": "unknown"
+          }
+        ],
+        "asserted": true
+      },
+      "frames": [
+        {
+          "name": "006-selected-calm",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 126,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "009-calm-manual-dark-0",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 127,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "012-calm-manual-light-1",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            21,
+            40,
+            41
+          ],
+          "actual_surface": [
+            214,
+            239,
+            240
+          ],
+          "actual_ink": [
+            21,
+            40,
+            41
+          ],
+          "glyph_pixels": 96,
+          "actual_contrast": 12.771541673184347,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "015-calm-manual-dark-2",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 125,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "022-selected-evening",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            192,
+            189,
+            213
+          ],
+          "actual_surface": [
+            47,
+            44,
+            65
+          ],
+          "actual_ink": [
+            192,
+            189,
+            213
+          ],
+          "glyph_pixels": 125,
+          "actual_contrast": 7.371662262793889,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                178,
+                164,
+                243
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "lavender"
+          }
+        },
+        {
+          "name": "025-evening-manual-dark-0",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            192,
+            189,
+            213
+          ],
+          "actual_surface": [
+            47,
+            44,
+            65
+          ],
+          "actual_ink": [
+            192,
+            189,
+            213
+          ],
+          "glyph_pixels": 129,
+          "actual_contrast": 7.371662262793889,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                178,
+                164,
+                243
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "lavender"
+          }
+        },
+        {
+          "name": "028-evening-manual-light-1",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            39,
+            38,
+            47
+          ],
+          "actual_surface": [
+            231,
+            230,
+            246
+          ],
+          "actual_ink": [
+            39,
+            38,
+            47
+          ],
+          "glyph_pixels": 96,
+          "actual_contrast": 12.137097245590752,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                178,
+                164,
+                243
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "lavender"
+          }
+        },
+        {
+          "name": "031-evening-manual-dark-2",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            192,
+            189,
+            213
+          ],
+          "actual_surface": [
+            47,
+            44,
+            65
+          ],
+          "actual_ink": [
+            174,
+            171,
+            195
+          ],
+          "glyph_pixels": 129,
+          "actual_contrast": 6.043723083037682,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                178,
+                164,
+                243
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "lavender"
+          }
+        },
+        {
+          "name": "038-selected-focus",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            249,
+            252,
+            255
+          ],
+          "actual_surface": [
+            36,
+            43,
+            52
+          ],
+          "actual_ink": [
+            249,
+            252,
+            255
+          ],
+          "glyph_pixels": 96,
+          "actual_contrast": 13.87347843115394,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                141,
+                180,
+                231
+              ],
+              "corner_radius": 24,
+              "family": "bare",
+              "native_mode_palettes": 1,
+              "opacity": 92,
+              "wallpaper_colors": true,
+              "border_opacity": 0
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "graphite"
+          }
+        },
+        {
+          "name": "041-focus-manual-dark-0",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            249,
+            252,
+            255
+          ],
+          "actual_surface": [
+            36,
+            43,
+            52
+          ],
+          "actual_ink": [
+            249,
+            252,
+            255
+          ],
+          "glyph_pixels": 83,
+          "actual_contrast": 13.87347843115394,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                141,
+                180,
+                231
+              ],
+              "corner_radius": 24,
+              "family": "bare",
+              "native_mode_palettes": 1,
+              "opacity": 92,
+              "wallpaper_colors": true,
+              "border_opacity": 0
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "graphite"
+          }
+        },
+        {
+          "name": "044-focus-manual-light-1",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            31,
+            37,
+            45
+          ],
+          "actual_surface": [
+            216,
+            225,
+            236
+          ],
+          "actual_ink": [
+            31,
+            37,
+            45
+          ],
+          "glyph_pixels": 98,
+          "actual_contrast": 11.685275104738706,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                141,
+                180,
+                231
+              ],
+              "corner_radius": 24,
+              "family": "bare",
+              "native_mode_palettes": 1,
+              "opacity": 92,
+              "wallpaper_colors": true,
+              "border_opacity": 0
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "graphite"
+          }
+        },
+        {
+          "name": "047-focus-manual-dark-2",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            249,
+            252,
+            255
+          ],
+          "actual_surface": [
+            36,
+            43,
+            52
+          ],
+          "actual_ink": [
+            249,
+            252,
+            255
+          ],
+          "glyph_pixels": 71,
+          "actual_contrast": 13.87347843115394,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                141,
+                180,
+                231
+              ],
+              "corner_radius": 24,
+              "family": "bare",
+              "native_mode_palettes": 1,
+              "opacity": 92,
+              "wallpaper_colors": true,
+              "border_opacity": 0
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "graphite"
+          }
+        },
+        {
+          "name": "054-selected-paper",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            41,
+            36,
+            28
+          ],
+          "actual_surface": [
+            250,
+            242,
+            232
+          ],
+          "actual_ink": [
+            41,
+            36,
+            28
+          ],
+          "glyph_pixels": 71,
+          "actual_contrast": 13.885039504703252,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                213,
+                167,
+                118
+              ],
+              "corner_radius": 12,
+              "family": "paper",
+              "native_mode_palettes": 1,
+              "opacity": 100,
+              "wallpaper_colors": true,
+              "border_opacity": 28
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "panel"
+            },
+            "theme": "amber"
+          }
+        },
+        {
+          "name": "057-paper-manual-dark-0",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            255,
+            251,
+            245
+          ],
+          "actual_surface": [
+            45,
+            40,
+            32
+          ],
+          "actual_ink": [
+            255,
+            251,
+            245
+          ],
+          "glyph_pixels": 79,
+          "actual_contrast": 14.185290545894151,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                213,
+                167,
+                118
+              ],
+              "corner_radius": 12,
+              "family": "paper",
+              "native_mode_palettes": 1,
+              "opacity": 100,
+              "wallpaper_colors": true,
+              "border_opacity": 28
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "panel"
+            },
+            "theme": "amber"
+          }
+        },
+        {
+          "name": "060-paper-manual-light-1",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            41,
+            36,
+            28
+          ],
+          "actual_surface": [
+            250,
+            242,
+            232
+          ],
+          "actual_ink": [
+            41,
+            36,
+            28
+          ],
+          "glyph_pixels": 79,
+          "actual_contrast": 13.885039504703252,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                213,
+                167,
+                118
+              ],
+              "corner_radius": 12,
+              "family": "paper",
+              "native_mode_palettes": 1,
+              "opacity": 100,
+              "wallpaper_colors": true,
+              "border_opacity": 28
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "panel"
+            },
+            "theme": "amber"
+          }
+        },
+        {
+          "name": "063-paper-manual-dark-2",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            255,
+            251,
+            245
+          ],
+          "actual_surface": [
+            45,
+            40,
+            32
+          ],
+          "actual_ink": [
+            255,
+            251,
+            245
+          ],
+          "glyph_pixels": 79,
+          "actual_contrast": 14.185290545894151,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                213,
+                167,
+                118
+              ],
+              "corner_radius": 12,
+              "family": "paper",
+              "native_mode_palettes": 1,
+              "opacity": 100,
+              "wallpaper_colors": true,
+              "border_opacity": 28
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "panel"
+            },
+            "theme": "amber"
+          }
+        },
+        {
+          "name": "070-selected-rose",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            221,
+            181,
+            181
+          ],
+          "actual_surface": [
+            78,
+            42,
+            46
+          ],
+          "actual_ink": [
+            221,
+            181,
+            181
+          ],
+          "glyph_pixels": 121,
+          "actual_contrast": 6.6985546194083465,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                241,
+                146,
+                149
+              ],
+              "corner_radius": 22,
+              "family": "glass",
+              "native_mode_palettes": 1,
+              "opacity": 70,
+              "wallpaper_colors": true,
+              "border_opacity": 40
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "transparent"
+            },
+            "theme": "rose"
+          }
+        },
+        {
+          "name": "073-rose-manual-dark-0",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            221,
+            181,
+            181
+          ],
+          "actual_surface": [
+            78,
+            42,
+            46
+          ],
+          "actual_ink": [
+            221,
+            181,
+            181
+          ],
+          "glyph_pixels": 121,
+          "actual_contrast": 6.6985546194083465,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                241,
+                146,
+                149
+              ],
+              "corner_radius": 22,
+              "family": "glass",
+              "native_mode_palettes": 1,
+              "opacity": 70,
+              "wallpaper_colors": true,
+              "border_opacity": 40
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "transparent"
+            },
+            "theme": "rose"
+          }
+        },
+        {
+          "name": "076-rose-manual-light-1",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            45,
+            33,
+            33
+          ],
+          "actual_surface": [
+            214,
+            188,
+            191
+          ],
+          "actual_ink": [
+            45,
+            33,
+            33
+          ],
+          "glyph_pixels": 113,
+          "actual_contrast": 8.73732267410888,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                241,
+                146,
+                149
+              ],
+              "corner_radius": 22,
+              "family": "glass",
+              "native_mode_palettes": 1,
+              "opacity": 70,
+              "wallpaper_colors": true,
+              "border_opacity": 40
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "transparent"
+            },
+            "theme": "rose"
+          }
+        },
+        {
+          "name": "079-rose-manual-dark-2",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            221,
+            181,
+            181
+          ],
+          "actual_surface": [
+            78,
+            42,
+            46
+          ],
+          "actual_ink": [
+            221,
+            181,
+            181
+          ],
+          "glyph_pixels": 124,
+          "actual_contrast": 6.6985546194083465,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                241,
+                146,
+                149
+              ],
+              "corner_radius": 22,
+              "family": "glass",
+              "native_mode_palettes": 1,
+              "opacity": 70,
+              "wallpaper_colors": true,
+              "border_opacity": 40
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false,
+              "style": "transparent"
+            },
+            "theme": "rose"
+          }
+        }
+      ],
+      "running_product": [
+        {
+          "pid": 4312,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        },
+        {
+          "pid": 7677,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        },
+        {
+          "pid": 10683,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        },
+        {
+          "pid": 13876,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        },
+        {
+          "pid": 16952,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        }
+      ],
+      "payload_checks": {
+        "payload-candidate.txt": 33,
+        "payload-islands.txt": 10
+      }
+    },
+    "candidate-islands-natural": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "real natural sunrise Dark-to-Light",
+          "matched": true,
+          "settings_widgets_stopped": true
+        }
+      ],
+      "automatic": {
+        "native": "PASS: real natural sunrise Dark-to-Light",
+        "injected_events": false,
+        "observations": [],
+        "natural": {
+          "boundary": {
+            "native_source": "655b14fb9572dd7f7231ec6c343c63984e99741a",
+            "timezone": "Europe/London",
+            "latitude": 51.50853,
+            "longitude": -0.12574,
+            "sunrise_utc": "2026-10-23T06:37:41+00:00",
+            "sunrise_epoch": 1792737461,
+            "sunset_utc": "2026-10-23T16:51:44+00:00",
+            "sunset_epoch": 1792774304,
+            "sunrise_crate": "2.1.0",
+            "bitcode_crate": "0.6.9",
+            "chrono_crate": "0.4.45"
+          },
+          "stimulus": "one pre-login clock/timezone setup then unmodified time progression across actual calculated sunrise",
+          "first": {
+            "realtime": 1792737136.2904243,
+            "monotonic": 192.231235781,
+            "portal": "v v u 1",
+            "dark": true,
+            "controller_monotonic": 2085.152617487
+          },
+          "transition": {
+            "realtime": 1792737463.9390604,
+            "monotonic": 519.879871881,
+            "portal": "v v u 2",
+            "dark": false,
+            "controller_monotonic": 2412.804378809
+          },
+          "last": {
+            "realtime": 1792737463.9390604,
+            "monotonic": 519.879871881,
+            "portal": "v v u 2",
+            "dark": false,
+            "controller_monotonic": 2412.804378809
+          },
+          "samples": [
+            {
+              "realtime": 1792737136.2904243,
+              "monotonic": 192.231235781,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2085.152617487
+            },
+            {
+              "realtime": 1792737141.6045907,
+              "monotonic": 197.545401995,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2090.467156881
+            },
+            {
+              "realtime": 1792737146.9197035,
+              "monotonic": 202.860515087,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2095.781581219
+            },
+            {
+              "realtime": 1792737152.2330947,
+              "monotonic": 208.17390608,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2101.09657676
+            },
+            {
+              "realtime": 1792737157.548321,
+              "monotonic": 213.489132541,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2106.411931348
+            },
+            {
+              "realtime": 1792737162.8679547,
+              "monotonic": 218.808766371,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2111.727434246
+            },
+            {
+              "realtime": 1792737168.1813376,
+              "monotonic": 224.122148978,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2117.043908421
+            },
+            {
+              "realtime": 1792737173.495474,
+              "monotonic": 229.436285524,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2122.358199043
+            },
+            {
+              "realtime": 1792737178.8095706,
+              "monotonic": 234.750381856,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2127.672428183
+            },
+            {
+              "realtime": 1792737184.1243718,
+              "monotonic": 240.065183266,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2132.986530387
+            },
+            {
+              "realtime": 1792737189.4383602,
+              "monotonic": 245.379171759,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2138.300957609
+            },
+            {
+              "realtime": 1792737194.752937,
+              "monotonic": 250.693748478,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2143.615489356
+            },
+            {
+              "realtime": 1792737200.0653982,
+              "monotonic": 256.006209823,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2148.929412773
+            },
+            {
+              "realtime": 1792737205.3820717,
+              "monotonic": 261.32288366,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2154.243114918
+            },
+            {
+              "realtime": 1792737210.6958811,
+              "monotonic": 266.636692787,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2159.556964114
+            },
+            {
+              "realtime": 1792737216.0076318,
+              "monotonic": 271.948443322,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2164.87121736
+            },
+            {
+              "realtime": 1792737221.3220725,
+              "monotonic": 277.262883988,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2170.185588516
+            },
+            {
+              "realtime": 1792737226.6370006,
+              "monotonic": 282.577811814,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2175.500152387
+            },
+            {
+              "realtime": 1792737231.9505599,
+              "monotonic": 287.891371377,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2180.814584291
+            },
+            {
+              "realtime": 1792737237.2665067,
+              "monotonic": 293.207318204,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2186.128969511
+            },
+            {
+              "realtime": 1792737242.5817366,
+              "monotonic": 298.522547954,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2191.443249933
+            },
+            {
+              "realtime": 1792737247.8928554,
+              "monotonic": 303.833666744,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2196.757208648
+            },
+            {
+              "realtime": 1792737253.2061756,
+              "monotonic": 309.146986865,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2202.070573106
+            },
+            {
+              "realtime": 1792737258.520093,
+              "monotonic": 314.460904431,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2207.384216472
+            },
+            {
+              "realtime": 1792737263.834066,
+              "monotonic": 319.774877672,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2212.697550558
+            },
+            {
+              "realtime": 1792737269.1501489,
+              "monotonic": 325.090960452,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2218.012941979
+            },
+            {
+              "realtime": 1792737274.467323,
+              "monotonic": 330.408134818,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2223.328096054
+            },
+            {
+              "realtime": 1792737279.783139,
+              "monotonic": 335.723950791,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2228.643912942
+            },
+            {
+              "realtime": 1792737285.0992699,
+              "monotonic": 341.040081603,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2233.959739823
+            },
+            {
+              "realtime": 1792737290.4095216,
+              "monotonic": 346.35033297,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2239.273725771
+            },
+            {
+              "realtime": 1792737295.7243233,
+              "monotonic": 351.66513506,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2244.587839889
+            },
+            {
+              "realtime": 1792737301.0388737,
+              "monotonic": 356.979685016,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2249.902477216
+            },
+            {
+              "realtime": 1792737306.3523276,
+              "monotonic": 362.293139427,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2255.216519904
+            },
+            {
+              "realtime": 1792737311.6676965,
+              "monotonic": 367.608507971,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2260.530576204
+            },
+            {
+              "realtime": 1792737316.9821513,
+              "monotonic": 372.922962616,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2265.84492388
+            },
+            {
+              "realtime": 1792737322.2989974,
+              "monotonic": 378.239809029,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2271.160934866
+            },
+            {
+              "realtime": 1792737327.6113827,
+              "monotonic": 383.552194354,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2276.476720477
+            },
+            {
+              "realtime": 1792737332.927709,
+              "monotonic": 388.868520527,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2281.792085969
+            },
+            {
+              "realtime": 1792737338.2436619,
+              "monotonic": 394.184473188,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2287.108203641
+            },
+            {
+              "realtime": 1792737343.5579565,
+              "monotonic": 399.498767881,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2292.422573387
+            },
+            {
+              "realtime": 1792737348.869042,
+              "monotonic": 404.809853367,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2297.736254753
+            },
+            {
+              "realtime": 1792737354.1836448,
+              "monotonic": 410.124456143,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2303.050422214
+            },
+            {
+              "realtime": 1792737359.49958,
+              "monotonic": 415.440391459,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2308.364660632
+            },
+            {
+              "realtime": 1792737364.813744,
+              "monotonic": 420.754555669,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2313.678369121
+            },
+            {
+              "realtime": 1792737370.1260316,
+              "monotonic": 426.06684301,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2318.991292752
+            },
+            {
+              "realtime": 1792737375.4396636,
+              "monotonic": 431.380475147,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2324.304857077
+            },
+            {
+              "realtime": 1792737380.754414,
+              "monotonic": 436.695225601,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2329.618645545
+            },
+            {
+              "realtime": 1792737386.0688033,
+              "monotonic": 442.009614725,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2334.933102107
+            },
+            {
+              "realtime": 1792737391.3828127,
+              "monotonic": 447.32362408,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2340.248356579
+            },
+            {
+              "realtime": 1792737396.6980982,
+              "monotonic": 452.638909618,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2345.562216972
+            },
+            {
+              "realtime": 1792737402.0147226,
+              "monotonic": 457.955534144,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2350.875607859
+            },
+            {
+              "realtime": 1792737407.3243246,
+              "monotonic": 463.265136033,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2356.189198855
+            },
+            {
+              "realtime": 1792737412.6389673,
+              "monotonic": 468.579778704,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2361.503136667
+            },
+            {
+              "realtime": 1792737417.952472,
+              "monotonic": 473.89328366,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2366.81632168
+            },
+            {
+              "realtime": 1792737423.2670298,
+              "monotonic": 479.207841175,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2372.13011425
+            },
+            {
+              "realtime": 1792737428.5796473,
+              "monotonic": 484.520458739,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2377.444382262
+            },
+            {
+              "realtime": 1792737433.8923457,
+              "monotonic": 489.833157055,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2382.756814832
+            },
+            {
+              "realtime": 1792737447.9977632,
+              "monotonic": 503.938574549,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2396.861178919
+            },
+            {
+              "realtime": 1792737453.3113606,
+              "monotonic": 509.252171956,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2402.1761137
+            },
+            {
+              "realtime": 1792737458.6270661,
+              "monotonic": 514.567877588,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 2407.491092352
+            },
+            {
+              "realtime": 1792737463.9390604,
+              "monotonic": 519.879871881,
+              "portal": "v v u 2",
+              "dark": false,
+              "controller_monotonic": 2412.804378809
+            }
+          ],
+          "daemon_host_before": [
+            [
+              3355,
+              "/usr/bin/cosmic-settings-daemon",
+              "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+            ],
+            [
+              3595,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ],
+            [
+              3733,
+              "/usr/libexec/xdg-desktop-portal-cosmic",
+              "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b"
+            ]
+          ],
+          "daemon_host_after": [
+            [
+              3355,
+              "/usr/bin/cosmic-settings-daemon",
+              "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+            ],
+            [
+              3595,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ],
+            [
+              3733,
+              "/usr/libexec/xdg-desktop-portal-cosmic",
+              "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b"
+            ]
+          ],
+          "stable_native_processes": true,
+          "set_time_calls_entire_phase": 1,
+          "set_timezone_calls_entire_phase": 1,
+          "matched": true,
+          "manual_mode_writes": false,
+          "synthetic_events": false,
+          "daemon_restart_during_window": false
+        }
+      },
+      "media": {
+        "expected_candidate_media": "/home/runner/work/_temp/cosmic/candidate.iso",
+        "inserted_removable_media": [
+          {
+            "io-status": "ok",
+            "device": "media",
+            "locked": true,
+            "removable": true,
+            "inserted": {
+              "iops_rd": 0,
+              "detect_zeroes": "off",
+              "image": {
+                "virtual-size": 46030848,
+                "filename": "/home/runner/work/_temp/cosmic/candidate.iso",
+                "format": "raw",
+                "actual-size": 46030848,
+                "dirty-flag": false
+              },
+              "iops_wr": 0,
+              "ro": true,
+              "node-name": "#block990",
+              "backing_file_depth": 0,
+              "drv": "raw",
+              "iops": 0,
+              "bps_wr": 0,
+              "write_threshold": 0,
+              "encrypted": false,
+              "bps": 0,
+              "bps_rd": 0,
+              "cache": {
+                "no-flush": false,
+                "direct": false,
+                "writeback": true
+              },
+              "file": "/home/runner/work/_temp/cosmic/candidate.iso"
+            },
+            "qdev": "/machine/peripheral-anon/device[7]",
+            "tray_open": false,
+            "type": "unknown"
+          }
+        ],
+        "asserted": true
+      },
+      "frames": [
+        {
+          "name": "006-selected-calm",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 131,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "011-natural-before-dark",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 130,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "012-natural-near-boundary-dark",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 132,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "013-natural-after-boundary",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            510,
+            17,
+            611,
+            30
+          ],
+          "native_foreground_role": [
+            21,
+            40,
+            41
+          ],
+          "actual_surface": [
+            214,
+            239,
+            240
+          ],
+          "actual_ink": [
+            21,
+            40,
+            41
+          ],
+          "glyph_pixels": 102,
+          "actual_contrast": 12.771541673184347,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        }
+      ],
+      "running_product": [
+        {
+          "pid": 4327,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        }
+      ],
+      "payload_checks": {
+        "payload-candidate.txt": 33,
+        "payload-islands.txt": 10
+      },
+      "independent_natural_observation": {
+        "dark_samples_before_boundary": 60,
+        "first_light_after_boundary_seconds": 2.9390604496002197,
+        "max_realtime_monotonic_drift": 4.924490895064082e-07,
+        "stable_native_processes": true,
+        "set_time_calls": 1,
+        "set_timezone_calls": 1,
+        "independent_natural_pass": true
+      }
+    },
+    "untouched-clock": {
+      "errors": [],
+      "scenarios": [],
+      "automatic": {
+        "native": "OBSERVED MISMATCH; see raw native observations",
+        "injected_events": false,
+        "observations": [
+          {
+            "label": "startup-night",
+            "stimulus": "Europe/London 23:00 configured BEFORE native login; startup schedule, UI Auto enabled after login",
+            "expected_dark": true,
+            "observed_native_is_dark": null,
+            "observed_portal_dark": true,
+            "auto_switch": "true",
+            "matched": true,
+            "samples": [
+              {
+                "elapsed_monotonic": 0.30740303900000754,
+                "response": "v v u 1"
+              }
+            ],
+            "daemon_processes": [
+              {
+                "pid": 1619,
+                "exe": "/usr/bin/cosmic-settings-daemon",
+                "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423",
+                "cmdline": "cosmic-settings-daemon "
+              },
+              {
+                "pid": 1983,
+                "exe": "/usr/libexec/xdg-desktop-portal-cosmic",
+                "sha256": "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b",
+                "cmdline": "/usr/libexec/xdg-desktop-portal-cosmic "
+              }
+            ]
+          },
+          {
+            "label": "live-noon",
+            "stimulus": "live real timedated SetTime; same timezone; no daemon restart",
+            "expected_dark": false,
+            "observed_native_is_dark": null,
+            "observed_portal_dark": true,
+            "auto_switch": "true",
+            "matched": false,
+            "samples": [
+              {
+                "elapsed_monotonic": 0.4037987399999565,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 2.711308912999982,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 5.018870295999989,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 7.3266603829999895,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 9.633872758999985,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 11.94162726799999,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 14.249363655999957,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 16.557369489999985,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 18.86540487299999,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 21.173036097999955,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 23.480996347999962,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 25.788474235999956,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 28.096142672999974,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 30.40383692399996,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 32.711581412999976,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 35.01889493499999,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 37.326833873,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 39.63433670699999,
+                "response": "v v u 1"
+              },
+              {
+                "elapsed_monotonic": 41.94211531799999,
+                "response": "v v u 1"
+              }
+            ],
+            "daemon_processes": [
+              {
+                "pid": 1619,
+                "exe": "/usr/bin/cosmic-settings-daemon",
+                "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423",
+                "cmdline": "cosmic-settings-daemon "
+              },
+              {
+                "pid": 1983,
+                "exe": "/usr/libexec/xdg-desktop-portal-cosmic",
+                "sha256": "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b",
+                "cmdline": "/usr/libexec/xdg-desktop-portal-cosmic "
+              }
+            ]
+          },
+          {
+            "label": "live-timezone-paris",
+            "stimulus": "live real timedated SetTimezone at daytime; native timezone/location recomputation",
+            "expected_dark": false,
+            "observed_native_is_dark": "false",
+            "observed_portal_dark": false,
+            "auto_switch": "true",
+            "matched": true,
+            "samples": [
+              {
+                "elapsed_monotonic": 0.4040796799999953,
+                "response": "v v u 2"
+              }
+            ],
+            "daemon_processes": [
+              {
+                "pid": 1619,
+                "exe": "/usr/bin/cosmic-settings-daemon",
+                "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423",
+                "cmdline": "cosmic-settings-daemon "
+              },
+              {
+                "pid": 1983,
+                "exe": "/usr/libexec/xdg-desktop-portal-cosmic",
+                "sha256": "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b",
+                "cmdline": "/usr/libexec/xdg-desktop-portal-cosmic "
+              }
+            ]
+          },
+          {
+            "label": "live-night",
+            "stimulus": "live real timedated SetTime; same timezone; no daemon restart",
+            "expected_dark": true,
+            "observed_native_is_dark": "false",
+            "observed_portal_dark": false,
+            "auto_switch": "true",
+            "matched": false,
+            "samples": [
+              {
+                "elapsed_monotonic": 0.4038727349999931,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 2.711236148000012,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 5.019164427000021,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 7.326601819000018,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 9.634321520000015,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 11.942198458000007,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 14.250007859999982,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 16.557725350999988,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 18.86525307300002,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 21.173011145999965,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 23.480610220000017,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 25.788193885999988,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 28.09614043800002,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 30.403414799000018,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 32.71153259099998,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 35.01915527900002,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 37.327055702999985,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 39.63426616099997,
+                "response": "v v u 2"
+              },
+              {
+                "elapsed_monotonic": 41.94194499600002,
+                "response": "v v u 2"
+              }
+            ],
+            "daemon_processes": [
+              {
+                "pid": 1619,
+                "exe": "/usr/bin/cosmic-settings-daemon",
+                "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423",
+                "cmdline": "cosmic-settings-daemon "
+              },
+              {
+                "pid": 1983,
+                "exe": "/usr/libexec/xdg-desktop-portal-cosmic",
+                "sha256": "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b",
+                "cmdline": "/usr/libexec/xdg-desktop-portal-cosmic "
+              }
+            ]
+          },
+          {
+            "label": "live-timezone-london",
+            "stimulus": "live real timedated SetTimezone at night; native timezone/location recomputation",
+            "expected_dark": true,
+            "observed_native_is_dark": "true",
+            "observed_portal_dark": true,
+            "auto_switch": "true",
+            "matched": true,
+            "samples": [
+              {
+                "elapsed_monotonic": 0.3046934029999875,
+                "response": "v v u 1"
+              }
+            ],
+            "daemon_processes": [
+              {
+                "pid": 1619,
+                "exe": "/usr/bin/cosmic-settings-daemon",
+                "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423",
+                "cmdline": "cosmic-settings-daemon "
+              },
+              {
+                "pid": 1983,
+                "exe": "/usr/libexec/xdg-desktop-portal-cosmic",
+                "sha256": "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b",
+                "cmdline": "/usr/libexec/xdg-desktop-portal-cosmic "
+              }
+            ]
+          }
+        ],
+        "natural_solar_boundary": "not exercised; all live stimuli are timedated operations",
+        "daemon_restart": false
+      },
+      "media": {
+        "expected_candidate_media": null,
+        "inserted_removable_media": [],
+        "asserted": true
+      },
+      "frames": [
+        {
+          "name": "005-startup-night",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            27,
+            27,
+            27
+          ],
+          "actual_ink": [
+            226,
+            226,
+            226
+          ],
+          "glyph_pixels": 89,
+          "actual_contrast": 13.295985150367793,
+          "stopped_ui": true,
+          "product_identity": null
+        },
+        {
+          "name": "006-live-noon",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            27,
+            27,
+            27
+          ],
+          "actual_ink": [
+            231,
+            231,
+            231
+          ],
+          "glyph_pixels": 104,
+          "actual_contrast": 13.928829209548713,
+          "stopped_ui": true,
+          "product_identity": null
+        },
+        {
+          "name": "007-live-timezone-paris",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            215,
+            215,
+            215
+          ],
+          "actual_ink": [
+            24,
+            24,
+            24
+          ],
+          "glyph_pixels": 80,
+          "actual_contrast": 12.337094487405711,
+          "stopped_ui": true,
+          "product_identity": null
+        },
+        {
+          "name": "008-live-night",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            215,
+            215,
+            215
+          ],
+          "actual_ink": [
+            24,
+            24,
+            24
+          ],
+          "glyph_pixels": 80,
+          "actual_contrast": 12.337094487405711,
+          "stopped_ui": true,
+          "product_identity": null
+        },
+        {
+          "name": "009-live-timezone-london",
+          "portal": "v v u 1",
+          "native_mode": "true",
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            27,
+            27,
+            27
+          ],
+          "actual_ink": [
+            210,
+            210,
+            210
+          ],
+          "glyph_pixels": 95,
+          "actual_contrast": 11.392365666244965,
+          "stopped_ui": true,
+          "product_identity": null
+        }
+      ],
+      "running_product": [],
+      "payload_checks": {}
+    },
+    "untouched-natural": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "real natural sunrise Dark-to-Light",
+          "matched": true,
+          "settings_widgets_stopped": true
+        }
+      ],
+      "automatic": {
+        "native": "PASS: real natural sunrise Dark-to-Light",
+        "injected_events": false,
+        "observations": [],
+        "natural": {
+          "boundary": {
+            "native_source": "655b14fb9572dd7f7231ec6c343c63984e99741a",
+            "timezone": "Europe/London",
+            "latitude": 51.50853,
+            "longitude": -0.12574,
+            "sunrise_utc": "2026-10-23T06:37:41+00:00",
+            "sunrise_epoch": 1792737461,
+            "sunset_utc": "2026-10-23T16:51:44+00:00",
+            "sunset_epoch": 1792774304,
+            "sunrise_crate": "2.1.0",
+            "bitcode_crate": "0.6.9",
+            "chrono_crate": "0.4.45"
+          },
+          "stimulus": "one pre-login clock/timezone setup then unmodified time progression across actual calculated sunrise",
+          "first": {
+            "realtime": 1792737049.9134371,
+            "monotonic": 106.055192794,
+            "portal": "v v u 1",
+            "dark": true,
+            "controller_monotonic": 647.259682879
+          },
+          "transition": {
+            "realtime": 1792737462.0608523,
+            "monotonic": 518.202607918,
+            "portal": "v v u 2",
+            "dark": false,
+            "controller_monotonic": 1059.407338209
+          },
+          "last": {
+            "realtime": 1792737462.0608523,
+            "monotonic": 518.202607918,
+            "portal": "v v u 2",
+            "dark": false,
+            "controller_monotonic": 1059.407338209
+          },
+          "samples": [
+            {
+              "realtime": 1792737049.9134371,
+              "monotonic": 106.055192794,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 647.259682879
+            },
+            {
+              "realtime": 1792737055.2330015,
+              "monotonic": 111.374757163,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 652.574729667
+            },
+            {
+              "realtime": 1792737060.545899,
+              "monotonic": 116.687654471,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 657.890650293
+            },
+            {
+              "realtime": 1792737065.8605509,
+              "monotonic": 122.002306635,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 663.205411547
+            },
+            {
+              "realtime": 1792737071.1771846,
+              "monotonic": 127.318940321,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 668.521519246
+            },
+            {
+              "realtime": 1792737076.490799,
+              "monotonic": 132.632554419,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 673.837328192
+            },
+            {
+              "realtime": 1792737081.8080182,
+              "monotonic": 137.949773823,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 679.152959241
+            },
+            {
+              "realtime": 1792737087.1206677,
+              "monotonic": 143.262423083,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 684.467669664
+            },
+            {
+              "realtime": 1792737092.4340599,
+              "monotonic": 148.575815363,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 689.781204933
+            },
+            {
+              "realtime": 1792737097.7520103,
+              "monotonic": 153.893765912,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 695.09628748
+            },
+            {
+              "realtime": 1792737103.0643518,
+              "monotonic": 159.206107482,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 700.410973888
+            },
+            {
+              "realtime": 1792737108.3767352,
+              "monotonic": 164.518490859,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 705.726551252
+            },
+            {
+              "realtime": 1792737113.691883,
+              "monotonic": 169.833638553,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 711.04073874
+            },
+            {
+              "realtime": 1792737119.0082362,
+              "monotonic": 175.149991897,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 716.355339829
+            },
+            {
+              "realtime": 1792737124.3196929,
+              "monotonic": 180.461448363,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 721.668689769
+            },
+            {
+              "realtime": 1792737129.6335335,
+              "monotonic": 185.775289014,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 726.982313106
+            },
+            {
+              "realtime": 1792737134.9475157,
+              "monotonic": 191.089271296,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 732.296204845
+            },
+            {
+              "realtime": 1792737140.2628644,
+              "monotonic": 196.404619774,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 737.610921854
+            },
+            {
+              "realtime": 1792737145.5791965,
+              "monotonic": 201.720952025,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 742.924517147
+            },
+            {
+              "realtime": 1792737150.889753,
+              "monotonic": 207.03150853,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 748.237974702
+            },
+            {
+              "realtime": 1792737156.202795,
+              "monotonic": 212.344550761,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 753.551290364
+            },
+            {
+              "realtime": 1792737161.516591,
+              "monotonic": 217.658346712,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 758.865136144
+            },
+            {
+              "realtime": 1792737166.8303666,
+              "monotonic": 222.972122285,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 764.17868835
+            },
+            {
+              "realtime": 1792737172.1464667,
+              "monotonic": 228.288222363,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 769.492578933
+            },
+            {
+              "realtime": 1792737177.459166,
+              "monotonic": 233.600921509,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 774.806512491
+            },
+            {
+              "realtime": 1792737182.772861,
+              "monotonic": 238.914616413,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 780.120319541
+            },
+            {
+              "realtime": 1792737188.0857313,
+              "monotonic": 244.227487212,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 785.433760253
+            },
+            {
+              "realtime": 1792737193.4013247,
+              "monotonic": 249.54308031,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 790.747910593
+            },
+            {
+              "realtime": 1792737198.717506,
+              "monotonic": 254.859261734,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 796.0633402
+            },
+            {
+              "realtime": 1792737204.0314465,
+              "monotonic": 260.1732021,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 801.377627938
+            },
+            {
+              "realtime": 1792737209.3456264,
+              "monotonic": 265.487381948,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 806.691746269
+            },
+            {
+              "realtime": 1792737214.6630783,
+              "monotonic": 270.804834064,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 812.00835336
+            },
+            {
+              "realtime": 1792737219.9789512,
+              "monotonic": 276.120706802,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 817.325313805
+            },
+            {
+              "realtime": 1792737225.2946658,
+              "monotonic": 281.436421185,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 822.640984131
+            },
+            {
+              "realtime": 1792737230.6082337,
+              "monotonic": 286.7499893,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 827.956550889
+            },
+            {
+              "realtime": 1792737235.9248989,
+              "monotonic": 292.066654307,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 833.272470569
+            },
+            {
+              "realtime": 1792737241.242806,
+              "monotonic": 297.384561742,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 838.588932934
+            },
+            {
+              "realtime": 1792737246.5576706,
+              "monotonic": 302.69942618,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 843.90369649
+            },
+            {
+              "realtime": 1792737251.8718624,
+              "monotonic": 308.01361795,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 849.218150467
+            },
+            {
+              "realtime": 1792737257.185899,
+              "monotonic": 313.327654793,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 854.533519931
+            },
+            {
+              "realtime": 1792737262.5101557,
+              "monotonic": 318.65191143,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 859.846976852
+            },
+            {
+              "realtime": 1792737267.8129094,
+              "monotonic": 323.954664715,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 865.161885334
+            },
+            {
+              "realtime": 1792737273.1287365,
+              "monotonic": 329.270492112,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 870.47597365
+            },
+            {
+              "realtime": 1792737278.4439688,
+              "monotonic": 334.585724556,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 875.790466568
+            },
+            {
+              "realtime": 1792737283.7569451,
+              "monotonic": 339.898700671,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 881.105328738
+            },
+            {
+              "realtime": 1792737289.0698798,
+              "monotonic": 345.211635289,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 886.418753506
+            },
+            {
+              "realtime": 1792737294.383992,
+              "monotonic": 350.525747424,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 891.732947719
+            },
+            {
+              "realtime": 1792737299.6978593,
+              "monotonic": 355.839614603,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 897.046589148
+            },
+            {
+              "realtime": 1792737305.0113354,
+              "monotonic": 361.153091037,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 902.360113575
+            },
+            {
+              "realtime": 1792737310.3249147,
+              "monotonic": 366.466670205,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 907.672994464
+            },
+            {
+              "realtime": 1792737315.6404796,
+              "monotonic": 371.782235053,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 912.986307963
+            },
+            {
+              "realtime": 1792737320.9519193,
+              "monotonic": 377.093674839,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 918.300318759
+            },
+            {
+              "realtime": 1792737326.2664678,
+              "monotonic": 382.408223273,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 923.615138772
+            },
+            {
+              "realtime": 1792737331.5803568,
+              "monotonic": 387.722112394,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 928.928046957
+            },
+            {
+              "realtime": 1792737336.8929324,
+              "monotonic": 393.034687951,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 934.241647122
+            },
+            {
+              "realtime": 1792737342.20809,
+              "monotonic": 398.349845585,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 939.555880296
+            },
+            {
+              "realtime": 1792737347.5237885,
+              "monotonic": 403.665544029,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 944.869943856
+            },
+            {
+              "realtime": 1792737352.8396149,
+              "monotonic": 408.981370652,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 950.184191336
+            },
+            {
+              "realtime": 1792737358.1506648,
+              "monotonic": 414.292420138,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 955.498055921
+            },
+            {
+              "realtime": 1792737363.4636202,
+              "monotonic": 419.605375536,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 960.811917163
+            },
+            {
+              "realtime": 1792737368.7795553,
+              "monotonic": 424.921311013,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 966.125394982
+            },
+            {
+              "realtime": 1792737374.090366,
+              "monotonic": 430.232121453,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 971.438406799
+            },
+            {
+              "realtime": 1792737379.4043324,
+              "monotonic": 435.546087809,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 976.751765777
+            },
+            {
+              "realtime": 1792737384.7195106,
+              "monotonic": 440.861265962,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 982.065675706
+            },
+            {
+              "realtime": 1792737390.0325055,
+              "monotonic": 446.174261135,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 987.378991429
+            },
+            {
+              "realtime": 1792737395.3472416,
+              "monotonic": 451.488997111,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 992.694905148
+            },
+            {
+              "realtime": 1792737400.6625855,
+              "monotonic": 456.804341038,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 998.00919605
+            },
+            {
+              "realtime": 1792737405.977988,
+              "monotonic": 462.119743682,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1003.3237813
+            },
+            {
+              "realtime": 1792737411.2907655,
+              "monotonic": 467.432520929,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1008.637692292
+            },
+            {
+              "realtime": 1792737416.6062312,
+              "monotonic": 472.747986922,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1013.951564107
+            },
+            {
+              "realtime": 1792737421.9231093,
+              "monotonic": 478.064864973,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1019.265934761
+            },
+            {
+              "realtime": 1792737427.2337177,
+              "monotonic": 483.375473243,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1024.580351475
+            },
+            {
+              "realtime": 1792737432.5467813,
+              "monotonic": 488.688536609,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1029.892940027
+            },
+            {
+              "realtime": 1792737446.1169302,
+              "monotonic": 502.258686033,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1043.462430394
+            },
+            {
+              "realtime": 1792737451.4319842,
+              "monotonic": 507.573739703,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1048.778469186
+            },
+            {
+              "realtime": 1792737456.7477508,
+              "monotonic": 512.88950606,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1054.093663409
+            },
+            {
+              "realtime": 1792737462.0608523,
+              "monotonic": 518.202607918,
+              "portal": "v v u 2",
+              "dark": false,
+              "controller_monotonic": 1059.407338209
+            }
+          ],
+          "daemon_host_before": [
+            [
+              1623,
+              "/usr/bin/cosmic-settings-daemon",
+              "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+            ],
+            [
+              1649,
+              "/usr/bin/cosmic-panel",
+              "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+            ],
+            [
+              1980,
+              "/usr/libexec/xdg-desktop-portal-cosmic",
+              "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b"
+            ]
+          ],
+          "daemon_host_after": [
+            [
+              1623,
+              "/usr/bin/cosmic-settings-daemon",
+              "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+            ],
+            [
+              1649,
+              "/usr/bin/cosmic-panel",
+              "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+            ],
+            [
+              1980,
+              "/usr/libexec/xdg-desktop-portal-cosmic",
+              "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b"
+            ]
+          ],
+          "stable_native_processes": true,
+          "set_time_calls_entire_phase": 1,
+          "set_timezone_calls_entire_phase": 1,
+          "matched": true,
+          "manual_mode_writes": false,
+          "synthetic_events": false,
+          "daemon_restart_during_window": false
+        }
+      },
+      "media": {
+        "expected_candidate_media": null,
+        "inserted_removable_media": [],
+        "asserted": true
+      },
+      "frames": [
+        {
+          "name": "005-natural-before-dark",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            27,
+            27,
+            27
+          ],
+          "actual_ink": [
+            231,
+            231,
+            231
+          ],
+          "glyph_pixels": 112,
+          "actual_contrast": 13.928829209548713,
+          "stopped_ui": true,
+          "product_identity": null
+        },
+        {
+          "name": "006-natural-near-boundary-dark",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            27,
+            27,
+            27
+          ],
+          "actual_ink": [
+            231,
+            231,
+            231
+          ],
+          "glyph_pixels": 104,
+          "actual_contrast": 13.928829209548713,
+          "stopped_ui": true,
+          "product_identity": null
+        },
+        {
+          "name": "007-natural-after-boundary",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": null,
+          "actual_surface": [
+            215,
+            215,
+            215
+          ],
+          "actual_ink": [
+            18,
+            18,
+            18
+          ],
+          "glyph_pixels": 89,
+          "actual_contrast": 13.01619374190328,
+          "stopped_ui": true,
+          "product_identity": null
+        }
+      ],
+      "running_product": [],
+      "payload_checks": {},
+      "independent_natural_observation": {
+        "dark_samples_before_boundary": 76,
+        "first_light_after_boundary_seconds": 1.060852289199829,
+        "max_realtime_monotonic_drift": 3.650577014013834e-07,
+        "stable_native_processes": true,
+        "set_time_calls": 1,
+        "set_timezone_calls": 1,
+        "independent_natural_pass": true
+      }
+    }
+  }
+}

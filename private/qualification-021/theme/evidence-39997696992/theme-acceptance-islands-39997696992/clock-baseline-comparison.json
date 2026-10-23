@@ -1,0 +1,96 @@
+{
+  "new_untouched": [
+    {
+      "label": "startup-night",
+      "expected_dark": true,
+      "observed_native_is_dark": null,
+      "observed_portal_dark": true,
+      "auto_switch": "true",
+      "matched": true
+    },
+    {
+      "label": "live-noon",
+      "expected_dark": false,
+      "observed_native_is_dark": null,
+      "observed_portal_dark": true,
+      "auto_switch": "true",
+      "matched": false
+    },
+    {
+      "label": "live-timezone-paris",
+      "expected_dark": false,
+      "observed_native_is_dark": "false",
+      "observed_portal_dark": false,
+      "auto_switch": "true",
+      "matched": true
+    },
+    {
+      "label": "live-night",
+      "expected_dark": true,
+      "observed_native_is_dark": "false",
+      "observed_portal_dark": false,
+      "auto_switch": "true",
+      "matched": false
+    },
+    {
+      "label": "live-timezone-london",
+      "expected_dark": true,
+      "observed_native_is_dark": "true",
+      "observed_portal_dark": true,
+      "auto_switch": "true",
+      "matched": true
+    }
+  ],
+  "retained_candidate": [
+    {
+      "label": "startup-night",
+      "expected_dark": true,
+      "observed_native_is_dark": "true",
+      "observed_portal_dark": true,
+      "auto_switch": "true",
+      "matched": true
+    },
+    {
+      "label": "live-noon",
+      "expected_dark": false,
+      "observed_native_is_dark": "true",
+      "observed_portal_dark": true,
+      "auto_switch": "true",
+      "matched": false
+    },
+    {
+      "label": "live-timezone-paris",
+      "expected_dark": false,
+      "observed_native_is_dark": "false",
+      "observed_portal_dark": false,
+      "auto_switch": "true",
+      "matched": true
+    },
+    {
+      "label": "live-night",
+      "expected_dark": true,
+      "observed_native_is_dark": "false",
+      "observed_portal_dark": false,
+      "auto_switch": "true",
+      "matched": false
+    },
+    {
+      "label": "live-timezone-london",
+      "expected_dark": true,
+      "observed_native_is_dark": "true",
+      "observed_portal_dark": true,
+      "auto_switch": "true",
+      "matched": true
+    }
+  ],
+  "same_observed_effective_pattern": true,
+  "same_raw_override_representation": false,
+  "native_keys_consistent_with_actual_portal": true,
+  "complete_sequences": true,
+  "untouched_execution_complete": true,
+  "untouched_errors": [],
+  "old_candidate_run": 39987753102,
+  "old_candidate_artifact": 12516872732,
+  "old_candidate_zip_sha256": "61851430b7c466719b26c985dda09edbf52abfceebcef050736c9e9e4afa82e0",
+  "native_limitation_confirmed_for_pinned_guest": true
+}

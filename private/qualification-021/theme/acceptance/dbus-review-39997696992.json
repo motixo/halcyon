@@ -1,0 +1,86 @@
+{
+  "root": "private/qualification-021/theme/evidence-39997696992/theme-acceptance-islands-39997696992/untouched-clock",
+  "messages": 30,
+  "properties_changes": 4,
+  "stimuli": [
+    [
+      "SetNTP",
+      false,
+      false
+    ],
+    [
+      "SetTimezone",
+      true,
+      false
+    ],
+    [
+      "SetTime",
+      false,
+      false
+    ],
+    [
+      "SetTime",
+      false,
+      false
+    ],
+    [
+      "SetTimezone",
+      true,
+      false
+    ],
+    [
+      "SetTime",
+      false,
+      false
+    ],
+    [
+      "SetTimezone",
+      true,
+      false
+    ]
+  ]
+}
+{
+  "root": "private/qualification-021/theme/evidence-39997696992/theme-acceptance-islands-39997696992/untouched-natural",
+  "messages": 15,
+  "properties_changes": 2,
+  "stimuli": [
+    [
+      "SetNTP",
+      false,
+      false
+    ],
+    [
+      "SetTimezone",
+      true,
+      false
+    ],
+    [
+      "SetTime",
+      false,
+      false
+    ]
+  ]
+}
+{
+  "root": "private/qualification-021/theme/evidence-39997696992/theme-acceptance-islands-39997696992/candidate-islands-natural",
+  "messages": 23,
+  "properties_changes": 2,
+  "stimuli": [
+    [
+      "SetNTP",
+      false,
+      false
+    ],
+    [
+      "SetTimezone",
+      true,
+      false
+    ],
+    [
+      "SetTime",
+      false,
+      false
+    ]
+  ]
+}

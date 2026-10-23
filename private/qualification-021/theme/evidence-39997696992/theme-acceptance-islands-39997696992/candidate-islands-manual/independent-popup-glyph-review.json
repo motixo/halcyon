@@ -1,0 +1,112 @@
+[
+  {
+    "frame": "016-calm-actual-clock-popup",
+    "actual_popup_headline_bounds": [
+      400,
+      69,
+      545,
+      86
+    ],
+    "surface": [
+      31,
+      51,
+      52
+    ],
+    "ink": [
+      174,
+      198,
+      199
+    ],
+    "near_role_glyph_pixels": 240,
+    "actual_contrast": 7.399918249938366,
+    "scope": "native calendar popup Dark only; native time-label glyphs are observed in both modes"
+  },
+  {
+    "frame": "032-evening-actual-clock-popup",
+    "actual_popup_headline_bounds": [
+      400,
+      69,
+      545,
+      86
+    ],
+    "surface": [
+      47,
+      44,
+      63
+    ],
+    "ink": [
+      192,
+      189,
+      213
+    ],
+    "near_role_glyph_pixels": 240,
+    "actual_contrast": 7.393282344278174,
+    "scope": "native calendar popup Dark only; native time-label glyphs are observed in both modes"
+  },
+  {
+    "frame": "048-focus-actual-clock-popup",
+    "actual_popup_headline_bounds": [
+      400,
+      69,
+      545,
+      86
+    ],
+    "surface": [
+      35,
+      42,
+      51
+    ],
+    "ink": [
+      249,
+      252,
+      255
+    ],
+    "near_role_glyph_pixels": 196,
+    "actual_contrast": 14.061879181424475,
+    "scope": "native calendar popup Dark only; native time-label glyphs are observed in both modes"
+  },
+  {
+    "frame": "064-paper-actual-clock-popup",
+    "actual_popup_headline_bounds": [
+      400,
+      69,
+      545,
+      86
+    ],
+    "surface": [
+      45,
+      40,
+      32
+    ],
+    "ink": [
+      255,
+      251,
+      245
+    ],
+    "near_role_glyph_pixels": 196,
+    "actual_contrast": 14.185290545894151,
+    "scope": "native calendar popup Dark only; native time-label glyphs are observed in both modes"
+  },
+  {
+    "frame": "080-rose-actual-clock-popup",
+    "actual_popup_headline_bounds": [
+      400,
+      69,
+      545,
+      86
+    ],
+    "surface": [
+      66,
+      36,
+      37
+    ],
+    "ink": [
+      221,
+      181,
+      181
+    ],
+    "near_role_glyph_pixels": 235,
+    "actual_contrast": 7.513805861390241,
+    "scope": "native calendar popup Dark only; native time-label glyphs are observed in both modes"
+  }
+]

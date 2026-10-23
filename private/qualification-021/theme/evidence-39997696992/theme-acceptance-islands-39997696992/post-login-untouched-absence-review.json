@@ -1,0 +1,46 @@
+{
+  "untouched-clock": [
+    {
+      "frame": "005-startup-night",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    },
+    {
+      "frame": "006-live-noon",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    },
+    {
+      "frame": "007-live-timezone-paris",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    },
+    {
+      "frame": "008-live-night",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    },
+    {
+      "frame": "009-live-timezone-london",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    }
+  ],
+  "untouched-natural": [
+    {
+      "frame": "005-natural-before-dark",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    },
+    {
+      "frame": "006-natural-near-boundary-dark",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    },
+    {
+      "frame": "007-natural-after-boundary",
+      "halcyon_config_absent": true,
+      "halcyon_process_absent": true
+    }
+  ]
+}

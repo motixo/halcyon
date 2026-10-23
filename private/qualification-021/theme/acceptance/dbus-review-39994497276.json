@@ -1,0 +1,22 @@
+{
+  "root": "private/qualification-021/theme/evidence-39994497276/theme-acceptance-stock-39994497276/candidate-stock-natural",
+  "messages": 18,
+  "properties_changes": 2,
+  "stimuli": [
+    [
+      "SetNTP",
+      false,
+      false
+    ],
+    [
+      "SetTimezone",
+      true,
+      false
+    ],
+    [
+      "SetTime",
+      false,
+      false
+    ]
+  ]
+}
