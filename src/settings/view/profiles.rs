@@ -1384,7 +1384,9 @@ impl Settings {
 
     pub(super) fn profiles_actions(&self) -> Element<'_, Message> {
         let editor = &self.profiles;
-        if *editor.selection() == Selection::Current {
+        // Repair/reset previews can be based on Current without selecting a
+        // preset. Their active profile still needs an explicit confirmation.
+        if *editor.selection() == Selection::Current && editor.profile().is_none() {
             return self.simple_status();
         }
         let problem = match &editor.notice {
@@ -1406,6 +1408,7 @@ impl Settings {
                 } else {
                     "Use setup"
                 })
+                .id("profiles-confirm".into())
                 .on_press_maybe(editor.can_apply().then_some(edit(Edit::Apply)))
                 .into(),
             ])

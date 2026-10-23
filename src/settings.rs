@@ -10127,6 +10127,104 @@ mod tests {
         );
     }
     #[test]
+    fn task2n1_legacy_repair_has_clickable_confirmation_at_supported_sizes() {
+        if desktop_test_child(
+            "task2n1_legacy_repair_has_clickable_confirmation_at_supported_sizes",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        use cosmic::iced::{Event, mouse};
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let key = crate::desktop::ConfigKey::new("com.system76.CosmicPanel.Dock", 1, "background")
+            .unwrap();
+        let path = store.user_path(&key);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for (size, maximized) in [
+            (Size::new(1280., 800.), false),
+            (Size::new(1280., 800.), true),
+            (Size::new(1280., 720.), true),
+            (Size::new(820., 600.), false),
+        ] {
+            std::fs::write(Config::path().unwrap(),r#"{"appearance":{"family":"frosted","native_mode_palettes":0,"sync_colors":true},"setup_dismissed":true}"#).unwrap();
+            std::fs::write(&path, "Color((0.1,0.2,0.3))").unwrap();
+            let (mut app, initial) = Settings::init(Core::default(), Page::Themes);
+            settle_settings(&mut app, initial);
+            app.core.window.is_maximized = maximized;
+            send_settings(&mut app, Message::Resized(size));
+            let mut native = crate::native_test::Native::new(size);
+            // Use the full window view, including its real header and pinned
+            // footer. Only pointer-generated messages may select or apply Repair.
+            let click = |app: &mut Settings, native: &mut crate::native_test::Native, id: &str| {
+                let rect = native.bounds(app.view(), id);
+                assert!(
+                    rect.x >= 0.
+                        && rect.y >= 0.
+                        && rect.x + rect.width <= size.width
+                        && rect.y + rect.height <= size.height,
+                    "{id}: {rect:?} in {size:?}"
+                );
+                let mut emitted = false;
+                for event in [
+                    mouse::Event::CursorMoved {
+                        position: rect.center(),
+                    },
+                    mouse::Event::ButtonPressed(mouse::Button::Left),
+                    mouse::Event::ButtonReleased(mouse::Button::Left),
+                ] {
+                    for message in native
+                        .event(app.view(), Event::Mouse(event), rect.center())
+                        .0
+                    {
+                        emitted = true;
+                        send_settings(app, message);
+                    }
+                }
+                assert!(emitted, "rendered {id} must emit a real pointer action");
+            };
+            click(&mut app, &mut native, "theme-matching-repair");
+            assert_eq!(app.page, Page::Themes);
+            assert_eq!(
+                app.profiles.profile().unwrap().name,
+                "Repair theme matching"
+            );
+            assert!(app.profiles.can_apply(), "{:?}", app.profiles.notice);
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                "Color((0.1,0.2,0.3))",
+                "Repair opens a read-only review"
+            );
+            native.capture(
+                app.view(),
+                &controls_theme(&app.config),
+                &format!(
+                    "n1-repair-preview-{}x{}-max{}",
+                    size.width, size.height, maximized
+                ),
+            );
+            click(&mut app, &mut native, "profiles-confirm");
+            assert_eq!(
+                Config::load().appearance.native_mode_palettes,
+                1,
+                "the pointer confirmation must commit Repair"
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "ThemeDefault");
+            native.capture(
+                app.view(),
+                &controls_theme(&app.config),
+                &format!(
+                    "n1-repair-applied-{}x{}-max{}",
+                    size.width, size.height, maximized
+                ),
+            );
+        }
+    }
+
+    #[test]
     fn task2_native_recovery_confirmation_and_installed_only_addons() {
         if desktop_test_child(
             "task2_native_recovery_confirmation_and_installed_only_addons",
