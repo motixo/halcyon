@@ -57,62 +57,65 @@ def automatic():
  h.summary['automatic'].update(native='PASS' if all(x['matched'] for x in obs) else 'OBSERVED MISMATCH; see raw native observations',natural_solar_boundary='not exercised; all live stimuli are timedated operations',daemon_restart=False)
  h.save()
 
-try:
- c.wait_agent();c.q=c.Channel('qmp.sock',True)
- monitor_start()
- # Initial state must precede any user settings daemon. No Halcyon in baseline.
- h.command('prelogin-user-processes',"ps -u probe -o pid,args; dpkg-query -W cosmic-ext-halcyon cosmic-ext-halcyon-islands 2>&1; test ! -e /usr/bin/halcyon; test ! -e /home/probe/.config/halcyon; ip -brief addr; ip route",required=False)
- if phase=='untouched':
-  devices=c.q.call('query-block')
-  (ev/'untouched-block-devices.json').write_text(json.dumps(devices,indent=2)+'\n')
-  # QEMU may create an implicit EMPTY DVD drive. Reject inserted removable
-  # media, not the harmless existence of its /dev/sr0 device node.
-  if any(d.get('removable') and d.get('inserted') for d in devices):raise RuntimeError('Untouched overlay has inserted removable media')
-  h.command('untouched-absence-assertion',"""python3 - <<'ABSENCE'
-import json,os,pathlib
-checks={'halcyon_binary_absent':not pathlib.Path('/usr/bin/halcyon').exists(),'halcyon_config_absent':not pathlib.Path('/home/probe/.config/halcyon').exists(),'user_settings_daemon_absent':True}
-for p in pathlib.Path('/proc').iterdir():
- if not p.name.isdigit():continue
+def main():
  try:
-  if p.stat().st_uid==1000 and os.readlink(p/'exe')=='/usr/bin/cosmic-settings-daemon':checks['user_settings_daemon_absent']=False
- except OSError:pass
-print(json.dumps(checks,indent=2))
-raise SystemExit(0 if all(checks.values()) else 1)
-ABSENCE""")
- h.command('prelogin-clock','timedatectl set-ntp false && timedatectl set-timezone Europe/London && timedatectl set-time "2026-10-23 23:00:00" && timedatectl && date --iso-8601=ns')
- c.shot('000-prelogin-clock-configured')
- if host=='islands':h.command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
- c.login('auto-diagnosis-login');c.capture('login')
- checkpoint('fresh-login')
- if phase=='candidate':
-  h.command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
-  approved=(ev/'approved-inputs.sha256').read_text()
-  h.command('independent-input-check',"cd /mnt/candidate && sha256sum -c /dev/stdin <<'INPUTS'\n"+approved+'INPUTS\n')
-  h.install('candidate')
-  if host=='islands':
-   h.command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
-   h.command('enable-islands','halcyon-islands enable',True)
-   c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
-   time.sleep(15);c.login('auto-diagnosis-islands-login')
-   h.command('islands-status','halcyon-islands status',True)
-   state=h.snapshot('islands-running')
-   if not any(p['exe'].endswith('/cosmic-panel-islands') and p['sha256']=='f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31' for p in state['processes']):raise RuntimeError('Matching Islands executable not running')
-  for look in looks:
-   try:f.select(look);f.cycle(look)
-   except Exception as error:
-    h.summary['errors'].append({'look':look,'blocked':str(error)});traceback.print_exc();h.screen('blocked-'+look);h.snapshot('blocked-'+look);h.stop_ui();f.dismiss_popup('blocked-'+look);h.save()
- automatic()
- h.stop_ui();c.capture('final');h.summary['execution_complete']=True
-except Exception as error:
- h.summary['errors'].append({'fatal':str(error)});traceback.print_exc()
- try:h.screen('fatal');h.snapshot('fatal');c.capture('fatal')
- except Exception:traceback.print_exc()
-finally:
- try:h.command('final-dbus-traffic','cat /var/tmp/qualification-auto-dbus.log',required=False)
- except Exception:traceback.print_exc()
- h.save()
- try:c.guest('sync; systemctl poweroff',5)
- except Exception:pass
- time.sleep(8)
-# A captured upstream mismatch is a completed diagnostic, not a passing Auto gate.
-raise SystemExit(0 if h.summary.get('execution_complete') and not h.summary['errors'] else 1)
+  c.wait_agent();c.q=c.Channel('qmp.sock',True)
+  monitor_start()
+  # Initial state must precede any user settings daemon. No Halcyon in baseline.
+  h.command('prelogin-user-processes',"ps -u probe -o pid,args; dpkg-query -W cosmic-ext-halcyon cosmic-ext-halcyon-islands 2>&1; test ! -e /usr/bin/halcyon; test ! -e /home/probe/.config/halcyon; ip -brief addr; ip route",required=False)
+  if phase=='untouched':
+   devices=c.q.call('query-block')
+   (ev/'untouched-block-devices.json').write_text(json.dumps(devices,indent=2)+'\n')
+   # QEMU may create an implicit EMPTY DVD drive. Reject inserted removable
+   # media, not the harmless existence of its /dev/sr0 device node.
+   if any(d.get('removable') and d.get('inserted') for d in devices):raise RuntimeError('Untouched overlay has inserted removable media')
+   h.command('untouched-absence-assertion',"""python3 - <<'ABSENCE'
+ import json,os,pathlib
+ checks={'halcyon_binary_absent':not pathlib.Path('/usr/bin/halcyon').exists(),'halcyon_config_absent':not pathlib.Path('/home/probe/.config/halcyon').exists(),'user_settings_daemon_absent':True}
+ for p in pathlib.Path('/proc').iterdir():
+  if not p.name.isdigit():continue
+  try:
+   if p.stat().st_uid==1000 and os.readlink(p/'exe')=='/usr/bin/cosmic-settings-daemon':checks['user_settings_daemon_absent']=False
+  except OSError:pass
+ print(json.dumps(checks,indent=2))
+ raise SystemExit(0 if all(checks.values()) else 1)
+ ABSENCE""")
+  h.command('prelogin-clock','timedatectl set-ntp false && timedatectl set-timezone Europe/London && timedatectl set-time "2026-10-23 23:00:00" && timedatectl && date --iso-8601=ns')
+  c.shot('000-prelogin-clock-configured')
+  if host=='islands':h.command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
+  c.login('auto-diagnosis-login');c.capture('login')
+  checkpoint('fresh-login')
+  if phase=='candidate':
+   h.command('mount-inputs','mkdir -p /mnt/candidate && mount -o ro /dev/sr0 /mnt/candidate && cd /mnt/candidate && sha256sum -c SHA256SUMS')
+   approved=(ev/'approved-inputs.sha256').read_text()
+   h.command('independent-input-check',"cd /mnt/candidate && sha256sum -c /dev/stdin <<'INPUTS'\n"+approved+'INPUTS\n')
+   h.install('candidate')
+   if host=='islands':
+    h.command('install-islands','dpkg --install /mnt/candidate/cosmic-ext-halcyon-islands_0.2.0_amd64.deb && dpkg --audit && apt-get check',timeout=120)
+    h.command('enable-islands','halcyon-islands enable',True)
+    c.guest("loginctl list-sessions --no-legend | awk '$3==\"probe\" {print $1}' | xargs -r -n1 loginctl terminate-session")
+    time.sleep(15);c.login('auto-diagnosis-islands-login')
+    h.command('islands-status','halcyon-islands status',True)
+    state=h.snapshot('islands-running')
+    if not any(p['exe'].endswith('/cosmic-panel-islands') and p['sha256']=='f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31' for p in state['processes']):raise RuntimeError('Matching Islands executable not running')
+   for look in looks:
+    try:f.select(look);f.cycle(look)
+    except Exception as error:
+     h.summary['errors'].append({'look':look,'blocked':str(error)});traceback.print_exc();h.screen('blocked-'+look);h.snapshot('blocked-'+look);h.stop_ui();f.dismiss_popup('blocked-'+look);h.save()
+  automatic()
+  h.stop_ui();c.capture('final');h.summary['execution_complete']=True
+ except Exception as error:
+  h.summary['errors'].append({'fatal':str(error)});traceback.print_exc()
+  try:h.screen('fatal');h.snapshot('fatal');c.capture('fatal')
+  except Exception:traceback.print_exc()
+ finally:
+  try:h.command('final-dbus-traffic','cat /var/tmp/qualification-auto-dbus.log',required=False)
+  except Exception:traceback.print_exc()
+  h.save()
+  try:c.guest('sync; systemctl poweroff',5)
+  except Exception:pass
+  time.sleep(8)
+ # A captured upstream mismatch is a completed diagnostic, not a passing Auto gate.
+ raise SystemExit(0 if h.summary.get('execution_complete') and not h.summary['errors'] else 1)
+
+if __name__ == "__main__":main()

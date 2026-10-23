@@ -1,0 +1,9 @@
+[package]
+name = "qualification-solar-calculator"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitcode = "=0.6.9"
+chrono = "=0.4.45"
+sunrise = "=2.1.0"
