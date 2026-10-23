@@ -592,3 +592,44 @@ pub enum Response {
 
 #[cfg(test)]
 mod tests;
+
+/// Conservative logical-pixel rounded mask, shared by input and frosting.
+/// Adjacent identical rows coalesce, so straight edges cost one rectangle.
+/// Callers keep reveal strips and arrangement handles out of the blur mask.
+pub fn rounded_region(x: i32, y: i32, width: i32, height: i32, radius: f64) -> Vec<[i32; 4]> {
+    if width <= 0 || height <= 0 {
+        return Vec::new();
+    }
+    let radius = if radius.is_finite() {
+        radius.max(0.)
+    } else {
+        0.
+    }
+    .min(width as f64 / 2.)
+    .min(height as f64 / 2.);
+    let mut rects: Vec<[i32; 4]> = Vec::new();
+    for row in 0..height {
+        let cy = if (row as f64) < radius {
+            radius - row as f64 - 0.5
+        } else if row as f64 >= height as f64 - radius {
+            row as f64 + 0.5 - (height as f64 - radius)
+        } else {
+            0.
+        };
+        let inset = (radius - (radius * radius - cy * cy).max(0.).sqrt())
+            .ceil()
+            .max(0.) as i32;
+        let w = width - 2 * inset;
+        if w <= 0 {
+            continue;
+        }
+        if let Some(last) = rects.last_mut() {
+            if last[0] == x + inset && last[2] == w && last[1] + last[3] == y + row {
+                last[3] += 1;
+                continue;
+            }
+        }
+        rects.push([x + inset, y + row, w, 1]);
+    }
+    rects
+}

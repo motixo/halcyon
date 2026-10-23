@@ -58,6 +58,9 @@ def build(binary, manifest, version, out, licenses=None):
                 raise ValueError('The stripped binary fails the selector checks')
         record = json.loads((library / 'companion-manifest.json').read_text())
         record['packages'] = panel_launcher.PACKAGES
+        record['supported_packages'] = panel_launcher.SUPPORTED_SYSTEMS
+        if record.get('runtime_probe') == 1:
+            record['source_policy'] = panel_launcher.SOURCE_POLICY
         (library / 'companion-manifest.json').write_text(json.dumps(record, indent=2) + '\n')
         for name in ('install.py', 'panel_launcher.py'):
             stage_file(COMPANION / name, library / name, 0o755)
@@ -68,7 +71,7 @@ def build(binary, manifest, version, out, licenses=None):
             stage_file(licenses, docs / 'THIRD_PARTY_LICENSES.txt')
         stage_file(HERE / 'README.md', docs / 'README')
         changelog = (f'{PACKAGE} ({version}) unstable; urgency=medium\n\n'
-                     '  * Package the optional, version-locked Islands panel.\n\n'
+                     '  * Package the optional, source-qualified Islands panel.\n\n'
                      f' -- {MAINTAINER}  {date.strftime("%a, %d %b %Y %H:%M:%S %z")}\n')
         (docs / 'changelog.gz').write_bytes(gzip.compress(changelog.encode(), mtime=0))
         man = staging / 'usr/share/man/man1/halcyon-islands.1.gz'
@@ -100,9 +103,9 @@ def build(binary, manifest, version, out, licenses=None):
             f'Installed-Size: {(size + 1023) // 1024}\n'
             f'Depends: {", ".join(dependencies)}\n'
             'Homepage: https://github.com/profilaz3/halcyon\n'
-            'Description: optional version-locked floating panel islands for Halcyon\n'
+            'Description: optional source-qualified floating panel islands for Halcyon\n'
             ' A patched COSMIC panel that splits the panel into floating islands.\n'
-            ' The launcher uses the standard panel when COSMIC versions do not match.\n'
+            ' The launcher uses the standard panel if source or runtime checks fail.\n'
             ' Installing the add-on never holds back COSMIC system updates.\n'
             ' Activation is per user with halcyon-islands enable, at the next login.\n'
             ' Installing this package does not activate or restart a panel.\n')

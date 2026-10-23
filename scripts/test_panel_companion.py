@@ -415,6 +415,7 @@ class CompanionPackaging(unittest.TestCase):
                         with patch.dict(os.environ, child_env, clear=True), \
                                 patch.object(launcher, 'other_host', return_value=None), \
                                 patch.object(launcher, 'compatible', return_value=True), \
+                                patch.object(launcher, 'runtime_compatible', return_value=True), \
                                 patch.object(launcher.os, 'open', opened), \
                                 patch.object(launcher.os, 'fstat'), patch.object(launcher.os, 'set_inheritable'), \
                                 patch.object(Path, operation, side_effect=error), \

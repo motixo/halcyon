@@ -122,6 +122,23 @@ class IslandsPackage(unittest.TestCase):
     def journals(self):
         return sorted((self.home / '.local/share/cosmic-desktop-cards/backups').glob('panel-*/install-record.json'))
 
+    def test_reviewed_source_rebuild_needs_new_probe_bundle(self):
+        versions = {k: v.replace('~24.04~', '~26.04~') for k, v in panel_launcher.PACKAGES.items()}
+        self.versions.write_text(json.dumps(versions))
+        self.cli('enable', expected=1)
+        self.assertFalse(self.bundle.exists())
+        manifest_path = self.library / 'companion-manifest.json'
+        record = json.loads(manifest_path.read_text())
+        record['runtime_probe'] = 1
+        record['source_policy'] = 'reviewed-source-v1'
+        manifest_path.write_text(json.dumps(record))
+        self.cli('enable')
+        self.assertIn('reviewed source combination', self.cli('status').stdout)
+        versions['cosmic-comp'] = '0.1~999~26.04~abcdef0'
+        self.versions.write_text(json.dumps(versions))
+        self.cli('enable', expected=1)
+        self.cli('disable')
+
     def test_package_contents_control_modes_and_hash(self):
         listing = run(['dpkg-deb', '-c', self.deb])
         info = run(['dpkg-deb', '-I', self.deb])
@@ -147,7 +164,7 @@ class IslandsPackage(unittest.TestCase):
             self.assertTrue(line.startswith('-rwxr-xr-x' if mode == 0o755 else '-rw-r--r--'), line)
             self.assertIn('root/root', line)
         for field in [f'Package: {PACKAGE}', 'Architecture: amd64', 'Version: 0.1.0',
-                      'python3, cosmic-ext-halcyon', 'optional version-locked']:
+                      'python3, cosmic-ext-halcyon', 'optional source-qualified']:
             self.assertIn(field, info.stdout)
         for name, pin in panel_launcher.PACKAGES.items():
             self.assertIn(name, info.stdout)
@@ -261,10 +278,73 @@ class IslandsPackage(unittest.TestCase):
         failed.parent.mkdir(parents=True)
         failed.write_text('previous failure')
         self.assertIn('previous Islands failure', self.cli('status', expected=1).stdout)
-        self.cli('enable')
+        calls = self.calls.read_bytes()
+        self.assertIn('previous Islands failure', self.cli('enable', expected=1).stderr)
+        self.assertEqual(self.calls.read_bytes(), calls)
         self.assertEqual(failed.read_text(), 'previous failure')
         self.cli('disable')
         self.assertTrue(failed.exists())
+
+    def test_incompatible_enable_reports_versions_without_installing(self):
+        for name in panel_launcher.PACKAGES:
+            with self.subTest(package=name):
+                self.versions.write_text(json.dumps({**panel_launcher.PACKAGES, name: '1.10-older-build'}))
+                result = self.cli('enable', expected=1)
+                self.assertIn(name, result.stderr)
+                self.assertIn('1.10-older-build', result.stderr)
+                self.assertIn(panel_launcher.PACKAGES[name], result.stderr)
+                self.assertFalse(self.calls.exists())
+                self.assertFalse((self.home / '.local/bin/cosmic-panel').exists())
+                self.assertFalse(self.bundle.exists())
+                self.assertEqual(self.journals(), [])
+                status = self.cli('status', expected=1)
+                self.assertIn('1.10-older-build', status.stdout)
+                self.assertIn(panel_launcher.PACKAGES[name], status.stdout)
+
+    def test_supported_110_can_enable_and_manifest_advertises_the_combination(self):
+        versions = {
+            'cosmic-panel': '1.10.0~1791315703~24.04~3ce6ce1',
+            'cosmic-comp': '0.1~1791979042~24.04~742b800',
+            'cosmic-session': '1.10.0~1791314577~24.04~8093b59',
+        }
+        self.versions.write_text(json.dumps(versions))
+        self.cli('enable')
+        self.assertIn('System compatibility (selector checks): match', self.cli('status').stdout)
+        record = json.loads((self.bundle / 'manifest.json').read_text())
+        self.assertIn(versions, record['supported_packages'])
+        self.assertIn(panel_launcher.PACKAGES, record['supported_packages'])
+        self.cli('disable')
+
+    def test_mixed_release_packages_do_not_inherit_support_individually(self):
+        self.versions.write_text(json.dumps({
+            **panel_launcher.PACKAGES,
+            'cosmic-session': '1.10.0~1791314577~24.04~8093b59',
+        }))
+        self.cli('enable', expected=1)
+        self.assertFalse(self.calls.exists())
+
+    def test_incompatible_reenable_preserves_existing_bundle_and_can_disable(self):
+        self.cli('enable')
+        before = {p: p.read_bytes() for p in self.bundle.iterdir() if p.is_file()}
+        calls = self.calls.read_bytes()
+        self.versions.write_text(json.dumps({**panel_launcher.PACKAGES, 'cosmic-comp': 'new-build'}))
+        self.cli('enable', expected=1)
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
+        self.assertEqual(self.calls.read_bytes(), calls)
+        self.cli('disable')
+        self.assertFalse((self.home / '.local/bin/cosmic-panel').exists())
+
+    def test_failed_package_query_refuses_enable_and_reports_other_versions(self):
+        query = self.fake_bin / 'dpkg-query'
+        query.write_text(query.read_text().replace(
+            'versions=json.load', 'if sys.argv[-1] == "cosmic-panel": sys.exit(1)\nversions=json.load'))
+        result = self.cli('enable', expected=1)
+        self.assertIn('cosmic-panel', result.stderr)
+        self.assertIn('unavailable', result.stderr)
+        self.assertFalse(self.calls.exists())
+        status = self.cli('status', expected=1)
+        self.assertIn('unavailable', status.stdout)
+        self.assertIn(panel_launcher.PACKAGES['cosmic-comp'], status.stdout)
 
     def test_upgrade_restores_all_owned_layers(self):
         self.cli('enable')

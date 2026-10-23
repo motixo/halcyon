@@ -14,7 +14,10 @@ Report installation, selector compatibility and per-user activation state.
 .TP
 .B enable
 Install the packaged companion into your home and enable it for the next login.
-The normal panel is selected whenever COSMIC package versions do not match.
+Unsupported or unreadable COSMIC package versions and a recorded Islands failure
+refuse activation without replacing the per-user companion. Version mismatches
+report installed and supported builds. A later COSMIC update that does not match
+selects the normal panel automatically.
 .TP
 .B disable
 Restore this command's installations. Log out and back in to use the stock panel.
@@ -38,3 +41,9 @@ Installation journals and backups retained for restoration.
 .SH NOTES
 No running panel is restarted. Disable for every user before removing the
 package. Previous source installations must be restored before enabling here.
+
+.SH SOURCE QUALIFICATION
+New companion builds accept distribution rebuilds of reviewed source triples
+when the native ABI and compositor preflight succeeds. Unknown source revisions
+and mixed triples select stock. A COSMIC release number alone is not a guarantee.
+Status reports static eligibility; startup performs the runtime checks.

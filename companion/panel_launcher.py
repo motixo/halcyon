@@ -6,10 +6,12 @@ import fcntl
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import signal
 import socket
 import subprocess
+import struct
 import sys
 import threading
 import time
@@ -20,12 +22,63 @@ PACKAGES = {
     'cosmic-comp': '0.1~1792508925~24.04~8cb1802',
     'cosmic-session': '1.11.0~1792525615~24.04~4b0a0a2',
 }
+# Whole combinations, never a cross-product of individually supported packages.
+# Add a combination only after native validation with this companion revision.
+SUPPORTED_SYSTEMS = (
+    PACKAGES,
+    {
+        'cosmic-panel': '1.10.0~1791315703~24.04~3ce6ce1',
+        'cosmic-comp': '0.1~1791979042~24.04~742b800',
+        'cosmic-session': '1.10.0~1791314577~24.04~8093b59',
+    },
+)
+
+
+# A package rebuild may change timestamps/distribution versions without changing
+# native source. Preserve whole reviewed triples, not a per-package wildcard.
+SOURCE_POLICY = 'reviewed-source-v1'
+
+def source_revision(name, version):
+    if not isinstance(version, str):
+        return None
+    match = re.fullmatch(r'(\d+(?:\.\d+)*)~\d+~[0-9.]+~([0-9a-f]{7,40})', version)
+    if not match:
+        return None
+    release = tuple(int(n) for n in match[1].split('.'))
+    if name != 'cosmic-comp' and release < (1, 10):
+        return None
+    return match[2]
+
+
+def supported_system(versions):
+    if not isinstance(versions, dict) or versions.keys() != PACKAGES.keys():
+        return False
+    if any(versions == system for system in SUPPORTED_SYSTEMS):
+        return True
+    sources = {name: source_revision(name, version) for name, version in versions.items()}
+    return all(sources.values()) and any(
+        sources == {name: source_revision(name, version) for name, version in system.items()}
+        for system in SUPPORTED_SYSTEMS)
+
 
 def digest(path):
     h=hashlib.sha256()
     with open(path,'rb') as f:
         for part in iter(lambda:f.read(1024*1024),b''):h.update(part)
     return h.hexdigest()
+
+def installed_versions():
+    """Keep partial diagnostics when one package is missing or cannot be read."""
+    versions = {}
+    for name in PACKAGES:
+        try:
+            value = subprocess.check_output(
+                ['dpkg-query', '-W', '-f=${Version}', name], text=True,
+                stderr=subprocess.DEVNULL, timeout=5).strip()
+            versions[name] = value or None
+        except (OSError, ValueError, subprocess.SubprocessError):
+            versions[name] = None
+    return versions
 
 def compatible(bundle, versions=None, manifest_name='manifest.json'):
     try:
@@ -34,9 +87,39 @@ def compatible(bundle, versions=None, manifest_name='manifest.json'):
         if manifest['upstream']!='ca20ce3185b3b4404f429d59d429c40b58a2ddef' or manifest['protocol']!=1:return False
         if digest(bundle/'cosmic-panel-islands')!=manifest['binary_sha256']:return False
         if versions is None:
-            versions={name:subprocess.check_output(['dpkg-query','-W','-f=${Version}',name],text=True,stderr=subprocess.DEVNULL).strip() for name in PACKAGES}
-        return versions==PACKAGES
+            versions=installed_versions()
+        return supported_system(versions) and (
+            any(versions == row for row in SUPPORTED_SYSTEMS)
+            or manifest.get('runtime_probe') == 1)
     except (OSError,ValueError,KeyError,subprocess.SubprocessError):return False
+
+def runtime_compatible(bundle):
+    """Execute the checksummed binary with no inherited session descriptors.
+
+    This loads its native ABI and checks advertised globals on a fresh named
+    Wayland connection. No surface, applet, preference or notification stream.
+    A timeout, loader failure, missing capability or malformed reply picks stock.
+    Legacy exact-version bundles retain their existing supervised startup.
+    """
+    try:
+        manifest = json.loads((bundle / 'manifest.json').read_text())
+        if not isinstance(manifest, dict):
+            return False
+        if manifest.get('runtime_probe') != 1:
+            versions = installed_versions()
+            return any(versions == row for row in SUPPORTED_SYSTEMS)
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('WAYLAND_SOCKET', 'PANEL_NOTIFICATIONS_FD',
+                            'DAEMON_NOTIFICATIONS_FD', 'COSMIC_SESSION_SOCK')}
+        result = subprocess.run([str(bundle / 'cosmic-panel-islands'), '--islands-probe'],
+                                env=env, capture_output=True, text=True, timeout=5,
+                                close_fds=True)
+        report = json.loads(result.stdout)
+        return (result.returncode == 0 and isinstance(report, dict)
+                and report.get('probe') == 1 and report.get('ready') is True)
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return False
+
 
 def session_identity(env=None):
     env = os.environ if env is None else env
@@ -99,6 +182,7 @@ REPEATS_SHOWN = 20
 # ran HEALTHY_SECONDS starts the sequence again.
 RESTART_DELAYS = (1, 2, 5, 10, 30, 60)
 HEALTHY_SECONDS = 300
+READY_SECONDS = 15
 
 
 def watch_output(stream, child, out, wedged):
@@ -130,7 +214,42 @@ def watch_output(stream, child, out, wedged):
         out.flush()
 
 
-def run_host(binary, pass_fds=(), env=None):
+def wait_ready(child, done, wedged):
+    """Confirm the real child dispatches IPC; a live but hung process is unsafe."""
+    deadline = time.monotonic() + READY_SECONDS
+    runtime = os.environ.get('XDG_RUNTIME_DIR')
+    while runtime and time.monotonic() < deadline and not done.is_set():
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                client.settimeout(min(.5, max(.01, deadline - time.monotonic())))
+                client.connect(str(Path(runtime) / 'desktop-cards-islands-v1.sock'))
+                pid, uid, _ = struct.unpack('3i', client.getsockopt(
+                    socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize('3i')))
+                if pid != child.pid or uid != os.getuid():
+                    raise ValueError('wrong IPC owner')
+                client.sendall(b'"Capabilities"\n')
+                with client.makefile('rb') as stream:
+                    line = stream.readline(65537)
+                if len(line) > 65536 or not line.endswith(b'\n'):
+                    raise ValueError('invalid IPC reply')
+                cap = json.loads(line).get('Capabilities', {})
+                if (cap.get('protocol') == 1 and cap.get('together') is True
+                        and cap.get('separate') is True):
+                    return
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+        if done.wait(.1):
+            return
+    if not done.is_set() and child.poll() is None:
+        wedged.set()
+        sys.stderr.write('Islands startup IPC health check failed; selecting stock\n')
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def run_host(binary, pass_fds=(), env=None, readiness=False):
     """Keep supervision descriptors in this process, outside native applets.
 
     Returns the exit code, whether a signal asked us to stop, and whether the
@@ -141,6 +260,9 @@ def run_host(binary, pass_fds=(), env=None):
     wedged = threading.Event()
     watcher = threading.Thread(target=watch_output, args=(child.stdout, child, sys.stderr.buffer, wedged), daemon=True)
     watcher.start()
+    done = threading.Event()
+    if readiness:
+        threading.Thread(target=wait_ready, args=(child, done, wedged), daemon=True).start()
 
     def terminate(signum, frame):
         nonlocal stopping
@@ -154,6 +276,7 @@ def run_host(binary, pass_fds=(), env=None):
     try:
         code = child.wait()
     finally:
+        done.set()
         try:
             os.killpg(child.pid, signal.SIGTERM)
         except ProcessLookupError:
@@ -215,7 +338,7 @@ def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False):
     """Reap the selected host before starting stock or returning to the session."""
     started = True
     try:
-        _, stopping, _ = run_host(binary, pass_fds)
+        _, stopping, _ = run_host(binary, pass_fds, readiness=True)
     except OSError:
         started, stopping = False, False
     if stopping or (started and compositor_gone()):
@@ -270,6 +393,9 @@ def main():
             value=int(os.environ[name]);os.fstat(value);inherited.append(value);os.set_inheritable(value,True)
         except (KeyError,ValueError,OSError):pass
     if not enabled or not compatible(bundle) or (state/'failed').exists():
+        return stock_host(STOCK, tuple(inherited))
+    if not runtime_compatible(bundle):
+        sys.stderr.write('Islands ABI/compositor preflight failed; selecting stock\n')
         return stock_host(STOCK, tuple(inherited))
     def failed():
         state.mkdir(parents=True,exist_ok=True,mode=0o700)

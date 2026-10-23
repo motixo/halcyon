@@ -35,7 +35,7 @@
 + "serde",
 + "serde_json",
  ]
- 
+
  [[package]]
 --- a/Cargo.toml
 +++ b/Cargo.toml
@@ -51,7 +51,7 @@
 +++ b/cosmic-panel-bin/Cargo.toml
 @@ -9,6 +9,9 @@
  path = "src/main.rs"
- 
+
  [dependencies]
 +dock-islands-core = { path = "../dock-islands-core" }
 +serde_json = "1"
@@ -97,14 +97,14 @@
              radius,
 @@ -59,6 +61,7 @@
  }
- 
+
  pub struct Background {
 +    pub label: Option<String>,
      pub id: id::Id,
      pub logical_width: i32,
      pub logical_height: i32,
 @@ -81,8 +84,16 @@
- 
+
          let color = self.color;
          // no border when panel is fully transparent
 -        let border = if color[3] < 0.01 { PanelBorder::None } else { self.border };
@@ -119,7 +119,7 @@
 +        } else {
 +            0.
 +        };
- 
+
          // for a single edge, avoide the corner radius (panel won't have curved corner in this mode
          // anyways)
 @@ -94,7 +105,15 @@
@@ -196,7 +196,7 @@
 +}
 --- /dev/null
 +++ b/cosmic-panel-bin/src/islands.rs
-@@ -0,0 +1,1047 @@
+@@ -0,0 +1,1050 @@
 +//! Desktop Cards companion extension. Stock panel schemas remain unchanged.
 +use crate::iced::elements::CosmicMappedInternal;
 +use crate::iced::elements::background::{BackgroundElement, PanelBorder, background_element};
@@ -231,6 +231,7 @@
 +    scale: f64,
 +    radius: u32,
 +    color: [f32; 4],
++    frosting: bool,
 +    lease: Option<(u64, u64, bool)>,
 +}
 +
@@ -271,10 +272,9 @@
 +        height: i32,
 +        _thickness: i32,
 +    ) -> anyhow::Result<()> {
-+        let color = self.colors.color_override.unwrap_or_else(|| {
-+            let c = self.colors.theme.cosmic().bg_color();
-+            [c.red, c.green, c.blue, self.config.opacity]
-+        });
++        // Native theme owns hue, opacity and its frosted alpha mapping.
++        let color = self.bg_color();
++        let frosting = self.blur_surface.is_some() && self.colors.panel_blur(self.config.opacity);
 +        let stamp = BackgroundStamp {
 +            layout: self.islands.geometry.clone(),
 +            dimensions: (width, height),
@@ -282,6 +282,7 @@
 +            scale: self.scale,
 +            radius: self.border_radius(),
 +            color,
++            frosting,
 +            lease: self
 +                .islands
 +                .lease
@@ -321,12 +322,13 @@
 +            _ => -self.anchor_gap,
 +        };
 +
-+        // This compositor has one corner-radius object per surface. A single
-+        // layer cannot express independently frosted rounded islands. Keep
-+        // translucent backgrounds and never frost the transparent gaps.
-+        if let Some(blur) = &self.blur_surface {
-+            blur.set_blur_region(None);
-+        }
++        // A union of rounded rectangles clips each island independently.
++        // Keep the surface-wide corner radius zero: applying it to a thin
++        // region rectangle triggers radius_too_large on reviewed compositors.
++        // Never reuse the input region: it also contains reveal/drag handles.
++        let blur_region = if frosting {
++            self.compositor_state.as_ref().and_then(|c| sctk::compositor::Region::new(c).ok())
++        } else { None };
 +        if let Some(corners) = &self.corner_radius_wlr {
 +            corners.set_radius(0, 0, 0, 0);
 +            corners.set_padding(0, 0, 0, 0);
@@ -368,18 +370,10 @@
 +            self.islands.backgrounds.push(bg);
 +            // Rounded input masks follow visible pixels. Add a small edge
 +            // reveal strip while hidden; gaps never become input surfaces.
-+            for row in 0..h {
-+                let r = radius as f64;
-+                let cy = if (row as f64) < r {
-+                    r - row as f64 - 0.5
-+                } else if (row as f64) >= h as f64 - r {
-+                    row as f64 + 0.5 - (h as f64 - r)
-+                } else {
-+                    0.
-+                };
-+                let inset = (r - (r * r - cy * cy).max(0.).sqrt()).ceil().max(0.) as i32;
-+                if w > 2 * inset {
-+                    region.add(x + inset, y + row, w - 2 * inset, 1);
++            for [rx, ry, rw, rh] in dock_islands_core::rounded_region(x, y, w, h, radius as f64) {
++                region.add(rx, ry, rw, rh);
++                if let Some(blur_region) = &blur_region {
++                    blur_region.add(rx, ry, rw, rh);
 +                }
 +            }
 +            if self.config.autohide_enabled() && self.anchor_gap != 0 {
@@ -484,6 +478,9 @@
 +                region.add(x.round() as i32, y.round() as i32, w.round() as i32, h.round() as i32);
 +                self.islands.handles.push((handle, major, cross));
 +            }
++        }
++        if let Some(blur) = &self.blur_surface {
++            blur.set_blur_region(blur_region.as_ref().map(|r| r.wl_region()));
 +        }
 +        layer.wl_surface().set_input_region(Some(region.wl_region()));
 +        self.is_background_dirty = false;
@@ -705,7 +702,13 @@
 +    request: Request,
 +) -> Response {
 +    match request {
-+        Request::Capabilities => Response::Capabilities(Capabilities::default()),
++        Request::Capabilities => Response::Capabilities(Capabilities {
++            // Capability, not the user's current frosting preference. No active
++            // surfaces means no claim yet; the app can ask again after startup.
++            rounded_blur: !state.space.space_list.is_empty()
++                && state.space.space_list.iter().all(|p| p.blur_surface.is_some()),
++            ..Capabilities::default()
++        }),
 +        Request::Inspect { panel, output } => {
 +            match panel_index(state, &panel, &output).map(|i| &state.space.space_list[i]) {
 +                Some(p) => Response::Draft {
@@ -1244,32 +1247,84 @@
 +        self.island_touch(&surface, id, point, 2)
 +    }
 +}
+--- /dev/null
++++ b/cosmic-panel-bin/src/islands_probe.rs
+@@ -0,0 +1,37 @@
++//! A bounded launcher preflight (the parent enforces the timeout). Loading this
++//! executable also verifies its dynamic libraries. No panel, surface or applet.
++use sctk::reexports::client::{
++    Connection, Dispatch, QueueHandle,
++    globals::{registry_queue_init, GlobalListContents},
++    protocol::wl_registry,
++};
++
++struct Probe;
++impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for Probe {
++    fn event(_: &mut Self, _: &wl_registry::WlRegistry, _: wl_registry::Event,
++             _: &GlobalListContents, _: &Connection, _: &QueueHandle<Self>) {}
++}
++
++pub fn run() -> anyhow::Result<()> {
++    // The selector strips WAYLAND_SOCKET; also refuse direct callers which
++    // could otherwise consume the panel's inherited connection by accident.
++    anyhow::ensure!(std::env::var_os("WAYLAND_SOCKET").is_none(), "use a named display");
++    let connection = Connection::connect_to_env()?;
++    let (globals, _) = registry_queue_init::<Probe>(&connection)?;
++    let advertised = globals.contents().clone_list();
++    let required = [
++        ("wl_compositor", 4), ("wl_subcompositor", 1), ("wl_shm", 1),
++        ("wl_seat", 1), ("wl_output", 1), ("xdg_wm_base", 1),
++        ("zwlr_layer_shell_v1", 1), ("wl_data_device_manager", 1),
++    ];
++    let missing: Vec<_> = required.iter().filter(|(name, version)| {
++        !advertised.iter().any(|g| g.interface == *name && g.version >= *version)
++    }).map(|(name, _)| *name).collect();
++    println!("{}", serde_json::json!({
++        "probe": 1, "ready": missing.is_empty(), "missing": missing,
++        "globals": advertised.iter().map(|g| (&g.interface, g.version))
++            .collect::<std::collections::BTreeMap<_,_>>()
++    }));
++    anyhow::ensure!(missing.is_empty(), "missing required panel globals");
++    Ok(())
++}
 --- a/cosmic-panel-bin/src/main.rs
 +++ b/cosmic-panel-bin/src/main.rs
-@@ -1,5 +1,6 @@
+@@ -1,5 +1,7 @@
  mod config_watching;
  mod iced;
 +mod islands;
++mod islands_probe;
  mod minimize;
  mod notifications;
  mod space;
-@@ -37,6 +38,7 @@
- 
+@@ -37,6 +39,7 @@
+
  #[derive(Debug)]
  pub enum PanelCalloopMsg {
 +    Islands(islands::Event),
      ClientSocketPair(ClientId),
      RestartSpace(CosmicPanelConfig, WlOutput),
      MinimizeRect { output: String, applet_info: MinimizeApplet },
-@@ -114,6 +116,7 @@
+@@ -70,6 +73,10 @@
+ }
+
+ fn main() -> Result<()> {
++    // Before logger/config loading: this path must never write native defaults.
++    if std::env::args().nth(1).as_deref() == Some("--islands-probe") {
++        return islands_probe::run();
++    }
+     // Prevents glibc from hoarding memory via memory fragmentation.
+     #[cfg(target_env = "gnu")]
+     malloc::limit_mmap_threshold();
+@@ -114,6 +121,7 @@
      let (applet_tx, mut applet_rx) = mpsc::channel(200);
      let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
- 
+
 +    islands::serve(calloop_tx.clone())?;
      let event_loop = calloop::EventLoop::try_new()?;
      let handle = event_loop.handle();
      let _ = EVENT_LOOP_HANDLE.with(move |l| l.set(RefCell::new(handle)));
-@@ -170,6 +173,7 @@
+@@ -170,6 +178,7 @@
              tracing::trace!("Panel Event: {e:?}");
              match e {
                  calloop::channel::Event::Msg(e) => match e {
@@ -1292,12 +1347,12 @@
 +        }
 +        self.islands.last_major = major;
          self.remap_attempts = self.remap_attempts.saturating_sub(1);
- 
+
          let make_indices_contiguous =
 @@ -199,7 +207,7 @@
          let is_dock = !self.config.expand_to_edges()
              || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
- 
+
 -        if is_dock {
 +        if is_dock && !self.islands.settings.enabled {
              windows_center = windows_left
@@ -1315,7 +1370,7 @@
 @@ -419,7 +427,13 @@
          .to_logical(self.scale)
          .to_i32_round();
- 
+
 -        let actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
 +        let mut actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
 +        let arrange_extra = self.arrange_extra();
@@ -1328,9 +1383,9 @@
              self.actual_size.h = actual_size_constrained.h;
          } else {
 @@ -474,7 +488,7 @@
- 
+
          let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
- 
+
 -        let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
 +        let mut left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
          let mut right_pos = new_list_dim_length as f64
@@ -1348,7 +1403,7 @@
 @@ -512,7 +526,7 @@
          }
          .min(layer_major as f64);
- 
+
 -        let target_right_len = if !has_center {
 +        let mut target_right_len = if !has_center {
              (layer_major as f64
@@ -1473,7 +1528,7 @@
              self.is_dirty = true;
              self.needs_layout = true;
 @@ -546,7 +661,9 @@
- 
+
              if left_overflow < suggested_size {
                  self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
 -            } else if left_overflow > 0 {
@@ -1497,7 +1552,7 @@
 @@ -570,6 +689,10 @@
              }
          }
- 
+
 +        if let Some(geometry) = island_geometry {
 +            self.islands.geometry = geometry;
 +            self.normalize_island_selection();
@@ -1512,7 +1567,7 @@
 -            PanelAnchor::Bottom | PanelAnchor::Right => 0,
 +            PanelAnchor::Bottom | PanelAnchor::Right => arrange_extra as u16,
          } as i32;
- 
+
          if let Some(right_button) = right_overflow_button {
              let size = right_button.geometry().size.to_f64();
              let crosswise_pos = if self.config.is_horizontal() {
@@ -1530,7 +1585,7 @@
 +                        size.w as u32,
 +                    )
              };
- 
+
              let loc = if self.config().is_horizontal() {
 @@ -614,17 +743,27 @@
              layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
@@ -1622,7 +1677,7 @@
 @@ -791,6 +942,16 @@
          }
          self.space.refresh();
- 
+
 +        if self.islands.settings.enabled {
 +            self.layout_island_backgrounds(new_dim.w, new_dim.h, new_logical_crosswise_dim)?;
 +            self.reorder_overflow_space(OverflowSection::Left);
@@ -1683,7 +1738,7 @@
 +                self.islands.overflow_sizes.push((w.0.clone(), diff as f64));
 +            }
              overflow = overflow.saturating_sub(diff);
- 
+
              let x_i = overflow_cnt % 8;
 --- a/cosmic-panel-bin/src/space/panel_space.rs
 +++ b/cosmic-panel-bin/src/space/panel_space.rs
@@ -1715,7 +1770,7 @@
 @@ -794,6 +796,26 @@
              return;
          };
- 
+
 +        if self.islands.lease.is_some()
 +            || (self.islands.settings.enabled
 +                && (!self.popups.is_empty() || self.overflow_popup.is_some()))
@@ -1742,13 +1797,61 @@
 @@ -1098,7 +1120,7 @@
          }
      }
- 
+
 -    fn set_margin(
 +    pub(crate) fn set_margin(
          anchor: PanelAnchor,
          margin: i32,
          additional_gap: i32,
-@@ -1888,6 +1910,9 @@
+@@ -1138,6 +1160,29 @@
+         }
+
+         (w, h).into()
++    }
++
++    /// Configure sizes include the temporary editor band. Native panel size
++    /// limits apply only to the applet area, otherwise small panels repeatedly
++    /// request a taller surface that configure immediately clamps away.
++    fn constrain_layer_dim(
++        &self,
++        mut size: Size<i32, Logical>,
++        active_gap: Option<u32>,
++    ) -> Size<i32, Logical> {
++        let extra = self.arrange_extra();
++        if self.config.is_horizontal() {
++            size.h = size.h.saturating_sub(extra);
++        } else {
++            size.w = size.w.saturating_sub(extra);
++        }
++        let mut dim = self.constrain_dim(size, active_gap);
++        if self.config.is_horizontal() {
++            dim.h += extra;
++        } else {
++            dim.w += extra;
++        }
++        dim
+     }
+
+     fn apply_animation_state(&mut self) {
+@@ -1377,7 +1422,7 @@
+                     if height <= 0 {
+                         height = 1;
+                     }
+-                    let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
++                    let dim = self.constrain_layer_dim((width, height).into(), Some(self.gap() as u32));
+
+                     if first {
+                         if self.additional_gap != 0 {
+@@ -1519,7 +1564,7 @@
+                 if height == 0 {
+                     height = 1;
+                 }
+-                let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
++                let dim = self.constrain_layer_dim((width, height).into(), Some(self.gap() as u32));
+
+                 if let (Some(renderer), Some(egl_surface)) =
+                     (renderer.as_mut(), self.egl_surface.as_mut())
+@@ -1888,6 +1933,9 @@
              {
                  t.with_pending_state(|s| {
                      s.size = None;
@@ -1775,7 +1878,7 @@
              let not_visible = self.config.autohide_enabled()
 @@ -212,7 +216,7 @@
                          }
- 
+
                          w.toplevel().map(|t| {
 -                            let configured_size = t
 +                            let mut configured_size = t
@@ -1785,7 +1888,7 @@
 @@ -232,6 +236,42 @@
                                      r
                                  });
- 
+
 +                            if self.islands.settings.enabled {
 +                                let client = t.wl_surface().client();
 +                                let section =
@@ -1828,7 +1931,7 @@
 @@ -259,24 +299,25 @@
                      .flatten()
                      .collect_vec();
- 
+
 -                if let Some(bg) = self.background_element.as_ref().map(|e| {
 -                    let pos = e.with_program(|p| p.logical_pos);
 -                    e.render_elements(
@@ -1865,14 +1968,14 @@
                      elements.extend(bg);
 -                };
 +                }
- 
+
                  let _res =
                      my_renderer.render_output(renderer, &mut f, age, &elements, clear_color)?;
 --- a/cosmic-panel-bin/src/space/wrapper_space.rs
 +++ b/cosmic-panel-bin/src/space/wrapper_space.rs
 @@ -460,9 +460,9 @@
              let locales = freedesktop_desktop_entry::get_languages_from_env();
- 
+
              for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
 -                // This way each applet is at most started once,
 -                // even if multiple desktop files in different directories match
@@ -1900,7 +2003,7 @@
 @@ -52,7 +52,13 @@
              xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
          };
- 
+
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref()) {
 +        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +            || space
@@ -1911,19 +2014,19 @@
 +        {
              // construct a surface for an output if possible
              let s_output = c_output_as_s_output(display_handle, &info);
- 
+
 @@ -71,6 +77,7 @@
                  warn!("{}", err);
              }
          }
 +        crate::islands::reconcile_outputs(self);
      }
- 
+
      fn update_output(
 @@ -104,7 +111,12 @@
              xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
          };
- 
+
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +            || space
@@ -1940,12 +2043,12 @@
          }
 +        crate::islands::reconcile_outputs(self);
      }
- 
+
      fn output_destroyed(
 @@ -152,7 +165,12 @@
- 
+
          info!("configured outputs {:?}", &configured_outputs);
- 
+
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
 +            || space
@@ -1963,7 +2066,7 @@
 +        crate::islands::reconcile_outputs(self);
      }
  }
- 
+
 --- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
 +++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
 @@ -71,6 +71,9 @@
@@ -1998,7 +2101,7 @@
 +            return;
 +        }
          let (_, touch) = get_touch_handle(self, touch);
- 
+
          touch.up(
 @@ -97,6 +105,11 @@
          id: i32,
@@ -2010,11 +2113,11 @@
 +            return;
 +        }
          let (seat_name, touch) = get_touch_handle(self, touch);
- 
+
          if let Some(surface) = self.client_state.touch_surfaces.get(&id)
 @@ -143,6 +156,12 @@
      }
- 
+
      fn cancel(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, touch: &WlTouch) {
 +        for panel in &mut self.space.space_list {
 +            if panel.islands.touch.take().is_some() {
@@ -2045,7 +2148,7 @@
 +use_small_heuristics = "Default"
 --- /dev/null
 +++ b/dock-islands-core/src/lib.rs
-@@ -0,0 +1,594 @@
+@@ -0,0 +1,635 @@
 +//! Versioned settings, wire contract and logical geometry shared by the two
 +//! native applications. This crate has no toolkit or compositor dependencies.
 +use serde::{Deserialize, Serialize};
@@ -2640,9 +2743,50 @@
 +
 +#[cfg(test)]
 +mod tests;
++
++/// Conservative logical-pixel rounded mask, shared by input and frosting.
++/// Adjacent identical rows coalesce, so straight edges cost one rectangle.
++/// Callers keep reveal strips and arrangement handles out of the blur mask.
++pub fn rounded_region(x: i32, y: i32, width: i32, height: i32, radius: f64) -> Vec<[i32; 4]> {
++    if width <= 0 || height <= 0 {
++        return Vec::new();
++    }
++    let radius = if radius.is_finite() {
++        radius.max(0.)
++    } else {
++        0.
++    }
++    .min(width as f64 / 2.)
++    .min(height as f64 / 2.);
++    let mut rects: Vec<[i32; 4]> = Vec::new();
++    for row in 0..height {
++        let cy = if (row as f64) < radius {
++            radius - row as f64 - 0.5
++        } else if row as f64 >= height as f64 - radius {
++            row as f64 + 0.5 - (height as f64 - radius)
++        } else {
++            0.
++        };
++        let inset = (radius - (radius * radius - cy * cy).max(0.).sqrt())
++            .ceil()
++            .max(0.) as i32;
++        let w = width - 2 * inset;
++        if w <= 0 {
++            continue;
++        }
++        if let Some(last) = rects.last_mut() {
++            if last[0] == x + inset && last[2] == w && last[1] + last[3] == y + row {
++                last[3] += 1;
++                continue;
++            }
++        }
++        rects.push([x + inset, y + row, w, 1]);
++    }
++    rects
++}
 --- /dev/null
 +++ b/dock-islands-core/src/tests.rs
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,166 @@
 +use super::*;
 +
 +fn settings(mode: Placement, gap: u16) -> Settings {
@@ -2790,4 +2934,22 @@
 +    let saved = a.clone();
 +    a.reorder_visible(Placement::Together, Section::Center, present, 1);
 +    assert_eq!(a, saved);
++}
++
++#[test]
++fn rounded_regions_keep_gaps_clear_and_coalesce_straight_edges() {
++    // A square needs one rectangle, not one request per row.
++    assert_eq!(rounded_region(10, 20, 12, 8, 0.), vec![[10, 20, 12, 8]]);
++    assert!(rounded_region(0, 0, 0, 8, 4.).is_empty());
++    // Radius two: corner rows inset one; middle rows span the full width.
++    assert_eq!(
++        rounded_region(10, 20, 8, 6, 2.),
++        vec![[11, 20, 6, 2], [10, 22, 8, 2], [11, 24, 6, 2]]
++    );
++    let rects = rounded_region(0, 0, 8, 6, 160.);
++    assert_eq!(rects, rounded_region(0, 0, 8, 6, 3.));
++    for [x, y, w, h] in rects {
++        assert!(x >= 0 && y >= 0 && x + w <= 8 && y + h <= 6);
++        assert!(w > 0 && h > 0);
++    }
 +}
