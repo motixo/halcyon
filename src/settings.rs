@@ -10448,7 +10448,19 @@ mod tests {
                 start.elapsed() < Duration::from_millis(250),
                 "native style action waited for pre-write discovery"
             );
-            settle_settings(&mut app, task);
+            // Another ordinary control must not enter the config lock while
+            // this window's worker can be checking installation under it.
+            let before = Config::load().clock.show_date;
+            let start = Instant::now();
+            let preference = app.update(Message::ClockDate(!before));
+            assert!(start.elapsed() < Duration::from_millis(250));
+            assert_eq!(
+                Config::load().clock.show_date,
+                before,
+                "preference waits behind the active native transaction"
+            );
+            settle_settings(&mut app, Task::batch([task, preference]));
+            assert_eq!(Config::load().clock.show_date, !before);
         }
         let key = crate::desktop::ConfigKey::new(
             dock_islands_core::NAMESPACE,

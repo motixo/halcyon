@@ -56,8 +56,10 @@ impl Settings {
         {
             return Some(Task::none());
         }
+        // Even a cheap preference write would wait on the worker's config
+        // lock during authoritative discovery. Defer its completed action too.
         if self.native_busy
-            && matches!(
+            && (matches!(
                 message,
                 Message::DesktopEditor(_)
                     | Message::Profiles(_)
@@ -70,12 +72,15 @@ impl Settings {
                     | Message::MaterialSave
                     | Message::MaterialTarget(_)
                     | Message::MaterialValue(..)
+                    | Message::Page(_)
                     | Message::FlushEdits
                     | Message::Window(WindowControl::Close)
                     | Message::ResetThemeSurface(_)
                     | Message::RecoveryApply
                     | Message::RecoveryApplyOne(_)
-            )
+            ) || desktop_write_message(message)
+                || direct::completion(message).is_some()
+                || !self.preference_scope(message).is_empty())
         {
             self.native_deferred.push_back(message.clone());
             return Some(Task::none());
