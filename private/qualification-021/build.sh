@@ -102,9 +102,10 @@ sha256sum /usr/share/OVMF/OVMF_{CODE,VARS}_4M.fd > evidence/firmware-hashes.txt
 qemu-system-x86_64 -machine pc-q35-8.2 -accel kvm -cpu host -smp 4 -m 6144 \
  -drive if=pflash,format=raw,readonly=on,file=retain/OVMF_CODE_4M.fd \
  -drive if=pflash,format=raw,file=trial-vars.fd \
- -drive if=virtio,format=qcow2,file=trial.qcow2 \
- -device virtio-vga,xres=1280,yres=800 -device qemu-xhci -device usb-kbd -device usb-tablet \
- -device virtio-serial -chardev socket,path="$WORK/agent.sock",server=on,wait=off,id=agent \
+ -drive if=none,id=osdisk,format=qcow2,file=trial.qcow2 \
+ -device virtio-blk-pci,drive=osdisk,addr=0x5,bootindex=0 \
+ -device virtio-vga,addr=0x2,xres=1280,yres=800 -device qemu-xhci,addr=0x3 -device usb-kbd -device usb-tablet \
+ -device virtio-serial,addr=0x4 -chardev socket,path="$WORK/agent.sock",server=on,wait=off,id=agent \
  -device virtserialport,chardev=agent,name=org.qemu.guest_agent.0 \
  -nic "${GUEST_NETWORK:-none}" -display none -vnc unix:display.sock \
  -qmp unix:qmp.sock,server=on,wait=off -serial file:evidence/serial.log \
