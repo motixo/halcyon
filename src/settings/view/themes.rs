@@ -172,9 +172,10 @@ impl Settings {
             && self.config.appearance.native_mode_palettes == 0
         {
             rows.push(banner(
-                "This theme was saved before native light and dark matching. Review a repair to let the bars follow Mode.",
+                "Native light and dark matching has not been applied. Review a repair to let the bars follow Mode.",
                 WARN,
                 vec![button::standard("Repair theme matching")
+                    .id("theme-matching-repair".into())
                     .on_press(edit(Edit::RepairThemeMatching)).into()],
             ));
         }

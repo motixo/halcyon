@@ -328,6 +328,7 @@ pub fn plan(
             ));
     }
     let mut config_value = None;
+    let mut unavailable_bars = BTreeSet::new();
     for domain in Domain::ALL
         .into_iter()
         .filter(|domain| selected.contains(domain))
@@ -346,8 +347,16 @@ pub fn plan(
                     _ => (PanelKind::Panel, profile.panel.as_ref()),
                 };
                 if profile.appearance_only
-                    && PanelDraft::load(store, kind).is_ok_and(|draft| !draft.installed())
+                    && let Ok(draft) = PanelDraft::load(store, kind)
+                    && !draft.installed()
                 {
+                    // Absence is part of the reviewed native scope. If this
+                    // bar appears before Apply, generation must be reviewed again.
+                    let snapshot = draft.into_snapshot();
+                    for key in snapshot.keys() {
+                        result.patch.guard(key.clone(), snapshot.user(key).cloned());
+                    }
+                    unavailable_bars.insert(domain);
                     part.warnings.push(format!(
                         "{} is unavailable; its appearance is kept for another desktop",
                         kind.title()
@@ -518,6 +527,15 @@ pub fn plan(
                 }
             }
             Err(error) => result.blocking.push(error.to_string()),
+        }
+    }
+    if selected.contains(&Domain::WidgetStyle)
+        && let Some(Ok(current)) = &config_value
+    {
+        if let Err(reason) =
+            native_palette_provenance(profile, selected, &unavailable_bars, current, &mut result)
+        {
+            result.blocking.push(reason);
         }
     }
     // The combined widget result must pass the same validation as every
@@ -735,7 +753,12 @@ fn plan_panel(
             )),
         }
     }
-    let patch = draft.patch();
+    let mut patch = draft.patch();
+    if look.background.is_some() {
+        let key = ConfigKey::new(kind.namespace(), 1, "background").expect("panel key");
+        let snapshot = draft.into_snapshot();
+        patch.guard(key.clone(), snapshot.user(&key).cloned());
+    }
     for key in patch.keys() {
         let label = format!("{} {}", kind.title(), panels::key_label(key.key()));
         if !part.changes.contains(&label) {
@@ -875,7 +898,23 @@ fn plan_appearance(
             }
         }
     }
-    let plan = draft.plan();
+    let mut plan = draft.plan();
+    // A reviewed generation can accept already-equal roles. They still need
+    // guards before its provenance is committed; a no-op draft has no edits.
+    for variant in ThemeVariant::ALL {
+        if let Some(look) = look.variant(variant) {
+            for (name, color) in [
+                ("bg_color", &look.background),
+                ("primary_container_bg", &look.primary),
+            ] {
+                if color.is_some() {
+                    let key = appearance::theme::builder_key(variant, name);
+                    plan.patch
+                        .guard(key.clone(), draft.snapshot().user(&key).cloned());
+                }
+            }
+        }
+    }
     for blocked in &plan.blocked {
         part.blocked.push(format!(
             "{} has a value this version doesn’t recognize ({}).",
@@ -1319,6 +1358,126 @@ fn capitalize(text: &str) -> String {
         Some(first) => first.to_uppercase().chain(chars).collect(),
         None => String::new(),
     }
+}
+
+/// A profile marker is a generation request, not proof. Only accepted native
+/// roles in the same transaction can establish it. Partial applications retain
+/// existing proof only when its family, tint and explicit ownership are unchanged.
+fn native_palette_provenance(
+    profile: &Profile,
+    selected: &BTreeSet<Domain>,
+    unavailable_bars: &BTreeSet<Domain>,
+    (current, effective): &Loaded,
+    result: &mut ProfilePlan,
+) -> Result<(), String> {
+    const MARKER: &str = "/appearance/native_mode_palettes";
+    let original = widget::get(current, MARKER);
+    let requested = result
+        .widget
+        .iter()
+        .find(|(p, _)| *p == MARKER)
+        .map(|(_, e)| e.desired.clone());
+    let mut next = current.clone();
+    for (pointer, entry) in result.widget.changes() {
+        widget::put(&mut next, pointer, entry.desired.clone())?;
+    }
+    let before = config::check_config_value(effective)?.appearance;
+    let after = config::check_config_value(&next)?.appearance;
+    let same_owner = before.family == after.family
+        && before.accent == after.accent
+        && before.overrides == after.overrides;
+    let touched = |key: &ConfigKey| {
+        result.patch.get(key).is_some() || result.patch.guards().any(|(guard, _)| guard == key)
+    };
+    let native_selected = [Domain::Appearance, Domain::Dock, Domain::Panel]
+        .into_iter()
+        .all(|domain| {
+            selected.contains(&domain)
+                && result
+                    .domains
+                    .iter()
+                    .any(|part| part.domain == domain && part.blocked.is_empty())
+        });
+    let complete_roles = ThemeVariant::ALL.into_iter().all(|variant| {
+        profile
+            .appearance
+            .as_ref()
+            .and_then(|look| look.variant(variant))
+            .is_some_and(|look| {
+                [
+                    ("bg_color", &look.background),
+                    ("primary_container_bg", &look.primary),
+                ]
+                .into_iter()
+                .all(|(name, color)| {
+                    let key = appearance::theme::builder_key(variant, name);
+                    touched(&key)
+                        && color.as_ref().is_some_and(|color| {
+                            !matches!(color, super::format::ColorChoice::Auto)
+                                || after.overrides
+                                    & crate::desktop::actions::override_for_native(&key)
+                                    != 0
+                        })
+                })
+            })
+    });
+    let complete_bars = [
+        (Domain::Dock, PanelKind::Dock, &profile.dock),
+        (Domain::Panel, PanelKind::Panel, &profile.panel),
+    ]
+    .into_iter()
+    .all(|(domain, kind, look)| {
+        look.as_ref().is_some_and(|look| look.background.is_some())
+            && (unavailable_bars.contains(&domain)
+                || touched(&ConfigKey::new(kind.namespace(), 1, "background").expect("panel key")))
+    });
+    let generated = requested
+        .as_ref()
+        .and_then(|v| v.as_ref())
+        .and_then(|v| v.as_u64())
+        == Some(1)
+        && after.family.is_some()
+        && native_selected
+        && complete_roles
+        && complete_bars;
+    let explicitly_unproven = requested
+        .as_ref()
+        .is_some_and(|value| value.as_ref().and_then(|v| v.as_u64()) != Some(1));
+    let proven =
+        generated || (before.native_mode_palettes == 1 && same_owner && !explicitly_unproven);
+    let desired = if proven {
+        Some(serde_json::json!(1))
+    } else if original.is_none() {
+        None
+    } else {
+        Some(serde_json::json!(0))
+    };
+    // Guard identity even when a repair only carries the generation request.
+    for pointer in [
+        "/appearance/family",
+        "/appearance/accent",
+        "/appearance/overrides",
+    ] {
+        if !result.widget.iter().any(|(p, _)| p == pointer) {
+            let value = widget::get(current, pointer);
+            result.widget.set(pointer, value.clone(), value)?;
+        }
+    }
+    result
+        .widget
+        .set(MARKER, original.clone(), desired.clone())?;
+    if let Some(part) = result
+        .domains
+        .iter_mut()
+        .find(|part| part.domain == Domain::WidgetStyle)
+    {
+        let label = widget::label(MARKER);
+        part.changes.retain(|change| change != &label);
+        if original != desired {
+            part.changes.push(label);
+        }
+    }
+    Ok(())
 }
 
 fn plan_widgets(

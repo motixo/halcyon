@@ -331,6 +331,15 @@ pub fn preserve_custom(
         LookColor::applied(&config.appearance).set(next);
         return preserve_explicit(config.appearance, &captured, next);
     };
+    // Preserving unproven legacy roles is not a native palette migration.
+    // The planner separately verifies that a generation request includes
+    // accepted native work; this adapter must not request it for kept roles.
+    if config.appearance.native_mode_palettes != 1
+        && let Some(style) = &mut next.widget_style
+    {
+        widget::put(style, "/appearance/native_mode_palettes", Some(json!(0)))
+            .map_err(ProfileError::Invalid)?;
+    }
     let mut expected = record(previous);
     expected.appearance = Some(appearance(previous, config.appearance.accent));
     let comparison = plan(

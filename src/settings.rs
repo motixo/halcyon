@@ -9711,6 +9711,42 @@ mod tests {
         }
     }
     #[test]
+    fn review_r1_repair_action_visibility_tracks_persisted_provenance() {
+        if desktop_test_child(
+            "review_r1_repair_action_visibility_tracks_persisted_provenance",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let (mut app, initial) = Settings::init(Core::default(), Page::Themes);
+        settle_settings(&mut app, initial);
+        let mut native = crate::native_test::Native::new(cosmic::iced::Size::new(1024., 1400.));
+        for (family, marker, visible) in [
+            (Some(crate::desktop_theme::Family::Paper), 0, true),
+            (Some(crate::desktop_theme::Family::Paper), 1, false),
+            (None, 0, false),
+        ] {
+            let path = Config::path().unwrap();
+            let mut raw: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            raw["appearance"]["family"] = serde_json::json!(family);
+            raw["appearance"]["native_mode_palettes"] = serde_json::json!(marker);
+            std::fs::write(path, raw.to_string()).unwrap();
+            app.config = Config::load();
+            assert_eq!(
+                native
+                    .try_bounds(app.settings_view(), "theme-matching-repair")
+                    .is_some(),
+                visible
+            );
+        }
+    }
+
+    #[test]
     fn independent_r2_native_retained_text_uses_current_scope_and_preserves_outside_fields() {
         if desktop_test_child(
             "independent_r2_native_retained_text_uses_current_scope_and_preserves_outside_fields",

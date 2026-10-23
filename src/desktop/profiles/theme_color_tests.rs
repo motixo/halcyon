@@ -804,3 +804,93 @@ fn native_theme_mode_fixtures() {
         .unwrap();
     }
 }
+
+#[test]
+fn review_r1_provenance_requires_complete_accepted_native_domains() {
+    for excluded in [Domain::Appearance, Domain::Dock, Domain::Panel] {
+        let (_fixture, store, installed) =
+            reported(&format!("review-r1-exclude-{excluded:?}"), true);
+        let p = record(Family::Paper);
+        let selected = p.domains().into_iter().filter(|d| *d != excluded).collect();
+        let proposed = plan(&store, &installed, &p, &selected);
+        assert!(proposed.can_apply(), "{:?}", proposed.blocking_reasons());
+        apply(&store, &proposed).unwrap();
+        let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(
+            cfg.appearance.native_mode_palettes, 0,
+            "excluded {excluded:?}"
+        );
+    }
+}
+
+#[test]
+fn review_r1_widget_scope_keeps_only_existing_unchanged_ownership() {
+    let (_fixture, store, installed) = reported("review-r1-existing-proof", true);
+    switch(&store, &installed, Family::Soft);
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.appearance.native_mode_palettes, 1);
+    let mut p = capture(&store, "Same owner").unwrap().profile;
+    // A harmless widget change can retain proof for the same native owner.
+    p.widget_style.as_mut().unwrap()["appearance"]["opacity"] = json!(80);
+    let proposed = plan(
+        &store,
+        &installed,
+        &p,
+        &[Domain::WidgetStyle].into_iter().collect(),
+    );
+    apply(&store, &proposed).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.appearance.native_mode_palettes, 1);
+    let p = record(Family::Paper);
+    let proposed = plan(
+        &store,
+        &installed,
+        &p,
+        &[Domain::WidgetStyle].into_iter().collect(),
+    );
+    apply(&store, &proposed).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(
+        cfg.appearance.native_mode_palettes, 0,
+        "new widget family cannot inherit another family's native proof"
+    );
+}
+
+#[test]
+fn review_r1_generation_noop_roles_remain_guarded_until_commit() {
+    for changed in ["role", "bar", "owner"] {
+        let (fixture, store, installed) =
+            reported(&format!("review-r1-proof-guard-{changed}"), true);
+        switch(&store, &installed, Family::Soft);
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.app_config().unwrap()).unwrap()).unwrap();
+        raw["appearance"]["native_mode_palettes"] = json!(0);
+        fs::write(store.app_config().unwrap(), raw.to_string()).unwrap();
+        let repair = repair_matching(&store).unwrap();
+        let proposed = plan(
+            &store,
+            &installed,
+            &repair,
+            &repair.domains().into_iter().collect(),
+        );
+        assert!(proposed.can_apply());
+        match changed {
+            "role" => write_v2(
+                &fixture,
+                "com.system76.CosmicTheme.Light.Builder",
+                "bg_color",
+                "Some(\"#123456FF\")",
+            ),
+            "bar" => fixture.user("com.system76.CosmicPanel.Dock", "anchor", "Bottom"),
+            _ => {
+                raw["appearance"]["family"] = json!(Family::Paper);
+                fs::write(store.app_config().unwrap(), raw.to_string()).unwrap();
+            }
+        }
+        let before = fixture.tree();
+        assert!(apply(&store, &proposed).is_err(), "changed {changed}");
+        assert_eq!(fixture.tree(), before);
+        let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(cfg.appearance.native_mode_palettes, 0);
+    }
+}
