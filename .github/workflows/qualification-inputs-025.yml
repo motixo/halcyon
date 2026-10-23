@@ -1,0 +1,72 @@
+name: Isolated 1783-package COSMIC guest construction
+on:
+  push:
+    branches: [ci/qualification-inputs-025]
+    paths:
+      - '.github/workflows/qualification-inputs-025.yml'
+      - 'private/qualification-inputs-025/**'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: qualification-inputs-025-only
+  cancel-in-progress: false
+jobs:
+  construct:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      WORK: /mnt/q025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Create task-owned disposable directory
+        run: |
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          sudo mkdir /mnt/q025
+          sudo chown "$(id -u):$(id -g)" /mnt/q025
+          mkdir /mnt/q025/evidence
+          date -u > /mnt/q025/evidence/job-start.txt
+          printf '%s\n' "$GITHUB_SHA" > /mnt/q025/evidence/infra-commit.txt
+      - name: Bounded runner QEMU tools only
+        timeout-minutes: 10
+        run: bash private/qualification-inputs-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
+      - name: Require 70GB disk, RAM and actual KVM before any archive download
+        run: sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" python3 private/qualification-inputs-025/prerequisites.py
+      - name: Verify and restore immutable original archive and all top-level objects
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u private/qualification-inputs-025/restore_original.py 2>&1 | tee "$WORK/evidence/restore.log"
+      - name: Offline four-package removal, standalone image, reboot and stock input observations
+        timeout-minutes: 45
+        run: sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" python3 -u private/qualification-inputs-025/construct.py 2>&1 | tee "$WORK/evidence/construct.log"
+      - name: Final task evidence and resource accounting
+        if: always()
+        run: |
+          if [ -d "$WORK/evidence" ]; then
+            date -u > "$WORK/evidence/job-end.txt"
+            df -B1 "$WORK" > "$WORK/evidence/final-disk.txt"
+            free -b > "$WORK/evidence/final-memory.txt"
+            sudo chmod -R a+rX "$WORK/evidence"
+          fi
+          if [ -d "$WORK/new-artifact" ]; then sudo chmod -R a+rX "$WORK/new-artifact"; fi
+      - name: Preserve small evidence, including failures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cosmic-1783-evidence-${{ github.run_id }}
+          path: /mnt/q025/evidence/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn
+      - name: Preserve new standalone image and exact recipes only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cosmic-1783-prepared-${{ github.run_id }}
+          path: /mnt/q025/new-artifact/
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: warn

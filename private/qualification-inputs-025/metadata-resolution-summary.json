@@ -1,0 +1,44 @@
+{
+  "releases": [
+    {
+      "url": "https://apt.pop-os.org/release/dists/noble",
+      "sha256": "c963dd7e26c21a15e2816c525fe8df90e5ddb1bbd42b4c99d2340f7f22d3a920",
+      "fingerprint": "63C46DF0140D738961429F4E204DD8AEC33A7AFF",
+      "date": "Wed, 21 Oct 2026 21:04:00 +0000",
+      "expires": "2026-10-28T21:04:00+00:00"
+    },
+    {
+      "url": "https://apt.pop-os.org/ubuntu/dists/noble",
+      "sha256": "cdb2f31d809f589719a53c6ad15f255b27569c4059542ada282aaa21b8e164b0",
+      "fingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+      "date": "Thu, 25 Apr 2024 15:10:33 UTC",
+      "expires": "9999-12-31T23:59:59.999999+00:00"
+    },
+    {
+      "url": "https://apt.pop-os.org/ubuntu/dists/noble-updates",
+      "sha256": "2eb1a5feb58dbb241b9ae4cf537c6ce13838ded04c12419ef6b476093b3b7231",
+      "fingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+      "date": "Fri, 23 Oct 2026 14:21:13 UTC",
+      "expires": "2026-10-30T14:21:13+00:00"
+    },
+    {
+      "url": "https://apt.pop-os.org/ubuntu/dists/noble-security",
+      "sha256": "e56daa3c9903f06da8161b4f0e61a747aab215647f4bfabbecd5655631200f09",
+      "fingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+      "date": "Fri, 23 Oct 2026 13:38:44 UTC",
+      "expires": "2026-10-30T13:38:44+00:00"
+    }
+  ],
+  "removed": {
+    "linux-headers-7.0.11-76070011": "7.0.11-76070011.202606011647~1784215097~24.04~4974880",
+    "linux-headers-7.0.11-76070011-generic": "7.0.11-76070011.202606011647~1784215097~24.04~4974880",
+    "linux-image-7.0.11-76070011-generic": "7.0.11-76070011.202606011647~1784215097~24.04~4974880",
+    "linux-modules-7.0.11-76070011-generic": "7.0.11-76070011.202606011647~1784215097~24.04~4974880"
+  },
+  "new_package_count": 1783,
+  "new_reasons": [
+    "authenticated_inputs_incomplete",
+    "metadata_resolution_only"
+  ],
+  "dependency_gaps": []
+}
