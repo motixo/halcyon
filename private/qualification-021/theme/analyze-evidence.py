@@ -20,6 +20,10 @@ def color(raw,role):
 
 def near(a,b,t=35):return sum((x-y)**2 for x,y in zip(a,b))<=t*t
 
+def luminance(rgb):
+ linear=[v/255/12.92 if v/255<=.04045 else ((v/255+.055)/1.055)**2.4 for v in rgb]
+ return sum(a*b for a,b in zip(linear,[.2126,.7152,.0722]))
+
 def analyze(root):
  summary=json.loads((root/'theme-results.json').read_text());out=[]
  for f in summary['frames']:
@@ -39,7 +43,11 @@ def analyze(root):
    if metrics and expected_bg and expected_fg:
     pixels=image_pixels(root/(f['name']+'.png'),tuple(metrics['bounds']))
     bg=sum(near(v,expected_bg,16) for v in pixels);fg=sum(near(v,expected_fg,35) for v in pixels)
-    row['text_crop']={'bounds':metrics['bounds'],'area':len(pixels),'background_pixels':bg,'foreground_pixels':fg,'mode_coherent':bg>30 and fg>12,'dominant':Counter(pixels).most_common(8)}
+    dominant=Counter(pixels).most_common(1)[0][0]
+    foregrounds=[v for v in pixels if near(v,expected_fg,35)]
+    observed_fg=Counter(foregrounds).most_common(1)[0][0] if foregrounds else None
+    contrast=(max(luminance(dominant),luminance(observed_fg))+.05)/(min(luminance(dominant),luminance(observed_fg))+.05) if observed_fg else None
+    row['text_crop']={'observed_surface':dominant,'observed_foreground':observed_fg,'observed_contrast':contrast,'bounds':metrics['bounds'],'area':len(pixels),'background_pixels':bg,'foreground_pixels':fg,'palette_rgb_match':bg>30 and fg>12,'visible_text_contrast':fg>12 and contrast is not None and contrast>=4.5,'dominant':Counter(pixels).most_common(8)}
   procs=state['processes']
   row['settings_daemon']=[p for p in procs if p['exe']=='/usr/bin/cosmic-settings-daemon']
   row['portal']=[p for p in procs if p['exe']=='/usr/libexec/xdg-desktop-portal-cosmic']

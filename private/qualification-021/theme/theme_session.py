@@ -206,8 +206,7 @@ def install(which):
 try:
  c.wait_agent();c.q=c.Channel('qmp.sock',True);time.sleep(15)
  c.shot('000-greeter')
- if host=='islands':
-  command('fixture-local-bin',"install -d -o 1000 -g 1000 /home/probe/.local/bin && printf 'PATH=\"/home/probe/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"\\n' > /etc/environment")
+ if host=='islands':command('fixture-local-bin','install -d -o 1000 -g 1000 /home/probe/.local/bin')
  c.login('login');c.capture('baseline')
  command('actual-session-environment',"printf 'PATH=%s\\nXDG_SESSION_ID=%s\\nWAYLAND_DISPLAY=%s\\n' \"$PATH\" \"$XDG_SESSION_ID\" \"$WAYLAND_DISPLAY\"",True)
  command('offline','ip -brief addr; ip route; cat /proc/net/route; systemctl is-active dbus; pgrep -a cosmic-settings-daemon; pgrep -a xdg-desktop-portal',required=False)

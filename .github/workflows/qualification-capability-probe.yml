@@ -6,6 +6,16 @@ on:
         description: 'Existing finalized theme-packages run (blank builds exact frozen SHA)'
         default: ''
         type: string
+      host_filter:
+        description: 'Focused infrastructure rerun: all, stock, islands'
+        type: choice
+        options: [all, stock, islands]
+        default: all
+      lineage_filter:
+        description: 'Focused infrastructure rerun: all, public, candidate'
+        type: choice
+        options: [all, public, candidate]
+        default: all
       build_only:
         description: 'Finalize packages only; no guest'
         default: true
@@ -43,8 +53,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lineage: [public, candidate]
-        host: [stock, islands]
+        lineage: ${{ fromJSON(inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
+        host: ${{ fromJSON(inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:

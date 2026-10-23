@@ -150,14 +150,28 @@ def wait_agent():
 
 def wait_session():
     deadline=time.monotonic()+90
+    probe="""python3 - <<'HOSTS'
+import os,pathlib,json
+rows=[]
+for p in pathlib.Path('/proc').iterdir():
+ if not p.name.isdigit():continue
+ try:
+  exe=os.readlink(p/'exe')
+  if p.stat().st_uid==1000 and (exe=='/usr/bin/cosmic-session' or exe.endswith(('/cosmic-panel','/cosmic-panel-islands'))):
+   rows.append({'pid':int(p.name),'exe':exe})
+ except (OSError,ProcessLookupError):pass
+print(json.dumps(rows))
+raise SystemExit(0 if any(r['exe']=='/usr/bin/cosmic-session' for r in rows) and any(r['exe'].endswith(('/cosmic-panel','/cosmic-panel-islands')) for r in rows) else 1)
+HOSTS"""
     while time.monotonic()<deadline:
-        rc,out=guest('pgrep -u 1000 -ax cosmic-session; pgrep -u 1000 -ax cosmic-panel')
-        if rc==0 and 'cosmic-session' in out and 'cosmic-panel' in out:
+        rc,out=guest(probe)
+        if rc==0:
             record('session-running',output=out)
             time.sleep(12)
             return
         time.sleep(3)
-    raise TimeoutError('login failed to start user session and panel')
+    raise TimeoutError('login failed to start user session and a native panel host')
+
 
 def login(label):
     # Fresh single disposable user. Select focused user, then password prompt.
