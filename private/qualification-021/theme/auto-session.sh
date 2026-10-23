@@ -11,9 +11,22 @@ trap cleanup EXIT
 cp "$SRC"/{auto_session.py,auto-session.sh,calibrated_controls.py,followup_session.py,upstream-daemon-time-655b14f.rs,upstream-daemon-location-655b14f.rs,upstream-daemon-theme-655b14f.rs} "$ROOT/evidence/"
 cp "$SRC/followup/control-calibration.json" "$ROOT/evidence/"
 phases=(candidate)
-[[ $HOST_KIND == stock ]] && phases=(untouched candidate)
+[[ $HOST_KIND == stock ]] && phases=(untouched candidate islands)
 result=0
 for phase in "${phases[@]}"; do
+  run_host=$HOST_KIND
+  run_lineage=$phase
+  if [[ $phase == islands ]]; then
+    # The pre-VM wrapper failure consumed one CI job. The single remaining
+    # job serializes Islands after actual stock diagnostic evidence validates.
+    if ! python3 "$SRC/validate-auto-diagnostic.py" "$ROOT/evidence"; then
+      echo 'Islands gated: stock diagnostic method was not validated.' | tee "$ROOT/evidence/islands-gated.txt"
+      result=1
+      break
+    fi
+    run_host=islands
+    run_lineage=candidate
+  fi
   PHASE_WORK="$ROOT/auto-$phase"
   mkdir -p "$PHASE_WORK/evidence"
   cp -a "$ROOT/evidence/package-build" "$PHASE_WORK/evidence/"
@@ -39,7 +52,7 @@ for phase in "${phases[@]}"; do
    -pidfile qemu.pid -daemonize -D evidence/qemu.log
   owned_pid=$(cat qemu.pid)
   tr '\0' ' ' < "/proc/$owned_pid/cmdline" > evidence/vm-command.txt
-  python3 "$SRC/auto_session.py" "$PHASE_WORK" "$phase" "$HOST_KIND" 2>&1 | tee evidence/theme-exercise.log || result=1
+  python3 "$SRC/auto_session.py" "$PHASE_WORK" "$run_lineage" "$run_host" 2>&1 | tee evidence/theme-exercise.log || result=1
   kill "$owned_pid" 2>/dev/null || true
   # Confirm termination before the next overlay. No second concurrent VM.
   for n in {1..20}; do [[ ! -e /proc/$owned_pid ]] && break; sleep 1; done

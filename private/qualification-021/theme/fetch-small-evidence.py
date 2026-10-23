@@ -24,5 +24,7 @@ for item in response['artifacts']:
   z.extractall(dest)
  marker.write_text(json.dumps({k:item[k] for k in ['id','name','digest','size_in_bytes','expires_at']},indent=2)+'\n')
  # Preserve the authenticated original ZIP alongside its extracted evidence.
+ if not (dest/'theme-results.json').exists():
+  print(json.dumps({'artifact':item['id'],'name':item['name'],'execution':'pre-VM infrastructure failure; original verified artifact retained'}),flush=True);continue
  r=json.loads((dest/'theme-results.json').read_text())
  print(json.dumps({'artifact':item['id'],'name':item['name'],'frames':len(r['frames']),'scenarios':len(r['scenarios']),'errors':r['errors'],'automatic':r['automatic']}),flush=True)
