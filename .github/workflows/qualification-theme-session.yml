@@ -1,0 +1,68 @@
+name: Offline native theme development session
+on:
+  workflow_dispatch:
+    inputs:
+      package_run:
+        description: 'Existing finalized theme-packages run (blank builds exact frozen SHA)'
+        default: ''
+        type: string
+      build_only:
+        description: 'Finalize packages only; no guest'
+        default: true
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: theme-development-021
+  cancel-in-progress: false
+jobs:
+  package:
+    if: inputs.package_run == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build exact reviewed development package and authenticate public packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash private/qualification-021/theme/packages.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: theme-packages-${{ github.run_id }}
+          path: ${{ runner.temp }}/theme-packages/
+          retention-days: 7
+          compression-level: 0
+  session:
+    if: ${{ always() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Tools, authenticated retained guest and finalized input media
+        timeout-minutes: 35
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE_RUN: ${{ inputs.package_run || github.run_id }}
+        run: bash private/qualification-021/theme/prepare.sh
+      - name: One offline VM; independent clean scenario overlays
+        timeout-minutes: 75
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/theme/session.sh
+      - name: Readable evidence
+        if: always()
+        run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: theme-session-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 7
+          compression-level: 6
