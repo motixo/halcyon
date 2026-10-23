@@ -24,6 +24,13 @@ class CalibrationTests(unittest.TestCase):
  def test_wizard_calibration_survives_actual_selection_and_host_variants(self):
   for source in CAL['wizard_validation_sources']:
    self.assertGreaterEqual(point(pathlib.Path(source['path']),'calm',CAL)['matched_samples'],43)
+ def test_new_paper_and_rose_blocker_require_all_probes_under_small_translation(self):
+  root=ROOT/'evidence-39979600771/theme-followup-stock-39979600771'
+  for name,look in [('051-wizard-state-paper.png','paper'),('056-wizard-state-rose.png','rose')]:
+   result=point(root/name,look,CAL)
+   self.assertEqual(result['untranslated_matches'],42)
+   self.assertEqual(result['matched_samples'],47)
+   self.assertEqual(result['offset'],[0,1])
  def test_welcome_button_identified_without_sparse_ocr(self):
   self.assertEqual(point(pathlib.Path(CAL['sources']['welcome']['path']),'Start',CAL)['point'],[345,451])
  def test_wrong_screen_is_rejected_before_click(self):

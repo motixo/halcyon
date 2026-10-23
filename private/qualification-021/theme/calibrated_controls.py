@@ -23,9 +23,18 @@ LOOK_BOUNDS={'calm':[519,260,750,413],'evening':[762,260,993,413],
 MODE_BOUNDS={'Dark':[578,297,768,397],'Light':[800,297,990,397],'Auto':[953,451,1003,476]}
 
 def validate_samples(pixels,samples,tolerance=12,minimum=.90):
- matches=sum(max(abs(a-b) for a,b in zip(pixels.rgb(*p['xy']),p['rgb']))<=tolerance for p in samples)
- if matches<len(samples)*minimum:raise ValueError(f'Live screenshot differs from calibrated control: {matches}/{len(samples)} samples')
- return {'matched_samples':matches,'total_samples':len(samples),'tolerance':tolerance}
+ def matches(dx,dy):
+  return sum(max(abs(a-b) for a,b in zip(pixels.rgb(p['xy'][0]+dx,p['xy'][1]+dy),p['rgb']))<=tolerance for p in samples)
+ original=matches(0,0)
+ if original>=len(samples)*minimum:
+  return {'matched_samples':original,'total_samples':len(samples),'tolerance':tolerance,'offset':[0,0]}
+ # Small compositor placement changes are allowed only when EVERY retained
+ # probe matches under one uniform <=3px translation. Do not lower the color
+ # threshold or accept a different screen based on a visible label alone.
+ candidates=[(abs(dx)+abs(dy),dx,dy) for dx in range(-3,4) for dy in range(-3,4) if matches(dx,dy)==len(samples)]
+ if not candidates:raise ValueError(f'Live screenshot differs from calibrated control: {original}/{len(samples)} samples')
+ _,dx,dy=min(candidates)
+ return {'matched_samples':len(samples),'total_samples':len(samples),'untranslated_matches':original,'tolerance':tolerance,'offset':[dx,dy]}
 
 def point(path,control,calibration):
  p=Pixels(path)
@@ -49,6 +58,8 @@ def point(path,control,calibration):
    left=p.rgb(965,463);right=p.rgb(990,463)
    if abs(sum(left)-sum(right))<75:raise ValueError('Automatic toggler thumb/track pattern absent')
    detail.update(toggle_left=left,toggle_right=right,enabled=sum(right)<sum(left))
+ dx,dy=detail.get('offset',[0,0])
+ box=[box[0]+dx,box[1]+dy,box[2]+dx,box[3]+dy]
  x,y,right,bottom=box
  detail.update(control=control,bounds=box,point=[(x+right)//2,(y+bottom)//2],screenshot_sha256=hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest())
  return detail
