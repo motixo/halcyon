@@ -10,13 +10,14 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import tarfile
 import tempfile
+import time
 import urllib.parse
-import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'companion'))
 from bundle_contract import canonical, identity
+from archive_io import (Limits, Payloads, RetainedFetch, bounded_read, fetch,
+                        input_stream, package_files, verify_stream)
 
 MAX_BYTES = 512 * 1024 * 1024
 
@@ -43,17 +44,6 @@ def paragraphs(data):
             row[key] = value.strip()
     return result
 
-
-def fetch(url, limit=MAX_BYTES):
-    if urllib.parse.urlparse(url).scheme != 'https':
-        raise ValueError('https_required')
-    with urllib.request.urlopen(url, timeout=30) as stream:
-        if urllib.parse.urlparse(stream.url).scheme != 'https':
-            raise ValueError('insecure_redirect')
-        value = stream.read(limit + 1)
-    if len(value) > limit:
-        raise ValueError('download_limit')
-    return value
 
 
 def child_url(base, path):
@@ -108,7 +98,10 @@ def checked(data, checksum, size):
 
 def download_index(base, path, hashes, get=fetch):
     checksum, size = hashes[path]
-    compressed = checked(get(child_url(base, path)), checksum, size)
+    import io
+    output = io.BytesIO()
+    verify_stream(get, child_url(base, path), checksum, size, 'index', Limits(), output)
+    compressed = output.getvalue()
     if path.endswith(('.gz', '.xz')):
         import io, lzma
         opener = gzip.open if path.endswith('.gz') else lzma.open
@@ -119,35 +112,6 @@ def download_index(base, path, hashes, get=fetch):
         return paragraphs(data)
     return paragraphs(compressed)
 
-
-def package_files(data):
-    """Inventory runtime files from verified deb, without extracting/executing it."""
-    with tempfile.TemporaryDirectory() as work:
-        package = Path(work) / 'input.deb'; package.write_bytes(data)
-        process = subprocess.Popen(['dpkg-deb', '--fsys-tarfile', str(package)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        files = {}
-        try:
-            with tarfile.open(fileobj=process.stdout, mode='r|') as archive:
-                total = 0
-                for member in archive:
-                    path = '/' + member.name.removeprefix('./').lstrip('/')
-                    if '..' in Path(path).parts:
-                        raise ValueError('package_path')
-                    # Configuration is mutable. Bind all regular shipped runtime
-                    # bytes in /usr and /lib, including applets, data and libraries.
-                    if member.isfile() and path.startswith(('/usr/', '/lib/')):
-                        total += member.size
-                        if total > 2 * MAX_BYTES:
-                            raise ValueError('expanded_package_limit')
-                        stream = archive.extractfile(member)
-                        files[path] = hashlib.file_digest(stream, 'sha256').hexdigest()
-            if process.wait(timeout=10):
-                raise ValueError('invalid_deb')
-        finally:
-            if process.poll() is None:
-                process.kill(); process.wait()
-            process.stdout.close()
-    return files
 
 
 def dependency_gaps(selected):
@@ -172,7 +136,12 @@ def dependency_gaps(selected):
 
 
 def discover(config, previous, out, now=None, get=fetch):
+    started = time.monotonic()
+    real_clock = now is None
     now = now or dt.datetime.now(dt.timezone.utc)
+    limits = Limits.configured(config.get('resource_limits', {}))
+    payloads = Payloads(get, limits)
+    inventories = {}
     releases, packages, sources = [], {}, {}
     missing, reasons = [], []
     for source in config['archives']:
@@ -182,7 +151,8 @@ def discover(config, previous, out, now=None, get=fetch):
         base = source['url'].rstrip('/')
         dist = child_url(base, 'dists/' + source['pocket'])
         try:
-            signed = get(child_url(dist, 'InRelease'))
+            with input_stream(get, child_url(dist, 'InRelease')) as stream:
+                signed = bounded_read(stream, 4 * 1024 * 1024)
         except FileNotFoundError:
             missing.append(dict(kind='signed-release', url=child_url(dist, 'InRelease')))
             reasons.append('archive_input_missing:' + source['pocket'])
@@ -244,18 +214,22 @@ def discover(config, previous, out, now=None, get=fetch):
                     architecture=row['Architecture'], source=dict(name=source_name, version=source_version),
                     provenance=[e[2] for e in entries], depends=row.get('Depends',''), pre_depends=row.get('Pre-Depends',''), provides=row.get('Provides',''))
         # Always verify package bytes, even for a blocked candidate.
-        data = None
         try:
             if config.get('resolve_metadata_only'):
                 raise FileNotFoundError()
-            data = checked(get(item['url']), item['sha256'], int(row['Size']))
-            item['files'] = package_files(data)
+            with payloads.binary(item['url'], item['sha256'], int(row['Size']), out.parent) as package:
+                stats = {}
+                item['files'] = package_files(package, limits=limits, stats=stats)
+                payloads.account_inventory(item['files'])
+                inventories[name] = stats
+                if config.get('retain_packages'):
+                    destination = out.parent / 'packages' / (item['sha256'] + '.deb')
+                    destination.parent.mkdir(exist_ok=True)
+                    # Private verified snapshot, same filesystem, atomic publish
+                    # only after complete hash AND archive validation.
+                    package.replace(destination)
         except FileNotFoundError:
             missing.append(dict(kind='binary', package=name, version=version, url=item['url'], sha256=item['sha256'], size=int(row['Size'])))
-        if data is not None and config.get('retain_packages'):
-            destination = out.parent / 'packages' / (item['sha256'] + '.deb')
-            destination.parent.mkdir(exist_ok=True)
-            destination.write_bytes(data)
         source_entries = sources.get((source_name, source_version), [])
         # Index order never chooses between distinct source bytes.
         source_ids = {identity(sorted(line.strip() for line in entry[0]['Checksums-Sha256'].splitlines() if line.strip())) for entry in source_entries}
@@ -273,7 +247,7 @@ def discover(config, previous, out, now=None, get=fetch):
                 try:
                     if config.get('resolve_metadata_only'):
                         raise FileNotFoundError()
-                    checked(get(url), checksum, int(size))
+                    payloads.source(url, checksum, int(size))
                 except FileNotFoundError:
                     missing.append(dict(kind='source-archive', package=source_name, version=source_version, url=url, sha256=checksum, size=int(size)))
                 identities.append(dict(name=filename, sha256=checksum, url=url))
@@ -303,7 +277,16 @@ def discover(config, previous, out, now=None, get=fetch):
     result['event_id'] = identity(dict(candidate=candidate_id, reasons=result['reasons']))
     result['duplicate'] = result['event_id'] in previous.get('events', [])
     result['events'] = sorted(set(previous.get('events', []) + [result['event_id']]))[-1024:]
-    out.write_bytes(canonical(result) + b'\n')
+    from catalog_capacity import candidate_capacity, write_candidate
+    result['resources'] = dict(limits=vars(limits), payload_bytes_reserved=payloads.bytes,
+                               payload_objects=payloads.objects, inventories=inventories,
+                               capacity=candidate_capacity(result))
+    finished = now + dt.timedelta(seconds=time.monotonic() - started)
+    if real_clock:
+        finished = max(finished, dt.datetime.now(dt.timezone.utc))
+    if any(finished >= dt.datetime.fromisoformat(release['expires']) for release in releases):
+        raise ValueError('metadata_expired')
+    write_candidate(out, result)
     return result
 
 
@@ -312,19 +295,7 @@ def retained_fetch(manifest_path):
 
     Missing blobs are reported by discover, never silently fetched from today.
     """
-    manifest = json.loads(manifest_path.read_bytes())
-    def get(url):
-        if url not in manifest:
-            raise FileNotFoundError(url)
-        item = manifest[url]
-        path = (manifest_path.parent / item['path']).resolve()
-        if path.stat().st_size > MAX_BYTES:
-            raise ValueError('download_limit')
-        data = path.read_bytes()
-        if sha(data) != item['sha256']:
-            raise ValueError('retained_input_changed')
-        return data
-    return get
+    return RetainedFetch(manifest_path)
 
 
 def main():

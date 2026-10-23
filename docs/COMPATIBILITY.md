@@ -60,6 +60,104 @@ The result's `missing_inputs`, `collisions`, `indexes` and per-package/source
 `provenance` retain the authentication and reconstruction trail. Missing binary
 bytes mean no `files` inventory and cannot form an admissible catalog row.
 
+### Streaming payload and inventory resources
+
+Authenticated binaries and sources use `archive_io` streaming adapters. Each
+object must match the **exact signed Size and SHA256**, independently of HTTP
+headers or a retained map's digest. Reads are at most 1 MiB; short, overlong and
+same-size changed bodies fail. The online adapter uses single socket reads
+(30-second socket timeout); deadlines are checked between reads. Sources are
+hashed without spooling or extracting. A binary is streamed to a private file
+beside the output, then inventoried from those verified bytes. With
+`retain_packages: true`, only a fully verified/inventoried snapshot is atomically
+published to `packages/<sha256>.deb`. Failed temporary snapshots are removed;
+existing verified retained inputs are untouched. Source references with the same
+signed size/hash reuse a successful verification **within that run only**;
+all references and signed provenance remain in the candidate.
+
+Policy ceilings are separate from each object's signed size. Configuration may
+**tighten**, never raise, these via a `resource_limits` object:
+
+| `resource_limits` key | Default ceiling |
+| --- | --- |
+| `binary_bytes` | 4 GiB per signed .deb |
+| `source_bytes` | 2 GiB per signed source blob |
+| `total_payload_bytes` | 32 GiB reserved per run (successful source reuse is counted once) |
+| `expanded_package_bytes` | 8 GiB of complete tar stream per package |
+| `member_bytes` | 4 GiB per tar member |
+| `package_members` | 250,000 headers/members per package |
+| `path_bytes` | 4,096 UTF-8 bytes per normalized path |
+| `inventory_json_bytes` | 64 MiB per-package path/inventory budget and aggregate file-map JSON |
+| `disk_reserve_bytes` | 256 MiB free beyond the current signed binary size |
+| `payload_seconds` | 1,800 seconds per object (plus at most one socket timeout) |
+| `package_seconds` | 900 seconds per inventory/decompressor |
+
+InRelease stays bounded to 4 MiB; compressed and expanded indexes stay bounded to
+512 MiB. InRelease/map reads have a 300-second deadline; signed-index streaming
+uses the default object deadline. Signed expiry is checked
+again before a long discovery run writes its result. Limits never create an
+unsigned exception. The 1,875,589,312-byte firmware binary and 871,086,992 /
+903,613,276-byte source inputs fit the separate payload policy; actual bytes still
+must be verified. Signed `Installed-Size` is an estimate, not a substitute for
+measuring the complete expanded stream.
+
+Inventory reads every regular member, including bytes outside `/usr` and `/lib`,
+and records every regular runtime file in those two namespaces. All tar bytes,
+including headers, padding and trailers, count toward the expanded bound. It
+rejects traversal, normalized duplicate paths, oversized members/extension
+headers, malformed/truncated headers and unsupported global/sparse extensions;
+ordinary GNU long names and bounded per-file PAX metadata are supported. Unknown
+archive constructs fail rather than disappearing from an inventory. Extension
+headers are bounded before tarfile allocates them, recursive extension chains
+are limited to 16, and timeouts terminate the owned decompressor process group.
+No package content or maintainer script is extracted/executed. Existing mutable
+configuration and symlink/hardlink policy is unchanged; link targets are not
+followed. Native runtime ownership and readiness checks are unchanged.
+
+`fetch(url)` remains a bounded metadata/small-fixture interface. Payload callers
+use `get.open(url)` as a context manager returning a readable binary stream; both
+production HTTPS and `retained_fetch` implement it. Byte-returning injected
+callbacks cannot handle objects above the metadata ceiling. The retained adapter
+hashes the same opened regular file while it is consumed, checks its local map
+hash and file stability, and independently enforces the signed object size/hash.
+Missing retained inputs never fall back to network. Relative map paths remain
+relative to that map, so rebase paths when merging metadata/payload maps on a
+remote runner. The map itself is bounded to 16 MiB.
+
+The candidate's nonidentity `resources` object reports the effective limits,
+reserved payload bytes/objects, and each package's measured expanded/regular
+bytes, largest regular member, header/member and inventory counts. It also
+reports `capacity` measurements. Candidate output is streamed atomically with a
+128 MiB record ceiling; partial output cannot masquerade as success. A resource
+failure is a blocked discovery error, never permission to omit files or packages.
+
+### Measure the final catalog before packaging
+
+The production `bundle_contract.read_json` **16 MiB catalog limit is unchanged**.
+A catalog embeds complete per-package file maps; each additional supported cohort
+adds another row. Native runtime/equivalence/evidence fields and all rows must fit.
+Candidate JSON is a separate artifact and is not subject to that reader limit.
+
+Run on the completed full candidate and exact final catalog:
+
+```sh
+python3 scripts/compatibility/catalog_capacity.py \
+  --candidate candidate.json --catalog final-catalog.json --out capacity.json
+```
+
+This measures actual catalog bytes and calls the real bounded reader and catalog
+schema validator, and requires a row bound to this exact candidate identity;
+exit 2 means it cannot certify fit. Without `--catalog`, it
+reports only measurements and exits 2. It never edits/adopts the catalog. The
+candidate report includes full-cohort envelope size and a lower bound excluding
+only `url`/`provenance`, exactly the fields omitted by `cohort_id`. This is a
+measurement, not an alternative subset cohort: all packages, file maps and source
+identities remain. The lower bound excludes unknown future runtime/evidence and
+other rows; being below the limit is **not** a final fit claim. If the completed
+catalog exceeds the reader, stop for coordinated format/reader review. Do not
+raise the cap blindly, prune the installed lock, drop firmware/source checks or
+set candidate state manually. Capacity success is not native qualification.
+
 Candidate ID is the canonical JSON SHA256 of distribution, suite, architecture,
 whole package/source/hash/file inventory and declared processes, excluding proof
 locations (`url`/`provenance`). Refreshing a signed index without changing payload
