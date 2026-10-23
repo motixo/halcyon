@@ -2111,10 +2111,16 @@ impl DesktopStore {
             .map_err(|error| io_error("Could not lock desktop settings", error))?;
         loop {
             // SAFETY: `lock` owns a valid descriptor for the guard's lifetime.
-            if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0 {
+            if unsafe { libc::flock(lock.as_raw_fd(), config::settings_lock_operation()) } == 0 {
                 return Ok(lock);
             }
             let error = io::Error::last_os_error();
+            if error.kind() == io::ErrorKind::WouldBlock {
+                return Err(DesktopError::Io(
+                    "Desktop settings are busy in another process. Try again when it finishes."
+                        .into(),
+                ));
+            }
             if error.kind() != io::ErrorKind::Interrupted {
                 return Err(io_error("Could not lock desktop settings", error));
             }

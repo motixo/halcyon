@@ -81,6 +81,10 @@ pub enum Message {
     LayoutAutomatic,
     LayoutUndo,
     LayoutFinish(bool),
+    LayoutRetryCancel,
+    LayoutResume,
+    LayoutKeepSaved,
+    ArrangeSurface(u64),
     LayoutDefaults,
     LayoutSnap(bool),
     LayoutCancelDrag,
@@ -424,7 +428,13 @@ impl cosmic::Application for Cards {
         // weather download), never queued behind it.
         let outer = !self.updating;
         self.updating = true;
-        let task = self.handle_update(msg);
+        // Include watcher/timer/command dispatches: any synchronous writer
+        // reached while Arrange owns input must refuse contended locks.
+        let task = if self.layout_editor.active || self.paused_layout.is_some() {
+            crate::config::with_nonblocking_locks(|| self.handle_update(msg))
+        } else {
+            self.handle_update(msg)
+        };
         if !outer {
             return task;
         }
@@ -805,6 +815,22 @@ impl Cards {
                 Task::none()
             }
             Message::LayoutFinish(save) => self.finish_arrange(save),
+            Message::LayoutRetryCancel => self.retry_arrange_cancel(),
+            Message::LayoutResume => self.resume_arrange(),
+            Message::LayoutKeepSaved => self.keep_arrange_saved(),
+            Message::ArrangeSurface(epoch) => {
+                if epoch != self.display_generation
+                    || !self.output_known
+                    || self.selected_output.is_none()
+                {
+                    return Task::none();
+                }
+                Task::batch([
+                    self.layout_probe(self.ids[5], self.layout_editor.active),
+                    self.sync_widget_surfaces(),
+                    self.note_surface_mode(),
+                ])
+            }
             Message::LayoutDefaults => {
                 self.layout_defaults();
                 self.commit_arrange();

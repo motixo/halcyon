@@ -481,6 +481,9 @@ impl Cards {
         if !self.sidebar.visible && self.sidebar.progress == 0. {
             return text::body("").into();
         }
+        if let Some(recovery) = self.arrange_recovery_view() {
+            return recovery;
+        }
         let p = self.config.surface_palette();
         let rows = keyed_column(
             self.config
