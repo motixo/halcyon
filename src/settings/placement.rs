@@ -1989,7 +1989,8 @@ mod tests {
             settings.undo_review.is_some(),
             "the externally moved pinned neighbor is reviewed locally"
         );
-        let _ = settings.update(super::super::Message::ResolveUndo(true));
+        let review = settings.undo_review.clone().unwrap();
+        let _ = settings.update(super::super::Message::ResolveUndoShown(review, true));
         let undone = Config::try_load().unwrap();
         assert!(undone.widget_sizes.is_empty());
         assert_eq!(

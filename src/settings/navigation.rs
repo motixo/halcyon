@@ -606,6 +606,10 @@ impl Settings {
             .last_desktop_change
             .as_ref()
             .map(|(_, _, id)| id.clone());
+        self.undo_shown_change(shown)
+    }
+    /// The caller carries the original request through any queue delay.
+    pub(super) fn undo_shown_change(&mut self, shown: Option<String>) -> Task<Message> {
         if self.native_worker_needed() {
             return self.background_undo(shown, None);
         }
@@ -633,6 +637,32 @@ impl Settings {
                 {
                     self.preference_undo = None;
                 }
+            }
+            Err(error) => self.failed(error.to_string()),
+        }
+        self.last_desktop_change = latest_desktop_change();
+        self.after_desktop_change()
+    }
+    pub(super) fn resolve_undo_review(
+        &mut self,
+        review: crate::desktop::store::UndoReview,
+        restore: bool,
+    ) -> Task<Message> {
+        if self.native_worker_needed() {
+            return self.background_undo(None, Some((review, restore)));
+        }
+        let result = crate::desktop::actions::history_store().and_then(|store| {
+            if restore {
+                store.accept_undo_review(&review)
+            } else {
+                store.keep_undo_current(&review)
+            }
+        });
+        match result {
+            Ok(_) => {
+                self.undo_review = None;
+                self.error = false;
+                self.status.clear();
             }
             Err(error) => self.failed(error.to_string()),
         }

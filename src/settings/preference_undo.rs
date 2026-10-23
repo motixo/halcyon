@@ -399,7 +399,7 @@ mod tests {
         assert!(Config::load().music.player.is_none());
         assert!(app.preference_undo.is_some());
         Config::save_tool(Widget::Music, serde_json::json!({"show_artwork": false})).unwrap();
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         let restored = Config::load();
         assert!(!app.error, "{}", app.status);
         assert_eq!(restored.music.player.as_deref(), Some("firefox"));
@@ -422,7 +422,7 @@ mod tests {
             Config::load().clock.alignment,
             crate::config::ClockAlignment::Center
         );
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         assert_eq!(Config::load().clock.scale, 100);
         assert_eq!(
             Config::load().clock.alignment,
@@ -449,7 +449,7 @@ mod tests {
         assert!(app.preference_undo.is_some());
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Opacity, 83));
         assert_eq!(Config::load().appearance.opacity, before.appearance.opacity);
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         let after = Config::load();
         assert_eq!(after.appearance.opacity, before.appearance.opacity);
         assert_eq!(after.clock.show_date, !before.clock.show_date);
@@ -473,7 +473,7 @@ mod tests {
         let lock = PathBuf::from(lock);
         std::fs::remove_file(&lock).unwrap();
         std::fs::create_dir(&lock).unwrap();
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         let after = Config::load();
         assert_eq!(after.clock.show_date, !before.clock.show_date);
         assert_eq!(after.appearance.opacity, before.appearance.opacity);

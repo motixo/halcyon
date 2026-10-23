@@ -45,45 +45,44 @@ impl Settings {
         self.error = false;
     }
     pub(super) fn dispatch_native(&mut self, message: &Message) -> Option<Task<Message>> {
+        if self.native_busy {
+            // Default to deferral at the shared admission boundary, before
+            // dispatch, completion, preference saves or checkpoint processing.
+            // Only these read-only window events may bypass the active writer.
+            match message {
+                Message::NativeDone(_) => return None,
+                Message::Resized(size) => self.window = *size,
+                Message::Window(control) if *control != WindowControl::Close => {
+                    return Some(window_action(*control));
+                }
+                Message::Preview
+                | Message::DesktopEditor(desktop::Message::Islands(desktop::islands::Edit::Sync)) =>
+                    {}
+                Message::Tick
+                    if self
+                        .native_deferred
+                        .iter()
+                        .any(|m| matches!(m, Message::Tick)) => {}
+                _ => {
+                    // Legacy keyboard/capture requests also bind at admission.
+                    // Rendered controls already carry their immutable identity.
+                    let request = match message {
+                        Message::UndoDesktop | Message::UndoPreferences => {
+                            Message::UndoDesktopShown(
+                                self.last_desktop_change
+                                    .as_ref()
+                                    .map(|(_, _, id)| id.clone()),
+                            )
+                        }
+                        _ => message.clone(),
+                    };
+                    self.native_deferred.push_back(request);
+                }
+            }
+            return Some(Task::none());
+        }
         if !self.native_worker_needed() {
             return None;
-        }
-        if self.native_busy
-            && matches!(
-                message,
-                Message::DesktopEditor(desktop::Message::Islands(desktop::islands::Edit::Sync))
-            )
-        {
-            return Some(Task::none());
-        }
-        // Even a cheap preference write would wait on the worker's config
-        // lock during authoritative discovery. Defer its completed action too.
-        if self.native_busy
-            && (matches!(
-                message,
-                Message::DesktopEditor(_)
-                    | Message::Profiles(_)
-                    | Message::Wizard(_)
-                    | Message::UndoDesktop
-                    | Message::UndoDesktopRestore(_)
-                    | Message::UndoPreferences
-                    | Message::ResolveUndo(_)
-                    | Message::MaterialChoose(_)
-                    | Message::MaterialSave
-                    | Message::MaterialTarget(_)
-                    | Message::MaterialValue(..)
-                    | Message::Page(_)
-                    | Message::FlushEdits
-                    | Message::Window(WindowControl::Close)
-                    | Message::ResetThemeSurface(_)
-                    | Message::RecoveryApply
-                    | Message::RecoveryApplyOne(_)
-            ) || desktop_write_message(message)
-                || direct::completion(message).is_some()
-                || !self.preference_scope(message).is_empty())
-        {
-            self.native_deferred.push_back(message.clone());
-            return Some(Task::none());
         }
         match message {
             Message::DesktopEditor(edit) if self.page == Page::DesktopDock => {
@@ -333,4 +332,17 @@ impl Settings {
         }
         Task::batch(tasks)
     }
+}
+
+/// These window commands do not read or write preferences. Shared with the
+/// normal handler so busy-window admission has no save/checkpoint side effects.
+pub(super) fn window_action(control: WindowControl) -> Task<Message> {
+    use cosmic::app::Action;
+    Task::done(cosmic::Action::Cosmic(match control {
+        WindowControl::Drag => Action::Drag,
+        WindowControl::Menu => Action::ShowWindowMenu,
+        WindowControl::Maximize => Action::Maximize,
+        WindowControl::Minimize => Action::Minimize,
+        WindowControl::Close => Action::Close,
+    }))
 }

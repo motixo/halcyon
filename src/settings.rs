@@ -458,7 +458,8 @@ pub enum Message {
     ToggleAdvanced(Page),
     ToggleHelp(&'static str),
     UndoDesktop,
-    ResolveUndo(bool),
+    UndoDesktopShown(Option<String>),
+    ResolveUndoShown(crate::desktop::store::UndoReview, bool),
     RecoverySelect(usize, bool),
     RecoveryUseProposed(usize),
     RecoveryOpen(usize),
@@ -1595,6 +1596,13 @@ impl Settings {
                 }
             }
             Message::UndoDesktop => return self.undo_desktop_change(),
+            Message::UndoDesktopShown(shown) => {
+                if self.last_desktop_change.as_ref().map(|(_, _, id)| id) != shown.as_ref() {
+                    self.failed("The last settings action changed. Review Undo again.".into());
+                    return Task::none();
+                }
+                return self.undo_shown_change(shown);
+            }
             Message::UndoDesktopRestore(expected) => {
                 if self
                     .last_desktop_change
@@ -1604,33 +1612,10 @@ impl Settings {
                     self.failed("The last settings action changed. Review Undo again.".into());
                     return Task::none();
                 }
-                return self.undo_desktop_change();
+                return self.undo_shown_change(Some(expected));
             }
-            Message::ResolveUndo(restore) => {
-                if self.native_worker_needed() {
-                    if let Some(review) = self.undo_review.clone() {
-                        return self.background_undo(None, Some((review, restore)));
-                    }
-                }
-                if let Some(review) = self.undo_review.as_ref() {
-                    let result = crate::desktop::actions::history_store().and_then(|store| {
-                        if restore {
-                            store.accept_undo_review(review)
-                        } else {
-                            store.keep_undo_current(review)
-                        }
-                    });
-                    match result {
-                        Ok(_) => {
-                            self.undo_review = None;
-                            self.error = false;
-                            self.status.clear();
-                        }
-                        Err(error) => self.failed(error.to_string()),
-                    }
-                    self.last_desktop_change = navigation::latest_desktop_change();
-                    return self.after_desktop_change();
-                }
+            Message::ResolveUndoShown(review, restore) => {
+                return self.resolve_undo_review(review, restore);
             }
             Message::RecoveryText(index, field, text) => {
                 if let Some(row) = self.recovery_sheet.rows.get_mut(index) {
@@ -1765,17 +1750,7 @@ impl Settings {
                 }
             }
             Message::FontSearch(text) => self.font_search = text,
-            Message::Window(control) => {
-                use cosmic::app::Action;
-                let action = match control {
-                    WindowControl::Drag => Action::Drag,
-                    WindowControl::Menu => Action::ShowWindowMenu,
-                    WindowControl::Maximize => Action::Maximize,
-                    WindowControl::Minimize => Action::Minimize,
-                    WindowControl::Close => Action::Close,
-                };
-                return Task::done(cosmic::Action::Cosmic(action));
-            }
+            Message::Window(control) => return native_jobs::window_action(control),
             Message::WidgetFont(target, family) => {
                 self.font_menu = None;
                 self.font_search.clear();
@@ -2988,6 +2963,8 @@ fn desktop_write_message(message: &Message) -> bool {
         Message::Shortcuts(message) => message.writes(),
         Message::CommandDone(..)
         | Message::UndoDesktop
+        | Message::UndoDesktopShown(..)
+        | Message::ResolveUndoShown(..)
         | Message::UndoDesktopRestore(..)
         | Message::DesktopRestoreDone(..) => true,
         _ => false,
@@ -5447,7 +5424,7 @@ mod tests {
             );
             drop(ui);
             assert_eq!(messages.len(), 1);
-            assert!(matches!(messages[0], Message::UndoDesktop));
+            assert!(matches!(messages[0], Message::UndoDesktopShown(Some(_))));
             let _ = app.update(messages.pop().unwrap());
             assert_eq!(app.page, Page::Overview);
             assert_eq!(Config::load().data_visible(Widget::Clock), original);
@@ -8979,7 +8956,7 @@ mod tests {
             }
         });
     }
-    fn send_settings(app: &mut Settings, message: Message) {
+    pub(super) fn send_settings(app: &mut Settings, message: Message) {
         let task = app.update(message);
         settle_settings(app, task);
     }
@@ -10369,6 +10346,8 @@ mod tests {
             "task2r1-standard-thumbnail",
         );
     }
+
+    include!("settings/native_queue_tests.rs");
 
     #[test]
     fn task2r1_slow_probe_never_runs_in_native_pointer_or_focus_completion() {
