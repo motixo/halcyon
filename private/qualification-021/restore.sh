@@ -5,8 +5,8 @@ set -Eeuo pipefail
 : "${RUNNER_TEMP:?}"
 WORK=$RUNNER_TEMP/cosmic
 mkdir -p "$WORK/retain" "$WORK/import-evidence" "$WORK/evidence"
-gh run download "$REUSE_RUN" -n "cosmic-evidence-$REUSE_RUN" -D "$WORK/import-evidence"
-gh run download "$REUSE_RUN" -n "cosmic-retained-$REUSE_RUN" -D "$WORK/retain"
+python3 private/qualification-021/artifact-fetch.py "$GH_REPO" "$REUSE_RUN" "cosmic-evidence-$REUSE_RUN" "$WORK/import-evidence"
+python3 private/qualification-021/artifact-fetch.py "$GH_REPO" "$REUSE_RUN" "cosmic-retained-$REUSE_RUN" "$WORK/retain"
 cd "$WORK"
 # Check the complete immutable file digest set before the image is opened.
 sha256sum -c import-evidence/retained-hashes.txt | tee evidence/import-hash-check.txt
