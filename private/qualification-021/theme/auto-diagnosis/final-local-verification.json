@@ -35,5 +35,21 @@
     "exitcode": 0,
     "stdout": "",
     "stderr": ""
+  },
+  {
+    "command": [
+      "git",
+      "diff",
+      "--check",
+      "db6d3c4",
+      "HEAD",
+      "--",
+      ".",
+      ":(exclude)**/*.log"
+    ],
+    "exitcode": 0,
+    "stdout": "",
+    "stderr": "",
+    "scope": "source/report/structured evidence; original Actions logs deliberately preserve upstream trailing whitespace"
   }
 ]

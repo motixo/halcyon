@@ -330,6 +330,9 @@ All are infrastructure-only commits on `ci/qualification-probe-021`. Final
 report/evidence commit follows these. Local verification is retained in
 `theme/auto-diagnosis/final-local-verification.json`; eight retained-image control
 calibration tests passed before dispatch, and final Python syntax, shell syntax
-and whitespace checks pass. These local checks do not qualify unexecuted scenarios.
+and source/report whitespace checks pass. Raw Actions logs deliberately retain
+their original upstream trailing whitespace. All 339 retained evidence file hashes
+were reverified after report assembly. These local checks do not qualify
+unexecuted scenarios.
 
 No new platform-memory fact outside this repository/evidence qualified.
