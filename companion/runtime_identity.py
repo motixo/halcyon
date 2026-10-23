@@ -86,7 +86,11 @@ def running_identity(catalog, proc=Path('/proc'), session=None, uid=None):
                 mapped = {}
                 for line in (process / 'maps').read_text().splitlines():
                     fields = line.split(None, 5)
-                    if len(fields) != 6 or not fields[5].startswith('/'):
+                    # File-backed executable mappings identify loaded code.
+                    # Graphics buffers, device mappings and mutable non-code
+                    # resources are not package binaries; installed inventory
+                    # separately verifies shipped data.
+                    if len(fields) != 6 or 'x' not in fields[1] or not fields[5].startswith('/'):
                         continue
                     if ' (deleted)' in fields[5]:
                         raise ValueError('deleted_mapping')

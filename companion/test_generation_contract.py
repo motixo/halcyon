@@ -84,6 +84,22 @@ class Contract(unittest.TestCase):
             self.assertTrue(runtime_identity.installed_identity(cat,root,versions,dict(distribution='pop',suite='noble',architecture='amd64'))['verified'])
             (root/'usr/bin/cosmic-comp').write_bytes(b'same source suffix different binary')
             self.assertFalse(runtime_identity.installed_identity(cat,root,versions,dict(distribution='pop',suite='noble',architecture='amd64'))['verified'])
+    def test_running_code_inventory_ignores_noncode_graphics_mappings(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);proc=root/'proc';proc.mkdir();cat=catalog_fixture();files={}
+            for index,name in enumerate(('cosmic-comp','cosmic-session','cosmic-settings-daemon')):
+                exe=root/name;exe.write_bytes(name.encode());files[str(exe)]=digest(exe)
+                cat['cohorts'][0]['processes'][name]=str(exe)
+                process=proc/str(100+index);process.mkdir();(process/'comm').write_text(name)
+                (process/'exe').symlink_to(exe);(process/'environ').write_bytes(b'XDG_SESSION_ID=native-fixture\0')
+                (process/'maps').write_text('1000-2000 r-xp 0000 00:00 1 '+str(exe)+'\n2000-3000 rw-s 0000 00:00 2 /memfd:graphics-buffer (deleted)\n')
+            with patch.object(runtime_identity,'inventory',return_value=files):
+                self.assertTrue(runtime_identity.running_identity(cat,proc,session='native-fixture')['verified'])
+                # An executable mapping of an unknown/deleted binary still fails.
+                with (proc/'100/maps').open('a') as stream:stream.write('4000-5000 r-xp 0000 00:00 3 /unknown-library (deleted)\n')
+                self.assertFalse(runtime_identity.running_identity(cat,proc,session='native-fixture')['verified'])
+
     def test_unknown_proc_never_ready(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertFalse(runtime_identity.running_identity(self.catalog,Path(tmp),session='unit')['verified'])
