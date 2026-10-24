@@ -144,9 +144,10 @@ Installing the package alone does not change your desktop or start the widgets.
 Check the release notes for whether it is configured in your download.
 The other widgets do not require a Google account.
 
-**Updates:** download a newer `.deb` and install it the same way. Your settings
-are preserved. There is no automatic update feed or Flatpak release yet.
-[Distribution plan](docs/DISTRIBUTION.md)
+**Updates:** [enable the signed APT repository](docs/DISTRIBUTION.md#enable-system-updates-once)
+once to receive new versions through system updates or COSMIC Store → Updates.
+Manual `.deb` updates remain available, and your settings are preserved.
+Islands stays optional. There is no Flatpak release yet.
 
 <details>
 <summary>Upgrading from Desktop Cards or uninstalling</summary>
