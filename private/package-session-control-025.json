@@ -1,40 +1,9 @@
 {
-  "seq": 10,
+  "seq": 11,
   "actions": [
     {
-      "op": "key",
-      "keys": "ctrl-a"
-    },
-    {
-      "op": "text",
-      "text": "acceptance input after arrange"
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "20-editor-input-confirmed"
-    },
-    {
-      "op": "ops",
-      "args": [
-        "user",
-        "close-owned-editor",
-        "/usr/bin/pkill",
-        "-TERM",
-        "-x",
-        "cosmic-edit"
-      ]
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
       "op": "click",
-      "x": 293,
+      "x": 294,
       "y": 448
     },
     {
@@ -56,37 +25,33 @@
       "y": 556
     },
     {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
       "op": "click",
-      "x": 352,
+      "x": 290,
       "y": 699
     },
     {
       "op": "click",
-      "x": 352,
+      "x": 290,
       "y": 699
     },
     {
       "op": "click",
-      "x": 352,
+      "x": 290,
       "y": 699
     },
     {
       "op": "click",
-      "x": 473,
+      "x": 414,
       "y": 699
     },
     {
       "op": "click",
-      "x": 473,
+      "x": 414,
       "y": 699
     },
     {
       "op": "click",
-      "x": 473,
+      "x": 414,
       "y": 699
     },
     {
@@ -95,7 +60,7 @@
     },
     {
       "op": "shot",
-      "name": "21-clock-size-controls"
+      "name": "24-clock-shrunk"
     },
     {
       "op": "click",
@@ -110,17 +75,36 @@
       "op": "ops",
       "args": [
         "snapshot",
-        "after-resize-controls"
+        "after-shrink"
+      ]
+    },
+    {
+      "op": "ops",
+      "args": [
+        "user",
+        "islands-management",
+        "/usr/bin/python3",
+        "-c",
+        "import os,pathlib,json,subprocess,time,hashlib\nH=pathlib.Path.home()\ndef state():\n r=subprocess.run(['pgrep','-u','1000','-ax','cosmic-panel'],capture_output=True,text=True);stock=r.stdout.strip();files={}\n for rel in ['.local/bin/cosmic-panel','.local/share/cosmic-desktop-cards/companion/generation.json','.local/share/cosmic-desktop-cards/companion/selection.json']:\n  p=H/rel;files[rel]=hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None\n return {'stock':stock,'selection_files':files}\nbefore=state();assert before['stock'];rows=[]\nfor args,expected in [(['enable'],1),(['disable'],0),(['refresh'],0),(['status','--json'],0)]:\n t=time.monotonic();p=subprocess.run(['/usr/bin/halcyon-islands',*args],capture_output=True,text=True,timeout=6);after=state();rows.append({'command':args,'returncode':p.returncode,'expected':expected,'seconds':time.monotonic()-t,'stdout':p.stdout,'stderr':p.stderr,'after':after});assert p.returncode==expected;assert after==before\nprint(json.dumps({'before':before,'calls':rows,'stock_and_selection_unchanged':True,'qualified':False},indent=2))\n"
       ]
     },
     {
       "op": "click",
-      "x": 895,
-      "y": 151
+      "x": 311,
+      "y": 241
     },
     {
-      "op": "text",
-      "text": "clock"
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "click",
+      "x": 849,
+      "y": 580
+    },
+    {
+      "op": "scroll",
+      "steps": 13
     },
     {
       "op": "wait",
@@ -128,24 +112,7 @@
     },
     {
       "op": "shot",
-      "name": "22-input-after-resize"
-    },
-    {
-      "op": "key",
-      "keys": "esc"
-    },
-    {
-      "op": "click",
-      "x": 315,
-      "y": 241
-    },
-    {
-      "op": "wait",
-      "seconds": 2
-    },
-    {
-      "op": "shot",
-      "name": "23-installed-dock-management"
+      "name": "25-islands-management-controls"
     }
   ],
   "run": 40056332210
