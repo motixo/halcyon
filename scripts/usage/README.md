@@ -1,7 +1,7 @@
 # Activity and reporting-choice collector
 
-**Local implementation only. Live Apps Script/private Sheet migration and 0.2.1
-publication remain pending maintainer review; publication is on hold.** No live
+**0.3.0 development, local implementation only. Live Apps Script/private Sheet
+migration is pending owner execution access.** No live
 endpoint or connected Google service is needed for the tests below.
 
 ## Wire protocol and compatibility
@@ -15,7 +15,21 @@ Schema 3 has two exact shapes, with no extra keys:
 {"schema":3,"kind":"status","installation":"<64 lowercase hex>","revision":1,"enabled":false,"changed_at":1792756800}
 ```
 
-The first is activity; the second is the minimal choice update (no country or
+Schema 4 extends activity with `first_started_at` (integer UTC seconds or `null`):
+
+```json
+{"schema":4,"kind":"activity","installation":"<64 lowercase hex>","revision":0,"version":"0.3.0","country":null,"first_started_at":1792756800}
+```
+
+Status continues using the same minimal schema 3 shape. Older activity remains
+accepted. The new client records first desktop start locally before the five-minute
+warmup, only for a new, enabled identity. Existing identities keep unknown (`null`)
+instead of being relabelled as new installs. This is not a package-install date;
+file timestamps and package-manager logs are not used. First-run opt-out creates
+no startup metadata. Already-recorded startup time survives later opt-out/re-enable,
+but is never included in a status request.
+
+The first schema 3 shape is activity; the second is the minimal choice update (no country or
 version). Revisions are safe nonnegative integers; status requires revision >0.
 Action time is integer UTC epoch seconds in years 1970–9999. Skew is accepted
 as informational data; receipt and retention always use server time. Status
@@ -30,8 +44,9 @@ start an enabled row, including after retention has removed the old identity.
 No permanent tombstone is retained beyond the disclosed window.
 
 The state file migrates old client state while preserving the random token.
-New fields intentionally make 0.2.0's strict state reader reject it, preventing
-a downgrade from silently enabling reporting. Never delete/strip those fields
+New fields intentionally make older strict state readers reject it, preventing
+a downgrade from silently enabling reporting. In particular, 0.2.5 cannot read
+the added startup field; downgrading stops reporting rather than dropping choice state. Never delete/strip those fields
 to make an older client report again. Broken state fails closed.
 
 ## Schema and migration
@@ -47,8 +62,22 @@ to make an older client report again. Broken state fails closed.
 7. Status received at (UTC): collector receipt of the latest distinct choice
 8. Preference revision (internal ordering/idempotency)
 9. Choice at (UTC): latest action time, including re-enable
+10. First activity received since tracking (server UTC)
+11. First desktop start (client UTC; blank if unknown)
+12. First version received since tracking
+13. Reported active days in the last 90 UTC days
+14. Internal sorted, distinct UTC day serials (at most 90)
+15. Last activity receipt (server UTC)
 
-Migration preflights **values and formulas** throughout E:I before any workbook
+J:O starts empty for existing rows. The next accepted activity initializes first
+observation/version, not an inferred historical install time. The active-day count
+starts with reports actually received after this collector upgrade; missed/offline
+activity is not backfilled. Repeats count once per UTC day. Maintenance ages the
+90-day day-set and count together. Retained duplicate rows merge day sets without
+inflating counts. Client startup time is informational and never drives retention.
+No operating system, hardware or widget-type information is added.
+
+Migration preflights **values and formulas** throughout E:O before any workbook
 write. A blank status header authorizes only a genuinely empty column, never an
 occupied body cell or a formula whose evaluated result looks empty/numeric.
 Recognized headers must contain coherent status/revision/timestamp records;
@@ -130,7 +159,7 @@ formulas and add that same criterion; do not reinterpret historical aggregates.
    Existing schema 1/2 clients remain supported throughout. Do **not** release
    the schema 3 client against a schema 1/2 collector: its choices would fail.
 5. After approval for live verification, run the health gate:
-   `python3 scripts/usage/release-check.py --check-live`. It now requires schema 3.
+   `python3 scripts/usage/release-check.py --check-live`. It now requires schema 4.
    A GET alone does not prove writes: use synthetic status-only, enabled activity,
    opt-out, replay, stale activity and explicit re-enable requests; check one
    hashed row, unchanged last-active on status, identical receipt after replay,
@@ -164,7 +193,7 @@ incomplete; local opt-out remains effective. No rollback here is executed live.
 ```sh
 cargo +1.93.0 test --locked --offline --target-dir /tmp/halcyon-app-target usage:: -- --test-threads=1
 cargo +1.93.0 test --locked --offline --target-dir /tmp/halcyon-app-target settings::privacy_tests:: -- --test-threads=1
-node --test scripts/usage/collector.test.cjs scripts/usage/collector.migration.test.cjs
+node --test scripts/usage/collector*.test.cjs
 python3 -m unittest discover -s scripts/usage -p 'test_*.py'
 ```
 
@@ -177,3 +206,15 @@ The public endpoint is not authenticated: fabricated reports and copied/deleted
 local state can affect estimates. The token is pseudonymous, not an account or
 person count; a shared embedded secret would not authenticate installations.
 See [Privacy](../../docs/PRIVACY.md) for the user-facing disclosure and retention.
+
+
+### Deployment state checked 2026-10-24
+
+The connected account can read the existing private Sheet. Its Installations
+header still contains A:D only. A harmless Apps Script `validCountry` execution
+returned HTTP 403, and T3's Default browser profile was signed out of the editor.
+No live source, deployment or Sheet changes were made for this extension.
+Restore owner execution before migrating. Preserve the existing endpoint and
+original rows. The prior deployment procedure, restricted backup and customized
+Summary formula review still apply; do not publish the schema 4 client as if its
+reports were being counted until collector acceptance passes.

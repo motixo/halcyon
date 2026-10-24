@@ -46,6 +46,15 @@ preference is observed; stale responses cannot save a country or activity date.
 The purpose is to estimate how many installations remain in use. Schema 3
 activity contains `schema`, `kind` (`activity`), `installation`, `revision`,
 `version`, and `country` (a two-letter first country code, or `null`).
+The 0.3.0 development client uses schema 4, adding `first_started_at`: the UTC
+second of the first desktop start, or `null` when unknown. It is recorded locally
+only for a new enabled reporting identity, before network warmup. It is not an
+exact package-install time. Existing installations are not assigned an invented
+historical date, and filesystem timestamps/package logs are not inspected.
+The field is absent from opt-out/status messages. First-run opt-out does not
+create it; an already recorded date stays local and can be reported again after
+explicit re-enable. These changes are not deployed yet.
+
 The installation token is randomly generated locally with 256 bits of entropy.
 It is not a Google identity, machine ID, username, email or hardware identifier.
 It stays the same across restarts and upgrades. Copying or deleting local state
@@ -93,11 +102,16 @@ connection's IP and may process infrastructure metadata under its own
 The following describes the implemented replacement collector. It is **not yet
 deployed**; the temporary limitation above applies to the current server.
 
-Each installation has one current row, not a daily event history. The row keeps
+Each installation has one current row. The row keeps
 its latest activity date, version, first country, current reporting status,
 latest opt-out action time, latest choice time, collector receipt time and
-preference revision. A status update never advances activity or supplies a
-country/version. Re-enabling preserves the most recent opt-out time until that
+preference revision. The 0.3.0 collector also keeps first and latest activity receipt times,
+first observed version, optional client first-start time, and a bounded set of
+reported UTC activity days with its count for the last 90 days. Existing rows
+start with unknown history; the first new receipt is explicitly labelled as
+observed since tracking began, not an install date. Missed/offline days are not
+backfilled, and repeated reports count once per UTC day. A status update never
+advances activity or supplies startup time, country or version. Re-enabling preserves the most recent opt-out time until that
 identifiable choice information ages out. Client action time is informational:
 clock skew cannot change receipt dates, retention or preference ordering.
 
@@ -124,8 +138,8 @@ backups and infrastructure logs follow Google's own retention practices.
 ## Local state
 
 `~/.local/state/halcyon/usage.json` (or the XDG state directory) contains the
-random token, preference, revision, latest opt-out/choice times, cached country
-and bounded retry state. The file is private to the local user and is excluded
+random token, preference, revision, latest opt-out/choice times, cached country,
+optional first desktop start and bounded retry state. The file is private to the local user and is excluded
 from exported looks and setups. Older 0.2.0 clients reject this extended state
 rather than ignoring the off preference. Uninstalling preserves it normally;
 stopping the desktop and Settings processes stops future transmissions.

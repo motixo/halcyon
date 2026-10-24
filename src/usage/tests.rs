@@ -89,16 +89,17 @@ fn endpoint_is_limited_to_a_production_google_deployment() {
 #[test]
 fn report_contains_only_the_documented_fields() {
     let report = serde_json::to_value(Report {
-        schema: 3,
+        schema: 4,
         kind: "activity",
         revision: 0,
         installation: &"a".repeat(64),
         version: "0.2.0",
         country: Some("HR"),
+        first_started_at: Some(1000),
     })
     .unwrap();
-    assert_eq!(report.as_object().unwrap().len(), 6);
-    assert_eq!(report["schema"], 3);
+    assert_eq!(report.as_object().unwrap().len(), 7);
+    assert_eq!(report["schema"], 4);
     assert_eq!(report["version"], "0.2.0");
     assert_eq!(report["country"], "HR");
     assert!(report.get("installation").is_some());
@@ -125,6 +126,7 @@ async fn reply(response: &'static str) -> Result<String, String> {
         &"a".repeat(64),
         0,
         None,
+        Some(1000),
     )
     .await;
     server.join().unwrap();
@@ -268,6 +270,7 @@ async fn country_lookup_discards_ip_caches_first_country_and_never_sends_identit
 #[tokio::test]
 async fn failed_country_lookup_still_sends_activity_with_unknown_country() {
     let path = fixture();
+    record_start(&path, 900).unwrap();
     let id = claim(&path, "2026-10-23", 1000).unwrap().unwrap().0;
     let (country_url, country_request) = local_server("503 Unavailable", "unavailable");
     let (report_url, report_request) = local_server("200 OK", r#"{"ok":true,"day":"2026-10-23"}"#);
@@ -288,9 +291,10 @@ async fn failed_country_lookup_still_sends_activity_with_unknown_country() {
     let request = report_request.join().unwrap();
     let report: serde_json::Value =
         serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
-    assert_eq!(report.as_object().unwrap().len(), 6);
-    assert_eq!(report["schema"], 3);
+    assert_eq!(report.as_object().unwrap().len(), 7);
+    assert_eq!(report["schema"], 4);
     assert_eq!(report["installation"], id);
+    assert_eq!(report["first_started_at"], 900);
     assert!(report["country"].is_null());
     assert!(load(&path).unwrap().country.is_none());
     // Failure was not cached: a later report can acquire a country.
@@ -352,7 +356,14 @@ fn choice_is_durable_minimal_and_latest_only_with_monotonic_revision() {
     })
     .unwrap();
     assert_eq!(body.as_object().unwrap().len(), 6);
-    for forbidden in ["country", "version", "ip", "last_success", "opted_out_at"] {
+    for forbidden in [
+        "country",
+        "version",
+        "ip",
+        "last_success",
+        "opted_out_at",
+        "first_started_at",
+    ] {
         assert!(body.get(forbidden).is_none());
     }
 }
@@ -706,4 +717,37 @@ async fn status_response_after_a_new_choice_cannot_clear_its_queue() {
     assert_eq!(latest.revision, 2);
     assert!(latest.enabled);
     assert!(latest.pending.is_some());
+}
+
+#[test]
+fn first_start_is_local_stable_and_never_inferred_for_existing_installations() {
+    let path = fixture();
+    record_start(&path, 1000).unwrap();
+    let first = load(&path).unwrap();
+    assert_eq!(first.first_started_at, Some(1000));
+    assert!(first.last_success.is_none());
+    record_start(&path, 2000).unwrap();
+    assert_eq!(load(&path).unwrap().first_started_at, Some(1000));
+    assert_eq!(load(&path).unwrap().installation, first.installation);
+    let legacy = fixture();
+    claim(&legacy, "2026-10-23", 1000).unwrap();
+    let mut old: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&legacy).unwrap()).unwrap();
+    old.as_object_mut().unwrap().remove("first_started_at");
+    std::fs::write(&legacy, serde_json::to_vec(&old).unwrap()).unwrap();
+    record_start(&legacy, 2000).unwrap();
+    assert_eq!(load(&legacy).unwrap().first_started_at, None);
+}
+#[test]
+fn disabled_and_corrupt_start_state_never_acquires_a_timestamp() {
+    let path = fixture();
+    change(&path, false, 1000).unwrap();
+    let before = std::fs::read(&path).unwrap();
+    record_start(&path, 2000).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let mut value: serde_json::Value = serde_json::from_slice(&before).unwrap();
+    value["first_started_at"] = serde_json::json!(-1);
+    std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+    assert!(load(&path).is_err());
+    assert!(record_start(&path, 2000).is_err());
 }

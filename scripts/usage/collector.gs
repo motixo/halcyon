@@ -3,11 +3,35 @@
  */
 const MAX_INSTALLATIONS = 20000;
 const RETENTION_DAYS = 90;
-const WIDTH = 9;
+const WIDTH = 15;
 const HEADERS = ['Installation hash','Last active (UTC)','Version','First reported country',
-  'Reporting status','Opted out at (UTC)','Status received at (UTC)','Preference revision','Choice at (UTC)'];
+  'Reporting status','Opted out at (UTC)','Status received at (UTC)','Preference revision','Choice at (UTC)',
+  'First activity received since tracking (UTC)','First desktop start (client UTC; if known)',
+  'First version received since tracking','Reported active days (last 90 days)',
+  'Activity days (UTC serials; internal)','Last activity received (UTC)'];
 function validCountry(value) { return typeof value === 'string' && /^[A-Z]{2}$/.test(value); }
 function validVersion(v) { return typeof v === 'string' && v.length <= 48 && /^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(v); }
+function validTime(t) { return Number.isSafeInteger(t) && t >= 0 && t <= 253402300799; }
+function iso(value) {
+  if (value === '' || value === undefined) return '';
+  const date=value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null;
+  if (!date || !Number.isFinite(date.getTime()) || date.getTime()<0 || date.getTime()>253402300799999) throw Error('Invalid timestamp');
+  const result=date.toISOString();
+  if (!(value instanceof Date) && value!==result) throw Error('Invalid timestamp');
+  return result;
+}
+function days_(value) {
+  if (value === '' || value === undefined) return [];
+  // Brackets keep a single day from being treated as a numeric Sheet cell.
+  if (typeof value !== 'string' || value.length>800 || !/^\[\d{1,7}(,\d{1,7})*\]$/.test(value)) throw Error('Invalid activity days');
+  const days=JSON.parse(value);
+  if (days.length>RETENTION_DAYS || days.some((d,i)=>d<25569 || d>2958465 || i>0 && d<=days[i-1])) throw Error('Invalid activity days');
+  return days;
+}
+function refreshDays_(row,today,extra=[]) {
+  const days=[...new Set([...days_(row[13]),...extra])].filter(d=>d>=today-89 && d<=today).sort((a,b)=>a-b);
+  row[13]=days.length ? JSON.stringify(days) : ''; row[12]=days.length || '';
+}
 function validateReport(body) {
   if (typeof body !== 'string' || body.length > 1024) throw Error('Invalid report');
   const v = JSON.parse(body);
@@ -18,12 +42,15 @@ function validateReport(body) {
   const revision = Number.isSafeInteger(v.revision) && v.revision >= 0;
   const activity = v.schema === 3 && v.kind === 'activity' && keys === 'country,installation,kind,revision,schema,version'
     && revision && validVersion(v.version) && (v.country === null || validCountry(v.country));
+  const detailed = v.schema === 4 && v.kind === 'activity' && keys === 'country,first_started_at,installation,kind,revision,schema,version'
+    && revision && validVersion(v.version) && (v.country === null || validCountry(v.country))
+    && (v.first_started_at === null || validTime(v.first_started_at));
   // Client action time is informational, never a receipt/retention clock. Accept
   // skew within the representable UTC range; revision alone orders choices.
   const status = v.schema === 3 && v.kind === 'status' && keys === 'changed_at,enabled,installation,kind,revision,schema'
     && revision && v.revision > 0 && typeof v.enabled === 'boolean'
     && Number.isSafeInteger(v.changed_at) && v.changed_at >= 0 && v.changed_at <= 253402300799;
-  if (!(legacy || activity || status)) throw Error('Invalid report');
+  if (!(legacy || activity || detailed || status)) throw Error('Invalid report');
   return v;
 }
 function dayNumber(date) { return Math.floor(date.getTime() / 86400000) + 25569; }
@@ -33,7 +60,8 @@ function normalize(row) {
   return [row[0], active, row[2] || '', validCountry(row[3]) ? row[3] : '',
     row[4] || 'enabled', row[5] instanceof Date ? row[5].toISOString() : row[5] || '',
     row[6] instanceof Date ? row[6].toISOString() : row[6] || '', Number(row[7] || 0),
-    row[8] instanceof Date ? row[8].toISOString() : row[8] || ''];
+    row[8] instanceof Date ? row[8].toISOString() : row[8] || '',
+    iso(row[9]),iso(row[10]),row[11] || '',row[12] || '',row[13] || '',iso(row[14])];
 }
 function currentRows(rows, today) {
   const unique = new Map();
@@ -41,14 +69,23 @@ function currentRows(rows, today) {
     if (!raw[0]) continue;
     const row = normalize(raw), previous = unique.get(row[0]);
     if (!previous) { unique.set(row[0], row); continue; }
+    // A repeated/partially compacted row must not inflate active-day counts or
+    // replace the earliest observation with the date of its retry.
+    const days=[...days_(row[13]),...days_(previous[13])];
+    const first = !previous[9] || row[9] && row[9]<previous[9] ? row : previous;
+    const started=[row[10],previous[10]].filter(Boolean).sort()[0] || '';
+    const latest=[row[14],previous[14]].filter(Boolean).sort().pop() || '';
+    const metadata=[first[9],started,first[11],'','',latest];
     // A committed higher revision is authoritative even if a failed compaction
     // left an older row later in the sheet. Equal-revision opt-out wins closed.
     const stronger = row[7] > previous[7] || row[7] === previous[7] && row[4] === 'opted_out' && previous[4] !== 'opted_out';
     if (stronger || row[7] === previous[7] && row[4] === previous[4] && Number(row[1]) > Number(previous[1])) {
       row[3] = previous[3] || row[3]; unique.set(row[0], row);
     } else previous[3] ||= row[3];
+    const selected=unique.get(row[0]); selected.splice(9,6,...metadata); refreshDays_(selected,today,days);
   }
   return Array.from(unique.values()).filter(row => {
+    refreshDays_(row,today);
     const receivedDay = Number.isFinite(time(row[6])) ? dayNumber(new Date(row[6])) : 0;
     // Opted-out rows expire from status receipt, never from action time or an
     // old client's replay. Enabled records also retain their recent activity.
@@ -72,7 +109,7 @@ function applyReport(rows, id, report, now) {
     }
     if (!row) {
       if (next.length >= MAX_INSTALLATIONS) throw Error('Capacity reached');
-      row = [id,'','','','enabled','','',0,'']; next.push(row);
+      row = normalize([id,'','','','enabled','','',0,'']); next.push(row);
     }
     row[4] = report.enabled ? 'enabled' : 'opted_out';
     row[8] = new Date(report.changed_at * 1000).toISOString();
@@ -80,14 +117,18 @@ function applyReport(rows, id, report, now) {
     row[6] = now.toISOString(); row[7] = report.revision;
     return next; // status never touches active date, country or app version
   }
-  if (row && (row[4] !== 'enabled' || report.schema === 3 && report.revision !== row[7])) return next;
+  if (row && (row[4] !== 'enabled' || report.schema >= 3 && report.revision !== row[7])) return next;
   // Old clients may continue enabled activity but never change preference state.
   if (!row) {
     if (next.length >= MAX_INSTALLATIONS) throw Error('Capacity reached');
-    row = [id,'','','','enabled','','',report.revision || 0,'']; next.push(row);
+    row = normalize([id,'','','','enabled','','',report.revision || 0,'']); next.push(row);
   }
   row[1] = today; row[2] = report.version;
   row[3] ||= validCountry(report.country) ? report.country : '';
+  if (!row[9]) { row[9]=now.toISOString(); row[11]=report.version; }
+  if (!row[10] && report.schema === 4 && report.first_started_at !== null)
+    row[10]=new Date(report.first_started_at*1000).toISOString();
+  row[14]=now.toISOString(); refreshDays_(row,today,[today]);
   return next;
 }
 function updateRows(rows, id, version, today, country = null) {
@@ -141,7 +182,13 @@ function statusPlan_(sheet, requireHeaders = false) {
   }
   const initialize=[];
   for (let i=1;i<values.length;i++) {
-    const row=values[i],v=row.slice(4),empty=v.every(value=>value === '');
+    const row=values[i],v=row.slice(4,9),empty=row.slice(4).every(value=>value === '');
+    // Added metadata columns are optional for migrated rows; never backdate
+    // observation or infer a first start/version from the old last-active cell.
+    [9,10,14].forEach(col=>iso(row[col]));
+    if (row[11]!=='' && !validVersion(row[11])) throw Error('Invalid first version');
+    days_(row[13]);
+    if (row[12]!=='' && (!Number.isSafeInteger(row[12]) || row[12]<0 || row[12]>RETENTION_DAYS)) throw Error('Invalid active-day count');
     if (!row[0]) {
       if (!empty) throw Error('Reporting status without an installation');
       continue;
@@ -229,7 +276,7 @@ function summary_(book, rows, today) {
   sheet.getRange(1,1,6,2).setValues(REPORTING_LABELS.map((label,i)=>[label,values[i]]));
 }
 function json_(value) { return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON); }
-function doGet() { return json_({service:'halcyon-activity',schema:3}); }
+function doGet() { return json_({service:'halcyon-activity',schema:4}); }
 function doPost(event) {
   let lock;
   try {
@@ -278,7 +325,7 @@ function setup() {
     claimReporting_(book); // recoverable even if the next write is interrupted
     if (raw.getMaxColumns() < WIDTH) raw.insertColumnsAfter(raw.getMaxColumns(),WIDTH-raw.getMaxColumns());
     if (raw.getMaxRows() < MAX_INSTALLATIONS+1) raw.insertRowsAfter(raw.getMaxRows(),MAX_INSTALLATIONS+1-raw.getMaxRows());
-    raw.getRange(1,5,1,5).setValues([HEADERS.slice(4)]);
+    raw.getRange(1,5,1,WIDTH-4).setValues([HEADERS.slice(4)]);
     if (plan.values[0][3] === '' && plan.formulas[0][3] === '') raw.getRange(1,4).setValue(HEADERS[3]);
     // Initialize only empty/default prefixes. Valid status values (including
     // Date cells) and all original A:D cells remain exactly as they were.

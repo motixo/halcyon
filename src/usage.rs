@@ -17,7 +17,7 @@ const COUNTRY_ENDPOINT: &str = "https://api.country.is/";
 const ENDPOINT: &str = include_str!("../assets/usage-endpoint.txt");
 // A click cancels this process's activity before its asynchronous disk write.
 static PAUSED: AtomicBool = AtomicBool::new(false);
-pub const DISCLOSURE: &str = "Sends a random installation ID, app version and first country to Google daily. Country.is sees your IP for the country lookup; Halcyon does not store it. No widget content.";
+pub const DISCLOSURE: &str = "Sends a random installation ID, app version, first country and first desktop start (when known) to Google daily. Counts active days. Country.is sees your IP; Halcyon does not store it. No widget content.";
 pub const CHOICE_DISCLOSURE: &str = "Turning this off stops new activity and country requests. One status update is still sent with a random ID, your choice and its time—even on first setup. Offline delivery retries for up to 7 days; identifiable records expire within 90 days of receipt.";
 fn yes() -> bool {
     true
@@ -40,6 +40,8 @@ struct State {
     retry_after: i64,
     #[serde(default)]
     country: Option<String>,
+    #[serde(default)]
+    first_started_at: Option<i64>,
     #[serde(default = "state_version")]
     state_version: u8,
     #[serde(default = "yes")]
@@ -60,6 +62,7 @@ impl Default for State {
             last_success: None,
             retry_after: 0,
             country: None,
+            first_started_at: None,
             state_version: 3,
             enabled: true,
             revision: 0,
@@ -77,6 +80,7 @@ struct Report<'a> {
     revision: u64,
     version: &'a str,
     country: Option<&'a str>,
+    first_started_at: Option<i64>,
 }
 #[derive(Serialize)]
 struct StatusReport<'a> {
@@ -96,6 +100,22 @@ struct Acknowledgement {
 }
 fn valid_time(t: i64) -> bool {
     (0..=253402300799).contains(&t)
+}
+// Record only a new identity's first production desktop start. Existing state
+// cannot reveal the original install/start time; never infer it from file mtime.
+// No network or additional activity is caused by this local record.
+fn record_start(path: &Path, now: i64) -> Result<(), String> {
+    let _lock = lock(path)?;
+    let mut state = load(path)?;
+    if !state.enabled || !state.installation.is_empty() || PAUSED.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    if !valid_time(now) {
+        return Err("Reporting clock is invalid".into());
+    }
+    state.installation = token()?;
+    state.first_started_at = Some(now);
+    save(path, &state)
 }
 pub fn path() -> Option<PathBuf> {
     crate::paths::state_dir().map(|p| p.join("usage.json"))
@@ -237,6 +257,7 @@ fn load(path: &Path) -> Result<State, String> {
         || (!state.enabled && state.opted_out_at != state.changed_at)
         || state.changed_at.is_some_and(|t| !valid_time(t))
         || state.opted_out_at.is_some_and(|t| !valid_time(t))
+        || state.first_started_at.is_some_and(|t| !valid_time(t))
         || state
             .pending
             .as_ref()
@@ -408,13 +429,21 @@ async fn report_once(
     country_url: &str,
 ) -> Result<String, String> {
     let country = country_for(path, installation, revision, country_url).await;
+    let first_started_at = load(path)?.first_started_at;
     guarded(
         path,
         installation,
         revision,
         true,
         true,
-        send(client, url, installation, revision, country.as_deref()),
+        send(
+            client,
+            url,
+            installation,
+            revision,
+            country.as_deref(),
+            first_started_at,
+        ),
     )
     .await
 }
@@ -495,17 +524,19 @@ async fn send(
     installation: &str,
     revision: u64,
     country: Option<&str>,
+    first_started_at: Option<i64>,
 ) -> Result<String, String> {
     let ack = post(
         client,
         url,
         &Report {
-            schema: 3,
+            schema: 4,
             kind: "activity",
             installation,
             revision,
             version: env!("CARGO_PKG_VERSION"),
             country,
+            first_started_at,
         },
     )
     .await?;
@@ -646,6 +677,9 @@ async fn run(path: PathBuf, activity: bool) {
         return;
     };
     let started = std::time::Instant::now();
+    if activity {
+        let _ = record_start(&path, Utc::now().timestamp());
+    }
     loop {
         cycle(
             &path,

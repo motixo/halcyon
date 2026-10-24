@@ -13,23 +13,23 @@ test('accepts only the small documented report',()=>{
  assert.throws(()=>validateReport(' '.repeat(1025)));
 });
 test('repeat reports keep one row and update the version',()=>{
- const rows=updateRows([], 'id-a','0.2.0',21000);
+ const rows=updateRows([], 'id-a','0.2.0',46000);
  assert.equal(rows.length,1);
- const twice=updateRows(rows,'id-a','0.1.3',21000);
+ const twice=updateRows(rows,'id-a','0.1.3',46000);
  assert.equal(twice.length,1); assert.equal(twice[0][2],'0.1.3');
- const next=updateRows(twice,'id-a','0.1.3',21001);
- assert.equal(next[0][1],21001); assert.equal(next.length,1);
+ const next=updateRows(twice,'id-a','0.1.3',46001);
+ assert.equal(next[0][1],46001); assert.equal(next.length,1);
 });
 test('different installations remain distinct and inactive records expire',()=>{
- const rows=[['expired',20910,'0.2.0'],['retained',20911,'0.2.0']];
- const next=updateRows(rows,'new','0.2.0',21000);
+ const rows=[['expired',45910,'0.2.0'],['retained',45911,'0.2.0']];
+ const next=updateRows(rows,'new','0.2.0',46000);
  assert.equal(next.length,2); assert.equal(next[0][0],'retained');
  assert.equal(rows.length,2); assert.equal(rows[0][0],'expired');
 });
 test('existing identities can report at capacity, new ones cannot',()=>{
- const rows=Array.from({length:20000},(_,i)=>['id-'+i,21000,'0.2.0']);
- assert.equal(updateRows(rows,'id-0','0.1.3',21000).length,20000);
- assert.throws(()=>updateRows(rows,'new','0.2.0',21000));
+ const rows=Array.from({length:20000},(_,i)=>['id-'+i,46000,'0.2.0']);
+ assert.equal(updateRows(rows,'id-0','0.1.3',46000).length,20000);
+ assert.throws(()=>updateRows(rows,'new','0.2.0',46000));
 });
 
 const {fixture}=require('./collector.fixture.cjs');
@@ -45,12 +45,12 @@ test('real request handler stores a hash, date, version and optional country and
  const ack=f.sandbox.doPost(request);
  assert.equal(ack.ok,true);assert.equal(ack.day,new Date().toISOString().slice(0,10));
  assert.equal(f.sandbox.doPost(request).ok,true);
- assert.equal(f.rows().length,2); assert.equal(f.rows()[1].length,9);
+ assert.equal(f.rows().length,2); assert.equal(f.rows()[1].length,15);
  assert.match(f.rows()[1][0],/^[a-f0-9]{64}$/);assert.notEqual(f.rows()[1][0],payload.installation);
  assert.equal(f.rows()[1][2],payload.version);assert.equal(f.locked(),false);
  assert.equal(f.sandbox.doPost({postData:{contents:JSON.stringify({...payload,email:'private@example.com'})}}).ok,false);
  assert.equal(f.rows().length,2);
- assert.deepEqual(f.sandbox.doGet(),{service:'halcyon-activity',schema:3});
+ assert.deepEqual(f.sandbox.doGet(),{service:'halcyon-activity',schema:4});
 });
 
 test('retry after an interrupted pruning write counts each installation once',()=>{
@@ -83,18 +83,18 @@ test('country reports accept schema 2 and reject unbounded or extra location dat
  assert.throws(()=>validateReport(JSON.stringify({...report,ip:'192.0.2.1'})));
 });
 test('first country survives later reports and old clients cannot erase it',()=>{
- let rows=updateRows([], 'country-id','0.2.0',21000,'HR');
+ let rows=updateRows([], 'country-id','0.2.0',46000,'HR');
  assert.equal(rows[0][3],'HR');
- rows=updateRows(rows,'country-id','0.2.0',21001,'US');
+ rows=updateRows(rows,'country-id','0.2.0',46001,'US');
  assert.equal(rows[0][3],'HR');
- assert.equal(updateRows(rows,'country-id','0.2.0',21002)[0][3],'HR');
- assert.equal(updateRows([['unknown',21000,'0.2.0']], 'unknown','0.2.0',21001,'DE')[0][3],'DE');
+ assert.equal(updateRows(rows,'country-id','0.2.0',46002)[0][3],'HR');
+ assert.equal(updateRows([['unknown',46000,'0.2.0']], 'unknown','0.2.0',46001,'DE')[0][3],'DE');
 });
 test('country totals count distinct active installations in UTC windows, including Unknown',()=>{
  assert.equal(typeof context.countryCounts,'function');
- const rows=[['a',21000,'0.2.0','HR'],['a',20999,'0.1.1','HR'],['b',20994,'0.2.0','HR'],
- ['c',20971,'0.2.0','US'],['d',21000,'0.2.0',''],['old',20970,'0.1.1','DE']];
- assert.equal(JSON.stringify(context.countryCounts(rows,21000)),JSON.stringify([
+ const rows=[['a',46000,'0.2.0','HR'],['a',45999,'0.1.1','HR'],['b',45994,'0.2.0','HR'],
+ ['c',45971,'0.2.0','US'],['d',46000,'0.2.0',''],['old',45970,'0.1.1','DE']];
+ assert.equal(JSON.stringify(context.countryCounts(rows,46000)),JSON.stringify([
  ['HR',1,2,2],['Unknown',1,1,1],['US',0,0,1]]));
 });
 
