@@ -1,5 +1,9 @@
 # Released 0.2.0 native responsiveness — round 3
 
+Historical report: the publication hold below is superseded; 0.2.5 is published.
+See [archive status](STATUS.md) for the deferred diagnosis and current evidence
+limits. The original experiment results below do not qualify current 0.3.0.
+
 Status: complete for the three authorized R3 contexts. **All three core native input hours passed**. Each completed thirteen checkpoints,45 byte-exact saves and15 normal closes/reopens including preflight. **Public main-only and main+Islands also produced a confirmed native compositor crash in the post-hour workspace sequence**, plus native desktop Files applet panics during the core hour. They are not whole-session passes. RX590 causation and the reporter incident remain unproven; the tracker stays open and publication stays ON HOLD. All earlier failures/evidence remain preserved. No product code/build/Cargo/collector or host desktop changes.
 
 | Context / standard runner | Actual core duration | Core result | Native session result | Full artifact |

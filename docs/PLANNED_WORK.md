@@ -225,7 +225,9 @@ this observed crash; blur causation and the need for an hour delay still need
 isolation. The pinned source suggests missing shader initialization on a
 software/offscreen renderer, but that is not yet a causal qualification.
 
-Evidence: `../halcyon-021-runner-probe/private/qualification-021/window-lockup-soak-r3-report.md`.
+Evidence: [round-three report](../private/qualification-021/window-lockup-soak-r3-report.md).
+The [integrated archive status](../private/qualification-021/STATUS.md) records
+completed scope, local evidence custody and superseded historical release holds.
 Runs: stock 40018232557, main 40027094006, Islands 40035187607.
 The first short native-blur comparison stopped on a test export assertion
 before the blur controls ran. Stock opened its first overview, but a second
@@ -234,8 +236,9 @@ editor input survived. This is distinct from the Frosted compositor panic.
 Corrected assertions are prepared. The follow-up agent was stopped by an
 automatic provider safety flag; no native comparison result was returned.
 The three missing controls remain unverified.
-Keep the compositor crash open as a release concern; do not describe the
-complete sessions as passed.
+Keep the compositor crash as a deferred historical investigation; do not
+describe the complete sessions as passed or renew the old 0.2.5 publication hold.
+It is not established as a current 0.3.0 release blocker.
 Software rendering does not qualify the RX 590 or resolve the original report.
 
 ### Reported hardware

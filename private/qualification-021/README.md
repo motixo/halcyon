@@ -1,5 +1,11 @@
 # Disposable COSMIC guest infrastructure
 
+**Historical archive, integrated 2026-10-25.** Read [STATUS.md](STATUS.md) first
+for completed scope, unresolved diagnoses, evidence custody and known harness
+limitations. The workflow snapshots now live under `workflows/` and are inert.
+The dispatch commands and release status below describe the historical work;
+they are not instructions for current 0.3.0 acceptance.
+
 Scope: independent test infrastructure on `ci/qualification-probe-021`; no product
 changes and no release qualification claim. Standard public Ubuntu 24.04 runner,
 one KVM VM per job, 120-minute hard job limit, 100-minute builder limit. No paid
@@ -116,5 +122,6 @@ ISO-plus-package installation recipe was replay-verified. Replaying the sealed
 disk offline is a separate, narrower check. A retained sealed disk can be used
 for reproducible overlay scenarios independently of that further reconstruction.
 Exact historical 1.10 is not supplied by this work. Its prior partial evidence
-remains partial. Read `guest-builder-report.md` for actual run outcomes; this
+remains partial. Read the locally archived `guest-builder-report.md` indexed in
+[STATUS.md](STATUS.md) for actual run outcomes; this
 README describes the intended reusable interface, not evidence of success.
