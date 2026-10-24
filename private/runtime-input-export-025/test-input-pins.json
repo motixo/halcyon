@@ -1,0 +1,11 @@
+{
+  "main_test_input": {
+    "file": "halcyon-main-8a3d9b2.test-input.gz",
+    "compressed_sha256": "d4bdaf3a61f5c7530d1d3af0750a27df8faa5142bf65181b38df756c7147202d",
+    "compressed_size": 17419469,
+    "elf_sha256": "8a3d9b2db6518d57e697b1ec562969781b07b496bce9c253b7f4b6ffca359dab",
+    "elf_size": 41161896,
+    "source_commit": "2fb427434770f14135f25c209c48bc58a67a9f66",
+    "purpose": "explicit development main test input for ordinary close only; not replacement package"
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "public_objects": {
+    "manifest": "public-object-receipt.json#/missing",
+    "count": 44,
+    "bytes": 186442704,
+    "method": "copy exact canonical public files from authorized already-prepared image/guest root with capture_missing_public_objects.py; no whole-image scan"
+  },
+  "loader_metadata": {
+    "paths": [
+      "/etc/ld.so.conf",
+      "/etc/ld.so.conf.d/*.conf",
+      "/etc/ld.so.preload (existence; contents only if public regular file)",
+      "/etc/nsswitch.conf",
+      "/usr/share/glvnd/egl_vendor.d/*.json",
+      "/usr/share/pipewire/pipewire.conf",
+      "/usr/share/pipewire/client.conf",
+      "/usr/share/pipewire/client-rt.conf",
+      "/usr/share/pipewire/*/*.conf",
+      "/etc/pipewire/*.conf",
+      "/etc/pipewire/*/*.conf"
+    ],
+    "limits": {
+      "max_files": 128,
+      "max_file_bytes": 65536,
+      "total_bytes": 2097152
+    },
+    "note": "Review actual relevant provider selection; do not read credentials, auth files, private keys or unrelated home files. Missing public overrides are recorded absent. Query-only ldconfig output already retained."
+  },
+  "layout": {
+    "paths": [
+      "com.system76.CosmicPanel/v1/entries",
+      "com.system76.CosmicPanel.Panel/v1/{name,output,plugins_center,plugins_wings}",
+      "com.system76.CosmicPanel.Dock/v1/{name,output,plugins_center,plugins_wings}",
+      "io.github.desktopcards.DockIslands/v1/{Panel,Dock}"
+    ],
+    "limits": {
+      "max_files": 16,
+      "max_file_bytes": 65536,
+      "total_bytes": 1048576
+    },
+    "note": "Only disposable guest effective XDG precedence, public defaults and these exact user layout values; do not read arbitrary user config. Current public defaults resolve to 16 desktop IDs / 18 instances, all one cosmic-applets ELF. No user layout mutation."
+  },
+  "graphics": {
+    "existing_capture": "virtio PCI 1af4:1050, subsystem 1af4:1100, one connected Virtual-1; Mesa/Gallium/LLVM hashes",
+    "missing": [
+      "existing compositor actual EGL/GL vendor/renderer/version/API and selected device from existing context/logs",
+      "bounded card/render-node symlink ancestry, PCI vendor/device/subsystem IDs, driver link, virtio features and kernel module version/srcversion where exposed",
+      "existing companion context identity during authorized focused run; do not start a second host to infer it"
+    ],
+    "limits": {
+      "metadata_total_bytes": 65536,
+      "max_device_nodes": 8
+    },
+    "schema_gap": "Current kernel/module-only constraints cannot enforce device identity; coordinate narrow product correction after evidence, no change made here"
+  },
+  "conditional_source_review": {
+    "manifest": "missing-source-inputs.json",
+    "local_inputs": "source-review-inputs.json",
+    "focus": [
+      "Mesa/GLVND EGL vendor + GBM/Gallium dispatch and hardware/software provider selection",
+      "glibc loader/cache/hwcaps, NSS and gconv conditional modules for the actual locale/NSS config",
+      "PipeWire/SPA modules selected by the exact captured configs",
+      "COSMIC core/applets build-feature/provider/resource paths; prefer exact source members and locked dependency manifests, not complete vendor copies"
+    ],
+    "note": "Archives are exact existing candidate pins; the size list is not a download request. Export only relevant source members from an authenticated retained source cache where available."
+  },
+  "resources": {
+    "reviewed_local": "125 byte-exact public-text defaults/desktop/dispatch records; embedded Iced icon/font code inputs retained",
+    "unresolved": [
+      "source-selected public icon/font resources and user theme/font override semantics",
+      "libxkbcommon keymap source and provider requirements; compositor passes keymap via Wayland, do not invent all-OS resource equality"
+    ],
+    "note": "Keep current user-config ownership. Pin only resources justified by launch/ABI/render contract; rendering/localization tests remain functional evidence, not a reason to scan every installed font."
+  }
+}

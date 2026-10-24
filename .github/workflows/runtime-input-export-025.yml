@@ -1,0 +1,97 @@
+name: Bounded public runtime input export, unqualified
+on:
+  push:
+    branches: [ci/qualification-inputs-025]
+    paths:
+      - '.github/workflows/runtime-input-export-025.yml'
+      - 'private/runtime-input-export-025/**'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: runtime-input-export-025-only
+  cancel-in-progress: false
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        shell: bash
+    env:
+      WORK: /mnt/rie025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Require actual KVM and disk; create only owned output
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          sudo mkdir "$WORK"
+          sudo chown "$(id -u):$(id -g)" "$WORK"
+          mkdir "$WORK/evidence" "$WORK/public-export"
+          chmod 0777 "$WORK/public-export"
+          date -u > "$WORK/evidence/job-start.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$WORK/evidence/infra-commit.txt"
+          printf '{"purpose":"runtime input export real preflight","run":"%s"}\n' "$GITHUB_RUN_ID" > "$WORK/evidence/tiny-receipt.json"
+          sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" python3 private/runtime-input-export-025/prerequisites.py
+      - name: Supported action tiny upload, no custom action stdout capture
+        id: tiny
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runtime-export-tiny-${{ github.run_id }}
+          path: /mnt/rie025/evidence/tiny-receipt.json
+          retention-days: 90
+          if-no-files-found: error
+      - name: Real API retrieval, independent hash and exact member before restore
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TINY_ID: ${{ steps.tiny.outputs.artifact-id }}
+          TINY_DIGEST: ${{ steps.tiny.outputs.artifact-digest }}
+        run: set -Eeuo pipefail; python3 -B private/runtime-input-export-025/verify_tiny.py
+      - name: Scoped QEMU tools and full device preflight before image download
+        timeout-minutes: 8
+        run: set -Eeuo pipefail; bash private/runtime-input-export-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
+      - name: Restore exact immutable prepared image once
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: set -Eeuo pipefail; python3 -u private/runtime-input-export-025/restore_prepared.py 2>&1 | tee "$WORK/evidence/restore.log"
+      - name: Explicit named development inputs, not release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runtime-export-test-inputs-b6419c70-and-main-8a3d9b2-${{ github.run_id }}
+          path: |
+            private/package-session-025/test-input-packages/*.deb
+            private/runtime-input-export-025/test-inputs/*.gz
+            private/runtime-input-export-025/test-input-pins.json
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: error
+      - name: Offline exact public objects, bounded metadata and ordinary Undo/close
+        timeout-minutes: 20
+        run: set -Eeuo pipefail; node private/runtime-input-export-025/controller.cjs
+      - name: Preserve outcomes even on failure
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          if [ -d "$WORK/evidence" ]; then
+            date -u > "$WORK/evidence/job-end.txt"
+            df -B1 "$WORK" > "$WORK/evidence/final-disk.txt"
+            free -b > "$WORK/evidence/final-memory.txt"
+            if [ -f "$WORK/evidence/host-dpkg-before.sha256" ]; then sha256sum -c "$WORK/evidence/host-dpkg-before.sha256" > "$WORK/evidence/host-dpkg-unchanged.txt"; fi
+            if [ -d "$WORK/trial/evidence" ]; then sudo cp -a "$WORK/trial/evidence" "$WORK/evidence/startup-vm"; fi
+            find private/runtime-input-export-025 -type f -print0 | sort -z | xargs -0 sha256sum > "$WORK/evidence/recipe-hashes.txt"
+            sudo chmod -R a+rX "$WORK/evidence"
+          fi
+      - name: Supported final evidence upload, public objects only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: runtime-input-export-${{ github.run_id }}
+          path: /mnt/rie025/evidence/
+          retention-days: 90
+          compression-level: 0
+          if-no-files-found: warn
