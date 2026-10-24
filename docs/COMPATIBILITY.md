@@ -1,11 +1,45 @@
 # Islands compatibility and immutable qualification
 
-Group 3 implements discovery, classification, package generations and an evidence
-interface. **No new native cohort is admitted in the shipped catalog.** The final
-new package must pass the full native gate before publication. The empty catalog
-blocks new activation/staging; an existing 0.2.0 installation is left untouched.
-Previously observed 1.10 source-only and 1.11 development results are retained as
-explicit non-admitting observations. Full native 1.10 inputs remain unavailable.
+The 0.2.5 source catalog contains one accepted runtime target: the exact Pop noble
+COSMIC 1.11 package/code profile, one-output virtio device/features and Mesa
+llvmpipe software scope tested in native run **40071768899**. Its complete
+1,783-package source/distribution cohort is retained; runtime checks cover the
+explicit 105 public files and measured process/device/configuration constraints.
+The parent accepted the actual focused startup/input/cleanup/recovery outcome:
+prelaunch 2.399 s, running admission 4.344 s from prelaunch start, all 19 old owned
+PIDs absent, stock notifications and relogin passed. This is not physical-GPU,
+COSMIC 1.10, or the entire historical qualification-matrix approval.
+
+`companion/compatibility/evidence/accepted-runtime-40071768899.json` records the
+accepted disposition separately from the unchanged original pending test record
+and actual observation. The runtime payload is
+`f3bb6c779355b9fb4180a18c84dd7453e8d00b51720edc7376d8535bceb15635`.
+The final 0.2.5 packages still require exact packaging/source/artifact binding and
+publication approval. No publication is authorized by the catalog itself.
+
+### Physical GPU users and 0.2.0 upgrades
+
+AMD, Intel and NVIDIA devices do not match this virtio target. The new launcher
+therefore selects stock before starting Islands; software rendering alone on a
+different device does not qualify it. Other Halcyon functionality is unaffected.
+No other GPU/version is inferred from the included ICD libraries. The smallest
+honest current shipping scope is this one measured runtime profile, with stock
+fallback elsewhere; broader physical-GPU Islands support is not claimed.
+
+Installed-byte eligibility and running/device readiness are distinct. Enable or
+automatic refresh can stage this generation if its exact installed package/files
+match, even when its running device will not. Such users may see **Log out to
+activate**, then stock at login; that label is not a promise of device support.
+If installed code/packages do not match, staging is refused. Neither case is
+Ready, and status never replaces a live host.
+
+For an owned 0.2.0 installation, unsuccessful staging leaves the old copied
+launcher/generation untouched. Successful staging preserves the restore chain
+and applies the new selector on a later login, so unsupported devices then use
+stock. No currently running old host is killed by upgrade/refresh. Disable
+unwinds the new layers and original owned installation, with guarded external
+edits and baseline/Undo intact. New, disabled and manual users are not
+automatically enabled. The immutable public 0.2.0 assets are unchanged.
 
 ## Trust and identity
 
@@ -176,11 +210,11 @@ classification validates the full catalog. File-path traversal validation uses
 exact POSIX components without allocating a Path for every inventory entry.
 
 The wire format and cohort identity calculation are unchanged. Old bounded catalogs
-and the shipped empty catalog remain valid. Older helpers safely refuse catalogs
+and previous empty catalogs remain valid. Older helpers safely refuse catalogs
 above 16 MiB; do not mix them with a new catalog. Changed helper bytes change the
 payload/generation identity, so final packaging must use a new monotonic version
 and native qualification of those exact final bytes. No old artifact is rewritten.
-The shipped catalog remains empty until actual native evidence is approved.
+The current catalog now carries the one explicitly accepted target described above; structural/synthetic fixtures never supply its evidence.
 
 Run on the completed full candidate and exact final catalog:
 
@@ -458,7 +492,7 @@ complete image SHA256 and scope. This avoids a circular hash in which evidence
 contains a package digest while that package embeds the evidence digest. A row
 is a **reviewed qualification target**, not permission to publish. The detached
 final result and explicit approval bind the complete final deb, manifest,
-catalog, payload and native observations. No native-session row is invented here.
+catalog, payload and native observations. The current row records the parent-accepted focused native outcome; it does not assert unexecuted scenarios.
 Catalog authoring and final evidence review remain maintainer-controlled.
 
 ## Finalize, qualify, promote
@@ -668,7 +702,7 @@ target, v4 `runtime_measurement` with the actual host SHA256, configuration coun
 and both `runtime_reviews` artifact references (`dependency`, `native`, kind
 `runtime-review`) whose hashes match the target. All existing native scenarios,
 final main-process evidence, approval, repack rejection and release gates remain.
-Shipped catalog v2 is empty. Structural/synthetic fixtures cannot qualify it.
+Catalog v2 contains the single accepted focused native target described above. Structural/synthetic fixtures cannot qualify additional targets.
 
 Each status/launch operation owns one verified immutable catalog context. It
 shares parsed objects for identical catalog bytes, still verifies captures at
@@ -772,3 +806,33 @@ ELF providers merely because the program reads them. Preserve supported user
 styling/layout variation; do not pin every installed font or user theme. Review
 their parser/code dependencies and test relevant fallback behavior. Custom native
 plugins or applet executables still require explicit supported code policy.
+
+
+## Final-version reuse of the accepted 0.2.5 runtime payload
+
+Runtime admission binds the helper/ELF payload digest and complete runtime policy,
+not the Halcyon Debian development version. Package version lives in the manifest;
+it is checked against dpkg and for monotonic generation staging. The payload hash
+covers every helper and the companion ELF with its mode, excluding catalog.json.
+The manifest separately hashes the catalog. Thus changing
+`0.2.5~dev.integration.5` to `0.2.5` need not invalidate native behavior evidence
+when all payload bytes/modes and behavior-bearing main files are unchanged.
+Catalog evidence IDs/native outcome metadata may be finalized without changing
+the exact tested profile, inventory, source closure or device constraints.
+
+The final packager must verify that unchanged payload, the accepted catalog bytes,
+the unchanged main/companion ELFs and native build inputs, then record the **new**
+final deb/manifest/catalog/source hashes. The original tested dev deb and pending
+authorization stay immutable. New helpers, native code, runtime inventory/profile
+or device scope cannot use this metadata-only reuse argument.
+
+The older `qualify.promotion` / `release_gate.py` route binds an exact final Debian
+artifact to its own `halcyon-qualification` result and historical full scenario
+matrix. It does not automatically consume this focused acceptance record or allow
+renaming a tested dev package. No synthetic full-matrix result/approval has been
+created to make that gate pass. Parent's final release authorization must explicitly
+bind the actual final artifacts and the accepted focused evidence/reuse audit;
+the existing automated gate remains fail-closed until that release-policy handoff
+is resolved. This is an artifact/approval binding action, not a request for another
+native campaign. The catalog itself is shipped locally (about 25.8 MB, under the
+64 MiB bound); no remote catalog service or login-time network is required.

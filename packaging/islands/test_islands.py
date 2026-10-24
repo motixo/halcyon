@@ -24,7 +24,11 @@ class IslandsPackage(unittest.TestCase):
         cls.binary=cls.root/'binary';cls.binary.write_text('#!/bin/sh\nexit 99\n')
         cls.manifest=cls.root/'input.json';cls.manifest.write_bytes(canonical(dict(protocol=1,upstream='ca20ce3185b3b4404f429d59d429c40b58a2ddef',runtime_probe=1,binary_sha256=digest(cls.binary))))
         os.environ['SOURCE_DATE_EPOCH']='1792627200'
-        cls.deb=builder.build(cls.binary,cls.manifest,'0.2.1~test.1',cls.root/'out')
+        # Synthetic package tests use their own empty policy, never the actual
+        # accepted release payload/catalog or a native-admission claim.
+        cls.empty_catalog=cls.root/'empty-catalog.json'
+        cls.empty_catalog.write_bytes(canonical(dict(format='halcyon-islands-catalog',version=2,cohorts=[])))
+        cls.deb=builder.build(cls.binary,cls.manifest,'0.2.1~test.1',cls.root/'out',catalog=cls.empty_catalog)
         cls.extract=cls.root/'extract';subprocess.run(['dpkg-deb','-x',str(cls.deb),str(cls.extract)],check=True)
         cls.library=cls.extract/'usr/lib/cosmic-ext-halcyon-islands'
         if ARTIFACTS:
@@ -40,18 +44,18 @@ class IslandsPackage(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in control.iterdir()),['conffiles','control'])
     def test_reproducible_and_no_version_replacement(self):
         before=digest(self.deb)
-        builder.build(self.binary,self.manifest,'0.2.1~test.1',self.root/'out')
+        builder.build(self.binary,self.manifest,'0.2.1~test.1',self.root/'out',catalog=self.empty_catalog)
         self.assertEqual(digest(self.deb),before)
         bad=self.root/'changed';bad.write_text('#!/bin/sh\nexit 98\n')
         record=json.loads(self.manifest.read_bytes());record['binary_sha256']=digest(bad)
         path=self.root/'changed.json';path.write_bytes(canonical(record))
-        with self.assertRaisesRegex(ValueError,'immutable'):builder.build(bad,path,'0.2.1~test.1',self.root/'out')
+        with self.assertRaisesRegex(ValueError,'immutable'):builder.build(bad,path,'0.2.1~test.1',self.root/'out',catalog=self.empty_catalog)
         self.assertEqual(digest(self.deb),before)
     def test_wrong_digest_protocol_source_and_catalog_rejected(self):
         record=json.loads(self.manifest.read_bytes())
         for key,value in [('binary_sha256','0'*64),('protocol',2),('upstream','unknown')]:
             path=self.root/(key+'.json');path.write_bytes(canonical({**record,key:value}))
-            with self.assertRaises(ValueError):builder.build(self.binary,path,'0.2.1',self.root/key)
+            with self.assertRaises(ValueError):builder.build(self.binary,path,'0.2.1',self.root/key,catalog=self.empty_catalog)
         path=self.root/'wrong-catalog.json';path.write_bytes(canonical(catalog_fixture()))
         with self.assertRaisesRegex(ValueError,'different finalized payload'):builder.build(self.binary,self.manifest,'0.2.1',self.root/'catalog',catalog=path)
     def test_empty_catalog_blocks_enable_but_management_and_json_remain(self):
@@ -103,9 +107,9 @@ class IslandsPackage(unittest.TestCase):
     def test_native_elf_dependencies_and_notices(self):
         binary=Path('/usr/bin/true');record=self.root/'native.json'
         record.write_bytes(canonical(dict(protocol=1,upstream='ca20ce3185b3b4404f429d59d429c40b58a2ddef',binary_sha256=digest(binary))))
-        with self.assertRaisesRegex(ValueError,'licenses'):builder.build(binary,record,'0.2.1',self.root/'native')
+        with self.assertRaisesRegex(ValueError,'licenses'):builder.build(binary,record,'0.2.1',self.root/'native',catalog=self.empty_catalog)
         licenses=self.root/'notices';licenses.write_text('Native dependency test notices\n')
-        package=builder.build(binary,record,'0.2.1',self.root/'native',licenses)
+        package=builder.build(binary,record,'0.2.1',self.root/'native',licenses,catalog=self.empty_catalog)
         deps=subprocess.check_output(['dpkg-deb','-f',str(package),'Depends'],text=True)
         self.assertIn('libc6 (>=',deps)
         self.assertNotIn('cosmic-comp (',deps)
