@@ -242,7 +242,7 @@
                             "string",
                             "null"
                           ],
-                          "pattern": "^[01]{64}$"
+                          "pattern": "^[01]{64}(?:[01]{64})?$"
                         },
                         "primary_nodes": {
                           "type": "integer",
@@ -254,7 +254,51 @@
                           "minimum": 0,
                           "maximum": 8
                         }
-                      }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "anyOf": [
+                              {
+                                "properties": {
+                                  "drivers": {
+                                    "contains": {
+                                      "const": "virtio-pci"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "properties": {
+                                  "vendor": {
+                                    "const": "0x1af4"
+                                  },
+                                  "device": {
+                                    "const": "0x1050"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "properties": {
+                              "virtio_features": {
+                                "type": "string"
+                              },
+                              "drivers": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "prefixItems": [
+                                  {},
+                                  {
+                                    "const": "virtio-pci"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
                     }
                   }
                 }

@@ -338,13 +338,13 @@ def drm_device_snapshot(sysroot=Path('/sys')):
     """Bounded PCI DRM inventory. Never opens a GPU node or creates a context.
 
     Policy ignores card numbers/PCI addresses but includes multiplicity, driver
-    ancestry and virtio feature bits where present. Private inode/path stamps
-    detect replacement between the phase's before/after snapshots.
+    binding and complete feature bits for supported virtio GPU relationships.
+    Private inode/path stamps detect replacement between the phase's before/after snapshots.
     """
     from bundle_contract import canonical, valid_drm_devices
     root=Path(sysroot).resolve(); base=root/'class/drm'; identities=[]
-    def names():
-        with os.scandir(base) as entries:
+    def names(directory):
+        with os.scandir(directory) as entries:
             result=[]
             for entry in entries:
                 result.append(entry.name)
@@ -355,36 +355,59 @@ def drm_device_snapshot(sysroot=Path('/sys')):
         if not target.is_relative_to(root/area): raise ValueError('device_path_escape')
         identities.append((str(path),FileMeasurement.stamp(path.lstat()),str(target),FileMeasurement.stamp(target.stat())))
         return target
-    initial=names(); nodes=[n for n in initial if re.fullmatch(r'card[0-9]+|renderD[0-9]+',n)]
+    def bus(device):
+        target=resolved(device/'subsystem','bus')
+        if target not in (root/'bus/pci',root/'bus/virtio'):
+            raise ValueError('drm_unsupported_bus')
+        if resolved(target/'devices'/device.name,'devices')!=device:
+            raise ValueError('drm_bus_device_binding')
+        return target.name
+    def driver(device, bus_name):
+        target=resolved(device/'driver','bus')
+        if target.parent!=root/'bus'/bus_name/'drivers':
+            raise ValueError('drm_driver_bus')
+        return target.name
+    initial=names(base); nodes=[n for n in initial if re.fullmatch(r'card[0-9]+|renderD[0-9]+',n)]
     if not 1 <= len(nodes) <= 16: raise ValueError('drm_node_limit')
     groups={}
     for name in nodes:
         node=resolved(base/name,'devices'); device=resolved(node/'device','devices')
-        if device not in node.parents: raise ValueError('drm_device_ancestry')
-        # The owning device must be bound. A PCI transport alone does not hide
-        # a missing virtio GPU driver below it.
-        resolved(device/'driver','bus')
-        current=node; drivers=[]; features=None
-        for _ in range(16):
-            if not current.is_relative_to(root/'devices'): raise ValueError('drm_nonpci_device')
-            if (current/'driver').is_symlink():
-                drivers.append(resolved(current/'driver','bus').name)
-            if re.fullmatch(r'virtio[0-9]+',current.name):
-                if not (current/'driver').is_symlink() or features is not None: raise ValueError('drm_virtio_ancestry')
-                features=_bounded_attribute(current/'features',identities)
-            if (current/'vendor').exists() and (current/'device').is_file():
-                pci=current
-                values={k:_bounded_attribute(pci/k,identities) for k in ('vendor','device','subsystem_vendor','subsystem_device')}
-                values.update(pci_class=_bounded_attribute(pci/'class',identities),drivers=drivers,
-                              virtio_features=features,primary_nodes=0,render_nodes=0)
-                break
-            current=current.parent
-        else: raise ValueError('drm_ancestry_limit')
-        group=groups.setdefault(str(device),values)
+        if node.parent!=device/'drm': raise ValueError('drm_device_ancestry')
+        # Two explicit Linux layouts: DRM below PCI, or below its direct virtio
+        # child. Bus links, not vendor/device filenames, determine the PCI node.
+        owner_bus=bus(device)
+        pci=device if owner_bus=='pci' else device.parent
+        if bus(pci)!='pci': raise ValueError('drm_pci_parent')
+        pci_driver=driver(pci,'pci')
+        values={k:_bounded_attribute(pci/k,identities) for k in ('vendor','device','subsystem_vendor','subsystem_device')}
+        values.update(pci_class=_bounded_attribute(pci/'class',identities),drivers=[pci_driver],
+                      virtio_features=None,primary_nodes=0,render_nodes=0)
+        # PCI-parent DRM still uses the virtio child GPU. Never silently freeze
+        # just the transport. Exact child inventory and links are phase stamps.
+        children=names(pci)
+        virtio=[n for n in children if re.fullmatch(r'virtio[0-9]+',n)]
+        identities.append((str(pci),FileMeasurement.stamp(pci.stat()),tuple(children)))
+        if (virtio or owner_bus=='virtio' or pci_driver=='virtio-pci'
+                or (values['vendor'],values['device'])==('0x1af4','0x1050')):
+            if pci_driver!='virtio-pci' or len(virtio)!=1:
+                raise ValueError('drm_virtio_binding')
+            child=resolved(pci/virtio[0],'devices')
+            if child.parent!=pci or bus(child)!='virtio' or device not in (pci,child):
+                raise ValueError('drm_virtio_binding')
+            # This deliberately supports the observed virtio GPU relationship,
+            # not arbitrary virtio devices attached to a PCI transport.
+            if (_bounded_attribute(child/'vendor',identities)!='0x1af4'
+                    or values['vendor']!='0x1af4'
+                    or _bounded_attribute(child/'device',identities)!='0x0010'):
+                raise ValueError('drm_virtio_gpu_identity')
+            values['drivers']=[driver(child,'virtio'),pci_driver]
+            values['virtio_features']=_bounded_attribute(child/'features',identities)
+        if names(pci)!=children: raise ValueError('drm_virtio_inventory_changed')
+        group=groups.setdefault(str(pci),values)
         if {k:v for k,v in group.items() if k not in ('primary_nodes','render_nodes')} != {k:v for k,v in values.items() if k not in ('primary_nodes','render_nodes')}:
             raise ValueError('drm_device_changed')
         group['primary_nodes' if name.startswith('card') else 'render_nodes']+=1
-    if names()!=initial: raise ValueError('drm_inventory_changed')
+    if names(base)!=initial: raise ValueError('drm_inventory_changed')
     devices=sorted(groups.values(),key=canonical);valid_drm_devices(devices)
     return devices,tuple(identities)
 

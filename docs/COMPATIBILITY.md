@@ -715,16 +715,28 @@ A runtime profile may declare `constraints.drm_devices`: a canonically sorted,
 exact inventory (1–8 PCI display devices, including duplicate identical devices).
 Each record has `vendor`, `device`, `subsystem_vendor`, `subsystem_device`
 (lowercase `0x` plus four hex digits), `pci_class` (`0x03` plus four hex digits),
-ordered owning-device-to-PCI `drivers`, `virtio_features` (64 exposed bits, or
-null for non-virtio ancestry), and `primary_nodes`/`render_nodes` counts. Card
+ordered owning-device-to-PCI `drivers`, `virtio_features` (exactly 64 or 128
+exposed bits, or null only for non-virtio devices), and `primary_nodes`/
+`render_nodes` counts. Card
 numbers and PCI bus addresses are not compatibility identity. Extra devices,
 unbound/unsupported ancestry, unreadable attributes or different values refuse;
 there is no missing-device exemption. This is a discriminator for an explicitly
 qualified scope, not generic virtio or GPU support.
 
 The ordinary-user reader opens only public sysfs attributes, never DRM device
-nodes. It bounds discovery to 256 class entries, 16 nodes, 16 ancestors per node
-and 256 bytes per attribute. It refuses FIFO/device files and escaping links.
+nodes. It bounds discovery to 256 class entries, 16 nodes, 256 direct PCI children per
+node and 256 bytes per attribute. PCI identity requires its bus/subsystem and
+bus-device links, not the presence of vendor/device attributes. Only two explicit
+layouts are supported: DRM directly below PCI or below its direct virtio child.
+For virtio-pci, both require exactly one direct virtio-bus GPU child (vendor
+0x1af4, device 0x0010), its actual bound driver and complete feature value. Missing,
+ambiguous, foreign or unbound children refuse, including PCI-parent DRM. Child
+attributes, bus/driver links and inventory identities participate in both phase
+snapshots. The finite feature widths preserve the prior 64-bit representation
+and all 128 bits actually exported by the pinned 7.2.6 guest; other lengths refuse.
+This captures the exposed ABI value without asserting unobserved kernel/firmware
+semantics or inventing the uncaptured native child-driver binding. FIFO/device
+files and escaping links refuse.
 Runtime checks take fresh before/after device and kernel/module observations
 within each verification phase; device path/inode changes invalidate that phase.
 They do not persist a path/stat acceptance cache or attest past hotplug history,

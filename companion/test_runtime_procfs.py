@@ -107,6 +107,34 @@ class Procfs(unittest.TestCase):
             self.assertFalse(measure()['verified'])
         self.assertTrue(measure()['verified'])
 
+    def test_captured_pci_child_mutation_missing_binding_and_aba_refuse(self):
+        from test_runtime_devices import make_device,CAPTURED_BITS
+        from unittest.mock import patch
+        import runtime_identity
+        sysroot=self.root/'captured-sys';pci,child,expected=make_device(sysroot,render=128,topology='pci',features=CAPTURED_BITS)
+        self.profile['constraints']={'drm_devices':[expected]};self.bind(self.row)
+        def measure():
+            return running_identity(self.catalog,self.proc,session='procfs-test',sysroot=sysroot,
+                host=host_process(self.host.pid,self.host_sha,self.proc,'procfs-test'))
+        self.assertTrue(measure()['verified'])
+        (child/'driver').unlink()
+        self.assertFalse(measure()['verified'])
+        (child/'driver').symlink_to(sysroot/'bus/virtio/drivers/virtio_gpu')
+        original=runtime_identity.FileMeasurement.check
+        def mutate(measured):
+            original(measured)
+            (child/'features').write_text(CAPTURED_BITS[:100]+'1'+CAPTURED_BITS[101:]+'\n')
+        with patch.object(runtime_identity.FileMeasurement,'check',mutate):
+            self.assertFalse(measure()['verified'])
+        (child/'features').write_text(CAPTURED_BITS+'\n')
+        def replace(measured):
+            original(measured)
+            temporary=child/'replacement';temporary.write_text(CAPTURED_BITS+'\n')
+            os.replace(temporary,child/'features')
+        with patch.object(runtime_identity.FileMeasurement,'check',replace):
+            self.assertFalse(measure()['verified'])
+        self.assertTrue(measure()['verified'])
+
     def test_required_applets_and_truncated_comm_are_measured(self):
         self.assertEqual(self.classify()['state'], 'ready')
         self.assertNotIn('cohort', self.measure())

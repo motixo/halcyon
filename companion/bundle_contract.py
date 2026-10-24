@@ -219,8 +219,11 @@ def valid_drm_devices(devices):
                 or any(not isinstance(n,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',n) for n in item['drivers'])):
             raise ValueError('runtime_drm_driver')
         if item['virtio_features'] is not None and (not isinstance(item['virtio_features'],str)
-                or not re.fullmatch(r'[01]{64}',item['virtio_features'])):
+                or not re.fullmatch(r'[01]{64}(?:[01]{64})?',item['virtio_features'])):
             raise ValueError('runtime_drm_features')
+        if ('virtio-pci' in item['drivers'] or (item['vendor'],item['device'])==('0x1af4','0x1050')):
+            if item['virtio_features'] is None or len(item['drivers'])!=2 or item['drivers'][-1]!='virtio-pci':
+                raise ValueError('runtime_drm_virtio_binding')
         for key,minimum in (('primary_nodes',1),('render_nodes',0)):
             if type(item[key]) is not int or not minimum <= item[key] <= 8:
                 raise ValueError('runtime_drm_nodes')

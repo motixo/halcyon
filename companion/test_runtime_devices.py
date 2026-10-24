@@ -1,5 +1,7 @@
 """Synthetic sysfs IO only; no physical/native qualification is asserted."""
 import copy
+import json
+import shutil
 import os
 from pathlib import Path
 import tempfile
@@ -10,21 +12,31 @@ from runtime_identity import _constraints
 from test_generation_contract import catalog_fixture
 
 
-def make_device(root, slot='0000:00:02.0', card=1, render=None):
-    pci=root/'devices/pci0000:00'/slot;device=pci/'virtio0'
+CAPTURED=json.loads((Path(__file__).parent/'fixtures/drm-pci-parent.json').read_text())['node']
+CAPTURED_BITS=CAPTURED['virtio_children']['virtio0']['features'].strip()
+
+
+def make_device(root, slot='0000:00:02.0', card=1, render=None, topology='virtio', features='0'*64):
+    pci=root/'devices/pci0000:00'/slot;device=pci/f'virtio{card-1}'
     device.mkdir(parents=True,exist_ok=True)
     for key,value in dict(vendor='0x1af4',device='0x1050',subsystem_vendor='0x1af4',subsystem_device='0x1100',**{'class':'0x030000'}).items():
         (pci/key).write_text(value+'\n')
     for node,driver,bus in [(pci,'virtio-pci','pci'),(device,'virtio_gpu','virtio')]:
         target=root/'bus'/bus/'drivers'/driver;target.mkdir(parents=True,exist_ok=True)
         (node/'driver').symlink_to(target)
-    (device/'features').write_text('0'*64+'\n')
+        (node/'subsystem').symlink_to(root/'bus'/bus)
+        aliases=root/'bus'/bus/'devices';aliases.mkdir(exist_ok=True)
+        (aliases/node.name).symlink_to(node)
+    for key,value in CAPTURED['virtio_children']['virtio0'].items():
+        if key in ('vendor','device','status'):(device/key).write_text(value)
+    (device/'features').write_text(features+'\n')
+    owner=pci if topology=='pci' else device
     drm=root/'class/drm';drm.mkdir(parents=True,exist_ok=True)
     for name in [f'card{card}']+([f'renderD{render}'] if render is not None else []):
-        node=device/'drm'/name;node.mkdir(parents=True)
-        (node/'device').symlink_to(device)
+        node=owner/'drm'/name;node.mkdir(parents=True)
+        (node/'device').symlink_to(owner)
         (drm/name).symlink_to(node)
-    expected=dict(vendor='0x1af4',device='0x1050',subsystem_vendor='0x1af4',subsystem_device='0x1100',pci_class='0x030000',drivers=['virtio_gpu','virtio-pci'],virtio_features='0'*64,primary_nodes=1,render_nodes=int(render is not None))
+    expected=dict(vendor='0x1af4',device='0x1050',subsystem_vendor='0x1af4',subsystem_device='0x1100',pci_class='0x030000',drivers=['virtio_gpu','virtio-pci'],virtio_features=features,primary_nodes=1,render_nodes=int(render is not None))
     return pci,device,expected
 
 
@@ -33,6 +45,65 @@ class Devices(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.sys=self.root/'sys';self.pci,self.device,self.expected=make_device(self.sys)
         self.profile=catalog_fixture()['cohorts'][0]['runtime'];self.profile['constraints']={'drm_devices':[self.expected]}
+    def captured_pci(self):
+        return make_device(self.root/'captured',render=128,topology='pci',features=CAPTURED_BITS)
+
+    def test_captured_pci_parent_full_features_and_missing_driver_refuse(self):
+        from runtime_identity import drm_device_snapshot
+        pci,child,expected=self.captured_pci();root=self.root/'captured'
+        self.assertEqual(len(CAPTURED_BITS),128)
+        self.assertEqual(drm_device_snapshot(root)[0],[expected])
+        changed=CAPTURED_BITS[:100]+('1' if CAPTURED_BITS[100]=='0' else '0')+CAPTURED_BITS[101:]
+        (child/'features').write_text(changed+'\n')
+        self.assertFalse(_constraints({'drm_devices':[expected]},self.root/'proc',root))
+        (child/'features').write_text(CAPTURED_BITS+'\n');(child/'driver').unlink()
+        with self.assertRaises((ValueError,OSError)):drm_device_snapshot(root)
+
+    def test_virtio_vendor_device_are_not_pci_identity(self):
+        from runtime_identity import drm_device_snapshot
+        self.assertEqual((self.device/'device').read_text(),'0x0010\n')
+        self.assertEqual(drm_device_snapshot(self.sys)[0],[self.expected])
+
+    def test_ambiguous_child_wrong_bus_and_wrong_gpu_id_refuse(self):
+        from runtime_identity import drm_device_snapshot
+        pci,child,expected=self.captured_pci();root=self.root/'captured'
+        second=pci/'virtio1';shutil.copytree(child,second,symlinks=True)
+        with self.assertRaises(ValueError):drm_device_snapshot(root)
+        shutil.rmtree(second)
+        (child/'subsystem').unlink();(child/'subsystem').symlink_to(root/'bus/pci')
+        with self.assertRaises((ValueError,OSError)):drm_device_snapshot(root)
+        (child/'subsystem').unlink();(child/'subsystem').symlink_to(root/'bus/virtio')
+        (child/'device').write_text('0x0001\n')
+        with self.assertRaises(ValueError):drm_device_snapshot(root)
+
+    def test_missing_child_bus_binding_link_aba_and_child_inventory_bound(self):
+        from runtime_identity import drm_device_snapshot
+        pci,child,expected=self.captured_pci();root=self.root/'captured'
+        before=drm_device_snapshot(root)
+        link=child/'driver';link.unlink();link.symlink_to(root/'bus/virtio/drivers/virtio_gpu')
+        self.assertNotEqual(drm_device_snapshot(root),before)
+        alias=root/'bus/virtio/devices'/child.name;alias.unlink()
+        with self.assertRaises((ValueError,OSError)):drm_device_snapshot(root)
+        alias.symlink_to(child)
+        parked=self.root/'parked';child.rename(parked)
+        with self.assertRaises((ValueError,OSError)):drm_device_snapshot(root)
+        parked.rename(child)
+        for n in range(257):(pci/f'unrelated{n}').touch()
+        with self.assertRaisesRegex(ValueError,'inventory_limit'):drm_device_snapshot(root)
+
+    def test_feature_width_is_finite_exact_and_no_null_transport_policy(self):
+        from runtime_identity import drm_device_snapshot
+        pci,child,expected=self.captured_pci();root=self.root/'captured'
+        profile=copy.deepcopy(self.profile);profile['constraints']={'drm_devices':[expected]}
+        valid_runtime(profile)
+        for value in ['0'*63,'0'*65,'0'*127,'0'*129,'0'*257,'x'*128]:
+            (child/'features').write_text(value+'\n')
+            with self.assertRaises(ValueError):drm_device_snapshot(root)
+            profile['constraints']['drm_devices'][0]['virtio_features']=value
+            with self.assertRaises(ValueError):valid_runtime(profile)
+        profile['constraints']['drm_devices'][0]['virtio_features']=None
+        with self.assertRaises(ValueError):valid_runtime(profile)
+
     def test_exact_bounded_device_inventory_is_an_admission_constraint(self):
         valid_runtime(self.profile)
         self.assertTrue(_constraints(self.profile['constraints'],self.root/'proc',self.sys))
