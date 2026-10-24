@@ -25,7 +25,7 @@ refresh.LIBRARY=library
 real_verify=refresh.verify_bundle
 refresh.verify_bundle=lambda path,*args,**kw: real_verify(path,*args,**{**kw,'owner':os.getuid()})
 cohort=sys.argv[3]
-runtime_identity.installed_identity=lambda _: {'verified':True,'cohort':cohort}
+runtime_identity.installed_identity=lambda _: {'format':'halcyon-installed-runtime','version':1,'scope':'islands-runtime','verified':True,'targets':[cohort]}
 real_run=subprocess.run
 subprocess.run=lambda args,**kw: subprocess.CompletedProcess(args,0,'install ok installed\\n0.2.1','') if args[0]=='/usr/bin/dpkg-query' else real_run(args,**kw)
 entry=runpy.run_path(sys.argv[1]);entry['main'].__globals__['LIBRARY']=library
@@ -37,7 +37,7 @@ sys.exit(entry['main']())
                     home=root/case;home.mkdir();local=str(home/'.local/bin')
                     path={'missing':'/usr/bin','reversed':'/usr/bin:'+local,'normal':local+':/usr/bin'}[case]
                     env={**os.environ,'HOME':str(home),'XDG_DATA_HOME':str(home/'.local/share'),'XDG_CONFIG_HOME':str(home/'.config'),'XDG_STATE_HOME':str(home/'.local/state'),'XDG_CURRENT_DESKTOP':'COSMIC','XDG_SESSION_ID':'isolated-test','PATH':path}
-                    run=subprocess.run([sys.executable,str(harness),str(cli),str(library),catalog['cohorts'][0]['id']],env=env,text=True,capture_output=True,timeout=20)
+                    run=subprocess.run([sys.executable,str(harness),str(cli),str(library),catalog['cohorts'][0]['runtime_target']['id']],env=env,text=True,capture_output=True,timeout=20)
                     if case=='normal':
                         self.assertEqual(run.returncode,0,run.stderr)
                         self.assertEqual(json.loads(run.stdout)['state'],'staged')

@@ -17,7 +17,8 @@ CATALOG = 'halcyon-islands-catalog'
 CATALOG_BYTES = 64 * 1024 * 1024
 RECORD_BYTES = 16 * 1024 * 1024
 HELPERS = ('panel_launcher.py', 'bundle_contract.py', 'runtime_identity.py',
-           'install_status.py', 'install.py', 'refresh.py', 'selector.py', 'panel_configuration.py')
+           'install_status.py', 'install.py', 'refresh.py', 'selector.py', 'panel_configuration.py',
+           'runtime_target.py', 'verification.py')
 FILES = (*HELPERS, 'cosmic-panel-islands', 'catalog.json')
 HEX = re.compile(r'[0-9a-f]{64}')
 CONFIGURATION_RESOLVER = 'cosmic-panel-ca20ce3-islands-v2'
@@ -25,10 +26,71 @@ CONFIGURATION_RESOLVER = 'cosmic-panel-ca20ce3-islands-v2'
 # Final native build provenance/qualification must establish that relationship.
 CONFIGURATION_SOURCE = {
     "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
-    "patch_sha256": "1db4db7cdffa9a7c0eb72489519958d4287360d9f74a61c94dd20f0037ab7b61",
+    "patch_sha256": "56a7ae6237cf37f99ed5884eb0c976d2d711581b928e28a5d14822ef5e162845",
     "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
-    "islands_sha256": "4463dcb07dcb1c304bd35c0949e63bb428367d93cd36e6351a5e500865068eea"
+    "islands_sha256": "28ae30ded1bc2060b1db72f28978408661691b2916fb65d6358462cafec25985"
 }
+
+
+class FrozenList(list):
+    def __init__(self, values): super().__init__(freeze(v) for v in values)
+    def _deny(self, *args, **kwargs): raise TypeError('immutable_catalog')
+    __setitem__ = __delitem__ = append = clear = extend = insert = pop = remove = reverse = sort = __iadd__ = __imul__ = _deny
+    def __deepcopy__(self, memo): return self
+
+
+class FrozenDict(dict):
+    def __init__(self, value): super().__init__((k, freeze(v)) for k,v in value.items())
+    def _deny(self, *args, **kwargs): raise TypeError('immutable_catalog')
+    __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = __ior__ = _deny
+    def __deepcopy__(self, memo): return self
+
+
+def freeze(value):
+    if isinstance(value, dict): return FrozenDict(value)
+    if isinstance(value, list): return FrozenList(value)
+    return value
+
+
+class Catalog(FrozenDict):
+    """Only created after complete bounded capture and semantic validation."""
+    def __init__(self, value):
+        # Direct construction must not become a validation bypass.
+        valid_catalog(value)
+        super().__init__(value)
+
+
+class VerificationContext:
+    """One operation's immutable captures, guarded by file-change watches.
+
+    This is not a persistent stat/path acceptance cache. Every new operation
+    captures bytes anew; staging boundaries use a fresh context.
+    """
+    def __init__(self):
+        self.bundles = {}; self.catalogs = {}; self.watches = []
+
+    def bundle(self, path, manifest_name='manifest.json', owner=None):
+        from panel_configuration import Watch
+        path = Path(path)
+        key = (path, manifest_name, owner)
+        self.check()
+        if key in self.bundles: return self.bundles[key]
+        watch = Watch(); self.watches.append(watch)
+        for name in (manifest_name, *FILES): watch.add(path/name)
+        result = _verify_bundle(path, manifest_name, owner, self.catalogs)
+        self.check()
+        self.bundles[key] = result
+        return result
+
+    def check(self):
+        if any(w.changed() for w in self.watches): raise ValueError('bundle_changed_during_operation')
+
+    def close(self):
+        for watch in self.watches: watch.close()
+        self.bundles.clear(); self.catalogs.clear(); self.watches.clear()
+
+    def __enter__(self): return self
+    def __exit__(self, *args): self.close()
 
 
 def canonical(value):
@@ -44,10 +106,23 @@ def regular(path):
 
 
 def digest(path):
-    if not regular(path) or path.stat().st_size > 512 * 1024 * 1024:
-        raise ValueError('not_bounded_regular_file')
-    with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+    path = Path(path)
+    if not regular(path): raise ValueError('not_bounded_regular_file')
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode) or before.st_size > 512*1024*1024:
+            raise ValueError('not_bounded_regular_file')
+        h = hashlib.sha256(); remaining = before.st_size
+        while remaining:
+            data = stream.read(min(1024*1024,remaining))
+            if not data: raise ValueError('file_changed_during_digest')
+            h.update(data); remaining -= len(data)
+        if stream.read(1): raise ValueError('file_changed_during_digest')
+        def stamp(st): return (st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns,st.st_ctime_ns)
+        if stamp(before)!=stamp(os.fstat(stream.fileno())) or stamp(before)!=stamp(path.stat(follow_symlinks=False)):
+            raise ValueError('file_changed_during_digest')
+        return h.hexdigest()
 
 
 def _record_bytes(path, limit, expected_sha256=None):
@@ -99,9 +174,15 @@ def read_catalog_bytes(path, expected_sha256=None):
     return _record_bytes(path, CATALOG_BYTES, expected_sha256)
 
 
-def read_catalog(path, expected_sha256=None):
+def read_catalog(path, expected_sha256=None, cache=None):
     """Validate the same bounded bytes whose digest the manifest binds."""
-    return valid_catalog(_json_object(read_catalog_bytes(path, expected_sha256)))
+    data = read_catalog_bytes(path, expected_sha256)
+    key = hashlib.sha256(data).hexdigest()
+    if cache is not None and key in cache:
+        return cache[key]
+    result = Catalog(_json_object(data))
+    if cache is not None: cache[key] = result
+    return result
 
 
 def cohort_id(cohort):
@@ -121,7 +202,7 @@ def runtime_id(profile):
 
 
 def valid_runtime(profile):
-    if profile.get('version') != 3 or not profile.get('processes'):
+    if profile.get('version') not in (3, 4) or not profile.get('processes'):
         raise ValueError('runtime_schema')
     if not {'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= profile['processes'].keys():
         raise ValueError('runtime_required_processes')
@@ -130,7 +211,7 @@ def valid_runtime(profile):
             raise ValueError('runtime_host_is_not_a_dependency')
         if item.get('lifecycle') not in ('session', 'panel-child'):
             raise ValueError('runtime_lifecycle')
-        if name in ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon') and item['lifecycle'] != 'session':
+        if name in ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon', 'cosmic-notifications') and item['lifecycle'] != 'session':
             raise ValueError('runtime_core_lifecycle')
         if Path(item['executable']).name != name or not Path(item['executable']).is_absolute() or '..' in Path(item['executable']).parts:
             raise ValueError('runtime_executable')
@@ -172,7 +253,8 @@ def valid_runtime(profile):
 
 
 def valid_catalog(catalog):
-    if not isinstance(catalog, dict) or catalog.get('format') != CATALOG or catalog.get('version') != 1 or not isinstance(catalog.get('cohorts'), list):
+    if isinstance(catalog, Catalog): return catalog
+    if not isinstance(catalog, dict) or catalog.get('format') != CATALOG or catalog.get('version') not in (1, 2) or not isinstance(catalog.get('cohorts'), list):
         raise ValueError('catalog_schema')
     seen = set()
     for row in catalog['cohorts']:
@@ -187,7 +269,7 @@ def valid_catalog(catalog):
             raise ValueError('catalog_payload')
         if row['qualification'] == 'native-session':
             valid_runtime(row['runtime'])
-            if {name:item['executable'] for name,item in row['runtime']['processes'].items()} != row['processes']:
+            if catalog['version'] == 1 and {name:item['executable'] for name,item in row['runtime']['processes'].items()} != row['processes']:
                 raise ValueError('runtime_process_inventory_mismatch')
             bindings = row['runtime_compatibility']
             if not bindings or len({b['id'] for b in bindings}) != len(bindings):
@@ -202,6 +284,9 @@ def valid_catalog(catalog):
                 raise ValueError('catalog_evidence')
             if evidence['scope'] != 'complete-session':
                 raise ValueError('catalog_scope')
+            if catalog['version'] == 2:
+                from runtime_target import valid_target
+                valid_target(row.get('runtime_target'), row)
         if not {'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= row['processes'].keys():
             raise ValueError('catalog_processes')
         if not {'cosmic-panel', 'cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon'} <= row['packages'].keys():
@@ -231,7 +316,13 @@ def valid_catalog(catalog):
     return catalog
 
 
-def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
+def verify_bundle(bundle, manifest_name='manifest.json', owner=None, context=None):
+    if context is not None:
+        return context.bundle(bundle, manifest_name, owner)
+    return _verify_bundle(bundle, manifest_name, owner)
+
+
+def _verify_bundle(bundle, manifest_name='manifest.json', owner=None, catalogs=None):
     manifest = read_json(bundle / manifest_name)
     if owner is not None and (bundle / manifest_name).stat().st_uid != owner:
         raise ValueError('manifest_owner')
@@ -250,7 +341,7 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
             raise ValueError('bundle_entry')
         path = bundle / name
         if name == 'catalog.json':
-            catalog = read_catalog(path, entry['sha256'])
+            catalog = read_catalog(path, entry['sha256'], catalogs)
         elif digest(path) != entry['sha256']:
             raise ValueError('bundle_component_mismatch')
         if stat.S_IMODE(path.stat().st_mode) != entry['mode']:
@@ -264,7 +355,7 @@ def verify_bundle(bundle, manifest_name='manifest.json', owner=None):
         raise ValueError('bundle_payload_mismatch')
     if any(r['qualification']=='native-session' for r in catalog['cohorts']) and manifest.get('upstream') != CONFIGURATION_SOURCE['upstream']:
         raise ValueError('configuration_native_source_mismatch')
-    return manifest, catalog
+    return FrozenDict(manifest), catalog
 
 
 def measured_configuration(running, profile):
@@ -286,14 +377,21 @@ def classify_compatibility(installed, running, manifest, catalog, *, phase='runn
         valid_catalog(catalog)
         if manifest.get('format') != FORMAT or manifest.get('version') != 2 or manifest.get('verified') is not True:
             return result('invalid_bundle', 'bundle_not_verified')
+        if catalog['version'] != 2:
+            return result('unsupported', 'runtime_policy_upgrade_required')
+        from runtime_target import installed_matches
         admitted = {r['id']: r for r in catalog['cohorts'] if r['qualification'] == 'native-session'
                     and r['payload_sha256'] == manifest['payload_sha256']}
         if admitted and manifest.get('upstream') != CONFIGURATION_SOURCE['upstream']:
             return result('invalid_bundle', 'configuration_native_source_mismatch')
-        current = installed.get('cohort') if installed.get('verified') is True else None
-        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 3 and running.get('phase') == phase and phase in ('prelaunch', 'running') else None
+        matches = [r for r in admitted.values() if installed_matches(installed, r)]
+        current = matches[0]['id'] if matches else None
+        active = running.get('profiles') if running.get('verified') is True and running.get('format') == 'halcyon-runtime-measurement' and running.get('version') == 4 and running.get('phase') == phase and phase in ('prelaunch', 'running') else None
         if current not in admitted:
-            return result('unsupported', 'installed_cohort_unqualified')
+            return result('unsupported', 'installed_runtime_unqualified')
+        if phase == 'running' and (not isinstance(running.get('host'), dict) or not manifest.get('binary_sha256')
+                or running['host'].get('sha256') != manifest['binary_sha256']):
+            active = None
         if active is None:
             return result('logout_required', 'running_identity_unknown', current)
         profiles = {runtime_id(r['runtime']): r['runtime'] for r in catalog['cohorts'] if r.get('runtime')}

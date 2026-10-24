@@ -69,7 +69,7 @@ def verify_owned(home, active):
         raise ValueError('unowned_selection')
 
 
-def selected_generation(home):
+def selected_generation(home, context=None):
     pointer = read_json(install.safe_path(home, POINTER))
     generation = pointer['generation']
     if len(generation) != 64 or any(c not in '0123456789abcdef' for c in generation):
@@ -77,7 +77,7 @@ def selected_generation(home):
     path = install.safe_path(home, DATA + 'companion/generations/' + generation)
     if digest(path / 'manifest.json') != generation:
         raise ValueError('generation_identity')
-    manifest, catalog = verify_bundle(path, owner=os.getuid())
+    manifest, catalog = verify_bundle(path, owner=os.getuid(), context=context)
     return path, manifest, catalog, pointer
 
 
@@ -110,6 +110,13 @@ def require_selector_path(home):
 
 
 def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda _: None, enable=False):
+    from bundle_contract import VerificationContext
+    from runtime_identity import FileMeasurement
+    with VerificationContext() as context, FileMeasurement() as guard:
+        return _stage_locked(home, library, session=session, fixture=fixture, boundary=boundary, enable=enable, context=context, guard=guard)
+
+
+def _stage_locked(home, library, *, session, fixture, boundary, enable, context, guard):
     if not fixture and Path(os.environ.get('XDG_DATA_HOME', home / '.local/share')) != home / '.local/share':
         return response('blocked', 'unsupported_data_location')
     if enable and not fixture:
@@ -135,16 +142,9 @@ def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda 
         fields = result.stdout.splitlines()
         if result.returncode or len(fields) != 2 or fields[0] != 'install ok installed':
             return response('blocked', 'package_absent')
-    manifest, catalog = verify_bundle(library, 'companion-manifest.json', owner=os.getuid() if fixture else 0)
+    manifest, catalog = verify_bundle(library, 'companion-manifest.json', owner=os.getuid() if fixture else 0, context=context)
     if not fixture and manifest['package_version'] != fields[1]:
         return response('blocked', 'package_version_mismatch')
-    if not catalog['cohorts']:
-        return response('blocked', 'no_qualified_cohort')
-    from runtime_identity import installed_identity
-    installed = installed_identity(catalog) if not fixture else read_json(home / 'installed-identity.json')
-    if not any(r['id'] == installed.get('cohort') and installed.get('verified') is True
-               and r['qualification'] == 'native-session' and r['payload_sha256'] == manifest['payload_sha256'] for r in catalog['cohorts']):
-        return response('blocked', 'installed_cohort_unqualified')
     current = session if session is not None else session_identity()
     if not current:
         return response('blocked', 'session_unknown')
@@ -154,13 +154,26 @@ def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda 
     generation = hashlib.sha256(manifest_bytes).hexdigest()
     old_version = '0.2.0' if active else '0'
     try:
-        _, old, _, pointer = selected_generation(home)
+        _, old, _, pointer = selected_generation(home, context=context)
         old_version = old['package_version']
         if pointer['generation'] == generation:
             return response('unchanged', 'already_staged', generation)
     except FileNotFoundError:
         if install.safe_path(home, POINTER).exists():
             return response('external_change', 'generation_missing')
+    if not catalog['cohorts']:
+        return response('blocked', 'no_qualified_cohort')
+    from runtime_identity import installed_identity
+    from runtime_target import installed_matches
+    from verification import bounded
+    if not fixture:
+        guard.watch.add(Path('/var/lib/dpkg/status'))
+        for row in catalog['cohorts']:
+            for path in row.get('runtime_target', {}).get('installed_files', {}): guard.resolve(Path(path))
+    installed = bounded(lambda: installed_identity(catalog), 5) if not fixture else read_json(home / 'installed-identity.json')
+    if not any(installed_matches(installed, r)
+               and r['qualification'] == 'native-session' and r['payload_sha256'] == manifest['payload_sha256'] for r in catalog['cohorts']):
+        return response('blocked', 'installed_runtime_unqualified')
     # A changed payload at the same version is also an unapproved replacement.
     if subprocess.run(['/usr/bin/dpkg', '--compare-versions', manifest['package_version'], 'gt', old_version], timeout=2).returncode != 0:
         return response('blocked', 'non_monotonic_version')
@@ -199,6 +212,7 @@ def stage_locked(home, library, *, session=None, fixture=False, boundary=lambda 
     # rollback restores the previous selector/pointer, preserving the 0.2.0
     # chain and the old flat payload. Immutable orphan generations are harmless.
     boundary('before_selection')
+    guard.check()
     install.install_contents(home, contents, PACKAGE)
     boundary('selected')
     return response('staged', 'next_login_after_staging', generation)

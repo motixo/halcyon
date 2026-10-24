@@ -84,13 +84,17 @@ def compatible(bundle, versions=None, manifest_name='manifest.json'):
     try:
         manifest=json.loads((bundle/manifest_name).read_text())
         if isinstance(manifest, dict) and manifest.get('version') == 2:
-            from bundle_contract import verify_bundle, classify_compatibility
-            from runtime_identity import installed_identity, running_identity, host_identity
-            manifest, catalog = verify_bundle(bundle, manifest_name)
-            manifest = {**manifest, 'verified': True}
-            installed = installed_identity(catalog)
-            running = running_identity(catalog, host=host_identity(manifest['binary_sha256']))
-            return classify_compatibility(installed, running, manifest, catalog)['state'] == 'ready'
+            from verification import bounded
+            def inspect():
+                from bundle_contract import verify_bundle, classify_compatibility, VerificationContext
+                from runtime_identity import installed_identity, running_identity, host_identity
+                with VerificationContext() as context:
+                    captured, catalog = verify_bundle(bundle, manifest_name, context=context)
+                    installed = installed_identity(catalog)
+                    running = running_identity(catalog, host=host_identity(captured['binary_sha256']))
+                    context.check()
+                    return classify_compatibility(installed, running, {**captured,'verified':True}, catalog)['state'] == 'ready'
+            return bounded(inspect,5)
         if not isinstance(manifest, dict):return False
         if manifest['upstream']!='ca20ce3185b3b4404f429d59d429c40b58a2ddef' or manifest['protocol']!=1:return False
         if digest(bundle/'cosmic-panel-islands')!=manifest['binary_sha256']:return False
@@ -103,13 +107,15 @@ def compatible(bundle, versions=None, manifest_name='manifest.json'):
             or manifest.get('runtime_probe') == 1)
     except (OSError,ValueError,KeyError,TypeError,AttributeError,subprocess.SubprocessError):return False
 
-def prepare_launch(bundle):
+def _prepare_launch(bundle, context=None):
     """Return a postlaunch guard only for verified prelaunch eligibility.
 
     Freeze the exact bundle, installed lock and permitted profiles for this one
     launch. Eligibility is not a running-ready measurement. No host is started
     here; the supervisor supplies its actual child to the returned guard.
     """
+    installed_files = configuration = None
+    handed_off = False
     try:
         # The manual installer copies this launcher without generation helpers.
         # Decline legacy/invalid bundles before importing optional modules. Never
@@ -117,21 +123,27 @@ def prepare_launch(bundle):
         header = json.loads((bundle/'manifest.json').read_bytes())
         if header.get('format') != 'halcyon-islands-bundle' or header.get('version') != 2:
             return None
-        from bundle_contract import verify_bundle, classify_compatibility
+        from bundle_contract import verify_bundle, classify_compatibility, VerificationContext
         from runtime_identity import installed_identity, running_identity, host_process
         from panel_configuration import Snapshot, policy
-        manifest, catalog = verify_bundle(bundle)
+        context = context or VerificationContext()
+        manifest, catalog = verify_bundle(bundle, context=context)
+        if catalog['version'] != 2:
+            context.close(); return None
         manifest = {**manifest, 'verified': True}
-        installed = installed_identity(catalog)
-        target = next((row for row in catalog['cohorts'] if row['id'] == installed.get('cohort')), None)
-        if target is None: return None
+        from runtime_target import installed_matches
+        from runtime_identity import FileMeasurement
+        installed_files = FileMeasurement()
+        installed = installed_identity(catalog, measurement=installed_files)
+        target = next((row for row in catalog['cohorts'] if installed_matches(installed,row)), None)
+        if target is None:
+            installed_files.close(); context.close(); return None
         configuration = Snapshot(policy(target['runtime'])) if target['runtime'].get('configuration') else None
         prelaunch = running_identity(catalog, phase='prelaunch', configuration=configuration)
         state = classify_compatibility(installed, prelaunch, manifest, catalog, phase='prelaunch')
         if state['state'] != 'eligible':
             if configuration: configuration.close()
-            return None
-        target = next(row for row in catalog['cohorts'] if row['id'] == installed['cohort'])
+            installed_files.close(); context.close(); return None
         eligible = set(prelaunch['profiles']).intersection(b['id'] for b in target['runtime_compatibility'])
         owner = None
         startup_complete = False
@@ -146,8 +158,10 @@ def prepare_launch(bundle):
                     owner = current
                 if current != owner:
                     return False
+                context.check(); installed_files.check()
                 running = running_identity(catalog, phase='running', host=owner, configuration=configuration)
                 ready = classify_compatibility(installed, running, manifest, catalog)['state'] == 'ready'
+                context.check(); installed_files.check()
                 return ready and bool(eligible.intersection(running['profiles'])) and child.poll() is None
             except (OSError, ValueError, KeyError, TypeError, IndexError):
                 return False
@@ -156,15 +170,43 @@ def prepare_launch(bundle):
             startup_complete = True
             if configuration: configuration.close()
         admitted.accepted = accepted
-        admitted.invalidated = configuration.watch.changed if configuration else lambda: False
+        def invalidated():
+            try: context.check(); installed_files.check()
+            except (OSError,ValueError): return True
+            return configuration.watch.changed() if configuration else False
+        admitted.invalidated = invalidated
+        admitted.configuration = configuration
         admitted.changed = lambda: not startup_complete and configuration is not None and configuration.changed()
-        admitted.close = configuration.close if configuration else lambda: None
+        def close():
+            if configuration: configuration.close()
+            installed_files.close(); context.close()
+        admitted.close = close
+        handed_off = True
         return admitted
     except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
         return None
+    finally:
+        if not handed_off:
+            if configuration: configuration.close()
+            if installed_files: installed_files.close()
+            if context: context.close()
 
 
-def runtime_compatible(bundle):
+def prepare_launch(bundle, deadline=None):
+    """Five seconds covers capture, relevant identity and the ABI probe."""
+    try: from verification import Admission
+    except ImportError: return None
+    deadline = time.monotonic()+5 if deadline is None else deadline
+    def factory():
+        guard = _prepare_launch(bundle)
+        if guard is not None and not runtime_compatible(bundle, timeout=max(.001,deadline-time.monotonic())):
+            guard.close(); return None
+        return guard
+    try: return Admission(factory, deadline)
+    except (OSError, ValueError, TimeoutError): return None
+
+
+def runtime_compatible(bundle, timeout=5):
     """Execute the checksummed binary with no inherited session descriptors.
 
     This loads its native ABI and checks advertised globals on a fresh named
@@ -183,7 +225,7 @@ def runtime_compatible(bundle):
                if k not in ('WAYLAND_SOCKET', 'PANEL_NOTIFICATIONS_FD',
                             'DAEMON_NOTIFICATIONS_FD', 'COSMIC_SESSION_SOCK')}
         result = subprocess.run([str(bundle / 'cosmic-panel-islands'), '--islands-probe'],
-                                env=env, capture_output=True, text=True, timeout=5,
+                                env=env, capture_output=True, text=True, timeout=timeout,
                                 close_fds=True)
         report = json.loads(result.stdout)
         return (result.returncode == 0 and isinstance(report, dict)
@@ -289,14 +331,8 @@ def wait_ready(child, done, wedged, admission=None):
     """Require child-owned IPC AND its declared runtime before readiness."""
     deadline = time.monotonic() + READY_SECONDS
     runtime = os.environ.get('XDG_RUNTIME_DIR')
+    from verification import Admission, Worker
     measurement = None
-    def measure(slot):
-        try:
-            slot['ready'] = admission(child) is True
-        except Exception:
-            slot['ready'] = False
-        finally:
-            slot['done'].set()
     while runtime and time.monotonic() < deadline and not done.is_set():
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
@@ -319,10 +355,14 @@ def wait_ready(child, done, wedged, admission=None):
                         # At most one read-only measurement is in flight. A late
                         # result has no side effects and is discarded on teardown.
                         if measurement is None:
-                            measurement = dict(done=threading.Event(), ready=False)
-                            threading.Thread(target=measure, args=(measurement,), daemon=True).start()
-                        if measurement['done'].is_set():
-                            admitted = measurement['ready']
+                            if isinstance(admission, Admission):
+                                admission.begin(child); measurement = admission
+                            else:
+                                measurement = Worker(lambda: admission(child) is True)
+                        value, complete = measurement.poll()
+                        if complete:
+                            admitted = value is True
+                            if isinstance(measurement, Worker): measurement.close()
                             measurement = None
                     if admitted and not done.is_set() and child.poll() is None and time.monotonic() < deadline:
                         # Recheck the configuration watch at the acceptance
@@ -331,10 +371,13 @@ def wait_ready(child, done, wedged, admission=None):
                             break
                         if admission is not None: getattr(admission, 'accepted', lambda: None)()
                         return True
-        except (OSError, ValueError, AttributeError, TypeError):
-            pass
+        except (OSError, ValueError, AttributeError, TypeError, TimeoutError):
+            if isinstance(measurement, Worker): measurement.close()
+            measurement = None
         if done.wait(.1):
+            if isinstance(measurement, Worker): measurement.close()
             return False
+    if isinstance(measurement, Worker): measurement.close()
     if not done.is_set() and child.poll() is None:
         wedged.set()
         sys.stderr.write('Islands startup IPC/runtime readiness failed; selecting stock\n')
@@ -467,7 +510,7 @@ def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False, 
         return stock_host(fallback, pass_fds, env=env, keep_running=True)
     return stock_host(fallback, pass_fds)
 
-def main(bundle=None, pointer=None):
+def main(bundle=None, pointer=None, deadline=None):
     data=Path(os.environ.get('XDG_DATA_HOME',Path.home()/'.local/share'))
     state=Path(os.environ.get('XDG_STATE_HOME',Path.home()/'.local/state'))/'desktop-cards-panel'
     bundle=bundle or data/'cosmic-desktop-cards/companion'
@@ -500,11 +543,8 @@ def main(bundle=None, pointer=None):
     except OSError: pass
     if not enabled or (state/'failed').exists() or (transient is not None and transient == session_identity()):
         return stock_host(STOCK, tuple(inherited))
-    admission = prepare_launch(bundle)
+    admission = prepare_launch(bundle) if deadline is None else prepare_launch(bundle, deadline=deadline)
     if admission is None:
-        return stock_host(STOCK, tuple(inherited))
-    if not runtime_compatible(bundle):
-        sys.stderr.write('Islands ABI/compositor preflight failed; selecting stock\n')
         return stock_host(STOCK, tuple(inherited))
     def failed():
         state.mkdir(parents=True,exist_ok=True,mode=0o700)

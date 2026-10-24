@@ -225,19 +225,43 @@ multiple cohorts for that exact payload. If an older ABI requires a different
 payload, retain its immutable companion package and evidence; do not attach its
 cohort to this package's binary or install COSMIC version holds.
 
-Installed identity checks distribution/suite/architecture, exact package versions
-and verified package runtime-file inventories, including resources. Metapackages
-may have an empty file inventory; their version and authenticated deb identity
-remain in the installed lock. This is separate from running identity.
+Catalog policy **v2** separates the unchanged complete qualification cohort from
+`runtime_target` v1 (`scope: islands-runtime`). Runtime assurance is deliberately
+narrower than whole-host attestation. The original candidate ID, complete package,
+source and file maps remain mandatory and unchanged. Whole-OS archive equality
+is **not** a login/Settings prerequisite. Chrony keys and the original base-files
+os-release archive hash are not runtime inputs. Public installed os-release is
+only a bounded distro selector, not a substituted archive digest.
 
-Each native target declares `runtime` v3 and evidence-bound
+A target binds qualification cohort, evidence ID, finalized payload, runtime
+profile and explicit equivalence-list identities. Its selected packages retain
+exact versions, architectures and authenticated binary identities. Each public
+`installed_files` entry declares a size, SHA256, kind, source identity, original
+package/archive path, resolution policy and dependency rationale. Every digest
+must exist in the unchanged full archive map. No transformed-resource or
+unreadable-file exemption exists. Required resolved paths stay under public
+/usr, /lib or /lib64 roots; root-owned runtime files may not be group/world
+writable. Other packages may change without becoming a fabricated new full cohort.
+
+`installed_identity` returns `halcyon-installed-runtime` v1 with the explicit
+scope, verified target IDs and measured work, never a verified installed full
+cohort. Package version/architecture is only one necessary condition, not proof
+of live code. Unknown loader environment overrides refuse. `work` is the exact
+sum/count of declared files. IO adapters enforce that budget across declared
+alternatives; a live phase additionally allows one manifest-bound host ELF under
+the unchanged 512 MiB per-file cap. New phases hash content anew. They retain open
+descriptors and metadata plus entry/symlink watches, deduplicate only already
+hashed pinned objects inside that phase, and reject replacement, in-place writes,
+ABA, overflow or changed executable mappings. Path/stat values never establish
+content acceptance by themselves.
+
+Each native target declares `runtime` v4 and evidence-bound
 `runtime_compatibility` bindings. The runtime profile contains:
 
-- `processes`: the complete declared required process inventory (same names and
-  paths as the cohort's `processes`). Each entry has `executable`, ELF `sha256`,
+- `processes`: the complete declared required process inventory (explicitly separate from the frozen discovery process seed). Each entry has `executable`, ELF `sha256`,
   `count` (1–64 for session dependencies, `"configured"` for panel children), explicit `lifecycle` and an allowlist `mapped` of executable mapping paths and
-  digests. Include relevant applets/services, not just the three mandatory core
-  processes. `session` dependencies must already exist before launch; the three
+  digests. Include relevant applets/services, not just the four mandatory session peers: cosmic-comp, cosmic-session,
+  cosmic-settings-daemon and cosmic-notifications. `session` dependencies must already exist before launch; the four
   core processes always use this lifecycle. `panel-child` processes are created
   by this panel and must be absent before launch, then present in the frozen effective configuration
   counts before readiness. A qualified but deliberately unconfigured child has
@@ -263,7 +287,7 @@ Unchanged-code package rebuilds may deliberately share a qualified
 profile. Resource-only changes need explicit scoped qualification; package
 versions or a unique catalog row never establish running identity.
 
-`running_identity` returns `format: halcyon-runtime-measurement`, `version: 3`,
+`running_identity` returns `format: halcyon-runtime-measurement`, `version: 4`,
 `phase: prelaunch | running`, `verified` and **all** matching `profiles`, never a full installed `cohort`.
 Each match also carries `configurations[profile_id] = {sha256, children}`: a
 fingerprint of observed configuration/desktop inputs, outputs and PATH, and the
@@ -402,7 +426,7 @@ check process starttime, executable and mappings; no process/lock waits occur.
 Unrelated exited/zombie processes are ignored; unreadable, disappearing,
 duplicated or missing required processes remain unknown (Linux truncated comm
 is handled). Multiple matching profiles are safe and do not create ambiguity
-about an unmeasured installed lock. Unknown or incompatible running code requires
+about an unmeasured complete qualification lock. Unknown or incompatible running code requires
 another login. A responsive IPC socket cannot override admission.
 
 Native drivers can collect the supported read-only measurement with
@@ -501,7 +525,7 @@ image ID and full image descriptor hash, graphics scope, evidence ID, runtime
 contract hash, final main package hash and extracted main identity hash. Summary fields are rederived from the
 request; promotion also directly verifies final extracted bundle/catalog and
 complete final package bytes. Raw observations must include the measured configuration fingerprint/child counts and `runtime_measurement`
-matching the target profile in measurement v3 `phase: running`, actual guest
+matching the target profile in measurement v4 `phase: running`, actual guest
 package inventory and all scenarios. A prelaunch result or a missing configuration measurement is explicitly rejected.
 For an integrated run, request `main` is extracted from the actual final
 `cosmic-ext-halcyon` deb: package digest/version, every regular `/usr`/`/lib` file
@@ -525,7 +549,7 @@ respects administrator changes across package upgrades.
 
 `stage_installed_update(home, installed_bundle)` returns `unchanged`, `staged`,
 `disabled`, `external_change` or `blocked`, plus a next-login flag. It verifies the
-installed package version/root-owned bundle, intended installed cohort, existing
+installed package version/root-owned bundle, intended installed runtime target, existing
 owned enable record and all effective current-file hashes/modes. It shares the
 CLI's nonblocking per-user `.islands.lock`, copies a whole generation, fsyncs it,
 then journals and atomically replaces selection/selector through `install.py`.
@@ -538,8 +562,8 @@ External edits block automatic repair. Orphan staged generations are harmless;
 there is no automatic cleanup of saved recovery evidence.
 
 The stable selector verifies a single content-addressed generation before
-importing it. It can stage a newer local package but uses its already resolved
-generation for this launch. It never swaps a live host. The guarantee is **the
+importing it. It launches only its already resolved generation. Staging is handled by the
+independent package-owned autostart bootstrap, not on the login panel path. It never swaps a live host. The guarantee is **the
 next login after successful staging**, possibly the second login after the
 original package upgrade. Crash markers are never cleared. New/disabled/manual
 users are never automatically enabled or converted. Unsupported XDG layouts are
@@ -583,3 +607,85 @@ immutable public `cosmic-ext-halcyon-islands_0.2.0_amd64.deb`, SHA256
 installer, copies its actual launcher and ELF, migrates, then reverses multiple
 generations. With no supplied package those tests explicitly skip; fixture tests
 never stand in for them or real-session migration/notification acceptance.
+
+
+## Runtime target authoring and bounded verification (0.2.5, publication ON HOLD)
+
+This boundary trusts the root-managed OS, Python, kernel/procfs and package
+manager. It is a reliability gate, not a sandbox against root or the logged-in
+user. It does not attest previously read resources, kernel/firmware bytes or
+anonymous/JIT code. Graphics scope must be justified by exact code/provider
+mappings, supported protocol behavior and discriminating measured constraints;
+if those cannot distinguish the reviewed backend, do not author an admission row.
+A GPU/VM name or one successful trace is insufficient.
+
+Author from explicit native roots: the companion ELF, all four session peers,
+all supported applet Exec bindings, their ELF interpreters/DT_NEEDED closure,
+conditionally loaded EGL/GLES/driver/loader providers, and public resources
+identified by the reviewed pinned source. Keep source-review records for dlopen,
+loader resolution/configuration, protocol globals and resource consumers. Include
+all supported configuration branches, not just paths seen in one session. No
+package-name regex or automatic "whatever is installed" authoring exists.
+
+The small offline checker is runnable without installation or a guest:
+
+```sh
+python3 -B scripts/compatibility/author_runtime_target.py \
+  --catalog final-bundle/catalog.json --cohort EXACT_FULL_COHORT_ID \
+  --root public-sysroot --bundle final-bundle \
+  --dependency-review dependency-review.json --native-review native-scope.json \
+  --out authoring-audit.json
+```
+
+The sysroot is a disposable **public runtime-file** export, with declared
+resolved bytes at their paths, not a whole guest extraction or private-file
+copy. Escaping/broken symlinks refuse. `dependency-review.json` has format
+`halcyon-runtime-dependency-review`, version 1, source-review references,
+`roots`, `dynamic_providers`, `resources` equal to target dependency-review lists,
+and `objects` keyed by every code path plus `@payload`. Each object declares
+`interpreter`, `needed`, `rpath`, `runpath` exactly as bounded readelf observes,
+and `resolved` maps every needed SONAME/interpreter to a declared code path.
+The checker never executes ELF/ldd. It verifies all declared file bytes and graph
+coverage; conditional providers and actual loader choices still require source
+and native review. `native-scope.json` uses format `halcyon-runtime-scope-review`,
+version 1, graphics, exact constraints, source_review and runtime_discriminators.
+Both exact record hashes are in the target. The audit always says
+**STRUCTURAL-NOT-QUALIFIED**; it never changes a catalog or candidate state.
+
+Qualification requests bind runtime target/profile/equivalence and exact companion
+binary identity in `inputs`, along with the unchanged complete candidate and final
+main package identity. Raw observations require `installed_runtime` for this exact
+target, v4 `runtime_measurement` with the actual host SHA256, configuration counts,
+and both `runtime_reviews` artifact references (`dependency`, `native`, kind
+`runtime-review`) whose hashes match the target. All existing native scenarios,
+final main-process evidence, approval, repack rejection and release gates remain.
+Shipped catalog v2 is empty. Structural/synthetic fixtures cannot qualify it.
+
+Each status/launch operation owns one verified immutable catalog context. It
+shares parsed objects for identical catalog bytes, still verifies captures at
+distinct locations, and closes all watches at completion. There is no disk cache,
+service or cross-request content acceptance. Intact unchanged staging returns
+before runtime measurement. A new stage still uses a fresh verified copy,
+monotonic version and guarded selection transaction; replacing the source package
+after a complete immutable copy cannot splice a different selector into it.
+
+The selector gives capture + prelaunch + ABI probe one 5-second budget, with
+stock fallback on refusal/timeout. The ephemeral verifier runs separately, with
+no inherited session/notification descriptors, and is canceled/reaped at cutoff.
+The supervisor owns all host/session descriptors. After spawn, the existing
+15-second readiness deadline includes measurement; it requires the actual host,
+allowlisted executable mappings, child-owned Capabilities IPC and configured
+owned children. Prelaunch requires zero panel-owned children and checks their
+installed bytes; it does not wait for children before starting their parent.
+The supervisor independently watches frozen config inputs so a stalled verifier
+cannot turn a detected layout ABA into a persistent crash latch. Normal missing,
+foreign, excess or wrong-code child failures retain the persistent latch.
+
+Positive native timing remains a release gate: cold + two warm + ten warm calls,
+status ≤5 seconds cold/≤2 warm (outer 6 seconds unchanged), prelaunch including
+probe ≤5 seconds and cleanup ≤1 second, post-spawn readiness ≤15 seconds (warm
+target ≤5). Record actual target count/bytes, per-phase unique reads, RSS, host
+creation/teardown and descriptor/worker counts; RSS targets are 256 MiB for one
+full row and 384 MiB for two. Refusals and fixture timings are not positive native
+acceptance. If a genuine required target cannot meet these bounds, keep it
+blocked and report the measured bottleneck; never omit required checks to pass.

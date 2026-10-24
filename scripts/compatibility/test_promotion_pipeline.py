@@ -60,6 +60,7 @@ sys.dont_write_bytecode=True
 sys.path[:0]=PATHS
 from bundle_contract import canonical,identity,digest
 from native_scenarios import SCENARIOS,SYSTEM_UPDATES
+from test_generation_contract import FIXTURE_REVIEW,FIXTURE_REVIEW_SHA
 r=json.loads(Path(sys.argv[2]).read_bytes());out=Path(sys.argv[4]);artifacts={};scenarios={}
 for name,kinds in {**SCENARIOS,**SYSTEM_UPDATES}.items():
  refs={}
@@ -67,7 +68,9 @@ for name,kinds in {**SCENARIOS,**SYSTEM_UPDATES}.items():
   ref=name+'-'+kind+'.txt';(out/ref).write_text('SYNTHETIC TEST ONLY: NOT NATIVE EVIDENCE')
   artifacts[ref]={'sha256':digest(out/ref),'kind':kind};refs[kind]=[ref]
  scenarios[name]={'result':'pass','native':True,'evidence':refs,'assertions':[{'passed':True,'observed':'fixture','expected':'fixture'}]}
-observed=dict(format='halcyon-native-observation',version=1,inputs=r['inputs'],request_sha256=identity(r),environment=dict(image_sha256=r['image']['sha256'],kind='complete-login-session',packages=r['candidate']['cohort']['packages'],graphics=r['image']['graphics'],dpkg_audit_clean=True,dependency_closure_verified=True),package_sha256=r['package_sha256'],bundle_sha256=r['bundle_sha256'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=3,phase='running',verified=True,profiles=[identity(r['runtime_contract']['runtime'])],configurations={identity(r['runtime_contract']['runtime']):dict(sha256='e'*64,children={})}),offline=True,no_host_mounts=True,secrets_present=False,artifacts=artifacts,scenarios=scenarios)
+(out/'review.txt').write_bytes(FIXTURE_REVIEW)
+artifacts['review.txt']=dict(sha256=FIXTURE_REVIEW_SHA,kind='runtime-review')
+observed=dict(runtime_reviews=dict(dependency='review.txt',native='review.txt'),installed_runtime=dict(format='halcyon-installed-runtime',version=1,scope='islands-runtime',verified=True,targets=[r['runtime_contract']['runtime_target']['id']]),format='halcyon-native-observation',version=1,inputs=r['inputs'],request_sha256=identity(r),environment=dict(image_sha256=r['image']['sha256'],kind='complete-login-session',packages=r['candidate']['cohort']['packages'],graphics=r['image']['graphics'],dpkg_audit_clean=True,dependency_closure_verified=True),package_sha256=r['package_sha256'],bundle_sha256=r['bundle_sha256'],runtime_measurement=dict(format='halcyon-runtime-measurement',version=4,phase='running',verified=True,host=dict(pid=1,sha256=r['companion_binary_sha256']),profiles=[identity(r['runtime_contract']['runtime'])],configurations={identity(r['runtime_contract']['runtime']):dict(sha256='e'*64,children={})}),offline=True,no_host_mounts=True,secrets_present=False,artifacts=artifacts,scenarios=scenarios)
 observed['main']={'installed':r['main'],'running':{'executable':r['main']['executable'],'sha256':r['main']['executable_sha256'],'same_session':True,'evidence':['clean-login-processes.txt']}}
 (out/'observations.json').write_bytes(canonical(observed))
 '''.replace('PATHS',repr([str(ROOT/'companion'),str(ROOT/'scripts/compatibility')])));driver.chmod(0o755)

@@ -11,7 +11,10 @@ The JSON object has `format: "halcyon-islands-installation"`, `version: 1`,
 `installation: "installed" | "absent"`, `provenance: "package" | "manual" | null`,
 `enabled: boolean`, and nullable booleans `compatible`, `running`, `healthy`.
 Unknown format/version, timeout, invalid data or failed discovery means **pending**
-in Rust. Pending exposes neither Islands controls nor the install link.
+in Rust. Initial unknown provenance exposes neither Islands controls nor the install link.
+Known-installed provenance is retained while compatibility is pending; management
+stays available and compatibility is null. A timeout never implies absence or
+that the standard panel is running.
 
 Package presence requires dpkg's installed status and the regular package CLI.
 An unsupported payload protocol/source sets compatibility false; a missing or
@@ -46,12 +49,14 @@ installation attestation API.
 
 V2 package bundles use `bundle_contract.classify_compatibility` as the sole runtime
 admission policy. The old source-only `compatible` description above applies only
-to legacy records. New status adds `status_version: 1`, `status`, `reason`,
+to legacy records. New status adds `status_version: 2`, `status`, `reason`,
 `installed_generation`, `active_generation`, `compatibility` and sanitized
 `package_versions`. The status labels are exactly Ready, Log out to activate,
-Using standard panel and Compatibility update needed. Unknown running measurement can
-never be Ready. The complete installed lock and measured runtime profiles are
-separate identities; only an explicit qualified catalog binding connects them. Integrity failure retains installed provenance and management.
+Islands disabled, Checking compatibility and Compatibility update needed.
+Legacy status v1 remains readable. New helpers do not claim standard-panel
+health merely because Islands is disabled or its verification timed out. Unknown running measurement can
+never be Ready. The explicit installed runtime target and measured runtime profiles are
+separate from the complete qualification closure; only an explicit qualified catalog binding connects them. Integrity failure retains installed provenance and management.
 Ready additionally requires the exact selected running ELF and child-owned
 read-only Capabilities reply; this health result never establishes installation.
 A removed package still produces absent even when a retained generation exists.
@@ -67,14 +72,32 @@ See [COMPATIBILITY.md](COMPATIBILITY.md) for the catalog, final-artifact evidenc
 actual 0.2.0 bootstrap and restore-chain contracts. An empty reviewed catalog is
 an honest blocked qualification state, not an invitation to synthesize support.
 
-Diagnostics use `installed_cohort` and `running_profiles` (profile digest list),
+Diagnostics use `qualification_cohort`, `runtime_targets` and `running_profiles` (digest lists),
+with `installed_cohort: null`,
 never a guessed running full-package cohort. These fields are also present at the top level of status v1. Rust cached diagnostics
 retain only validated 64-digit hashes (at most 64 profiles); no process or file IO was added to Settings.
 
-Runtime measurement v2 distinguishes `prelaunch` eligibility from `running`
+Runtime measurement v4 distinguishes `prelaunch` eligibility from `running`
 readiness. Status uses the actual IPC owner's procfs identity and checks its
 panel-owned children, counts and ancestry before Ready. A prelaunch measurement
 cannot establish Ready even with a healthy IPC reply, and contributes no
 `running_profiles`. Staging reports `runtime_readiness: not_measured` and promises
 only the next login after successful staging. These phases add no native-thread
 IO to Settings and do not change installation/provenance or absent-management policy.
+
+
+Settings first runs `--presence` on its blocking worker and displays provenance,
+then starts bounded compatibility work. `--progress` emits an initial record and
+one final JSON line; ordinary CLI JSON remains a single record. Rust's nonblocking
+pipe reader bounds output to 128 KiB total / 64 KiB per record and keeps its
+six-second outer cutoff. The Python worker uses the remaining five-second helper
+budget, cancels and reaps verification and emits honest pending on timeout.
+Disabled status performs no installed-runtime or procfs audit.
+
+Open/focus requests coalesce to one in-flight check. Completion generations reject
+stale results. A timeout/unknown compatibility result stops automatic focus
+retries; Add-ons → Check again deliberately retries. Cached presentation is not
+transaction authority: existing background write/Undo/baseline contracts continue
+to revalidate. No status operation changes selection, kills a host, clears a latch
+or writes user settings. Missing optional CLI plus retained generation still
+means absent, not a supported manual installation.

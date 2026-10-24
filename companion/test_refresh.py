@@ -14,7 +14,7 @@ sys.path.insert(0,str(Path(__file__).parent))
 import install
 import refresh
 from bundle_contract import canonical, digest
-from test_generation_contract import bundle_fixture
+from test_generation_contract import installed, bind_target, bundle_fixture
 
 RELEASE_SHA='1ec258de00228f02d37fa6201bd4ac4050344594cb452ad6d05ada459ea81c5e'
 DEFAULT_RELEASE=Path(__file__).parents[1]/'.task-3-evidence/cosmic-ext-halcyon-islands_0.2.0_amd64.deb'
@@ -29,7 +29,7 @@ class Refresh(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.root=Path(self.tmp.name);self.home=self.root/'home';self.home.mkdir()
         self.library=self.root/'library';self.manifest,self.catalog=bundle_fixture(self.library)
-        (self.home/'installed-identity.json').write_bytes(canonical(dict(verified=True,cohort=self.catalog['cohorts'][0]['id'])))
+        (self.home/'installed-identity.json').write_bytes(canonical(installed(self.catalog['cohorts'][0])))
     def enable(self):
         with refresh.locked(self.home):
             result=refresh.stage_locked(self.home,self.library,session='first',fixture=True,enable=True)
@@ -87,7 +87,7 @@ class Refresh(unittest.TestCase):
         self.enable();self.upgrade();(self.library/'panel_launcher.py').write_bytes(b'bad')
         self.assertEqual(self.stage()['state'],'blocked')
         bundle_fixture(self.library,'0.2.2');(self.home/'installed-identity.json').write_text('{}')
-        self.assertEqual(self.stage()['reason'],'installed_cohort_unqualified')
+        self.assertEqual(self.stage()['reason'],'installed_runtime_unqualified')
         self.assertEqual(refresh.stage_installed_update(self.home,self.root/'missing',session='x',fixture=True)['state'],'blocked')
         self.disable()
     def test_interruption_before_each_promotion_boundary(self):

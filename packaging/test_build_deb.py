@@ -29,7 +29,7 @@ class PackageTests(unittest.TestCase):
         files = [
             "scripts/desktop-cards", "scripts/calendar-sync.py", "scripts/project-status.py",
             "companion/panel_launcher.py", "companion/install_status.py",
-            "companion/bundle_contract.py", "companion/runtime_identity.py", "companion/refresh.py", "companion/install.py",
+            "companion/bundle_contract.py", "companion/runtime_identity.py", "companion/refresh.py", "companion/install.py", "companion/panel_configuration.py", "companion/runtime_target.py", "companion/verification.py",
             "docs/google-calendar-setup.html", "LICENSE", "THIRD_PARTY.md", "ASSETS.md",
             "packaging/debian/copyright", "packaging/debian/changelog",
             "packaging/systemd/halcyon.service", "packaging/man/halcyon.1",

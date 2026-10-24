@@ -35,13 +35,15 @@ class Watch:
         if self.fd < 0:
             raise OSError(ctypes.get_errno(), 'inotify unavailable')
         self.paths = {}
+        self.registrations = set()
         self.dirty = False
 
-    def add(self, path, directory=False):
+    def add(self, path, directory=False, *, entry=False):
         path = Path(path)
+        self.registrations.add((str(path), directory, entry))
         # Following arbitrary symlink config trees would require also watching
         # every link target/ancestor. Decline that scope rather than guessing.
-        if any(p.is_symlink() for p in (path, *path.parents)):
+        if any(p.is_symlink() for p in (path.parents if entry else (path, *path.parents))):
             raise ValueError('configuration_symlink_unsupported')
         parent, name = (path, None) if directory and path.is_dir() else (path.parent, path.name)
         while not parent.is_dir():

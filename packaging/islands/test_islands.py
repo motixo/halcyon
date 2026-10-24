@@ -12,7 +12,7 @@ import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'companion'))
 from bundle_contract import canonical,digest,verify_bundle
-from test_generation_contract import catalog_fixture
+from test_generation_contract import catalog_fixture, installed
 
 HERE=Path(__file__).parent;REPO=HERE.parent.parent;ARTIFACTS=None
 spec=importlib.util.spec_from_file_location('builder',HERE/'build-deb.py');builder=importlib.util.module_from_spec(spec);spec.loader.exec_module(builder)
@@ -86,7 +86,7 @@ class IslandsPackage(unittest.TestCase):
             # it exercises real CLI/archiver/restore, never claims native success.
             candidate=builder.build(self.binary,self.manifest,'0.2.1',root/'out',catalog=catalog_path)
             new=root/'new';subprocess.run(['dpkg-deb','-x',str(candidate),str(new)],check=True)
-            (home/'installed-identity.json').write_bytes(canonical(dict(verified=True,cohort=catalog['cohorts'][0]['id'])))
+            (home/'installed-identity.json').write_bytes(canonical(installed(catalog['cohorts'][0])))
             cli=new/'usr/bin/halcyon-islands'
             def call(command):
                 return subprocess.run([str(cli),'--root',str(home),command],env=env,capture_output=True,text=True)

@@ -13,6 +13,11 @@ impl Settings {
             Installation::Installed { .. } => pages::section(vec![split(
                 detail("Islands", self.desktop.islands.installation.status_label()),
                 row::with_children(vec![
+                    button::text("Check again")
+                        .on_press_maybe(
+                            (!self.installation_busy).then_some(Message::RecheckInstallation),
+                        )
+                        .into(),
                     button::text("Copy diagnostics")
                         .on_press(Message::CopyIslandsDiagnostics)
                         .into(),

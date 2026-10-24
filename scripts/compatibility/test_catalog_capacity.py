@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'companion'))
 import bundle_contract as b
 import catalog_capacity as capacity
-from test_generation_contract import bundle_fixture, catalog_fixture
+from test_generation_contract import installed, bind_target, bundle_fixture, catalog_fixture
 
 ACTUAL = os.environ.get('HALCYON_ACTUAL_CANDIDATE')
 ACTUAL_SHA256 = '3c38ab7d2f22605b374ab1962c92239554240cce6ddb6343fadd178318ac02e1'
@@ -166,7 +166,7 @@ class Reader(unittest.TestCase):
             self.assertEqual('..' in p.split('/'),'..' in Path(p).parts)
         for p in ('/usr/../x','/lib/a/../../x','/lib/a/..'):
             cat=catalog_fixture();row=cat['cohorts'][0]
-            row['packages']['cosmic-panel']['files']={p:'a'*64};row['id']=b.cohort_id(row)
+            row['packages']['cosmic-panel']['files']={p:'a'*64};row['id']=b.cohort_id(row);row['qualification']='development'
             with self.assertRaisesRegex(ValueError,'catalog_file_digest'):b.valid_catalog(cat)
 
     def test_selector_defers_catalog_hash_to_bounded_verified_reader(self):
@@ -181,14 +181,32 @@ class Reader(unittest.TestCase):
         target=home/refresh.DATA/'companion/generations'/generation
         target.parent.mkdir(parents=True);library.rename(target)
         (home/refresh.POINTER).write_bytes(b.canonical(dict(generation=generation)))
-        original=hashlib.file_digest
-        def no_catalog_prehash(stream,*args):
-            self.assertNotEqual(Path(stream.name).name,'catalog.json')
-            return original(stream,*args)
-        with patch.object(Path,'home',return_value=home),patch.object(selector,'fallback',return_value=77) as fallback, \
-             patch.object(hashlib,'file_digest',no_catalog_prehash), \
-             patch.object(refresh,'stage_installed_update',side_effect=AssertionError('must not stage')):
-            self.assertEqual(selector.main(),77);fallback.assert_called_once()
+        # Real selector -> launcher -> cancellable verifier in an isolated
+        # process/home. Stock is a dispatch marker; no host is executed.
+        (home/refresh.SELECTION).write_bytes(b.canonical(dict(enabled=True)))
+        runtime=home/'runtime';runtime.mkdir()
+        probe = r"""
+import json,sys
+from pathlib import Path
+sys.path.insert(0,sys.argv[1])
+import selector,panel_launcher,bundle_contract,refresh
+calls=[];record=Path(sys.argv[2]);original=bundle_contract._record_bytes
+def capture(path,limit,*args):
+ if path.name=='catalog.json': record.write_text(str(limit))
+ return original(path,limit,*args)
+bundle_contract._record_bytes=capture
+panel_launcher.other_host=lambda:None
+panel_launcher.stock_host=lambda *a,**k:calls.append('stock') or 77
+def forbidden(*a,**k):raise AssertionError('must not stage, probe or start host')
+panel_launcher.runtime_compatible=forbidden;panel_launcher.run_host=forbidden
+refresh.stage_installed_update=forbidden
+print(json.dumps(dict(result=selector.main(),calls=calls)))
+"""
+        env={**os.environ,'HOME':str(home),'XDG_DATA_HOME':str(home/'.local/share'),
+             'XDG_STATE_HOME':str(home/'.local/state'),'XDG_RUNTIME_DIR':str(runtime),'XDG_SESSION_ID':'catalog-bound'}
+        run=subprocess.run([sys.executable,'-I','-c',probe,str(ROOT/'companion'),str(home/'reader-limit')],env=env,capture_output=True,text=True,check=True)
+        self.assertEqual(json.loads(run.stdout),dict(result=77,calls=['stock']))
+        self.assertEqual(int((home/'reader-limit').read_text()),b.CATALOG_BYTES)
 
     def test_staging_rechecks_bounded_catalog_bytes_before_copy(self):
         import refresh
@@ -196,7 +214,7 @@ class Reader(unittest.TestCase):
             with self.subTest(growth=growth):
                 home=self.root/('home-'+str(growth));home.mkdir()
                 library=self.root/('lib-'+str(growth));_,cat=bundle_fixture(library)
-                (home/'installed-identity.json').write_bytes(b.canonical(dict(verified=True,cohort=cat['cohorts'][0]['id'])))
+                (home/'installed-identity.json').write_bytes(b.canonical(installed(cat['cohorts'][0])))
                 original=refresh.read_catalog_bytes
                 def replace(path,expected):
                     if growth:

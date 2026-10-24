@@ -9,8 +9,8 @@ import time
 import unittest
 
 from bundle_contract import CONFIGURATION_SOURCE, cohort_id, classify_compatibility, runtime_id
-from runtime_identity import _process, running_identity
-from test_generation_contract import catalog_fixture
+from runtime_identity import _process, running_identity, host_process
+from test_generation_contract import installed, bind_target, catalog_fixture
 
 
 class Procfs(unittest.TestCase):
@@ -30,15 +30,27 @@ class Procfs(unittest.TestCase):
         self.children = []; self.addCleanup(self.stop)
         self.catalog = catalog_fixture(); self.row = self.catalog['cohorts'][0]
         self.profile = self.row['runtime']; self.profile['processes'] = {}
-        for name in ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon', 'cosmic-applet-audio'):
+        for name in ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon', 'cosmic-notifications', 'cosmic-applet-audio'):
             binary = self.root/name; shutil.copy2('/usr/bin/sleep', binary)
             child = self.start(name)
             measured = _process(Path('/proc')/str(child.pid))
             measured = {key: measured[key] for key in ('executable', 'sha256', 'mapped')}
             measured.update(count=1, lifecycle='session')
             self.profile['processes'][name] = measured
+        host_binary=self.root/'cosmic-panel-islands';shutil.copy2('/usr/bin/sleep',host_binary)
+        self.host=subprocess.Popen([str(host_binary),'90'],start_new_session=True,env={**os.environ,'XDG_SESSION_ID':'procfs-test'})
+        self.addCleanup(lambda:(self.host.terminate(),self.host.wait()))
+        (self.proc/str(self.host.pid)).symlink_to(Path('/proc')/str(self.host.pid),target_is_directory=True)
+        for _ in range(100):
+            try:
+                observed=_process(Path('/proc')/str(self.host.pid))
+                if observed['executable']==str(host_binary):break
+            except (OSError,ValueError):pass
+            time.sleep(.01)
+        self.host_sha=observed['sha256']
+        self.profile['host_mapped']={p:h for p,h in observed['mapped'].items() if p!=str(host_binary)}
         self.bind(self.row)
-        self.manifest = dict(upstream=CONFIGURATION_SOURCE['upstream'],format='halcyon-islands-bundle',version=2,verified=True,payload_sha256='a'*64)
+        self.manifest = dict(upstream=CONFIGURATION_SOURCE['upstream'],format='halcyon-islands-bundle',version=2,verified=True,payload_sha256='a'*64,binary_sha256=self.host_sha)
 
     def start(self, name):
         child = subprocess.Popen([str(self.root/name), '90'], env={**os.environ,'XDG_SESSION_ID':'procfs-test'})
@@ -64,12 +76,13 @@ class Procfs(unittest.TestCase):
         row['processes']={name:item['executable'] for name,item in row['runtime']['processes'].items()}
         row['id'] = cohort_id(row)
         row['runtime_compatibility'] = [dict(id=runtime_id(row['runtime']),evidence_id=row['evidence']['id'],reason='Explicit synthetic fixture equivalence, NOT native evidence')]
+        bind_target(row)
 
     def measure(self, catalog=None):
-        return running_identity(catalog or self.catalog, self.proc, session='procfs-test')
+        return running_identity(catalog or self.catalog, self.proc, session='procfs-test',host=host_process(self.host.pid,self.host_sha,self.proc,'procfs-test'))
 
     def classify(self, row=None, catalog=None):
-        return classify_compatibility(dict(verified=True,cohort=(row or self.row)['id']),self.measure(catalog),self.manifest,catalog or self.catalog)
+        return classify_compatibility(installed(row or self.row),self.measure(catalog),self.manifest,catalog or self.catalog)
 
     def test_required_applets_and_truncated_comm_are_measured(self):
         self.assertEqual(self.classify()['state'], 'ready')
@@ -109,6 +122,7 @@ class Procfs(unittest.TestCase):
         self.assertEqual(self.classify()['state'],'ready')
         new['runtime']['processes']['cosmic-applet-audio']['sha256'] = __import__('bundle_contract').digest(binary)
         new['runtime']['processes']['cosmic-applet-audio']['mapped'][str(binary)] = __import__('bundle_contract').digest(binary)
+        new['packages']['cosmic-applets']['files']['/usr/bin/cosmic-applet-audio']=new['runtime']['processes']['cosmic-applet-audio']['sha256']
         self.bind(new); catalog={**self.catalog,'cohorts':[self.row,new]}
         self.assertEqual(self.classify(new,catalog)['reason'],'installed_running_differ')
         self.assertFalse(self.measure({**catalog,'cohorts':[new]})['verified'])

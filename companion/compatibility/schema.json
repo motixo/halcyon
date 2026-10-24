@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "halcyon-islands-catalog-v1",
+  "$id": "halcyon-islands-catalog-v2",
   "type": "object",
   "required": [
     "format",
@@ -12,7 +12,7 @@
       "const": "halcyon-islands-catalog"
     },
     "version": {
-      "const": 1
+      "const": 2
     },
     "cohorts": {
       "type": "array",
@@ -77,11 +77,12 @@
               "processes",
               "constraints",
               "unmeasured",
-              "configuration"
+              "configuration",
+              "host_mapped"
             ],
             "properties": {
               "version": {
-                "const": 3
+                "const": 4
               },
               "processes": {
                 "type": "object",
@@ -212,6 +213,13 @@
                     }
                   }
                 }
+              },
+              "host_mapped": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
               }
             }
           },
@@ -239,6 +247,69 @@
                 }
               }
             }
+          },
+          "runtime_target": {
+            "type": "object",
+            "required": [
+              "version",
+              "scope",
+              "id",
+              "qualification_cohort_id",
+              "payload_sha256",
+              "evidence_id",
+              "profile_id",
+              "equivalence_id",
+              "system",
+              "packages",
+              "installed_files",
+              "dependency_review",
+              "native_scope",
+              "work"
+            ],
+            "properties": {
+              "version": {
+                "const": 1
+              },
+              "scope": {
+                "const": "islands-runtime"
+              },
+              "installed_files": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "sha256",
+                    "size",
+                    "kind",
+                    "resolution",
+                    "package",
+                    "archive_path",
+                    "source_identity",
+                    "reason"
+                  ],
+                  "properties": {
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 536870912
+                    },
+                    "kind": {
+                      "enum": [
+                        "executable",
+                        "library",
+                        "loader",
+                        "resource"
+                      ]
+                    },
+                    "resolution": {
+                      "const": "root-contained"
+                    }
+                  }
+                }
+              }
+            },
+            "$comment": "Semantic provenance, graph/profile identities and exact declared work are checked by runtime_target.valid_target, never inferred from package names."
           }
         },
         "allOf": [
@@ -253,7 +324,8 @@
             "then": {
               "required": [
                 "runtime",
-                "runtime_compatibility"
+                "runtime_compatibility",
+                "runtime_target"
               ]
             }
           }
@@ -261,5 +333,5 @@
       }
     }
   },
-  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v3 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness. Panel-child counts are configured at launch from qualified desktop Exec bindings and effective COSMIC config; session counts remain fixed. Configuration absence is not a generic missing-process exemption. Encoded catalog bytes are bounded by bundle_contract.CATALOG_BYTES in the shared opened-file reader. Ordinary records use RECORD_BYTES. Schema version and full cohort identity are unchanged; capacity is not native qualification."
+  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v4 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness. Panel-child counts are configured at launch from qualified desktop Exec bindings and effective COSMIC config; session counts remain fixed. Configuration absence is not a generic missing-process exemption. Encoded catalog bytes are bounded by bundle_contract.CATALOG_BYTES in the shared opened-file reader. Ordinary records use RECORD_BYTES. Catalog policy v2 separates the runtime target from the unchanged full cohort identity; capacity is not native qualification."
 }

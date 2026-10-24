@@ -47,7 +47,8 @@ def input_identities(request):
             'image_manifest_sha256': identity(request['image']), 'evidence_id': request['evidence_id'],
             'main_package_sha256': request.get('main_package_sha256'),
             'main_identity_sha256': identity(request.get('main')),
-            'runtime_contract_sha256': identity(request['runtime_contract'])}
+            'runtime_contract_sha256': identity(request['runtime_contract']),
+            'companion_binary_sha256':request.get('companion_binary_sha256')}
 
 
 def validate_result(request, observed, root):
@@ -73,11 +74,22 @@ def validate_result(request, observed, root):
         reasons.append('isolation_unverified')
     runtime = observed.get('runtime_measurement', {})
     expected_runtime = request.get('runtime_contract')
-    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 3 or runtime.get('phase') != 'running'
+    if (not expected_runtime or runtime.get('format') != 'halcyon-runtime-measurement' or runtime.get('version') != 4 or runtime.get('phase') != 'running'
             or runtime.get('verified') is not True or identity(expected_runtime['runtime']) not in runtime.get('profiles', [])
-            or not measured_configuration(runtime, expected_runtime['runtime'])):
+            or not measured_configuration(runtime, expected_runtime['runtime'])
+            or not request.get('companion_binary_sha256')
+            or runtime.get('host',{}).get('sha256')!=request['companion_binary_sha256']):
         reasons.append('runtime_measurement_mismatch')
+    from runtime_target import installed_matches
+    if not expected_runtime or not installed_matches(observed.get('installed_runtime', {}), expected_runtime):
+        reasons.append('installed_runtime_target_mismatch')
     artifacts = artifact_map(root, observed.get('artifacts'))
+    target=(expected_runtime or {}).get('runtime_target', {})
+    for name,key in (('dependency','dependency_review'),('native','native_scope')):
+        ref=observed.get('runtime_reviews',{}).get(name)
+        expected=target.get(key,{}).get('record_sha256' if name=='dependency' else 'review_sha256')
+        if not ref or ref not in artifacts or artifacts[ref].get('kind')!='runtime-review' or artifacts[ref].get('sha256')!=expected:
+            reasons.append('runtime_review_missing:'+name)
     if request.get('main'):
         main = observed.get('main', {})
         live = main.get('running', {})
@@ -112,14 +124,14 @@ def run(candidate_path, image_path, package, out, driver=None, main_package=None
         bundle = Path(work) / 'usr/lib/cosmic-ext-halcyon-islands'
         manifest, catalog = verify_bundle(bundle, 'companion-manifest.json')
         bundle_hash = digest(bundle / 'companion-manifest.json')
-    targets = [r for r in catalog['cohorts'] if r['id'] == candidate['id'] and r['payload_sha256'] == manifest['payload_sha256'] and r['qualification'] == 'native-session' and r['evidence']['image_sha256'] == image['sha256']]
+    targets = [r for r in catalog['cohorts'] if catalog['version']==2 and r['id'] == candidate['id'] and r['payload_sha256'] == manifest['payload_sha256'] and r['qualification'] == 'native-session' and r['evidence']['image_sha256'] == image['sha256']]
     request = dict(format='halcyon-native-request', version=1, candidate=candidate, image=image,
         evidence_id=targets[0]['evidence']['id'] if len(targets) == 1 else None,
-        package=str(package.resolve()), package_sha256=digest(package), bundle_sha256=bundle_hash,
+        companion_binary_sha256=manifest['binary_sha256'],package=str(package.resolve()), package_sha256=digest(package), bundle_sha256=bundle_hash,
         payload_sha256=manifest['payload_sha256'], catalog_sha256=manifest['files']['catalog.json']['sha256'],
         scenarios=list(SCENARIOS), required=dict(network='none', host_mounts=False, secrets=False,
         finalize_before_test=True, preserve_failures=True))
-    request['runtime_contract'] = {k: targets[0][k] for k in ('runtime', 'runtime_compatibility')} if len(targets) == 1 else None
+    request['runtime_contract'] = {k: targets[0][k] for k in ('runtime', 'runtime_compatibility', 'runtime_target')} if len(targets) == 1 else None
     request['main'] = main_identity(main_package) if main_package else None
     request['main_package_sha256'] = digest(main_package) if main_package else None
     request['scenarios'] = list({**SCENARIOS, **(SYSTEM_UPDATES if main_package else {})})
@@ -196,9 +208,9 @@ def promotion(package, evidence, approval, main_package=None):
         subprocess.run(['dpkg-deb', '-x', str(package.resolve()), work], check=True, timeout=60)
         bundle = Path(work) / 'usr/lib/cosmic-ext-halcyon-islands'
         manifest, catalog = verify_bundle(bundle, 'companion-manifest.json')
-        if digest(bundle / 'companion-manifest.json') != request['bundle_sha256'] or manifest['payload_sha256'] != request['payload_sha256'] or manifest['files']['catalog.json']['sha256'] != request['catalog_sha256']:
+        if manifest['binary_sha256']!=request['companion_binary_sha256'] or digest(bundle / 'companion-manifest.json') != request['bundle_sha256'] or manifest['payload_sha256'] != request['payload_sha256'] or manifest['files']['catalog.json']['sha256'] != request['catalog_sha256']:
             raise ValueError('promotion_bundle_mismatch')
-        if not any(r['qualification'] == 'native-session' and {k:r[k] for k in ('runtime','runtime_compatibility')} == request['runtime_contract'] and r['payload_sha256'] == request['payload_sha256'] and r['id'] == request['candidate']['id'] and r['qualification'] == 'native-session' and
+        if not any(r['qualification'] == 'native-session' and {k:r[k] for k in ('runtime','runtime_compatibility','runtime_target')} == request['runtime_contract'] and r['payload_sha256'] == request['payload_sha256'] and r['id'] == request['candidate']['id'] and r['qualification'] == 'native-session' and
                    r['evidence']['id'] == request['evidence_id'] and r['evidence']['image_sha256'] == request['image']['sha256']
                    for r in catalog['cohorts']):
             raise ValueError('promotion_catalog_evidence_mismatch')

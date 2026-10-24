@@ -79,12 +79,12 @@ class InstallationStatus(unittest.TestCase):
 
 class GenerationStatus(unittest.TestCase):
     def test_unknown_running_and_diagnostics_are_read_only_and_redacted(self):
-        from test_generation_contract import bundle_fixture
+        from test_generation_contract import installed, bind_target, bundle_fixture
         import install_status, refresh
         with tempfile.TemporaryDirectory() as temp:
             root=Path(temp);home=root/'private-home';home.mkdir();library=root/'library'
             manifest,catalog=bundle_fixture(library)
-            known=dict(verified=True,cohort=catalog['cohorts'][0]['id'])
+            known=installed(catalog['cohorts'][0])
             (home/'installed-identity.json').write_text(json.dumps(known))
             with refresh.locked(home):
                 refresh.stage_locked(home,library,fixture=True,session='old',enable=True)

@@ -595,6 +595,8 @@ pub enum Message {
         desktop::islands::RuntimeStatus,
     ),
     RefreshInstallation,
+    RecheckInstallation,
+    InstallationPresence(u64, crate::desktop::islands::Installation),
     InstallationReady(u64, crate::desktop::islands::Installation),
     ShowControls,
     Restore(bool),
@@ -643,6 +645,8 @@ pub struct Settings {
     recovery_sheet: legacy::Recovery,
     desktop_recovery: recovery::DesktopRecovery,
     installation_generation: u64,
+    installation_busy: bool,
+    installation_retry: bool,
     native_busy: bool,
     native_deferred: std::collections::VecDeque<Message>,
     native_tasks: Vec<Task<Message>>,
@@ -851,6 +855,8 @@ impl cosmic::Application for Settings {
             recovery_sheet: legacy::Recovery::load(),
             desktop_recovery: recovery::DesktopRecovery::default(),
             installation_generation: 0,
+            installation_busy: false,
+            installation_retry: false,
             native_busy: false,
             native_deferred: Default::default(),
             native_tasks: Vec::new(),
@@ -912,7 +918,8 @@ impl cosmic::Application for Settings {
         app.core.window.show_headerbar = false;
         app.core.window.content_container = false;
         app.core
-            .set_auto_blur(cosmic::core::Auto::Popup | cosmic::core::Auto::System);
+            // Settings and its popups do not request native backdrop effects.
+            .set_auto_blur(Default::default());
         let title = app
             .core
             .main_window_id()
@@ -1546,10 +1553,17 @@ impl Settings {
             }
             Message::Preview => return Task::none(),
             Message::NativeDone(done) => return self.finish_native(done),
-            Message::InstallationChecked(generation, state, runtime) => {
+            Message::InstallationChecked(generation, mut state, runtime) => {
                 if generation != self.installation_generation {
                     return Task::none();
                 }
+                if matches!(state, crate::desktop::islands::Installation::Pending)
+                    && self.desktop.islands.installation.installed()
+                {
+                    state = self.desktop.islands.installation.checking();
+                }
+                self.installation_busy = false;
+                self.installation_retry = state.needs_recheck();
                 let _ = self.handle(Message::InstallationReady(generation, state));
                 self.material_native = runtime.material;
                 self.desktop.accept_runtime(runtime);
@@ -2908,35 +2922,63 @@ impl Settings {
                 Ok(None) => {}
                 Err(error) => self.failed(error),
             },
+            Message::RecheckInstallation => {
+                self.installation_retry = false;
+                return self.handle(Message::RefreshInstallation);
+            }
             Message::RefreshInstallation => {
                 let updates = self.update_updates(updates::Message::Inspect);
+                if self.installation_busy || self.installation_retry {
+                    return updates;
+                }
                 self.desktop_recovery.refresh();
+                self.installation_busy = true;
                 self.installation_generation += 1;
                 let generation = self.installation_generation;
-                self.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
-                let panel = self.desktop.selected;
-                let output = self.desktop.island_output();
+                self.desktop.islands.installation = self.desktop.islands.installation.checking();
                 return Task::batch([
                     updates,
                     cosmic::task::future(async move {
-                        let (state, runtime) = tokio::task::spawn_blocking(move || {
-                            let Ok(store) = crate::desktop::DesktopStore::from_env() else {
-                                return (Default::default(), Default::default());
-                            };
-                            let state = crate::desktop::islands::Installation::discover(&store);
-                            let runtime = desktop::islands::RuntimeStatus::read(
-                                &store,
-                                state.installed(),
-                                panel,
-                                output,
-                            );
-                            (state, runtime)
+                        let state = tokio::task::spawn_blocking(move || {
+                            crate::desktop::DesktopStore::from_env()
+                                .map(|store| {
+                                    crate::desktop::islands::Installation::discover_presence(&store)
+                                })
+                                .unwrap_or_default()
                         })
                         .await
                         .unwrap_or_default();
-                        Message::InstallationChecked(generation, state, runtime)
+                        Message::InstallationPresence(generation, state)
                     }),
                 ]);
+            }
+            Message::InstallationPresence(generation, state) => {
+                if generation != self.installation_generation {
+                    return Task::none();
+                }
+                if !matches!(state, crate::desktop::islands::Installation::Pending) {
+                    let _ = self.handle(Message::InstallationReady(generation, state));
+                }
+                let panel = self.desktop.selected;
+                let output = self.desktop.island_output();
+                return cosmic::task::future(async move {
+                    let (state, runtime) = tokio::task::spawn_blocking(move || {
+                        let Ok(store) = crate::desktop::DesktopStore::from_env() else {
+                            return (Default::default(), Default::default());
+                        };
+                        let state = crate::desktop::islands::Installation::discover(&store);
+                        let runtime = desktop::islands::RuntimeStatus::read(
+                            &store,
+                            state.installed(),
+                            panel,
+                            output,
+                        );
+                        (state, runtime)
+                    })
+                    .await
+                    .unwrap_or_default();
+                    Message::InstallationChecked(generation, state, runtime)
+                });
             }
             Message::InstallationReady(generation, state) => {
                 if generation != self.installation_generation {
@@ -10295,6 +10337,61 @@ mod tests {
                 ),
             );
         }
+    }
+
+    #[test]
+    fn runtime_boundary_installed_pending_coalesces_and_requires_explicit_retry() {
+        if desktop_test_child(
+            "runtime_boundary_installed_pending_coalesces_and_requires_explicit_retry",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        let task = app.handle(Message::RefreshInstallation);
+        let generation = app.installation_generation;
+        assert!(app.installation_busy);
+        assert!(app.desktop.islands.installation.installed());
+        assert_eq!(
+            app.desktop.islands.installation.status_label(),
+            "Checking compatibility"
+        );
+        let duplicate = app.handle(Message::RefreshInstallation);
+        assert_eq!(app.installation_generation, generation);
+        settle_settings(&mut app, duplicate);
+        settle_settings(&mut app, task);
+        assert!(!app.installation_busy);
+        let checking = app.desktop.islands.installation.checking();
+        send_settings(
+            &mut app,
+            Message::InstallationChecked(generation, checking, Default::default()),
+        );
+        assert!(app.installation_retry);
+        send_settings(&mut app, Message::RefreshInstallation);
+        assert_eq!(app.installation_generation, generation);
+        assert!(app.desktop.islands.installation.installed());
+        send_settings(
+            &mut app,
+            Message::InstallationChecked(
+                generation - 1,
+                crate::desktop::islands::Installation::Absent,
+                Default::default(),
+            ),
+        );
+        assert!(app.desktop.islands.installation.installed());
+        send_settings(&mut app, Message::RecheckInstallation);
+        assert_eq!(app.installation_generation, generation + 1);
+        assert!(!app.installation_busy);
+        assert!(!app.installation_retry);
+        assert!(app.native_deferred.is_empty());
+        assert!(app.native_tasks.is_empty());
     }
 
     #[test]

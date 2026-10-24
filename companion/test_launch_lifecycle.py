@@ -16,7 +16,7 @@ from bundle_contract import CONFIGURATION_SOURCE, canonical, cohort_id, digest, 
 import install
 import refresh
 import runtime_identity
-from test_generation_contract import bundle_fixture, catalog_fixture
+from test_generation_contract import installed, bind_target, bundle_fixture, catalog_fixture
 
 HERE = Path(__file__).resolve().parent
 
@@ -35,17 +35,17 @@ cfg=json.loads(Path(sys.argv[2]).read_bytes())
 # Test-only subreaper: collect synthetic orphan grandchildren after killpg.
 ctypes.CDLL(None).prctl(36,1,0,0,0)
 real_installed=runtime.installed_identity
-runtime.installed_identity=lambda catalog: real_installed(catalog,Path(cfg['installed_root']),cfg['versions'],cfg['system'])
+def fixture_installed(catalog, *, measurement=None):
+    if measurement is not None: measurement.root=Path(cfg['installed_root']).resolve()
+    return real_installed(catalog,Path(cfg['installed_root']),cfg['versions'],cfg['system'],measurement=measurement)
+runtime.installed_identity=fixture_installed
 launcher.STOCK=Path(cfg['stock']);launcher.READY_SECONDS=1.2
 if cfg['mode']=='slow-measurement':
-    prepare=launcher.prepare_launch
-    def slow_prepare(bundle):
-        admitted=prepare(bundle)
-        if admitted is None:return None
-        def slow(child):
-            time.sleep(10);return admitted(child)
-        return slow
-    launcher.prepare_launch=slow_prepare
+    measured_runtime=runtime.running_identity
+    def slow_runtime(*args,**kwargs):
+        if kwargs.get('phase')=='running' and kwargs.get('configuration') is not None:time.sleep(10)
+        return measured_runtime(*args,**kwargs)
+    runtime.running_identity=slow_runtime
 real_wait=launcher.wait_ready
 foreign=[]
 def observed_wait(child,done,wedged,admission=None):
@@ -125,7 +125,7 @@ class LaunchLifecycle(unittest.TestCase):
         self.children=[];self.runners=[];self.addCleanup(self.cleanup)
         self.catalog=catalog_fixture();self.row=self.catalog['cohorts'][0]
         self.row['runtime']['processes']={}
-        for name in ('cosmic-comp','cosmic-session','cosmic-settings-daemon','cosmic-applet-audio'):
+        for name in ('cosmic-comp','cosmic-session','cosmic-settings-daemon','cosmic-notifications','cosmic-applet-audio'):
             path=self.installed_root/'usr/bin'/name;shutil.copy2('/usr/bin/sleep',path)
             child=self.start_actor(path)
             observed=runtime_identity._process(Path('/proc')/str(child.pid))
@@ -194,19 +194,20 @@ class LaunchLifecycle(unittest.TestCase):
 
     def finalize(self):
         self.row['processes']={n:p['executable'] for n,p in self.row['runtime']['processes'].items()}
-        self.row['id']=cohort_id(self.row)
+        self.row['runtime']['host_mapped']={p:s for v in self.row['runtime']['processes'].values() for p,s in v['mapped'].items() if p.startswith(('/usr/lib/','/lib/','/lib64/'))}
+        bind_target(self.row,self.installed_root)
         self.row['runtime_compatibility']=[dict(id=runtime_id(self.row['runtime']),evidence_id=self.row['evidence']['id'],reason='Synthetic lifecycle fixture only, not native evidence')]
         files=self.manifest['files'];files['cosmic-panel-islands']['sha256']=digest(self.library/'cosmic-panel-islands')
         self.manifest['binary_sha256']=files['cosmic-panel-islands']['sha256']
         self.manifest['payload_sha256']=identity({k:v for k,v in files.items() if k!='catalog.json'})
-        self.row['payload_sha256']=self.manifest['payload_sha256'];valid_catalog(self.catalog)
+        self.row['payload_sha256']=self.manifest['payload_sha256'];bind_target(self.row,self.installed_root);valid_catalog(self.catalog)
         (self.library/'catalog.json').write_bytes(canonical(self.catalog));files['catalog.json']['sha256']=digest(self.library/'catalog.json')
         (self.library/'companion-manifest.json').write_bytes(canonical(self.manifest));(self.library/'companion-manifest.json').chmod(0o644)
         self.versions={n:p['version'] for n,p in self.row['packages'].items()}
         self.system={k:self.row[k] for k in ('distribution','suite','architecture')}
 
     def launch(self,mode='success'):
-        (self.home/'installed-identity.json').write_bytes(canonical(dict(verified=True,cohort=self.row['id'])))
+        (self.home/'installed-identity.json').write_bytes(canonical(installed(self.row)))
         with refresh.locked(self.home):
             staged=refresh.stage_locked(self.home,self.library,fixture=True,enable=True,session='previous-login')
         self.assertIn(staged['state'],('staged','unchanged'));self.assertEqual(staged['runtime_readiness'],'not_measured')
@@ -260,7 +261,7 @@ class LaunchLifecycle(unittest.TestCase):
         import install_status
         from unittest.mock import patch
         with patch.dict(os.environ,self.env):
-            status=install_status.detect(self.home,self.library,True,self.versions,installed=dict(verified=True,cohort=self.row['id']),running=pre,host=True)
+            status=install_status.detect(self.home,self.library,True,self.versions,installed=installed(self.row),running=pre,host=True)
         self.assertNotEqual(status['status'],'Ready');self.assertEqual(status['running_profiles'],[])
         child.terminate();self.assertEqual(child.wait(timeout=5),0)
         self.assertEqual(self.events_named('stock'),[])
@@ -315,9 +316,9 @@ class LaunchLifecycle(unittest.TestCase):
         child=self.launch();self.assertEqual(child.wait(timeout=6),0)
         self.assertEqual(len(self.events_named('host')),1);self.assertEqual(len(self.events_named('stock')),2)
         # New login is eligible without clearing an enduring crash marker.
-        for child in self.children[:3]:child.terminate();child.wait()
+        for child in self.children[:4]:child.terminate();child.wait()
         self.env['XDG_SESSION_ID']+='-next-login'
-        for name in ('cosmic-comp','cosmic-session','cosmic-settings-daemon'):
+        for name in ('cosmic-comp','cosmic-session','cosmic-settings-daemon','cosmic-notifications'):
             self.start_actor(self.installed_root/'usr/bin'/name)
         for name in ('observations','observations-early','exit','allow-spawn'):
             path=self.root/name
@@ -443,6 +444,7 @@ class LaunchLifecycle(unittest.TestCase):
         other['runtime']['processes'].pop('cosmic-applet-audio');other['runtime']['configuration']['applets']={};other['processes'].pop('cosmic-applet-audio')
         other['id']=cohort_id(other);other['runtime_compatibility'][0]['id']=runtime_id(other['runtime']);bad['cohorts'].append(other)
         bad['cohorts'][0]['runtime_compatibility'].append(other['runtime_compatibility'][0])
+        bind_target(other,self.installed_root);bind_target(bad['cohorts'][0],self.installed_root)
         with self.assertRaisesRegex(ValueError,'equivalence_lifecycle'):valid_catalog(bad)
 
 if __name__=='__main__':unittest.main()

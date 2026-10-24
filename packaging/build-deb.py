@@ -86,7 +86,7 @@ def build(args):
         install(REPO / "scripts/desktop-cards", usr / "bin/halcyon-ctl", 0o755)
         install(REPO / "companion/panel_launcher.py", usr / "lib" / PACKAGE / "panel_launcher.py")
         install(REPO / "companion/install_status.py", usr / "lib" / PACKAGE / "islands-status.py", 0o755)
-        for helper in ("bundle_contract.py", "runtime_identity.py", "refresh.py", "install.py"):
+        for helper in ("bundle_contract.py", "runtime_identity.py", "refresh.py", "install.py", "panel_configuration.py", "runtime_target.py", "verification.py"):
             install(REPO / "companion" / helper, usr / "lib" / PACKAGE / helper)
         for name in ("calendar-sync.py", "project-status.py"):
             install(REPO / "scripts" / name, usr / "lib" / PACKAGE / name, 0o755)
