@@ -1,0 +1,23 @@
+{
+  "release_tag": "v0.2.0",
+  "tag_commit": "51e2bfe4c180bafb7b04bd9d3fa0575927aab30e",
+  "source_files": {
+    "src/app.rs": "36e7d078bdb68d745defe0f0ca9c7e139e7a0aebe116556eba82a17df4690a83",
+    "src/app/layout.rs": "17f88e9235ff40ebf8782bb8454747942319b4f9d138f983d2ee368c9a415924",
+    "src/app/tools.rs": "e5a1fa481b50fa6b0534d36de8fe3324de88812b0d690cfddcc10dd144a44646",
+    "src/app/panel.rs": "9280ef2369ac71ea62374d19e87de30136031cb6ff9544c27ff56322d1d94dd5",
+    "src/app/history.rs": "9547b48860453b2ff011b0f45d2689f400880c65d8ae291173c2bcbe0dd03fbf",
+    "src/drawer.rs": "695c74113098c959fc9a2be0d81632ad485950fb090bceca2fce7b061645249e",
+    "src/watch.rs": "e4ac841994218d5c05549f7b5660826763ee4f977b10b1ad69ff5c519d0d0c22",
+    "src/schedule.rs": "110b730e216c7a2625f725de28996a126b89f356c63dad4b04105cf1a2e69bbb",
+    "src/widget_style.rs": "40136e4c1fe1bb8b82823a5dc9470c3252f5e8fe722e6cc5c158490e5e2fb074",
+    "src/usage.rs": "e42839cff85918279b435e4ab113bb0d774196909d3ab36358da18609ca3ee01",
+    "Cargo.lock": "06f03266ebd1879c401bd7f8602fc052392b638aadcbbf1bdc88f6f2f3fa6e88",
+    "companion/build.py": "71ea52962628b72b350cf1d555b6876dd4f8accef2db2fa952cb414f5d58d6fe",
+    "companion/patches/0001-dock-islands.patch": "d68b1fafcc33a2280379e75250b90a2bf3ed77868b883a19f0ad44787d761eda"
+  },
+  "companion_upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
+  "companion_archive_sha256": "27854c7d3fc54cb29bc866b8421a078aa6b396ea73e2d88fe4ec0cf4fdd55704",
+  "libcosmic": "dc11d6a11f601692fb8fd67fdc99775f0a9eb899",
+  "planned_work_sha256": "f8d12429c62dd2cd22a071436a371dd7b242a1d19fdffb8f9d14b1eda8eb4ee1"
+}

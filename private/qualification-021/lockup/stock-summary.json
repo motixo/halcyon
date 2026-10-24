@@ -1,0 +1,1562 @@
+{
+  "core_expected_shape_passed": true,
+  "cohort": "stock",
+  "preflight_passed": true,
+  "hour_complete": true,
+  "elapsed": 3690.7402878020002,
+  "core_checkpoints": 13,
+  "input_checks": 46,
+  "unique_tokens": 46,
+  "exact_line_readbacks": 46,
+  "byte_exact_readbacks": 46,
+  "core_input_checks_including_preflight": 45,
+  "core_byte_exact": 45,
+  "timed_and_final_input_checks": 42,
+  "normal_closes": 15,
+  "core_input_hour_passed": true,
+  "full_native_journal_present": true,
+  "native_session_failure_observed": false,
+  "kernel_crash_oom_gpu_reset_lines": [],
+  "compositor_panics": [],
+  "files_applet_pixmap_panics": [],
+  "resume_input_responded": true,
+  "resume_error": null,
+  "failures": [],
+  "optional_failures": [],
+  "optional_raw_counts_not_blanket_pass": {
+    "maximize/restore": {
+      "observed": 14,
+      "changed_or_closed": 14
+    },
+    "titlebar move": {
+      "observed": 14,
+      "changed_or_closed": 0
+    },
+    "border resize": {
+      "observed": 14,
+      "changed_or_closed": 14
+    },
+    "workspace next/return": {
+      "observed": 1,
+      "changed_or_closed": 0
+    },
+    "normal Files pointer close": {
+      "observed": 1,
+      "changed_or_closed": 1
+    }
+  },
+  "public_identities": {},
+  "identities": {
+    "baseline": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1458,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1505,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1532,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      }
+    },
+    "preflight": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1458,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1505,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1532,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      },
+      "/usr/bin/cosmic-edit": {
+        "pid": 2904,
+        "sha256": "61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149"
+      }
+    },
+    "core-final": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1458,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1505,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1532,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      },
+      "/usr/bin/cosmic-edit": {
+        "pid": 9851,
+        "sha256": "61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149"
+      }
+    },
+    "final": {
+      "/usr/bin/cosmic-comp": {
+        "pid": 1458,
+        "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+      },
+      "/usr/bin/cosmic-settings-daemon": {
+        "pid": 1505,
+        "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+      },
+      "/usr/bin/cosmic-panel": {
+        "pid": 1532,
+        "sha256": "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+      },
+      "/usr/bin/cosmic-edit": {
+        "pid": 9851,
+        "sha256": "61f32f20df9c4da800b0df8054cb0b7ec6c65ccd4b9d11679f7f6c7303dc1149"
+      }
+    }
+  },
+  "resource_sample_count": 72,
+  "resource_median_gap_sec": 60.76469860200007,
+  "resource_max_gap_sec": 90.52592315500033,
+  "raw_input_proofs": [
+    {
+      "token": "pstock000001",
+      "readback": "pstock000001",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "002-preflight-first-0-input",
+      "ocr": false,
+      "phase": "preflight",
+      "elapsed": 13.102969942000072,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000002",
+      "readback": "pstock000002",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "004-preflight-before-close-0-input",
+      "ocr": false,
+      "phase": "preflight",
+      "elapsed": 19.955978158999983,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000003",
+      "readback": "pstock000003",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "007-preflight-reopen-10000-input",
+      "ocr": false,
+      "phase": "preflight",
+      "elapsed": 35.38140682799997,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000004",
+      "readback": "pstock000004",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "010-core-1-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 8.311263072000088,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000005",
+      "readback": "pstock000005",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "012-core-before-close-1-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 15.161666497000056,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000006",
+      "readback": "pstock000006",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "015-core-reopen-10001-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 30.572846447000074,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000007",
+      "readback": "pstock000007",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "017-core-2-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 310.0940259270001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000008",
+      "readback": "pstock000008",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "019-core-before-close-2-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 316.946126897,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000009",
+      "readback": "pstock000009",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "022-core-reopen-10002-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 332.571798803,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000010",
+      "readback": "pstock000010",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "024-core-3-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 612.034216926,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000011",
+      "readback": "pstock000011",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "026-core-before-close-3-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 618.8884483930001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000012",
+      "readback": "pstock000012",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "029-core-reopen-10003-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 634.311411984,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000013",
+      "readback": "pstock000013",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "031-core-4-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 912.926706604,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000014",
+      "readback": "pstock000014",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "033-core-before-close-4-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 919.7812635540001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000015",
+      "readback": "pstock000015",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "036-core-reopen-10004-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 935.200064122,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000016",
+      "readback": "pstock000016",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "038-core-5-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1208.2011228620001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000017",
+      "readback": "pstock000017",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "040-core-before-close-5-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1215.1525438820001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000018",
+      "readback": "pstock000018",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "043-core-reopen-10005-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1230.57297122,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000019",
+      "readback": "pstock000019",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "045-core-6-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1509.9245067360002,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000020",
+      "readback": "pstock000020",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "047-core-before-close-6-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1516.7830191110002,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000021",
+      "readback": "pstock000021",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "050-core-reopen-10006-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1532.3098482199998,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000022",
+      "readback": "pstock000022",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "052-core-7-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1811.0427763520001,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000023",
+      "readback": "pstock000023",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "054-core-before-close-7-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1817.896981685,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000024",
+      "readback": "pstock000024",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "057-core-reopen-10007-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 1833.41947931,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000025",
+      "readback": "pstock000025",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "059-core-8-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2113.054858101,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000026",
+      "readback": "pstock000026",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "061-core-before-close-8-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2119.914880557,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000027",
+      "readback": "pstock000027",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "064-core-reopen-10008-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2135.433253718,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000028",
+      "readback": "pstock000028",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "066-core-9-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2408.3535420040002,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000029",
+      "readback": "pstock000029",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "068-core-before-close-9-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2415.205882435,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000030",
+      "readback": "pstock000030",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "071-core-reopen-10009-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2430.731438922,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000031",
+      "readback": "pstock000031",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "073-core-10-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2709.515532031,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000032",
+      "readback": "pstock000032",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "075-core-before-close-10-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2716.3732385060002,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000033",
+      "readback": "pstock000033",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "078-core-reopen-10010-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 2732.199745944,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000034",
+      "readback": "pstock000034",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "080-core-11-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3011.87881366,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000035",
+      "readback": "pstock000035",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "082-core-before-close-11-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3018.731084618,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000036",
+      "readback": "pstock000036",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "085-core-reopen-10011-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3034.257629427,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000037",
+      "readback": "pstock000037",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "087-core-12-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3313.723075519,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000038",
+      "readback": "pstock000038",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "089-core-before-close-12-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3320.5823374320003,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000039",
+      "readback": "pstock000039",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "092-core-reopen-10012-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3336.11289858,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000040",
+      "readback": "pstock000040",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "094-core-13-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3614.7878639419996,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000041",
+      "readback": "pstock000041",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "096-core-before-close-13-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3621.6409819259998,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000042",
+      "readback": "pstock000042",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "099-core-reopen-10013-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3637.164329403,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000043",
+      "readback": "pstock000043",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "101-hour-final-9000-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3668.342688981,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000044",
+      "readback": "pstock000044",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "103-hour-final-before-close-9001-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3675.1949671069997,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000045",
+      "readback": "pstock000045",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "106-hour-final-reopen-19001-input",
+      "ocr": false,
+      "phase": "soak",
+      "elapsed": 3690.7216981130005,
+      "geometry_source": "native protocol"
+    },
+    {
+      "token": "pstock000046",
+      "readback": "pstock000046",
+      "byte_exact": true,
+      "line_exact": true,
+      "frame": "113-after-resume-9500-input",
+      "ocr": false,
+      "phase": "optional-resume",
+      "elapsed": 3768.2313889859997,
+      "geometry_source": "native protocol"
+    }
+  ],
+  "resources": {
+    "/usr/bin/cosmic-greeter-daemon": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 8776,
+        "fds": 11,
+        "threads": 5,
+        "pids": [
+          663
+        ],
+        "starttimes": [
+          663
+        ],
+        "cpu_ticks": 20
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 8776,
+        "fds": 11,
+        "threads": 5,
+        "pids": [
+          663
+        ],
+        "starttimes": [
+          663
+        ],
+        "cpu_ticks": 20
+      },
+      "rss_min_kib": 8776,
+      "rss_max_kib": 8776,
+      "fds_max": 11,
+      "threads_max": 5,
+      "pid_sets": [
+        [
+          663
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-session": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 7340,
+        "fds": 71,
+        "threads": 1,
+        "pids": [
+          1253
+        ],
+        "starttimes": [
+          3854
+        ],
+        "cpu_ticks": 4
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 7340,
+        "fds": 71,
+        "threads": 1,
+        "pids": [
+          1253
+        ],
+        "starttimes": [
+          3854
+        ],
+        "cpu_ticks": 4
+      },
+      "rss_min_kib": 7340,
+      "rss_max_kib": 7340,
+      "fds_max": 71,
+      "threads_max": 1,
+      "pid_sets": [
+        [
+          1253
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-comp": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 246312,
+        "fds": 161,
+        "threads": 33,
+        "pids": [
+          1458
+        ],
+        "starttimes": [
+          3915
+        ],
+        "cpu_ticks": 756
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 278060,
+        "fds": 161,
+        "threads": 33,
+        "pids": [
+          1458
+        ],
+        "starttimes": [
+          3915
+        ],
+        "cpu_ticks": 14869
+      },
+      "rss_min_kib": 246312,
+      "rss_max_kib": 279624,
+      "fds_max": 161,
+      "threads_max": 33,
+      "pid_sets": [
+        [
+          1458
+        ]
+      ]
+    },
+    "/usr/bin/Xwayland": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 70148,
+        "fds": 8,
+        "threads": 1,
+        "pids": [
+          1487
+        ],
+        "starttimes": [
+          3962
+        ],
+        "cpu_ticks": 7
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 70148,
+        "fds": 8,
+        "threads": 1,
+        "pids": [
+          1487
+        ],
+        "starttimes": [
+          3962
+        ],
+        "cpu_ticks": 33
+      },
+      "rss_min_kib": 70148,
+      "rss_max_kib": 70148,
+      "fds_max": 8,
+      "threads_max": 1,
+      "pid_sets": [
+        [
+          1487
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-settings-daemon": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 15964,
+        "fds": 54,
+        "threads": 7,
+        "pids": [
+          1505
+        ],
+        "starttimes": [
+          3972
+        ],
+        "cpu_ticks": 10
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 15980,
+        "fds": 54,
+        "threads": 7,
+        "pids": [
+          1505
+        ],
+        "starttimes": [
+          3972
+        ],
+        "cpu_ticks": 53
+      },
+      "rss_min_kib": 15964,
+      "rss_max_kib": 15980,
+      "fds_max": 54,
+      "threads_max": 7,
+      "pid_sets": [
+        [
+          1505
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-notifications": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 22500,
+        "fds": 27,
+        "threads": 6,
+        "pids": [
+          1515
+        ],
+        "starttimes": [
+          3977
+        ],
+        "cpu_ticks": 10
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 22656,
+        "fds": 27,
+        "threads": 6,
+        "pids": [
+          1515
+        ],
+        "starttimes": [
+          3977
+        ],
+        "cpu_ticks": 17
+      },
+      "rss_min_kib": 22500,
+      "rss_max_kib": 22656,
+      "fds_max": 27,
+      "threads_max": 6,
+      "pid_sets": [
+        [
+          1515
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-panel": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 133952,
+        "fds": 250,
+        "threads": 21,
+        "pids": [
+          1532
+        ],
+        "starttimes": [
+          3982
+        ],
+        "cpu_ticks": 70
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 131148,
+        "fds": 250,
+        "threads": 21,
+        "pids": [
+          1532
+        ],
+        "starttimes": [
+          3982
+        ],
+        "cpu_ticks": 794
+      },
+      "rss_min_kib": 127080,
+      "rss_max_kib": 135284,
+      "fds_max": 250,
+      "threads_max": 21,
+      "pid_sets": [
+        [
+          1532
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-app-library": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 165116,
+        "fds": 49,
+        "threads": 33,
+        "pids": [
+          1564
+        ],
+        "starttimes": [
+          3990
+        ],
+        "cpu_ticks": 62
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 165124,
+        "fds": 49,
+        "threads": 33,
+        "pids": [
+          1564
+        ],
+        "starttimes": [
+          3990
+        ],
+        "cpu_ticks": 149
+      },
+      "rss_min_kib": 165116,
+      "rss_max_kib": 165124,
+      "fds_max": 49,
+      "threads_max": 33,
+      "pid_sets": [
+        [
+          1564
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-launcher": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 160568,
+        "fds": 50,
+        "threads": 32,
+        "pids": [
+          1575
+        ],
+        "starttimes": [
+          3994
+        ],
+        "cpu_ticks": 55
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 160564,
+        "fds": 50,
+        "threads": 32,
+        "pids": [
+          1575
+        ],
+        "starttimes": [
+          3994
+        ],
+        "cpu_ticks": 126
+      },
+      "rss_min_kib": 160560,
+      "rss_max_kib": 160568,
+      "fds_max": 50,
+      "threads_max": 32,
+      "pid_sets": [
+        [
+          1575
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-workspaces": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 96472,
+        "fds": 58,
+        "threads": 21,
+        "pids": [
+          1585
+        ],
+        "starttimes": [
+          3998
+        ],
+        "cpu_ticks": 28
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 96716,
+        "fds": 58,
+        "threads": 21,
+        "pids": [
+          1585
+        ],
+        "starttimes": [
+          3998
+        ],
+        "cpu_ticks": 60
+      },
+      "rss_min_kib": 96468,
+      "rss_max_kib": 96716,
+      "fds_max": 58,
+      "threads_max": 21,
+      "pid_sets": [
+        [
+          1585
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-osd": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 28760,
+        "fds": 40,
+        "threads": 12,
+        "pids": [
+          1609
+        ],
+        "starttimes": [
+          4021
+        ],
+        "cpu_ticks": 21
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 28772,
+        "fds": 40,
+        "threads": 12,
+        "pids": [
+          1609
+        ],
+        "starttimes": [
+          4021
+        ],
+        "cpu_ticks": 47
+      },
+      "rss_min_kib": 28760,
+      "rss_max_kib": 28776,
+      "fds_max": 40,
+      "threads_max": 12,
+      "pid_sets": [
+        [
+          1609
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-osk": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 26640,
+        "fds": 44,
+        "threads": 17,
+        "pids": [
+          1610
+        ],
+        "starttimes": [
+          4039
+        ],
+        "cpu_ticks": 26
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 26648,
+        "fds": 44,
+        "threads": 17,
+        "pids": [
+          1610
+        ],
+        "starttimes": [
+          4039
+        ],
+        "cpu_ticks": 591
+      },
+      "rss_min_kib": 26640,
+      "rss_max_kib": 26648,
+      "fds_max": 44,
+      "threads_max": 17,
+      "pid_sets": [
+        [
+          1610
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-bg": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 34960,
+        "fds": 14,
+        "threads": 2,
+        "pids": [
+          1611
+        ],
+        "starttimes": [
+          4039
+        ],
+        "cpu_ticks": 40
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 34980,
+        "fds": 14,
+        "threads": 2,
+        "pids": [
+          1611
+        ],
+        "starttimes": [
+          4039
+        ],
+        "cpu_ticks": 59
+      },
+      "rss_min_kib": 34960,
+      "rss_max_kib": 34980,
+      "fds_max": 14,
+      "threads_max": 2,
+      "pid_sets": [
+        [
+          1611
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-greeter": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 36092,
+        "fds": 37,
+        "threads": 13,
+        "pids": [
+          1622
+        ],
+        "starttimes": [
+          4058
+        ],
+        "cpu_ticks": 14
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 36164,
+        "fds": 37,
+        "threads": 13,
+        "pids": [
+          1622
+        ],
+        "starttimes": [
+          4058
+        ],
+        "cpu_ticks": 25
+      },
+      "rss_min_kib": 36092,
+      "rss_max_kib": 36164,
+      "fds_max": 37,
+      "threads_max": 13,
+      "pid_sets": [
+        [
+          1622
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-files-applet": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 48300,
+        "fds": 60,
+        "threads": 24,
+        "pids": [
+          1623
+        ],
+        "starttimes": [
+          4058
+        ],
+        "cpu_ticks": 32
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 48320,
+        "fds": 60,
+        "threads": 24,
+        "pids": [
+          1623
+        ],
+        "starttimes": [
+          4058
+        ],
+        "cpu_ticks": 295
+      },
+      "rss_min_kib": 48300,
+      "rss_max_kib": 48320,
+      "fds_max": 60,
+      "threads_max": 24,
+      "pid_sets": [
+        [
+          1623
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-idle": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 6560,
+        "fds": 19,
+        "threads": 7,
+        "pids": [
+          1655
+        ],
+        "starttimes": [
+          4067
+        ],
+        "cpu_ticks": 5
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 6628,
+        "fds": 19,
+        "threads": 7,
+        "pids": [
+          1655
+        ],
+        "starttimes": [
+          4067
+        ],
+        "cpu_ticks": 99
+      },
+      "rss_min_kib": 6560,
+      "rss_max_kib": 6628,
+      "fds_max": 19,
+      "threads_max": 7,
+      "pid_sets": [
+        [
+          1655
+        ]
+      ]
+    },
+    "/usr/libexec/xdg-desktop-portal": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 19068,
+        "fds": 23,
+        "threads": 7,
+        "pids": [
+          1665
+        ],
+        "starttimes": [
+          4069
+        ],
+        "cpu_ticks": 13
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 19068,
+        "fds": 23,
+        "threads": 7,
+        "pids": [
+          1665
+        ],
+        "starttimes": [
+          4069
+        ],
+        "cpu_ticks": 35
+      },
+      "rss_min_kib": 19068,
+      "rss_max_kib": 19068,
+      "fds_max": 23,
+      "threads_max": 7,
+      "pid_sets": [
+        [
+          1665
+        ]
+      ]
+    },
+    "/usr/libexec/xdg-desktop-portal-gtk": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 25968,
+        "fds": 17,
+        "threads": 5,
+        "pids": [
+          1741
+        ],
+        "starttimes": [
+          4093
+        ],
+        "cpu_ticks": 26
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 25968,
+        "fds": 17,
+        "threads": 5,
+        "pids": [
+          1741
+        ],
+        "starttimes": [
+          4093
+        ],
+        "cpu_ticks": 36
+      },
+      "rss_min_kib": 25968,
+      "rss_max_kib": 25968,
+      "fds_max": 17,
+      "threads_max": 5,
+      "pid_sets": [
+        [
+          1741
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-applets": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 566428,
+        "fds": 632,
+        "threads": 146,
+        "pids": [
+          1827,
+          1832,
+          1833,
+          1834,
+          1835,
+          1837,
+          1840,
+          1842,
+          1843,
+          1849,
+          1851,
+          1852,
+          1853,
+          1854,
+          1855,
+          1856,
+          1857,
+          1858,
+          2041
+        ],
+        "starttimes": [
+          4114,
+          4121,
+          4122,
+          4123,
+          4124,
+          4125,
+          4126,
+          4128,
+          4129,
+          4131,
+          4131,
+          4133,
+          4135,
+          4136,
+          4137,
+          4138,
+          4139,
+          4139,
+          4287
+        ],
+        "cpu_ticks": 239
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 566588,
+        "fds": 631,
+        "threads": 145,
+        "pids": [
+          1827,
+          1832,
+          1833,
+          1834,
+          1835,
+          1837,
+          1840,
+          1842,
+          1843,
+          1849,
+          1851,
+          1852,
+          1853,
+          1854,
+          1855,
+          1856,
+          1857,
+          1858,
+          2041
+        ],
+        "starttimes": [
+          4114,
+          4121,
+          4122,
+          4123,
+          4124,
+          4125,
+          4126,
+          4128,
+          4129,
+          4131,
+          4131,
+          4133,
+          4135,
+          4136,
+          4137,
+          4138,
+          4139,
+          4139,
+          4287
+        ],
+        "cpu_ticks": 351
+      },
+      "rss_min_kib": 566428,
+      "rss_max_kib": 566592,
+      "fds_max": 632,
+      "threads_max": 146,
+      "pid_sets": [
+        [
+          1827,
+          1832,
+          1833,
+          1834,
+          1835,
+          1837,
+          1840,
+          1842,
+          1843,
+          1849,
+          1851,
+          1852,
+          1853,
+          1854,
+          1855,
+          1856,
+          1857,
+          1858,
+          2041
+        ]
+      ]
+    },
+    "/usr/libexec/xdg-desktop-portal-cosmic": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 164052,
+        "fds": 37,
+        "threads": 29,
+        "pids": [
+          1874
+        ],
+        "starttimes": [
+          4182
+        ],
+        "cpu_ticks": 57
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 164268,
+        "fds": 37,
+        "threads": 29,
+        "pids": [
+          1874
+        ],
+        "starttimes": [
+          4182
+        ],
+        "cpu_ticks": 68
+      },
+      "rss_min_kib": 164052,
+      "rss_max_kib": 164268,
+      "fds_max": 37,
+      "threads_max": 29,
+      "pid_sets": [
+        [
+          1874
+        ]
+      ]
+    },
+    "/usr/bin/cosmic-edit": {
+      "samples": 72,
+      "first": {
+        "t": 112.321444857,
+        "rss_kib": 207488,
+        "fds": 45,
+        "threads": 31,
+        "pids": [
+          2904
+        ],
+        "starttimes": [
+          9608
+        ],
+        "cpu_ticks": 81
+      },
+      "last": {
+        "t": 3816.478451149,
+        "rss_kib": 207488,
+        "fds": 45,
+        "threads": 31,
+        "pids": [
+          9851
+        ],
+        "starttimes": [
+          380309
+        ],
+        "cpu_ticks": 85
+      },
+      "rss_min_kib": 206356,
+      "rss_max_kib": 208176,
+      "fds_max": 45,
+      "threads_max": 31,
+      "pid_sets": [
+        [
+          2904
+        ],
+        [
+          3417
+        ],
+        [
+          3934
+        ],
+        [
+          4451
+        ],
+        [
+          4948
+        ],
+        [
+          5451
+        ],
+        [
+          5948
+        ],
+        [
+          6439
+        ],
+        [
+          6938
+        ],
+        [
+          7435
+        ],
+        [
+          7919
+        ],
+        [
+          8419
+        ],
+        [
+          8931
+        ],
+        [
+          9422
+        ],
+        [
+          9851
+        ]
+      ]
+    }
+  }
+}

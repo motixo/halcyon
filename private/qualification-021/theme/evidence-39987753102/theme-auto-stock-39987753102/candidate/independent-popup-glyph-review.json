@@ -1,0 +1,46 @@
+[
+  {
+    "frame": "016-paper-actual-clock-popup",
+    "inside_popup_headline": [
+      480,
+      69,
+      625,
+      86
+    ],
+    "observed_surface": [
+      45,
+      40,
+      32
+    ],
+    "observed_glyph_foreground": [
+      255,
+      251,
+      245
+    ],
+    "near_native_role_glyph_pixels": 196,
+    "actual_contrast": 14.185290545894151,
+    "scope": "real calendar popup Dark only; native time label is observed in both modes"
+  },
+  {
+    "frame": "032-rose-actual-clock-popup",
+    "inside_popup_headline": [
+      480,
+      69,
+      625,
+      86
+    ],
+    "observed_surface": [
+      66,
+      36,
+      37
+    ],
+    "observed_glyph_foreground": [
+      221,
+      181,
+      181
+    ],
+    "near_native_role_glyph_pixels": 235,
+    "actual_contrast": 7.513805861390241,
+    "scope": "real calendar popup Dark only; native time label is observed in both modes"
+  }
+]

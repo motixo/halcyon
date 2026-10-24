@@ -1,0 +1,30 @@
+{
+  "calculator": "isolated infrastructure tool only; no product/native package build",
+  "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+  "source_commit": "655b14fb9572dd7f7231ec6c343c63984e99741a",
+  "matched_native_dependencies": {
+    "bitcode": {
+      "version": "0.6.9",
+      "checksum": "0a6ed1b54d8dc333e7be604d00fa9262f4635485ffea923647b6521a5fff045d"
+    },
+    "chrono": {
+      "version": "0.4.45",
+      "checksum": "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
+    },
+    "sunrise": {
+      "version": "2.1.0",
+      "checksum": "0733c9f1eaa06ed6d103d88e21f784449d08a6733c2ca2b39381cbcbcfe89272"
+    }
+  },
+  "files": {
+    "source/Cargo.toml": "d4ed9b70222d64ea1ebf4aee4198560e86fe3967e4f56c4e9460e3005bf7733f",
+    "source/Cargo.lock": "5c637b6096f2bd39ec3de2370470cb34e1b215824250feba371b96296d1b82e2",
+    "source/geonames-lib.rs": "c7aa7052d01f8e76171ab7ceae3c3543461ec4bc48b473fc426f43116f6600c7",
+    "source/data-timezone-geodata.bitcode-v0-6": "910a6c8b4e16ffa875a0aca47bd9c215ddee19941ab7f0012b6106fffe66b3b9",
+    "solar-calculator/Cargo.toml": "accfa290a2a8c4ac5eafa9275dd9b624b0f2b99520ba745c1c07780498690336",
+    "solar-calculator/Cargo.lock": "6776038b77d32c8f56cdf0db2818c2f4075992c996e23395ec5e6c34e9bc2806",
+    "solar-calculator/src/main.rs": "75c1d4c82597ab637ee8945222224d30bb8d25500a61905a717c1cdd4a042953",
+    "solar-boundary.json": "30b3659ba473d25f9376f4626305ae274555e6d0cc16b5803d4ae7d81523dc16"
+  },
+  "calculator_elf_sha256": "f90acb98ee1199c5fb50eab1a1063d672fc6796180cf6618eca07437a7a61269"
+}

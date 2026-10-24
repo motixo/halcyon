@@ -1,0 +1,68 @@
+{
+  "root": "private/qualification-021/theme/evidence-39994497276/theme-acceptance-stock-39994497276",
+  "artifact": 12520326845,
+  "verified_harness_files": 22,
+  "phases": {
+    "candidate-stock-natural": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "real natural sunrise Dark-to-Light",
+          "matched": true,
+          "settings_widgets_stopped": true
+        }
+      ],
+      "natural": {
+        "dark_samples_before_boundary": 71,
+        "first_light_after_boundary_seconds": 3.6381874084472656,
+        "max_realtime_monotonic_drift": 7.407989244256896e-07,
+        "stable_native_processes": true,
+        "set_time_calls": 1,
+        "set_timezone_calls": 1,
+        "independent_natural_pass": true
+      },
+      "frames": [
+        [
+          "006-selected-calm",
+          7.220065623668892,
+          136
+        ],
+        [
+          "011-natural-before-dark",
+          7.220065623668892,
+          131
+        ],
+        [
+          "012-natural-near-boundary-dark",
+          7.220065623668892,
+          132
+        ],
+        [
+          "013-natural-after-boundary",
+          12.771541673184347,
+          102
+        ]
+      ]
+    },
+    "untouched-clock": {
+      "errors": [
+        {
+          "fatal": "Dark image control pattern absent"
+        }
+      ],
+      "scenarios": [],
+      "natural": null,
+      "frames": []
+    },
+    "untouched-natural": {
+      "errors": [
+        {
+          "fatal": "Dark image control pattern absent"
+        }
+      ],
+      "scenarios": [],
+      "natural": null,
+      "frames": []
+    }
+  }
+}

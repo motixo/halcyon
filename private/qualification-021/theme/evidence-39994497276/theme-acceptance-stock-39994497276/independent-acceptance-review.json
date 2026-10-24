@@ -1,0 +1,974 @@
+{
+  "artifact": {
+    "id": 12520326845,
+    "name": "theme-acceptance-stock-39994497276",
+    "digest": "sha256:150a54a67700687b7aa602a1d091fc0b81a176756355f77d22a19dda1a164b44",
+    "size_in_bytes": 28822378,
+    "expires_at": "2026-10-30T17:39:58Z"
+  },
+  "executed_infra": "cd5e0e79fd03c890163a9546181f5e697064db56",
+  "verified_harness_files": {
+    "acceptance_wrapper.py": "63cb365c2f416c723cc5e8cae3513bc9bc09ef08c70d26a452951e543baef30d",
+    "acceptance_session.py": "ab5c444e055a42fd4ea3022a962a1433709c1339997ab1e434827196acb3b079",
+    "auto_session.py": "a668f61e650f0df908a09a1fda8e85c4e7f0fd17480d188bd533587be068fca1",
+    "followup_session.py": "06a51a7bdd902173c4bbe78728d141d1db76ce194cd737ef7ea8fa445b6b7a3a",
+    "theme_session.py": "01af1be15a6be6c6b95d54ff6b59dc3c6b1c807b723691ec6ec7f0c4e894caa0",
+    "control.py": "5441ef85023c81466720bcc329da360b4de34234dac531b02d62aeff3bfffa9b",
+    "calibrated_controls.py": "b53456642e3b9df10ac92897f321c109461efab618bdc05d384322dadc8311d7",
+    "prepare.sh": "aa9d882dfda7d3ddab656e8edea2105acd418bce9a7d19b835510a1539d8c4d2",
+    "session.sh": "daeeaeac20e6d8b3c40f8bb4f4ce15225b377ac1280c2f130226fdd3a48ccb1c",
+    "followup/control-calibration.json": "0388c4d50a68b8593367cf8f1ea67f0d60ee655ec04ceb02c915b42c36204eb7",
+    "acceptance/solar-boundary.json": "30b3659ba473d25f9376f4626305ae274555e6d0cc16b5803d4ae7d81523dc16",
+    "acceptance/solar-provenance.json": "6e801c4cbb51409cdcb55ef0fecf39665f7ae9108bfbb2ff515e783176e802dd",
+    "acceptance/source/data-timezone-geodata.bitcode-v0-6": "910a6c8b4e16ffa875a0aca47bd9c215ddee19941ab7f0012b6106fffe66b3b9",
+    "acceptance/source/Cargo.toml": "d4ed9b70222d64ea1ebf4aee4198560e86fe3967e4f56c4e9460e3005bf7733f",
+    "acceptance/source/Cargo.lock": "5c637b6096f2bd39ec3de2370470cb34e1b215824250feba371b96296d1b82e2",
+    "acceptance/source/geonames-lib.rs": "c7aa7052d01f8e76171ab7ceae3c3543461ec4bc48b473fc426f43116f6600c7",
+    "acceptance/solar-calculator/Cargo.toml": "accfa290a2a8c4ac5eafa9275dd9b624b0f2b99520ba745c1c07780498690336",
+    "acceptance/solar-calculator/Cargo.lock": "6776038b77d32c8f56cdf0db2818c2f4075992c996e23395ec5e6c34e9bc2806",
+    "acceptance/solar-calculator/src/main.rs": "75c1d4c82597ab637ee8945222224d30bb8d25500a61905a717c1cdd4a042953",
+    "upstream-daemon-time-655b14f.rs": "02445e02e10318da578c48bfd8c1d62b939777be82dbe5029b70d815e33682e9",
+    "upstream-daemon-theme-655b14f.rs": "4c124d1d7dbc33c86a0e18194c82226c03f1a535dc5b22e38f51ab3a3a5ab3dd",
+    "upstream-daemon-location-655b14f.rs": "063e74495f5250962c08b67c87465fb949d9bff5acc6a9bbf2e9be9c6e892c18"
+  },
+  "phases": {
+    "candidate-stock-natural": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "real natural sunrise Dark-to-Light",
+          "matched": true,
+          "settings_widgets_stopped": true
+        }
+      ],
+      "automatic": {
+        "native": "PASS: real natural sunrise Dark-to-Light",
+        "injected_events": false,
+        "observations": [],
+        "natural": {
+          "boundary": {
+            "native_source": "655b14fb9572dd7f7231ec6c343c63984e99741a",
+            "timezone": "Europe/London",
+            "latitude": 51.50853,
+            "longitude": -0.12574,
+            "sunrise_utc": "2026-10-23T06:37:41+00:00",
+            "sunrise_epoch": 1792737461,
+            "sunset_utc": "2026-10-23T16:51:44+00:00",
+            "sunset_epoch": 1792774304,
+            "sunrise_crate": "2.1.0",
+            "bitcode_crate": "0.6.9",
+            "chrono_crate": "0.4.45"
+          },
+          "stimulus": "one pre-login clock/timezone setup then unmodified time progression across actual calculated sunrise",
+          "first": {
+            "realtime": 1792737079.7930408,
+            "monotonic": 136.216321326,
+            "portal": "v v u 1",
+            "dark": true,
+            "controller_monotonic": 655.410451762
+          },
+          "transition": {
+            "realtime": 1792737464.6381874,
+            "monotonic": 521.061468638,
+            "portal": "v v u 2",
+            "dark": false,
+            "controller_monotonic": 1040.256516098
+          },
+          "last": {
+            "realtime": 1792737464.6381874,
+            "monotonic": 521.061468638,
+            "portal": "v v u 2",
+            "dark": false,
+            "controller_monotonic": 1040.256516098
+          },
+          "samples": [
+            {
+              "realtime": 1792737079.7930408,
+              "monotonic": 136.216321326,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 655.410451762
+            },
+            {
+              "realtime": 1792737085.1014218,
+              "monotonic": 141.524702414,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 660.719575046
+            },
+            {
+              "realtime": 1792737090.4159567,
+              "monotonic": 146.839237619,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 666.02992149
+            },
+            {
+              "realtime": 1792737095.7246537,
+              "monotonic": 152.147934528,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 671.340415714
+            },
+            {
+              "realtime": 1792737101.0348294,
+              "monotonic": 157.458110027,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 676.650821064
+            },
+            {
+              "realtime": 1792737106.3434975,
+              "monotonic": 162.766778072,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 681.96023306
+            },
+            {
+              "realtime": 1792737111.6526482,
+              "monotonic": 168.075928814,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 687.269287709
+            },
+            {
+              "realtime": 1792737116.9615622,
+              "monotonic": 173.384842726,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 692.578351972
+            },
+            {
+              "realtime": 1792737122.2693145,
+              "monotonic": 178.692595099,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 697.886757479
+            },
+            {
+              "realtime": 1792737127.5773876,
+              "monotonic": 184.000668054,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 703.1952379
+            },
+            {
+              "realtime": 1792737132.8867054,
+              "monotonic": 189.309985846,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 708.504236986
+            },
+            {
+              "realtime": 1792737138.1963875,
+              "monotonic": 194.619668279,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 713.812822899
+            },
+            {
+              "realtime": 1792737143.5053718,
+              "monotonic": 199.928652614,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 719.121861776
+            },
+            {
+              "realtime": 1792737148.8134933,
+              "monotonic": 205.236774076,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 724.430571342
+            },
+            {
+              "realtime": 1792737154.121851,
+              "monotonic": 210.545131408,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 729.739283561
+            },
+            {
+              "realtime": 1792737159.4303696,
+              "monotonic": 215.853650283,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 735.047999176
+            },
+            {
+              "realtime": 1792737164.7404923,
+              "monotonic": 221.163773063,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 740.358026112
+            },
+            {
+              "realtime": 1792737170.0528834,
+              "monotonic": 226.476164701,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 745.667900561
+            },
+            {
+              "realtime": 1792737175.3593361,
+              "monotonic": 231.782616947,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 750.977288951
+            },
+            {
+              "realtime": 1792737180.6685042,
+              "monotonic": 237.091785021,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 756.286651754
+            },
+            {
+              "realtime": 1792737185.977984,
+              "monotonic": 242.401264517,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 761.596264677
+            },
+            {
+              "realtime": 1792737191.2869363,
+              "monotonic": 247.710216899,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 766.905977064
+            },
+            {
+              "realtime": 1792737196.5971644,
+              "monotonic": 253.020444836,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 772.216180308
+            },
+            {
+              "realtime": 1792737201.9072485,
+              "monotonic": 258.330528956,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 777.526299618
+            },
+            {
+              "realtime": 1792737207.2202368,
+              "monotonic": 263.643517874,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 782.837850393
+            },
+            {
+              "realtime": 1792737212.5301979,
+              "monotonic": 268.953478411,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 788.149881892
+            },
+            {
+              "realtime": 1792737217.8409693,
+              "monotonic": 274.264249874,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 793.458141176
+            },
+            {
+              "realtime": 1792737223.150944,
+              "monotonic": 279.574224788,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 798.767874468
+            },
+            {
+              "realtime": 1792737228.4579675,
+              "monotonic": 284.881248353,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 804.077073696
+            },
+            {
+              "realtime": 1792737233.7697852,
+              "monotonic": 290.193065592,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 809.387130256
+            },
+            {
+              "realtime": 1792737239.0789125,
+              "monotonic": 295.502193025,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 814.696909081
+            },
+            {
+              "realtime": 1792737244.389976,
+              "monotonic": 300.813256704,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 820.007150208
+            },
+            {
+              "realtime": 1792737249.6975622,
+              "monotonic": 306.120843043,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 825.316726697
+            },
+            {
+              "realtime": 1792737255.0102508,
+              "monotonic": 311.433531298,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 830.629474143
+            },
+            {
+              "realtime": 1792737260.321019,
+              "monotonic": 316.744299438,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 835.939709175
+            },
+            {
+              "realtime": 1792737265.6334465,
+              "monotonic": 322.056726897,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 841.252736676
+            },
+            {
+              "realtime": 1792737270.9433362,
+              "monotonic": 327.366616796,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 846.562408295
+            },
+            {
+              "realtime": 1792737276.2565477,
+              "monotonic": 332.679828251,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 851.874757847
+            },
+            {
+              "realtime": 1792737281.571782,
+              "monotonic": 337.995063325,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 857.187224522
+            },
+            {
+              "realtime": 1792737286.8811944,
+              "monotonic": 343.304475061,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 862.499505967
+            },
+            {
+              "realtime": 1792737292.1940575,
+              "monotonic": 348.617338357,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 867.81162173
+            },
+            {
+              "realtime": 1792737297.5082529,
+              "monotonic": 353.931533732,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 873.125691197
+            },
+            {
+              "realtime": 1792737302.8209922,
+              "monotonic": 359.244272987,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 878.439151949
+            },
+            {
+              "realtime": 1792737308.1324852,
+              "monotonic": 364.555765852,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 883.75363324
+            },
+            {
+              "realtime": 1792737313.4501526,
+              "monotonic": 369.873433401,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 889.066694846
+            },
+            {
+              "realtime": 1792737318.7623131,
+              "monotonic": 375.185594081,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 894.379214806
+            },
+            {
+              "realtime": 1792737324.0735106,
+              "monotonic": 380.496791584,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 899.690701352
+            },
+            {
+              "realtime": 1792737329.3827972,
+              "monotonic": 385.806078049,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 905.000789708
+            },
+            {
+              "realtime": 1792737334.6919017,
+              "monotonic": 391.115182292,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 910.3126518
+            },
+            {
+              "realtime": 1792737340.0065165,
+              "monotonic": 396.429797179,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 915.625486047
+            },
+            {
+              "realtime": 1792737345.3200996,
+              "monotonic": 401.743380566,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 920.937105089
+            },
+            {
+              "realtime": 1792737350.6329868,
+              "monotonic": 407.056267783,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 926.2511389
+            },
+            {
+              "realtime": 1792737355.9475193,
+              "monotonic": 412.370799887,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 931.565539079
+            },
+            {
+              "realtime": 1792737361.2601533,
+              "monotonic": 417.683434117,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 936.878179733
+            },
+            {
+              "realtime": 1792737366.5712874,
+              "monotonic": 422.994568024,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 942.190287853
+            },
+            {
+              "realtime": 1792737371.89137,
+              "monotonic": 428.314650913,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 947.503754184
+            },
+            {
+              "realtime": 1792737377.1941013,
+              "monotonic": 433.617381813,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 952.817036208
+            },
+            {
+              "realtime": 1792737382.5093474,
+              "monotonic": 438.932627921,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 958.129275736
+            },
+            {
+              "realtime": 1792737387.8204346,
+              "monotonic": 444.243715422,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 963.440658824
+            },
+            {
+              "realtime": 1792737393.1332052,
+              "monotonic": 449.556485824,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 968.752434098
+            },
+            {
+              "realtime": 1792737398.4463248,
+              "monotonic": 454.869605748,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 974.064972042
+            },
+            {
+              "realtime": 1792737403.7610543,
+              "monotonic": 460.184334913,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 979.379779759
+            },
+            {
+              "realtime": 1792737409.0776587,
+              "monotonic": 465.500939633,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 984.695193805
+            },
+            {
+              "realtime": 1792737414.393286,
+              "monotonic": 470.816566614,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 990.009831815
+            },
+            {
+              "realtime": 1792737419.702655,
+              "monotonic": 476.125935824,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 995.323313152
+            },
+            {
+              "realtime": 1792737425.0139027,
+              "monotonic": 481.43718324,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1000.636511838
+            },
+            {
+              "realtime": 1792737430.3271956,
+              "monotonic": 486.750476331,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1005.949039073
+            },
+            {
+              "realtime": 1792737435.6429777,
+              "monotonic": 492.066258787,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1011.262542726
+            },
+            {
+              "realtime": 1792737448.6998873,
+              "monotonic": 505.123168238,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1024.317353329
+            },
+            {
+              "realtime": 1792737454.0142405,
+              "monotonic": 510.437521289,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1029.631166455
+            },
+            {
+              "realtime": 1792737459.3225238,
+              "monotonic": 515.745804477,
+              "portal": "v v u 1",
+              "dark": true,
+              "controller_monotonic": 1034.944224693
+            },
+            {
+              "realtime": 1792737464.6381874,
+              "monotonic": 521.061468638,
+              "portal": "v v u 2",
+              "dark": false,
+              "controller_monotonic": 1040.256516098
+            }
+          ],
+          "daemon_host_before": [
+            [
+              1615,
+              "/usr/bin/cosmic-settings-daemon",
+              "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+            ],
+            [
+              1642,
+              "/usr/bin/cosmic-panel",
+              "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+            ],
+            [
+              1968,
+              "/usr/libexec/xdg-desktop-portal-cosmic",
+              "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b"
+            ]
+          ],
+          "daemon_host_after": [
+            [
+              1615,
+              "/usr/bin/cosmic-settings-daemon",
+              "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+            ],
+            [
+              1642,
+              "/usr/bin/cosmic-panel",
+              "e66271e6114ac21754f2969c910a36dfea3b958f949d74d9e7e22595caf0f937"
+            ],
+            [
+              1968,
+              "/usr/libexec/xdg-desktop-portal-cosmic",
+              "73d5864b661f5e4d5995e788869b26a9b9091edf723277bae41f9cb38916d56b"
+            ]
+          ],
+          "stable_native_processes": true,
+          "set_time_calls_entire_phase": 1,
+          "set_timezone_calls_entire_phase": 1,
+          "matched": true,
+          "manual_mode_writes": false,
+          "synthetic_events": false,
+          "daemon_restart_during_window": false
+        }
+      },
+      "media": {
+        "expected_candidate_media": "/home/runner/work/_temp/cosmic/candidate.iso",
+        "inserted_removable_media": [
+          {
+            "io-status": "ok",
+            "device": "media",
+            "locked": true,
+            "removable": true,
+            "inserted": {
+              "iops_rd": 0,
+              "detect_zeroes": "off",
+              "image": {
+                "virtual-size": 46030848,
+                "filename": "/home/runner/work/_temp/cosmic/candidate.iso",
+                "format": "raw",
+                "actual-size": 46030848,
+                "dirty-flag": false
+              },
+              "iops_wr": 0,
+              "ro": true,
+              "node-name": "#block985",
+              "backing_file_depth": 0,
+              "drv": "raw",
+              "iops": 0,
+              "bps_wr": 0,
+              "write_threshold": 0,
+              "encrypted": false,
+              "bps": 0,
+              "bps_rd": 0,
+              "cache": {
+                "no-flush": false,
+                "direct": false,
+                "writeback": true
+              },
+              "file": "/home/runner/work/_temp/cosmic/candidate.iso"
+            },
+            "qdev": "/machine/peripheral-anon/device[7]",
+            "tray_open": false,
+            "type": "unknown"
+          }
+        ],
+        "asserted": true
+      },
+      "frames": [
+        {
+          "name": "006-selected-calm",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": null,
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 136,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "011-natural-before-dark",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 131,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "012-natural-near-boundary-dark",
+          "portal": "v v u 1",
+          "native_mode": null,
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": [
+            174,
+            198,
+            199
+          ],
+          "actual_surface": [
+            31,
+            53,
+            54
+          ],
+          "actual_ink": [
+            174,
+            198,
+            199
+          ],
+          "glyph_pixels": 132,
+          "actual_contrast": 7.220065623668892,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        },
+        {
+          "name": "013-natural-after-boundary",
+          "portal": "v v u 2",
+          "native_mode": "false",
+          "auto": "true",
+          "clock_label_bounds_inside_bar": [
+            590,
+            17,
+            691,
+            30
+          ],
+          "native_foreground_role": [
+            21,
+            40,
+            41
+          ],
+          "actual_surface": [
+            214,
+            239,
+            240
+          ],
+          "actual_ink": [
+            21,
+            40,
+            41
+          ],
+          "glyph_pixels": 102,
+          "actual_contrast": 12.771541673184347,
+          "stopped_ui": true,
+          "product_identity": {
+            "appearance": {
+              "accent": [
+                106,
+                194,
+                198
+              ],
+              "corner_radius": 25,
+              "family": "soft",
+              "native_mode_palettes": 1,
+              "opacity": 94,
+              "wallpaper_colors": true
+            },
+            "devbox": {
+              "swap": false
+            },
+            "enabled_widgets": [
+              "devbox"
+            ],
+            "glance": {
+              "density": "comfortable",
+              "enabled": true,
+              "initialized": true,
+              "own_background": true,
+              "show_calendar": false
+            },
+            "theme": "teal"
+          }
+        }
+      ],
+      "running_product": [
+        {
+          "pid": 2778,
+          "exe": "/usr/bin/halcyon",
+          "sha256": "d070ad5d8bf1362fcd063ee31a56700473744f2f03723948a8357961dd49736b",
+          "cmdline": "/usr/bin/halcyon --settings setup "
+        }
+      ],
+      "payload_checks": {
+        "payload-candidate.txt": 33
+      },
+      "independent_natural_observation": {
+        "dark_samples_before_boundary": 71,
+        "first_light_after_boundary_seconds": 3.6381874084472656,
+        "max_realtime_monotonic_drift": 7.407989244256896e-07,
+        "stable_native_processes": true,
+        "set_time_calls": 1,
+        "set_timezone_calls": 1,
+        "independent_natural_pass": true
+      }
+    },
+    "untouched-clock": {
+      "errors": [
+        {
+          "fatal": "Dark image control pattern absent"
+        }
+      ],
+      "scenarios": [],
+      "automatic": {
+        "native": "not observed in this phase",
+        "injected_events": false,
+        "observations": []
+      },
+      "media": {
+        "expected_candidate_media": null,
+        "inserted_removable_media": [],
+        "asserted": true
+      },
+      "frames": [],
+      "running_product": [],
+      "payload_checks": {}
+    },
+    "untouched-natural": {
+      "errors": [
+        {
+          "fatal": "Dark image control pattern absent"
+        }
+      ],
+      "scenarios": [],
+      "automatic": {
+        "native": "not observed in this phase",
+        "injected_events": false,
+        "observations": []
+      },
+      "media": {
+        "expected_candidate_media": null,
+        "inserted_removable_media": [],
+        "asserted": true
+      },
+      "frames": [],
+      "running_product": [],
+      "payload_checks": {}
+    }
+  }
+}

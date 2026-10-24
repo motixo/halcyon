@@ -1,0 +1,310 @@
+name: Offline native theme development session
+on:
+  workflow_dispatch:
+    inputs:
+      blur_isolation:
+        description: "One allocation: immediate native blur/overview causal controls, original guest"
+        default: false
+        type: boolean
+      lockup:
+        description: "Released 0.2.0 responsiveness: serial stock/main/Islands one-hour offline sessions"
+        default: false
+        type: boolean
+      lockup_context:
+        description: "Single released responsiveness context; dispatch stock first"
+        default: stock
+        type: choice
+        options: [stock, main, islands]
+      acceptance:
+        description: "One host: stock baseline/natural only OR independent Islands manual/natural"
+        default: false
+        type: boolean
+      auto_diagnosis:
+        description: "One selected host; serial untouched baseline/candidate Auto diagnosis and only remaining looks"
+        default: false
+        type: boolean
+      followup:
+        description: 'Only remaining five looks and native automatic mode; exactly two host jobs'
+        default: false
+        type: boolean
+      package_run:
+        description: 'Existing finalized theme-packages run (blank builds exact frozen SHA)'
+        default: ''
+        type: string
+      host_filter:
+        description: 'Focused infrastructure rerun: all, stock, islands'
+        type: choice
+        options: [all, stock, islands, remaining]
+        default: all
+      lineage_filter:
+        description: 'Focused infrastructure rerun: all, public, candidate'
+        type: choice
+        options: [all, public, candidate]
+        default: all
+      build_only:
+        description: 'Finalize packages only; no guest'
+        default: true
+        type: boolean
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: theme-development-021
+  cancel-in-progress: false
+jobs:
+  package:
+    if: ${{ !inputs.blur_isolation && !inputs.lockup && !inputs.acceptance && !inputs.auto_diagnosis && !inputs.followup && inputs.package_run == '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Build exact reviewed development package and authenticate public packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: bash private/qualification-021/theme/packages.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: theme-packages-${{ github.run_id }}
+          path: ${{ runner.temp }}/theme-packages/
+          retention-days: 7
+          compression-level: 0
+  session:
+    if: ${{ !inputs.blur_isolation && !cancelled() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
+    needs: package
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        lineage: ${{ fromJSON(inputs.lockup && '["public"]' || (inputs.acceptance || inputs.auto_diagnosis || inputs.followup) && '["candidate"]' || inputs.lineage_filter == 'public' && '["public"]' || inputs.lineage_filter == 'candidate' && '["candidate"]' || '["public","candidate"]') }}
+        exclude: ${{ fromJSON(!inputs.followup && inputs.host_filter == 'remaining' && '[{"lineage":"candidate","host":"stock"}]' || '[]') }}
+        host: ${{ fromJSON(inputs.lockup && format('["{0}"]', inputs.lockup_context) || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'stock' && '["stock"]' || (inputs.acceptance || inputs.auto_diagnosis) && inputs.host_filter == 'islands' && '["islands"]' || inputs.followup && '["stock","islands"]' || inputs.host_filter == 'stock' && '["stock"]' || inputs.host_filter == 'islands' && '["islands"]' || '["stock","islands"]') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ inputs.lockup && 100 || 120 }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Enforce scoped follow-up inputs
+        if: inputs.lockup || inputs.followup || inputs.auto_diagnosis || inputs.acceptance
+        env:
+          PACKAGE_RUN: ${{ inputs.package_run }}
+          AUTO_DIAGNOSIS: ${{ inputs.auto_diagnosis || inputs.acceptance }}
+          HOST_FILTER: ${{ inputs.host_filter }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+        run: |
+          test "$PACKAGE_RUN" = 39966537804
+          test "$BUILD_ONLY" = false
+          if [[ "$AUTO_DIAGNOSIS" = true ]]; then [[ "$HOST_FILTER" = stock || "$HOST_FILTER" = islands ]]; fi
+      - name: Tools, authenticated retained guest and finalized input media
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE_RUN: ${{ inputs.package_run || github.run_id }}
+        run: bash private/qualification-021/theme/prepare.sh
+      - name: One offline VM; independent clean scenario overlays
+        if: ${{ !inputs.lockup }}
+        timeout-minutes: 75
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" LINEAGE="${{ matrix.lineage }}" HOST_KIND="${{ matrix.host }}" SCENARIO_SET="${{ inputs.acceptance && 'acceptance' || inputs.auto_diagnosis && 'auto-diagnosis' || inputs.followup && 'followup' || 'original' }}" bash private/qualification-021/theme/session.sh
+      - name: Native preflight; hour timer starts only after actual editor canary
+        id: native_preflight
+        continue-on-error: true
+        if: inputs.lockup
+        timeout-minutes: 8
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" COHORT="${{ matrix.host }}" bash private/qualification-021/lockup/start.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-preflight-${{ matrix.host }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ inputs.lockup && steps.native_preflight.outcome == 'failure' }}
+        with:
+          name: lockup-initial-failure-${{ matrix.host }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 7
+      - name: Bounded same-runner infra repair gate; never retry actual core failure
+        if: ${{ inputs.lockup && steps.native_preflight.outcome == 'failure' }}
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo chmod -R a+rwX "$RUNNER_TEMP/cosmic/evidence"
+          python3 private/qualification-021/lockup/live_repair.py "$RUNNER_TEMP/cosmic" "${{ matrix.host }}"
+      - name: Real native input and resources through minute 20
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 1200
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-20-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Real native input and resources through minute 40
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 2400
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-40-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Real native input and resources through minute 61
+        if: inputs.lockup
+        timeout-minutes: 23
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" run 3660
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() && inputs.lockup }}
+        with:
+          name: lockup-progress-${{ matrix.host }}-61-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/progress/
+          retention-days: 7
+      - name: Final real input, close and reopen after core hour
+        if: inputs.lockup
+        timeout-minutes: 3
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" finish
+      - name: Optional workspaces and popup coverage after completed core hour
+        if: inputs.lockup
+        continue-on-error: true
+        timeout-minutes: 3
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" optional
+      - name: Optional native suspend and resume, separate from core result
+        if: inputs.lockup
+        continue-on-error: true
+        timeout-minutes: 2
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" resume
+      - name: Preserve final native evidence
+        if: ${{ always() && inputs.lockup }}
+        timeout-minutes: 2
+        continue-on-error: true
+        run: sudo python3 private/qualification-021/lockup/session.py "$RUNNER_TEMP/cosmic" public "${{ matrix.host }}" collect
+      - name: Stop only owned disposable responsiveness VM
+        if: ${{ always() && inputs.lockup }}
+        run: sudo python3 private/qualification-021/lockup/stop.py "$RUNNER_TEMP/cosmic"
+      - name: Readable evidence
+        if: always()
+        run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: ${{ inputs.lockup && format('lockup-session-{0}-{1}', matrix.host, github.run_id) || inputs.acceptance && format('theme-acceptance-{0}-{1}', matrix.host, github.run_id) || inputs.auto_diagnosis && format('theme-auto-{0}-{1}', matrix.host, github.run_id) || inputs.followup && format('theme-followup-{0}-{1}', matrix.host, github.run_id) || format('theme-session-{0}-{1}-{2}', matrix.lineage, matrix.host, github.run_id) }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 7
+          compression-level: 6
+
+  blur-isolation:
+    if: inputs.blur_isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Enforce immutable original inputs and local harness checks
+        env:
+          PACKAGE_RUN: ${{ inputs.package_run }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+        run: |
+          test "$PACKAGE_RUN" = 39966537804
+          test "$BUILD_ONLY" = false
+          python3 private/qualification-021/blur-isolation/test_configuration.py
+      - name: Reuse original retained guest and finalized public input media
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE_RUN: ${{ inputs.package_run }}
+        run: bash private/qualification-021/theme/prepare.sh
+      - name: R2 stock-native-blur; immediate first, fresh preceding variant only if needed
+        id: blur_stock
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh context stock-native-blur
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ steps.blur_stock.outcome == 'failure' }}
+        with:
+          name: native-blur-r2-initial-stock-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+      - name: Bounded addressed correction only for pre-trigger harness failure (stock)
+        if: ${{ steps.blur_stock.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 private/qualification-021/blur-isolation/repair_gate.py "$RUNNER_TEMP/cosmic" stock-native-blur
+      - name: Finalize owned stock VM and finish a fresh conditional variant
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh finish stock-native-blur
+      - name: R2 public-frosted; immediate first, fresh preceding variant only if needed
+        id: blur_public
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh context public-frosted
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ steps.blur_public.outcome == 'failure' }}
+        with:
+          name: native-blur-r2-initial-public-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+      - name: Bounded addressed correction only for pre-trigger harness failure (public)
+        if: ${{ steps.blur_public.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 private/qualification-021/blur-isolation/repair_gate.py "$RUNNER_TEMP/cosmic" public-frosted
+      - name: Finalize owned public VM and finish a fresh conditional variant
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh finish public-frosted
+      - name: R2 public-native-off; immediate first, fresh preceding variant only if needed
+        id: blur_off
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh context public-native-off
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ steps.blur_off.outcome == 'failure' }}
+        with:
+          name: native-blur-r2-initial-off-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+      - name: Bounded addressed correction only for pre-trigger harness failure (off)
+        if: ${{ steps.blur_off.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 private/qualification-021/blur-isolation/repair_gate.py "$RUNNER_TEMP/cosmic" public-native-off
+      - name: Finalize owned off VM and finish a fresh conditional variant
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh finish public-native-off
+      - name: Preserve exact independent comparison summary
+        if: always()
+        run: sudo python3 private/qualification-021/blur-isolation/summary.py "$RUNNER_TEMP/cosmic/evidence"
+      - name: Stop only owned comparison VMs and make evidence readable
+        if: always()
+        run: |
+          for owned in "$RUNNER_TEMP/cosmic/blur-cases/"*; do
+            if [[ -d "$owned" ]]; then sudo python3 private/qualification-021/lockup/stop.py "$owned"; fi
+          done
+          sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-blur-isolation-r2-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+          compression-level: 6

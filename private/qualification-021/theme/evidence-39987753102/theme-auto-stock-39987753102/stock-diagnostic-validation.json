@@ -1,0 +1,8 @@
+{
+  "gate": "stock native diagnostic method validated before serial Islands overlay",
+  "checks": {},
+  "failures": [
+    "('untouched', 'incomplete diagnostic')"
+  ],
+  "validated": false
+}

@@ -1,0 +1,49 @@
+{
+  "compositor_commit": "8cb1802caada438bb5cc7670dfabdaca5fad0502",
+  "source_archive_sha256": "17e6cfccb612d4e9fcb2c9d44617a700ca91a9db922bf30f60fb8fadbb6b19be",
+  "files": {
+    "src/backend/kms/mod.rs": "314b15a854005477b1dbf1870e36a0e51d33a14b0ee04e20a4e661f0a8118685",
+    "src/backend/render/mod.rs": "1d72009e4e338a2b41b8a7f22ba5a5c73dc24995fce83e0d25f9b02d18d3f6e5",
+    "src/backend/render/wayland/blur_effect.rs": "c79ac196ad5a41698a2cc6018b9cc99c92f30db9c881d4051014ae12b2ef1767",
+    "src/state.rs": "8ca40ed25f25a52101c509837631d96ed826ed676dd51a695642f5ec755b4475"
+  },
+  "main_run": 40027094006,
+  "confirmed": {
+    "core_hour_passed": true,
+    "compositor_panic": "Custom Shaders not initialized",
+    "panic_site": "src/backend/render/wayland/blur_effect.rs:113",
+    "panic_monotonic": 3870.25128,
+    "failure_before_suspend": true,
+    "first_failed_frame": "110-workspace-overview-9900.png",
+    "display_inactive": true,
+    "files_applet_pixmap_panics": 6
+  },
+  "source_supported_inference": "software/offscreen renderer lacks init_shaders; overview capture with native blur reaches required per-EGL-context BlurShaders",
+  "not_established": [
+    "whether an hour is required",
+    "untouched COSMIC with native blur alone reproduces",
+    "RX590 reporter cause"
+  ],
+  "product_or_compositor_code_changed": false,
+  "islands_run": 40035187607,
+  "islands_confirmed": {
+    "core_hour_passed": true,
+    "compositor_panic": "Custom Shaders not initialized",
+    "panic_site": "src/backend/render/wayland/blur_effect.rs:113",
+    "panic_monotonic": 3906.468184,
+    "failure_before_suspend": true,
+    "suspend_entry_monotonic": 3925.830191,
+    "first_failed_frame": "110-workspace-overview-9900.png",
+    "display_inactive": true,
+    "compositor_pid_before_after": [
+      3300,
+      47032
+    ],
+    "islands_panel_pid_before_after": [
+      3657,
+      47417
+    ],
+    "files_applet_pixmap_panics": 4
+  },
+  "comparison": "Both public contexts reproduce; untouched stock without equivalent blur does not isolate native blur causation."
+}

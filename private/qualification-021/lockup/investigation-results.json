@@ -1,0 +1,28 @@
+{
+  "status": "blocked by harness failures; all 3 allocated runners consumed; no soak claim",
+  "runs": [
+    {
+      "id": 40012098859,
+      "infra": "a9ec93b953d9099bc3dabc631eab58b9caa4b47a",
+      "stock": "prelogin timedated race",
+      "main": "cancelled during preparation",
+      "islands": "queued cancellation; no runner allocated"
+    },
+    {
+      "id": 40013237899,
+      "infra": "72c35c4c81f4cc22b01cef0ee9bd2f109a16ddb5",
+      "stock": "native login observed; editor absent; zero timed checkpoints",
+      "main": "not reached",
+      "islands": "not reached"
+    }
+  ],
+  "native_editor_source": {
+    "url": "https://raw.githubusercontent.com/pop-os/cosmic-edit/4ac1cc8/src/main.rs",
+    "sha256": "0a8c0781ef2c537bab9309bd6200e6ce395f2035879e4d9a9f1140da5a61518e",
+    "daemonizes": true,
+    "local_launcher_correction": "Type=forking GuessMainPID=yes; not VM verified"
+  },
+  "confirmed_reporter_root_cause": false,
+  "product_changes": false,
+  "release_authorized": false
+}

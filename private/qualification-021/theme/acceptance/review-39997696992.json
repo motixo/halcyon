@@ -1,0 +1,324 @@
+{
+  "root": "private/qualification-021/theme/evidence-39997696992/theme-acceptance-islands-39997696992",
+  "artifact": 12521924667,
+  "verified_harness_files": 22,
+  "phases": {
+    "candidate-islands-manual": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "calm native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "evening native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "focus native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "paper native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        },
+        {
+          "scenario": "rose native manual Dark-Light-Dark",
+          "execution": "complete",
+          "look_identity_verified": true,
+          "host_processes_preserved": true,
+          "before": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ],
+          "after": [
+            [
+              3596,
+              "/home/probe/.local/share/cosmic-desktop-cards/companion/cosmic-panel-islands",
+              "f4dca9b2d6fff12c37657b4dfc8c8fb7de669fb17bb409153011df156e54dc31"
+            ]
+          ]
+        }
+      ],
+      "natural": null,
+      "frames": [
+        [
+          "006-selected-calm",
+          7.220065623668892,
+          126
+        ],
+        [
+          "009-calm-manual-dark-0",
+          7.220065623668892,
+          127
+        ],
+        [
+          "012-calm-manual-light-1",
+          12.771541673184347,
+          96
+        ],
+        [
+          "015-calm-manual-dark-2",
+          7.220065623668892,
+          125
+        ],
+        [
+          "022-selected-evening",
+          7.371662262793889,
+          125
+        ],
+        [
+          "025-evening-manual-dark-0",
+          7.371662262793889,
+          129
+        ],
+        [
+          "028-evening-manual-light-1",
+          12.137097245590752,
+          96
+        ],
+        [
+          "031-evening-manual-dark-2",
+          6.043723083037682,
+          129
+        ],
+        [
+          "038-selected-focus",
+          13.87347843115394,
+          96
+        ],
+        [
+          "041-focus-manual-dark-0",
+          13.87347843115394,
+          83
+        ],
+        [
+          "044-focus-manual-light-1",
+          11.685275104738706,
+          98
+        ],
+        [
+          "047-focus-manual-dark-2",
+          13.87347843115394,
+          71
+        ],
+        [
+          "054-selected-paper",
+          13.885039504703252,
+          71
+        ],
+        [
+          "057-paper-manual-dark-0",
+          14.185290545894151,
+          79
+        ],
+        [
+          "060-paper-manual-light-1",
+          13.885039504703252,
+          79
+        ],
+        [
+          "063-paper-manual-dark-2",
+          14.185290545894151,
+          79
+        ],
+        [
+          "070-selected-rose",
+          6.6985546194083465,
+          121
+        ],
+        [
+          "073-rose-manual-dark-0",
+          6.6985546194083465,
+          121
+        ],
+        [
+          "076-rose-manual-light-1",
+          8.73732267410888,
+          113
+        ],
+        [
+          "079-rose-manual-dark-2",
+          6.6985546194083465,
+          124
+        ]
+      ]
+    },
+    "candidate-islands-natural": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "real natural sunrise Dark-to-Light",
+          "matched": true,
+          "settings_widgets_stopped": true
+        }
+      ],
+      "natural": {
+        "dark_samples_before_boundary": 60,
+        "first_light_after_boundary_seconds": 2.9390604496002197,
+        "max_realtime_monotonic_drift": 4.924490895064082e-07,
+        "stable_native_processes": true,
+        "set_time_calls": 1,
+        "set_timezone_calls": 1,
+        "independent_natural_pass": true
+      },
+      "frames": [
+        [
+          "006-selected-calm",
+          7.220065623668892,
+          131
+        ],
+        [
+          "011-natural-before-dark",
+          7.220065623668892,
+          130
+        ],
+        [
+          "012-natural-near-boundary-dark",
+          7.220065623668892,
+          132
+        ],
+        [
+          "013-natural-after-boundary",
+          12.771541673184347,
+          102
+        ]
+      ]
+    },
+    "untouched-clock": {
+      "errors": [],
+      "scenarios": [],
+      "natural": null,
+      "frames": [
+        [
+          "005-startup-night",
+          13.295985150367793,
+          89
+        ],
+        [
+          "006-live-noon",
+          13.928829209548713,
+          104
+        ],
+        [
+          "007-live-timezone-paris",
+          12.337094487405711,
+          80
+        ],
+        [
+          "008-live-night",
+          12.337094487405711,
+          80
+        ],
+        [
+          "009-live-timezone-london",
+          11.392365666244965,
+          95
+        ]
+      ]
+    },
+    "untouched-natural": {
+      "errors": [],
+      "scenarios": [
+        {
+          "scenario": "real natural sunrise Dark-to-Light",
+          "matched": true,
+          "settings_widgets_stopped": true
+        }
+      ],
+      "natural": {
+        "dark_samples_before_boundary": 76,
+        "first_light_after_boundary_seconds": 1.060852289199829,
+        "max_realtime_monotonic_drift": 3.650577014013834e-07,
+        "stable_native_processes": true,
+        "set_time_calls": 1,
+        "set_timezone_calls": 1,
+        "independent_natural_pass": true
+      },
+      "frames": [
+        [
+          "005-natural-before-dark",
+          13.928829209548713,
+          112
+        ],
+        [
+          "006-natural-near-boundary-dark",
+          13.928829209548713,
+          104
+        ],
+        [
+          "007-natural-after-boundary",
+          13.01619374190328,
+          89
+        ]
+      ]
+    }
+  }
+}

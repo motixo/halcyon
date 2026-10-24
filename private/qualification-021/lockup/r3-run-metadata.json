@@ -1,0 +1,116 @@
+{
+  "stock": {
+    "id": 40018232557,
+    "html_url": "https://github.com/profilaz3/halcyon/actions/runs/40018232557",
+    "head_sha": "7840d5609b08ef95ac529af6ab546d77ccc36242",
+    "event": "workflow_dispatch",
+    "path": ".github/workflows/qualification-capability-probe.yml",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-23T20:18:46Z",
+    "run_started_at": "2026-10-23T20:18:46Z",
+    "updated_at": "2026-10-23T21:27:32Z",
+    "jobs": [
+      {
+        "id": 120635756246,
+        "name": "session (public, stock)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T20:18:50Z",
+        "completed_at": "2026-10-23T21:27:31Z",
+        "runner_name": "GitHub Actions 1000000180",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 120635757958,
+        "name": "package",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-10-23T20:18:48Z",
+        "completed_at": "2026-10-23T20:18:48Z",
+        "runner_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      }
+    ]
+  },
+  "main": {
+    "id": 40027094006,
+    "html_url": "https://github.com/profilaz3/halcyon/actions/runs/40027094006",
+    "head_sha": "7840d5609b08ef95ac529af6ab546d77ccc36242",
+    "event": "workflow_dispatch",
+    "path": ".github/workflows/qualification-capability-probe.yml",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-23T21:29:04Z",
+    "run_started_at": "2026-10-23T21:29:04Z",
+    "updated_at": "2026-10-23T22:38:54Z",
+    "jobs": [
+      {
+        "id": 120665907625,
+        "name": "session (public, main)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T21:29:08Z",
+        "completed_at": "2026-10-23T22:38:53Z",
+        "runner_name": "GitHub Actions 1000000181",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 120665909122,
+        "name": "package",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-10-23T21:29:06Z",
+        "completed_at": "2026-10-23T21:29:05Z",
+        "runner_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      }
+    ]
+  },
+  "islands": {
+    "id": 40035187607,
+    "html_url": "https://github.com/profilaz3/halcyon/actions/runs/40035187607",
+    "head_sha": "7840d5609b08ef95ac529af6ab546d77ccc36242",
+    "event": "workflow_dispatch",
+    "path": ".github/workflows/qualification-capability-probe.yml",
+    "status": "completed",
+    "conclusion": "success",
+    "created_at": "2026-10-23T22:41:06Z",
+    "run_started_at": "2026-10-23T22:41:06Z",
+    "updated_at": "2026-10-23T23:52:09Z",
+    "jobs": [
+      {
+        "id": 120692797731,
+        "name": "session (public, islands)",
+        "status": "completed",
+        "conclusion": "success",
+        "started_at": "2026-10-23T22:41:09Z",
+        "completed_at": "2026-10-23T23:52:08Z",
+        "runner_name": "GitHub Actions 1000000183",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 120692799163,
+        "name": "package",
+        "status": "completed",
+        "conclusion": "skipped",
+        "started_at": "2026-10-23T22:41:07Z",
+        "completed_at": "2026-10-23T22:41:07Z",
+        "runner_name": null,
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      }
+    ]
+  }
+}
