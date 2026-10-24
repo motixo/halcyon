@@ -165,43 +165,74 @@ def output_names(env=None):
     def decode(b):
         if len(b) < 4: raise ValueError('wayland_string')
         size, = struct.unpack_from('I', b)
-        if not 1 <= size <= len(b)-4 or b[3+size] != 0: raise ValueError('wayland_string')
-        return b[4:3+size].decode(), 4+((size+3)//4)*4
+        end = 4+((size+3)//4)*4
+        if not 1 <= size <= len(b)-4 or end > len(b) or b[3+size] != 0: raise ValueError('wayland_string')
+        if b'\0' in b[4:3+size]: raise ValueError('wayland_string')
+        return b[4:3+size].decode(), end
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.settimeout(1); client.connect(str(path))
-        def send(obj, opcode, payload): client.sendall(struct.pack('II', obj, ((len(payload)+8)<<16)|opcode)+payload)
+        def remaining():
+            left = deadline-time.monotonic()
+            if left <= 0: raise ValueError('wayland_deadline')
+            client.settimeout(left)
+        remaining(); client.connect(str(path))
+        def send(obj, opcode, payload):
+            remaining()
+            client.sendall(struct.pack('II', obj, ((len(payload)+8)<<16)|opcode)+payload)
         def receive(n):
             result = b''
             while len(result) < n:
-                left = deadline-time.monotonic()
-                if left <= 0: raise ValueError('wayland_deadline')
-                client.settimeout(left); chunk = client.recv(n-len(result))
+                remaining(); chunk = client.recv(n-len(result))
                 if not chunk: raise ValueError('wayland_closed')
                 result += chunk
             return result
-        send(1, 1, struct.pack('I', 2)); send(1, 0, struct.pack('I', 3))
-        outputs = {}; next_id = 10; phase = 3
+        # One client namespace: no gaps, no collisions, no callback-ID reuse.
+        # The bounded connection allocates at most 35 objects, then disconnects.
+        next_id = 2
+        def allocate():
+            nonlocal next_id
+            allocated = next_id; next_id += 1
+            return allocated
+        registry = allocate(); callback = allocate()
+        send(1, 1, struct.pack('I', registry)); send(1, 0, struct.pack('I', callback))
+        outputs = {}; first_round = True
         for _ in range(4096):
             obj, header = struct.unpack('II', receive(8)); size, op = header >> 16, header & 65535
             if not 8 <= size <= 65536 or size % 4: raise ValueError('wayland_message')
             body = receive(size-8)
-            if obj == 1 and op == 0: raise ValueError('wayland_error')
-            if obj == 2:
+            if obj == 1 and op == 0:
+                if len(body) < 12: raise ValueError('wayland_error_size')
+                error_object, code = struct.unpack_from('II', body)
+                message, used = decode(body[8:])
+                if used+8 != len(body): raise ValueError('wayland_error_size')
+                # Only fixed protocol diagnostics can enter logs verbatim. A
+                # compositor implementation error may contain arbitrary paths.
+                safe = (r'(Invalid new_id: [0-9]{1,10}\.|invalid new id [0-9]{1,10}|'
+                        r'Unknown opcode [0-9]{1,5} for interface wl_display\.|'
+                        r'invalid arguments for wl_(registry|display|output)#[0-9]{1,10}\.(bind|sync|get_registry))')
+                if len(message) > 256 or not re.fullmatch(safe, message):
+                    raw = message.encode()
+                    message = f'[redacted bytes={len(raw)} sha256={hashlib.sha256(raw).hexdigest()}]'
+                raise ValueError(f'wayland_error object={error_object} code={code} message={message}')
+            if obj == registry:
                 if op == 1: raise Changed('wayland_outputs_changed')
                 if op != 0 or len(body) < 12: raise ValueError('wayland_registry')
                 global_id, = struct.unpack_from('I', body); interface, off = decode(body[4:])
                 if len(body) != off+8: raise ValueError('wayland_registry_size')
                 version, = struct.unpack_from('I', body, off+4)
                 if interface == 'wl_output':
-                    if phase != 3 or version < 4 or len(outputs) >= 32: raise ValueError('wayland_output_scope')
-                    outputs[next_id] = None
-                    send(2, 0, struct.pack('I', global_id)+string('wl_output')+struct.pack('II', 4, next_id)); next_id += 1
+                    if not first_round or version < 4 or len(outputs) >= 32: raise ValueError('wayland_output_scope')
+                    output = allocate(); outputs[output] = None
+                    send(registry, 0, struct.pack('I', global_id)+string('wl_output')+struct.pack('II', 4, output))
             elif obj in outputs and op == 4:
                 if outputs[obj] is not None: raise Changed('wayland_name_changed')
-                outputs[obj] = decode(body)[0]
-            elif obj == phase and op == 0:
-                if phase == 3:
-                    phase = 4; send(1, 0, struct.pack('I', 4))
+                name, used = decode(body)
+                if used != len(body): raise ValueError('wayland_output_name_size')
+                outputs[obj] = name
+            elif obj == callback and op == 0:
+                if len(body) != 4: raise ValueError('wayland_callback')
+                if first_round:
+                    first_round = False; callback = allocate()
+                    send(1, 0, struct.pack('I', callback))
                 else:
                     names = list(outputs.values())
                     if not names or any(not isinstance(n,str) or not ID.fullmatch(n) for n in names) or len(set(names)) != len(names):

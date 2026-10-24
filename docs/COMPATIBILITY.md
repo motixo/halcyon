@@ -335,6 +335,15 @@ panel's no-argument startup path, read-only:
   deterministic fallback (built-in eDP/LVDS/DSI first, then lexical name). Its
   configured plugins remain required. Output count must fit the qualified scope;
   implementation support is not native multi-display proof.
+- The output query has one one-second deadline across connect, requests and
+  replies, a 32-output / 4096-event bound, and one contiguous client object-ID
+  allocator shared by registry, outputs and both sync callbacks. The second sync
+  follows all output binds; callback IDs are never reused on this short-lived
+  connection. Missing names, old output protocol, removal or name changes refuse
+  admission. `wl_display.error` records object/code and a bounded diagnostic:
+  fixed protocol messages are retained, arbitrary server text is represented by
+  length/hash rather than potentially private paths. Tests include a disposable
+  libwayland server; this is protocol evidence, not native COSMIC qualification.
 - Read/watch/fingerprint each supported bar's
   `XDG_CONFIG_HOME/cosmic/io.github.desktopcards.DockIslands/v1/{Dock,Panel}`
   (HOME/.config only if XDG_CONFIG_HOME is unset; no system-data fallback).
