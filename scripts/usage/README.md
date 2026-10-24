@@ -43,6 +43,14 @@ status; legacy activity cannot change status. A newly seen activity token can
 start an enabled row, including after retention has removed the old identity.
 No permanent tombstone is retained beyond the disclosed window.
 
+The idle worker checks disk/deadlines at most every 30 seconds rather than every
+second. A successful local checkbox save signals its worker immediately; signals
+coalesce and are retained if work is already in progress. Other processes observe
+the saved choice at their next idle check. During a network operation the existing
+50 ms choice checks remain in force. The five-minute startup warmup and six-hour
+retry spacing are unchanged; an idle retry or day rollover can be up to 30 seconds
+late. This reduces idle checks, not the number or content of daily reports.
+
 The state file migrates old client state while preserving the random token.
 New fields intentionally make older strict state readers reject it, preventing
 a downgrade from silently enabling reporting. In particular, 0.2.5 cannot read

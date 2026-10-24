@@ -61,6 +61,22 @@ class SafeProjectStatus(unittest.TestCase):
         self.assertFalse(self.marker.exists(), 'repository helper executed')
         return result['projects']
 
+    def test_empty_or_missing_roots_skip_process_scan_but_later_projects_are_detected(self):
+        config = self.root / 'empty-config.json'
+        empty = self.root / 'empty'
+        empty.mkdir()
+        with patch.dict(os.environ, {'DESKTOP_CARDS_CONFIG': str(config)}), \
+                patch.object(projects, 'listeners', return_value=[]) as listeners:
+            for roots in ([], [str(empty)], [str(self.root / 'unmounted')]):
+                config.write_text(json.dumps({'project_roots': roots}))
+                result = projects.scan()
+                self.assertEqual(result['projects'], [])
+                self.assertIsInstance(result['updated_at'], str)
+                listeners.assert_not_called()
+            config.write_text(json.dumps({'project_roots': [str(self.repo)]}))
+            self.assertEqual(len(projects.scan()['projects']), 1)
+            listeners.assert_called_once()
+
     def test_current_config_routing(self):
         # Missing routing, legacy preference, or ignored XDG must not silently
         # show an empty/wrong project list. Exercise the actual helper process.

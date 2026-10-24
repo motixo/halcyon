@@ -253,7 +253,12 @@ def scan():
     except (OSError, ValueError):
         config = {}
     roots = config.get('project_roots', [])
-    paths, sockets = discover(roots), listeners()
+    paths = discover(roots)
+    # Empty/unavailable folders have no project servers to match. Avoid starting
+    # ss and walking process metadata on every refresh of an empty widget.
+    if not paths:
+        return {'updated_at': datetime.now(timezone.utc).isoformat(), 'projects': []}
+    sockets = listeners()
     with ThreadPoolExecutor(max_workers=4) as pool:
         projects = list(pool.map(lambda path: repository(path, sockets), paths))
     projects.sort(key=lambda p: (not bool(p['conflicts']), not any(s['web'] for s in p['servers']),
