@@ -46,7 +46,7 @@ def put(work,source,target):
 
 def boot(work,disk,vars_file):
  work.mkdir(exist_ok=True);(work/'evidence').mkdir(exist_ok=True)
- args=[str(W/'tools/usr/bin/qemu-system-x86_64'),'-L',str(W/'tools/usr/share/qemu'),'-machine','pc-q35-8.2','-accel','kvm','-cpu','host','-smp','4','-m','6144',
+ args=[str(W/'tools/usr/bin/qemu-system-x86_64'),'-L',str(W/'tools/usr/share/qemu'),'-L',str(W/'tools/usr/share/seabios'),'-L',str(W/'tools/usr/lib/ipxe/qemu'),'-machine','pc-q35-8.2','-accel','kvm','-cpu','host','-smp','4','-m','6144',
  '-drive',f'if=pflash,format=raw,readonly=on,file={R}/OVMF_CODE_4M.fd','-drive',f'if=pflash,format=raw,file={vars_file}',
  '-drive',f'if=none,id=osdisk,format=qcow2,file={disk}','-device','virtio-blk-pci,drive=osdisk,addr=0x5,bootindex=0',
  '-device','virtio-vga,addr=0x2,xres=1280,yres=800','-device','qemu-xhci,addr=0x3','-device','usb-kbd','-device','usb-tablet',
@@ -54,9 +54,13 @@ def boot(work,disk,vars_file):
  '-device','virtserialport,chardev=agent,name=org.qemu.guest_agent.0','-nic','none','-display','none',
  '-qmp',f'unix:{work}/qmp.sock,server=on,wait=off','-serial',f'file:{work}/evidence/serial.log']
  (work/'evidence/qemu-args.json').write_text(json.dumps(args,indent=2)+'\n')
- log=(work/'evidence/qemu.log').open('wb');p=subprocess.Popen(args,stdout=log,stderr=log,env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','HOME':'/root','LANG':'C.UTF-8','LD_LIBRARY_PATH':str(W/'tools/usr/lib/x86_64-linux-gnu')})
+ log=(work/'evidence/qemu.log').open('wb');p=subprocess.Popen(args,stdout=log,stderr=log,env={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','HOME':'/root','LANG':'C.UTF-8','LD_LIBRARY_PATH':str(W/'tools/usr/lib/x86_64-linux-gnu'),'QEMU_MODULE_DIR':str(W/'tools/usr/lib/x86_64-linux-gnu/qemu')})
  for _ in range(150):
-  if p.poll() is not None:raise RuntimeError('QEMU exited before QGA')
+  if p.poll() is not None:
+   log.close()
+   detail=(work/'evidence/qemu.log').read_text(errors='replace')[-12000:]
+   print('QEMU startup stderr (no credentials in QEMU environment): '+detail,flush=True)
+   raise RuntimeError('QEMU exited before QGA; returncode='+str(p.returncode)+'; see preserved qemu.log')
   try:
    c=Channel(work/'agent.sock');c.call('guest-ping');c.close();return p,log
   except (OSError,RuntimeError):time.sleep(2)

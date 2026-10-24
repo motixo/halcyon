@@ -15,6 +15,9 @@ jobs:
   timing:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
     env:
       WORK: /mnt/qt025
     steps:
@@ -23,6 +26,7 @@ jobs:
           persist-credentials: false
       - name: Create owned disposable area; require 70GB disk and actual KVM
         run: |
+          set -Eeuo pipefail
           test "${RUNNER_ENVIRONMENT}" = github-hosted
           sudo mkdir "$WORK"
           sudo chown "$(id -u):$(id -g)" "$WORK"
@@ -32,24 +36,27 @@ jobs:
           sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" python3 private/qualification-timing-025/prerequisites.py
       - name: Download verified QEMU dependencies to local prefix, no host installation
         timeout-minutes: 8
-        run: bash private/qualification-timing-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
+        run: set -Eeuo pipefail; bash private/qualification-timing-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
       - name: Restore exact prepared NEW 1783 image, not the original guest
         timeout-minutes: 25
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 -u private/qualification-timing-025/restore_prepared.py 2>&1 | tee "$WORK/evidence/restore.log"
+        run: set -Eeuo pipefail; python3 -u private/qualification-timing-025/restore_prepared.py 2>&1 | tee "$WORK/evidence/restore.log"
       - name: Offline guest native timings and real stock UI input
         timeout-minutes: 54
         run: |
+          set -Eeuo pipefail
           sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" LD_LIBRARY_PATH="$WORK/tools/usr/lib/x86_64-linux-gnu" PYTHONPATH="$WORK/tools/usr/lib/python3/dist-packages" python3 -u private/qualification-timing-025/run_timing.py 2>&1 | tee "$WORK/evidence/timing.log"
       - name: Preserve small evidence, input identities and failures
         if: always()
         run: |
+          set -Eeuo pipefail
           if [ -d "$WORK/evidence" ]; then
             date -u > "$WORK/evidence/job-end.txt"
             df -B1 "$WORK" > "$WORK/evidence/final-disk.txt"
             free -b > "$WORK/evidence/final-memory.txt"
             sha256sum -c "$WORK/evidence/host-dpkg-before.sha256" > "$WORK/evidence/host-dpkg-unchanged.txt" || true
+            if [ -d "$WORK/trial/evidence" ]; then sudo cp -a "$WORK/trial/evidence" "$WORK/evidence/startup-vm"; fi
             cp private/qualification-timing-025/input-pins.json "$WORK/evidence/"
             find private/qualification-timing-025 -type f -print0 | sort -z | xargs -0 sha256sum > "$WORK/evidence/recipe-hashes.txt"
             sudo chmod -R a+rX "$WORK/evidence"

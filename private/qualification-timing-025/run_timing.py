@@ -40,8 +40,9 @@ def main():
  T.mkdir();shutil.copyfile(R/'cosmic-vars.fd',T/'vars.fd')
  disk=T/'overlay.qcow2';qimg=str(W/'tools/usr/bin/qemu-img')
  subprocess.run([qimg,'create','-f','qcow2','-F','qcow2','-b',str(R/'cosmic-1.11-1783-r1.qcow2'),str(disk)],check=True)
- p,log=boot(T,disk,T/'vars.fd')
+ p=log=None
  try:
+  p,log=boot(T,disk,T/'vars.fd')
   Q=Channel(T/'qmp.sock');Q.f.readline();qmp('qmp_capabilities')
   # Capture greeter then log in with the immutable disposable fixture account.
   time.sleep(20);shot('00-greeter');key('ret');time.sleep(2);text('cosmic-probe');key('ret');login_start=time.monotonic()
@@ -98,7 +99,7 @@ def main():
    rc,out,err=guest(T,'/usr/bin/'+args[0],args[1:],30);(E/(label+'.txt')).write_bytes(out+err)
   if done.get('exitcode')!=0:raise RuntimeError('measurement failed; inspect preserved guest-results/failure.json')
  finally:
-  stop(p,log,T)
+  if p is not None:stop(p,log,T)
   if Q:Q.close()
   shutil.copytree(T/'evidence',E/'vm',dirs_exist_ok=True)
  assert {name:sha(R/name) for name in pins()}==original
