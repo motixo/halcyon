@@ -15,7 +15,7 @@ concurrency:
 jobs:
   timing:
     runs-on: ubuntu-24.04
-    timeout-minutes: 2
+    timeout-minutes: 90
     defaults:
       run:
         shell: bash
@@ -49,17 +49,14 @@ jobs:
         with:
           mode: preflight
       - name: Download verified QEMU dependencies to local prefix, no host installation
-        if: ${{ false }} # r3 lightweight preflight; zero guest transfer
         timeout-minutes: 8
         run: set -Eeuo pipefail; bash private/package-session-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
       - name: Restore exact prepared NEW 1783 image, not the original guest
-        if: ${{ false }} # r3 lightweight preflight; zero guest transfer
         timeout-minutes: 25
         env:
           GH_TOKEN: ${{ github.token }}
         run: set -Eeuo pipefail; python3 -u private/package-session-025/restore_prepared.py 2>&1 | tee "$WORK/evidence/restore.log"
       - name: Explicit frozen development test-input artifacts, never release assets
-        if: ${{ false }} # r3 lightweight preflight; zero guest transfer
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: development-test-inputs-b6419c70-${{ github.run_id }}
@@ -67,7 +64,6 @@ jobs:
           retention-days: 90
           compression-level: 0
       - name: Offline package UI acceptance with fail-closed checkpoint transport
-        if: ${{ false }} # r3 lightweight preflight; zero guest transfer
         timeout-minutes: 65
         uses: ./.github/actions/package-session-driver
         env:
