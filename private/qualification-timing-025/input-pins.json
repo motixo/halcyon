@@ -1,0 +1,35 @@
+{
+  "source_commit": "33dc6eb4a36af4c19f7317dbcdc309de0ce12f04",
+  "frozen_helpers": {
+    "panel_launcher.py": "60106cc52516fdff082aa77269e3112b816c7f39320c09232989407efc121187",
+    "bundle_contract.py": "fae8d1d566969ccde8e7c58e5bdd7b8ea7c39d90d854e16e66faa06bf734c23f",
+    "runtime_identity.py": "469becbd0ec14e095387bff1d3babb157ac0c2e6d5c9b2ba0b1cba023b2cce85",
+    "install_status.py": "3b720c702a0bfe43e4235d242bbcbac70184cc0761bd1f32c0efb095ad7801a3",
+    "install.py": "46e3e98cdaf11f0fd4416b5cb37ccafc2cd8d07e594647e6b48032bc8b488d74",
+    "refresh.py": "703200e420d8d97509b7ceeea99707f260072a6a89916fe16f928d91c3ee0333",
+    "selector.py": "835d960e44ede612920472e56b76cf2403afafe2070b1306e4cb1aba74ec545d",
+    "panel_configuration.py": "c8370710085defc0a00fd93232a1144c01acb181218b22f38e79505968a7f788"
+  },
+  "candidate_original_sha256": "3c38ab7d2f22605b374ab1962c92239554240cce6ddb6343fadd178318ac02e1",
+  "candidate_original_bytes": 27760236,
+  "derived_envelope_sha256": "4c2e1887cf9cbbf0b62f9d75e5c6dd1c548ecc1c3514a8d828785a42184f2d0c",
+  "derived_envelope_bytes": 25689170,
+  "compressed_sha256": "7ed1f544859996252974874097faffdaba58484e82e311f4b44b44f81772e73d",
+  "cohort": "afaff752298e4be46f8c3f9c894216e886256b9ed457570b41a96d8f2d6ebf00",
+  "packages": 1783,
+  "package_file_entries": 165721,
+  "qualification": false,
+  "omitted_candidate_fields": [
+    "collisions",
+    "duplicate",
+    "event_id",
+    "events",
+    "format",
+    "indexes",
+    "missing_inputs",
+    "reasons",
+    "resources",
+    "state",
+    "version"
+  ]
+}
