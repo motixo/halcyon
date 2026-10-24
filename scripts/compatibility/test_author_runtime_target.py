@@ -50,6 +50,22 @@ class Authoring(unittest.TestCase):
         self.manifest['files']['catalog.json']['sha256']=digest(self.bundle/'catalog.json')
         (self.bundle/'companion-manifest.json').write_bytes(canonical(self.manifest))
     def run_audit(self):return audit(self.catalog,self.row['id'],self.sysroot,self.bundle,self.dep,self.scope)
+    def test_device_observation_required_and_renderer_is_only_description(self):
+        from test_runtime_devices import make_device
+        device=make_device(self.root/'sys')[2]
+        self.row['runtime']['constraints']={'drm_devices':[device]}
+        self.row['runtime_compatibility'][0]['id']=runtime_id(self.row['runtime'])
+        self.row['runtime_target']['profile_id']=runtime_id(self.row['runtime'])
+        self.row['runtime_target']['equivalence_id']=identity(self.row['runtime_compatibility'])
+        self.row['runtime_target']['native_scope']['constraints_sha256']=identity(self.row['runtime']['constraints'])
+        self.native['constraints']=self.row['runtime']['constraints'];self.save()
+        with self.assertRaisesRegex(ValueError,'device_observation'):self.run_audit()
+        self.native['device_observation']={'format':'halcyon-drm-device-observation','version':1,'devices':[device]}
+        self.save()
+        self.assertEqual(self.run_audit()['state'],'STRUCTURAL-NOT-QUALIFIED')
+        self.native['device_observation']['devices']=[{**device,'device':'0x1234'}];self.save()
+        with self.assertRaisesRegex(ValueError,'device_observation'):self.run_audit()
+
     def test_public_elf_graph_positive_and_missing_dependency_rejected(self):
         result=self.run_audit()
         self.assertEqual(result['state'],'STRUCTURAL-NOT-QUALIFIED')

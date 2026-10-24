@@ -201,6 +201,34 @@ def runtime_id(profile):
     return identity(profile)
 
 
+def valid_drm_devices(devices):
+    """Exact PCI DRM inventory, not renderer text or generic GPU compatibility."""
+    if not isinstance(devices, list) or not 1 <= len(devices) <= 8:
+        raise ValueError('runtime_drm_devices')
+    fields = {'vendor','device','subsystem_vendor','subsystem_device','pci_class',
+              'drivers','virtio_features','primary_nodes','render_nodes'}
+    for item in devices:
+        if not isinstance(item, dict) or set(item) != fields:
+            raise ValueError('runtime_drm_device')
+        if any(not isinstance(item[k],str) or not re.fullmatch(r'0x[0-9a-f]{4}',item[k])
+               for k in ('vendor','device','subsystem_vendor','subsystem_device')):
+            raise ValueError('runtime_drm_pci_id')
+        if not isinstance(item['pci_class'],str) or not re.fullmatch(r'0x03[0-9a-f]{4}',item['pci_class']):
+            raise ValueError('runtime_drm_pci_class')
+        if (not isinstance(item['drivers'],list) or not 1 <= len(item['drivers']) <= 8
+                or any(not isinstance(n,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',n) for n in item['drivers'])):
+            raise ValueError('runtime_drm_driver')
+        if item['virtio_features'] is not None and (not isinstance(item['virtio_features'],str)
+                or not re.fullmatch(r'[01]{64}',item['virtio_features'])):
+            raise ValueError('runtime_drm_features')
+        for key,minimum in (('primary_nodes',1),('render_nodes',0)):
+            if type(item[key]) is not int or not minimum <= item[key] <= 8:
+                raise ValueError('runtime_drm_nodes')
+    if devices != sorted(devices, key=canonical):
+        raise ValueError('runtime_drm_order')
+    return devices
+
+
 def valid_runtime(profile):
     if profile.get('version') not in (3, 4) or not profile.get('processes'):
         raise ValueError('runtime_schema')
@@ -237,7 +265,7 @@ def valid_runtime(profile):
     if {a['process'] for a in config['applets'].values()} != children:
         raise ValueError('runtime_applet_inventory')
     constraints = profile['constraints']
-    if not isinstance(constraints, dict) or set(constraints) - {'kernel_release', 'kernel_version_sha256', 'module_versions'}:
+    if not isinstance(constraints, dict) or set(constraints) - {'kernel_release', 'kernel_version_sha256', 'module_versions', 'drm_devices'}:
         raise ValueError('runtime_constraints')
     if 'kernel_release' in constraints and (not isinstance(constraints['kernel_release'], str) or not 1 <= len(constraints['kernel_release']) <= 256):
         raise ValueError('runtime_kernel_release')
@@ -246,6 +274,7 @@ def valid_runtime(profile):
     for name, attrs in constraints.get('module_versions', {}).items():
         if not re.fullmatch('[A-Za-z0-9_]+', name) or not attrs or set(attrs) - {'version', 'srcversion'} or not all(isinstance(v, str) and v for v in attrs.values()):
             raise ValueError('runtime_module')
+    if 'drm_devices' in constraints: valid_drm_devices(constraints['drm_devices'])
     # These are deliberately NOT asserted to be observed package identities.
     if profile.get('unmeasured') != ['previously-read-resources', 'kernel-bytes', 'driver-firmware', 'anonymous-code']:
         raise ValueError('runtime_measurement_limits')

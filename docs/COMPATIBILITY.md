@@ -707,3 +707,47 @@ This connection accepts only Capabilities, MaterialSupport and Inspect. All
 transaction/write connections still obtain fresh installation authority. Known
 installation controls remain available while Checking, and timeout requires an
 explicit retry rather than repeated focus-triggered work.
+
+
+### Bounded device scope and resource authoring
+
+A runtime profile may declare `constraints.drm_devices`: a canonically sorted,
+exact inventory (1–8 PCI display devices, including duplicate identical devices).
+Each record has `vendor`, `device`, `subsystem_vendor`, `subsystem_device`
+(lowercase `0x` plus four hex digits), `pci_class` (`0x03` plus four hex digits),
+ordered owning-device-to-PCI `drivers`, `virtio_features` (64 exposed bits, or
+null for non-virtio ancestry), and `primary_nodes`/`render_nodes` counts. Card
+numbers and PCI bus addresses are not compatibility identity. Extra devices,
+unbound/unsupported ancestry, unreadable attributes or different values refuse;
+there is no missing-device exemption. This is a discriminator for an explicitly
+qualified scope, not generic virtio or GPU support.
+
+The ordinary-user reader opens only public sysfs attributes, never DRM device
+nodes. It bounds discovery to 256 class entries, 16 nodes, 16 ancestors per node
+and 256 bytes per attribute. It refuses FIFO/device files and escaping links.
+Runtime checks take fresh before/after device and kernel/module observations
+within each verification phase; device path/inode changes invalidate that phase.
+They do not persist a path/stat acceptance cache or attest past hotplug history,
+firmware bytes, GPU state or an actual renderer string. Existing process mappings,
+installed bytes, kernel/module constraints, timeouts and stock fallback remain.
+
+In the hash-bound native scope review, a device-constrained target additionally
+requires `device_observation` with format `halcyon-drm-device-observation`,
+version 1 and `devices` exactly equal to the declared inventory. `graphics`
+continues to describe the actual observed EGL/GL context in native evidence; it
+is not substituted for device measurement. Record actual compositor and companion
+contexts in qualification. Do not infer renderer values from PCI IDs or qualify
+other GPUs from a virtio result. Old helpers refuse the new constraint; repack
+helpers and rebind payload/target/evidence rather than updating an old artifact.
+
+Resource review distinguishes code selection from user data. EGL vendor JSON,
+loader resolution and PipeWire/SPA module selection affect executable providers
+and must be accounted for with source/native evidence and exact allowed code.
+Generated loader caches are routing observations, not substituted package-file
+hashes. A default provider config alone does not account for effective overrides
+or future optional dlopen branches. Keep an incomplete target non-admissible.
+Fonts, icon themes, translations and keyboard layout data do not select arbitrary
+ELF providers merely because the program reads them. Preserve supported user
+styling/layout variation; do not pin every installed font or user theme. Review
+their parser/code dependencies and test relevant fallback behavior. Custom native
+plugins or applet executables still require explicit supported code policy.

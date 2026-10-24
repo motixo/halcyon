@@ -55,6 +55,13 @@ def audit(catalog, cohort, root, bundle, dependency_path, native_path):
             or native.get('constraints')!=row['runtime']['constraints']
             or not native.get('runtime_discriminators') or not native.get('source_review')):
         raise ValueError('explicit_scope_review_required')
+    devices=row['runtime']['constraints'].get('drm_devices')
+    if devices is not None:
+        observation=native.get('device_observation',{})
+        if (not isinstance(observation,dict)
+                or observation.get('format')!='halcyon-drm-device-observation'
+                or observation.get('version')!=1 or observation.get('devices')!=devices):
+            raise ValueError('device_observation_required')
     files=target['installed_files']; code={p for p,f in files.items() if f['kind']!='resource'}
     # The exact payload is a code root too, but never a pre-existing process.
     objects=code|{'@payload'}

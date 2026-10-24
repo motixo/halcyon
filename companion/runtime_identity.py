@@ -4,6 +4,8 @@ Unrelated process churn is ignored; required candidates and inaccessible code fa
 There is no environment-variable compatibility override or generic version gate.
 """
 import os
+import re
+import stat
 import contextlib
 import hashlib
 from pathlib import Path
@@ -316,16 +318,93 @@ def _snapshot(proc, names, session, uid, measurement=None):
     return found, errors
 
 
-def _constraints(expected, proc, sysroot):
-    actual = {}
+def _bounded_attribute(path, identities=None):
+    # sysfs reports a page-sized st_size for short attributes. Bound actual read,
+    # refuse links/devices/FIFOs and compare opened/path metadata around the IO.
+    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
+    with os.fdopen(fd, 'rb') as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode): raise ValueError('device_attribute_type')
+        value = os.read(stream.fileno(), 257)
+        if len(value)>256: raise ValueError('device_attribute_limit')
+        stamp = FileMeasurement.stamp(before)
+        if stamp != FileMeasurement.stamp(os.fstat(stream.fileno())) or stamp != FileMeasurement.stamp(path.stat(follow_symlinks=False)):
+            raise ValueError('device_attribute_changed')
+    if identities is not None: identities.append((str(path), stamp))
+    return value.decode('ascii').strip()
+
+
+def drm_device_snapshot(sysroot=Path('/sys')):
+    """Bounded PCI DRM inventory. Never opens a GPU node or creates a context.
+
+    Policy ignores card numbers/PCI addresses but includes multiplicity, driver
+    ancestry and virtio feature bits where present. Private inode/path stamps
+    detect replacement between the phase's before/after snapshots.
+    """
+    from bundle_contract import canonical, valid_drm_devices
+    root=Path(sysroot).resolve(); base=root/'class/drm'; identities=[]
+    def names():
+        with os.scandir(base) as entries:
+            result=[]
+            for entry in entries:
+                result.append(entry.name)
+                if len(result)>256: raise ValueError('drm_inventory_limit')
+        return sorted(result)
+    def resolved(path, area):
+        target=path.resolve(strict=True)
+        if not target.is_relative_to(root/area): raise ValueError('device_path_escape')
+        identities.append((str(path),FileMeasurement.stamp(path.lstat()),str(target),FileMeasurement.stamp(target.stat())))
+        return target
+    initial=names(); nodes=[n for n in initial if re.fullmatch(r'card[0-9]+|renderD[0-9]+',n)]
+    if not 1 <= len(nodes) <= 16: raise ValueError('drm_node_limit')
+    groups={}
+    for name in nodes:
+        node=resolved(base/name,'devices'); device=resolved(node/'device','devices')
+        if device not in node.parents: raise ValueError('drm_device_ancestry')
+        # The owning device must be bound. A PCI transport alone does not hide
+        # a missing virtio GPU driver below it.
+        resolved(device/'driver','bus')
+        current=node; drivers=[]; features=None
+        for _ in range(16):
+            if not current.is_relative_to(root/'devices'): raise ValueError('drm_nonpci_device')
+            if (current/'driver').is_symlink():
+                drivers.append(resolved(current/'driver','bus').name)
+            if re.fullmatch(r'virtio[0-9]+',current.name):
+                if not (current/'driver').is_symlink() or features is not None: raise ValueError('drm_virtio_ancestry')
+                features=_bounded_attribute(current/'features',identities)
+            if (current/'vendor').exists() and (current/'device').is_file():
+                pci=current
+                values={k:_bounded_attribute(pci/k,identities) for k in ('vendor','device','subsystem_vendor','subsystem_device')}
+                values.update(pci_class=_bounded_attribute(pci/'class',identities),drivers=drivers,
+                              virtio_features=features,primary_nodes=0,render_nodes=0)
+                break
+            current=current.parent
+        else: raise ValueError('drm_ancestry_limit')
+        group=groups.setdefault(str(device),values)
+        if {k:v for k,v in group.items() if k not in ('primary_nodes','render_nodes')} != {k:v for k,v in values.items() if k not in ('primary_nodes','render_nodes')}:
+            raise ValueError('drm_device_changed')
+        group['primary_nodes' if name.startswith('card') else 'render_nodes']+=1
+    if names()!=initial: raise ValueError('drm_inventory_changed')
+    devices=sorted(groups.values(),key=canonical);valid_drm_devices(devices)
+    return devices,tuple(identities)
+
+
+def _constraint_snapshot(expected, proc, sysroot):
+    actual={};identities=()
     if 'kernel_release' in expected:
-        actual['kernel_release'] = (proc / 'sys/kernel/osrelease').read_text().strip()
+        actual['kernel_release']=_bounded_attribute(proc/'sys/kernel/osrelease')
     if 'kernel_version_sha256' in expected:
-        actual['kernel_version_sha256'] = _stream_hash(proc / 'version')
+        actual['kernel_version_sha256']=_stream_hash(proc/'version')
     if 'module_versions' in expected:
-        actual['module_versions'] = {name: {key: (sysroot / 'module' / name / key).read_text().strip()
-            for key in attrs} for name, attrs in expected['module_versions'].items()}
-    return actual == expected
+        actual['module_versions']={name:{key:_bounded_attribute(sysroot/'module'/name/key)
+            for key in attrs} for name,attrs in expected['module_versions'].items()}
+    if 'drm_devices' in expected:
+        actual['drm_devices'],identities=drm_device_snapshot(sysroot)
+    return actual,identities
+
+
+def _constraints(expected, proc, sysroot):
+    return _constraint_snapshot(expected,proc,sysroot)[0] == expected
 
 
 def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroot=Path('/sys'), *, phase='running', host=None, configuration=None):
@@ -372,9 +451,10 @@ def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroo
                 if any(found[n] != second[n] or len(found[n]) != counts[n] for n, item in required.items()):
                     continue
                 try:
-                    if not _constraints(profile['constraints'], proc, sysroot):
+                    constraint_snapshot = _constraint_snapshot(profile['constraints'], proc, sysroot)
+                    if constraint_snapshot[0] != profile['constraints']:
                         continue
-                except OSError:
+                except (OSError, ValueError):
                     continue
                 try:
                     valid = True
@@ -394,6 +474,8 @@ def running_identity(catalog, proc=Path('/proc'), session=None, uid=None, sysroo
                         observed_host = _process(proc/str(host['pid']), measurement)
                         valid &= all(path == observed_host['executable'] or profile['host_mapped'].get(path) == sha for path,sha in observed_host['mapped'].items())
                     measurement.check()
+                    if valid and _constraint_snapshot(profile['constraints'], proc, sysroot) != constraint_snapshot:
+                        continue
                     if valid and (snapshot is None or not snapshot.changed()):
                         matches.append(id)
                 except (OSError, ValueError, IndexError):

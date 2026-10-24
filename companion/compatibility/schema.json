@@ -156,7 +156,108 @@
                 }
               },
               "constraints": {
-                "type": "object"
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kernel_release": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "kernel_version_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "module_versions": {
+                    "type": "object",
+                    "propertyNames": {
+                      "pattern": "^[A-Za-z0-9_]+$"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "srcversion": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "drm_devices": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "vendor",
+                        "device",
+                        "subsystem_vendor",
+                        "subsystem_device",
+                        "pci_class",
+                        "drivers",
+                        "virtio_features",
+                        "primary_nodes",
+                        "render_nodes"
+                      ],
+                      "properties": {
+                        "vendor": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "device": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "subsystem_vendor": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "subsystem_device": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "pci_class": {
+                          "type": "string",
+                          "pattern": "^0x03[0-9a-f]{4}$"
+                        },
+                        "drivers": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          }
+                        },
+                        "virtio_features": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^[01]{64}$"
+                        },
+                        "primary_nodes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 8
+                        },
+                        "render_nodes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 8
+                        }
+                      }
+                    }
+                  }
+                }
               },
               "unmeasured": {
                 "const": [
@@ -207,9 +308,9 @@
                   "native_source": {
                     "const": {
                       "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
-                      "patch_sha256": "1db4db7cdffa9a7c0eb72489519958d4287360d9f74a61c94dd20f0037ab7b61",
+                      "patch_sha256": "56a7ae6237cf37f99ed5884eb0c976d2d711581b928e28a5d14822ef5e162845",
                       "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
-                      "islands_sha256": "4463dcb07dcb1c304bd35c0949e63bb428367d93cd36e6351a5e500865068eea"
+                      "islands_sha256": "28ae30ded1bc2060b1db72f28978408661691b2916fb65d6358462cafec25985"
                     }
                   }
                 }

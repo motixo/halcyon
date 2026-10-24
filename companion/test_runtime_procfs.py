@@ -84,6 +84,29 @@ class Procfs(unittest.TestCase):
     def classify(self, row=None, catalog=None):
         return classify_compatibility(installed(row or self.row),self.measure(catalog),self.manifest,catalog or self.catalog)
 
+    def test_device_constraints_are_wired_and_phase_replacement_refuses(self):
+        from test_runtime_devices import make_device
+        from unittest.mock import patch
+        import runtime_identity
+        sysroot=self.root/'sys';pci,device,expected=make_device(sysroot)
+        self.profile['constraints']={'drm_devices':[expected]};self.bind(self.row)
+        def measure():
+            return running_identity(self.catalog,self.proc,session='procfs-test',sysroot=sysroot,
+                host=host_process(self.host.pid,self.host_sha,self.proc,'procfs-test'))
+        self.assertTrue(measure()['verified'])
+        (pci/'device').write_text('0x1234\n')
+        self.assertFalse(measure()['verified'])
+        (pci/'device').write_text('0x1050\n')
+        original=runtime_identity.FileMeasurement.check
+        def replace(measured):
+            original(measured)
+            # Same contents, new object: a value-only cache would miss this ABA.
+            temporary=pci/'replacement';temporary.write_text('0x1050\n')
+            os.replace(temporary,pci/'device')
+        with patch.object(runtime_identity.FileMeasurement,'check',replace):
+            self.assertFalse(measure()['verified'])
+        self.assertTrue(measure()['verified'])
+
     def test_required_applets_and_truncated_comm_are_measured(self):
         self.assertEqual(self.classify()['state'], 'ready')
         self.assertNotIn('cohort', self.measure())
