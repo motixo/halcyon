@@ -1,0 +1,9 @@
+name: Package session owned controller
+description: Controller-only checkpoint transport with action runtime context; no credentials in VM
+inputs:
+  mode:
+    required: true
+    description: preflight or session
+runs:
+  using: node24
+  main: main.cjs

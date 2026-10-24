@@ -36,6 +36,7 @@ def checkpoint(seq):
  (C/f'checkpoint-{seq}.json').write_text(json.dumps({'seq':seq}))
  end=time.monotonic()+1200
  while time.monotonic()<end:
+  if (C/'bridge-failed').exists():raise RuntimeError('checkpoint transport child failed; inspect bridge.log; no blind continuation')
   cmd=C/f'command-{seq+1}.json'
   if cmd.exists():return json.loads(cmd.read_text())
   time.sleep(2)
@@ -68,13 +69,16 @@ def main():
   ops(['user','identity-followup','/usr/bin/python3','-B',H+'/readonly_identity_followup.py'],'identity-followup')
   seq=0
   while seq<20:
-   cmd=checkpoint(seq);assert cmd['seq']==seq+1;seq+=1
+   cmd=checkpoint(seq);assert cmd['seq']==seq+1 and cmd['run']==int(os.environ['ACCEPTANCE_RUN_ID']);seq+=1
    (E/f'operator-command-{seq}.json').write_text(json.dumps(cmd,indent=2))
    for i,a in enumerate(cmd['actions']):
     label=f'phase-{seq}-{i}';op=a['op']
     if op=='click':ui.click(a['x'],a['y'])
     elif op=='key':ui.key(a['keys'])
     elif op=='text':ui.text(a['text'])
+    elif op=='scroll':
+     for _ in range(min(a.get('steps',1),20)):
+      ui.qmp('input-send-event',{'events':[{'type':'btn','data':{'down':True,'button':'wheel-down' if a.get('direction','down')=='down' else 'wheel-up'}},{'type':'btn','data':{'down':False,'button':'wheel-down' if a.get('direction','down')=='down' else 'wheel-up'}}]});time.sleep(.1)
     elif op=='wait':time.sleep(min(a['seconds'],65))
     elif op=='shot':ui.shot(a['name'])
     elif op=='guest':checked(a['path'],a.get('args',[]),label,a.get('expected',0),a.get('timeout',120))

@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/package-session-025.yml'
       - 'private/package-session-025/**'
+      - '.github/actions/package-session-driver/**'
 permissions:
   contents: read
   actions: read
@@ -34,6 +35,19 @@ jobs:
           date -u > "$WORK/evidence/job-start.txt"
           printf '%s\n' "$GITHUB_SHA" > "$WORK/evidence/infra-commit.txt"
           sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" python3 private/package-session-025/prerequisites.py
+      - name: Load pinned upload action with a small pre-download artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-session-preflight-setup-${{ github.run_id }}
+          path: /mnt/ps025/evidence/job-start.txt
+          retention-days: 90
+          if-no-files-found: error
+      - name: Prove checkpoint upload and authenticated controller read before guest download
+        uses: ./.github/actions/package-session-driver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        with:
+          mode: preflight
       - name: Download verified QEMU dependencies to local prefix, no host installation
         timeout-minutes: 8
         run: set -Eeuo pipefail; bash private/package-session-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
@@ -49,17 +63,13 @@ jobs:
           path: private/package-session-025/test-input-packages/*.deb
           retention-days: 90
           compression-level: 0
-      - name: Offline package UI acceptance with bounded screenshot checkpoints
+      - name: Offline package UI acceptance with fail-closed checkpoint transport
         timeout-minutes: 65
+        uses: ./.github/actions/package-session-driver
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -Eeuo pipefail
-          mkdir -p "$WORK/control"
-          python3 -u private/package-session-025/bridge.py > "$WORK/evidence/bridge.log" 2>&1 &
-          bridge=$!
-          trap 'touch "$WORK/control/bridge-stop"; wait "$bridge" || true' EXIT
-          sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" LD_LIBRARY_PATH="$WORK/tools/usr/lib/x86_64-linux-gnu" PYTHONPATH="$WORK/tools/usr/lib/python3/dist-packages" python3 -u private/package-session-025/run_session.py 2>&1 | tee "$WORK/evidence/session.log"
+        with:
+          mode: session
       - name: Preserve small evidence, input identities and failures
         if: always()
         run: |
