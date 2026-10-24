@@ -37,7 +37,10 @@ pub(super) async fn ready() -> Result<(), Problem> {
     }
     Ok(())
 }
-pub(super) async fn read(id: &str, unlock: bool) -> Result<Credential, Problem> {
+pub(super) async fn read<T: serde::de::DeserializeOwned>(
+    id: &str,
+    unlock: bool,
+) -> Result<T, Problem> {
     let service = service().await?;
     let found = service
         .search_items(attributes(id))
@@ -60,7 +63,7 @@ pub(super) async fn read(id: &str, unlock: bool) -> Result<Credential, Problem> 
     let secret = item.get_secret().await.map_err(|_| Problem::Locked)?;
     serde_json::from_slice(&secret).map_err(|_| Problem::SignIn)
 }
-pub(super) async fn save(id: &str, credential: &Credential) -> Result<(), Problem> {
+pub(super) async fn save<T: Serialize>(id: &str, credential: &T) -> Result<(), Problem> {
     let service = service().await?;
     let collection = service
         .get_default_collection()
@@ -72,7 +75,7 @@ pub(super) async fn save(id: &str, credential: &Credential) -> Result<(), Proble
     let bytes = serde_json::to_vec(credential).map_err(|_| Problem::Storage)?;
     collection
         .create_item(
-            "Halcyon · Google Calendar",
+            "Halcyon · Calendar",
             attributes(id),
             &bytes,
             true,

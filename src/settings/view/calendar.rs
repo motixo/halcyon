@@ -14,8 +14,12 @@ impl Settings {
                 .icon()
                 .into(),
             detail(
-                "Google Calendar",
-                if connected {
+                match editor.connection.backend {
+                    Backend::Subscription => "Calendar links",
+                    Backend::Disconnected => "Connect a calendar",
+                    _ => "Google Calendar",
+                },
+                if connected && editor.connection.backend != Backend::Subscription {
                     editor.connection.account.clone()
                 } else {
                     String::new()
@@ -87,7 +91,7 @@ impl Settings {
             }
             rows.push(row::with_children(actions).spacing(8).into());
         } else if editor.confirm_disconnect {
-            rows.push(detail("Disconnect on this computer?", "This removes the app’s cached events. Your calendars and events in Google stay unchanged."));
+            rows.push(detail("Disconnect on this computer?", "This removes the app’s cached events. Your original calendars and events stay unchanged."));
             rows.push(
                 row::with_children(vec![
                     button::standard("Keep connected")
@@ -105,22 +109,32 @@ impl Settings {
             if editor.error.is_some() {
                 rows.push(label("Check connection to reconnect", 12., MUTED));
             }
-            rows.push(split(
-                label("Calendar", 14., FG),
-                if editor.labels.is_empty() {
-                    label(editor.connection.calendar_name.clone(), 14., MUTED)
-                } else {
-                    cosmic::widget::dropdown(&editor.labels, editor.selected, move |index| {
-                        message(Account::Select(index))
-                    })
-                    .width(Length::Fixed(220.))
-                    .into()
-                },
-            ));
-            let mut actions = vec![
-                button::text("Open calendar ↗")
-                    .on_press(Message::OpenCalendar)
+            let selected = editor.connection.selected_calendars();
+            if editor.choices.is_empty() {
+                rows.push(label(editor.connection.calendar_name.clone(), 14., MUTED));
+            }
+            for (index, choice) in editor.choices.iter().enumerate() {
+                let enabled = selected.iter().any(|c| c.id == choice.id);
+                let mut controls: Vec<Element<'_, Message>> = vec![
+                    container(
+                        toggler(enabled).on_toggle(move |on| message(Account::Toggle(index, on))),
+                    )
+                    .id(cosmic::widget::Id::new(format!("calendar-choice-{index}")))
                     .into(),
+                ];
+                if editor.connection.backend == Backend::Subscription {
+                    controls.push(
+                        button::text("Remove")
+                            .on_press(message(Account::RemoveSubscription(choice.id.clone())))
+                            .into(),
+                    );
+                }
+                rows.push(split(
+                    label(choice.name.clone(), 14., FG),
+                    row::with_children(controls).spacing(8).into(),
+                ));
+            }
+            let mut actions = vec![
                 button::text(if editor.loading {
                     "Checking…"
                 } else {
@@ -133,6 +147,14 @@ impl Settings {
                     .on_press(message(Account::ConfirmDisconnect(true)))
                     .into(),
             ];
+            if editor.connection.backend != Backend::Subscription {
+                actions.insert(
+                    0,
+                    button::text("Open calendar ↗")
+                        .on_press(Message::OpenCalendar)
+                        .into(),
+                );
+            }
             if editor.client_ready {
                 actions.push(
                     button::text(if editor.error.is_some() {
@@ -171,7 +193,65 @@ impl Settings {
                 MUTED,
             ));
         } else {
-            rows.push(detail("Google sign-in isn’t available in this build yet", "The app publisher needs to configure Google sign-in. All other widgets work without a Google account."));
+            rows.push(label(
+                "Google sign-in isn’t available in this build yet",
+                12.,
+                MUTED,
+            ));
+        }
+        if !editor.busy && !editor.confirm_disconnect && !editor.connection.cleanup_pending() {
+            if editor.subscription_form {
+                rows.push(
+                    text_input("Calendar name", &editor.subscription_name)
+                        .on_input(move |name| message(Account::SubscriptionName(name)))
+                        .into(),
+                );
+                rows.push(
+                    cosmic::widget::secure_input(
+                        "Calendar subscription link",
+                        &editor.subscription_url.0,
+                        None,
+                        true,
+                    )
+                    .on_input(move |url| {
+                        message(Account::SubscriptionUrl(crate::calendar::SecretText(url)))
+                    })
+                    .into(),
+                );
+                rows.push(self.help("calendar-subscription-privacy", "Private link", "Saved in your system keyring. Halcyon reads events directly from the provider. Anyone with a private link may be able to read that calendar."));
+                if editor.connection.connected()
+                    && editor.connection.backend != Backend::Subscription
+                {
+                    rows.push(label(
+                        "This replaces the current Google connection on this computer.",
+                        12.,
+                        MUTED,
+                    ));
+                }
+                rows.push(
+                    row::with_children(vec![
+                        button::suggested("Add calendar")
+                            .id(cosmic::widget::Id::new("calendar-subscription-add"))
+                            .on_press_maybe(
+                                (!editor.subscription_url.0.trim().is_empty())
+                                    .then_some(message(Account::AddSubscription)),
+                            )
+                            .into(),
+                        button::text("Cancel")
+                            .on_press(message(Account::SubscriptionForm(false)))
+                            .into(),
+                    ])
+                    .spacing(8)
+                    .into(),
+                );
+            } else {
+                rows.push(
+                    button::standard("Add calendar link")
+                        .id(cosmic::widget::Id::new("calendar-subscription-open"))
+                        .on_press(message(Account::SubscriptionForm(true)))
+                        .into(),
+                );
+            }
         }
         group(None, rows)
     }

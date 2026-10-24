@@ -5,6 +5,8 @@ mod auth;
 mod google;
 mod keyring;
 mod store;
+mod subscription;
+pub use subscription::{SecretText, add_subscription, remove_subscription};
 #[cfg(test)]
 mod tests;
 pub use auth::{Authorization, begin_sign_in, finish_sign_in};
@@ -12,10 +14,30 @@ pub use google::CalendarChoice;
 pub use store::cached as store_cached;
 pub use store::{
     account_path, client_path, import_client, load_client, load_connection, save_selection,
+    save_selections,
 };
 
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
+
+// A recurring description must not expand a small feed into an enormous agenda.
+const EVENT_TEXT_BUDGET: usize = 8 * 1024 * 1024;
+fn event_text_bytes(event: &crate::data::CalendarEvent) -> usize {
+    [
+        &event.title,
+        &event.start,
+        &event.end,
+        &event.url,
+        &event.description,
+        &event.location,
+        &event.calendar_name,
+        &event.calendar_color,
+    ]
+    .into_iter()
+    .map(|s| s.len())
+    .sum::<usize>()
+        + event.meeting_url.as_ref().map_or(0, String::len)
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -23,6 +45,7 @@ pub enum Backend {
     #[default]
     Disconnected,
     Google,
+    Subscription,
     Legacy,
 }
 
@@ -37,6 +60,10 @@ pub struct Connection {
     /// app's keyring item and fences responses from previous connections.
     pub revision: String,
     pub credential: String,
+    /// Empty means the original single-calendar selection (upgrade compatibility).
+    pub selections: Vec<CalendarChoice>,
+    /// Non-secret subscription labels and opaque IDs; URLs live in the keyring.
+    pub subscriptions: Vec<CalendarChoice>,
 }
 impl Connection {
     pub fn connected(&self) -> bool {
@@ -45,7 +72,22 @@ impl Connection {
     pub fn cleanup_pending(&self) -> bool {
         self.backend == Backend::Disconnected && !self.credential.is_empty()
     }
+    pub fn selected_calendars(&self) -> Vec<CalendarChoice> {
+        if self.selections.is_empty() {
+            vec![CalendarChoice {
+                id: self.calendar_id.clone(),
+                name: self.calendar_name.clone(),
+                primary: true,
+                color: String::new(),
+            }]
+        } else {
+            self.selections.clone()
+        }
+    }
     pub fn web_url(&self) -> String {
+        if self.backend == Backend::Subscription {
+            return String::new();
+        }
         let mut url = reqwest::Url::parse("https://calendar.google.com/calendar/u/0/r").unwrap();
         if self.connected() {
             url.query_pairs_mut().append_pair("authuser", &self.account);
@@ -72,11 +114,15 @@ pub enum Problem {
     Storage,
     Cleanup,
     Preview,
+    InvalidFeed,
+    FeedUrl,
+    FeedTimezone,
+    FeedLimit,
 }
 impl Problem {
     pub fn message(&self) -> &'static str {
         match self {
-            Self::Disconnected => "Connect Google Calendar to see your events.",
+            Self::Disconnected => "Connect a calendar to see your events.",
             Self::MissingClient => "Google sign-in has not been configured for this build yet.",
             Self::InvalidClient => "Choose a Google OAuth JSON file for a Desktop app.",
             Self::Keyring => {
@@ -90,7 +136,7 @@ impl Problem {
                 "Google Calendar access was not approved. Try again, or ask your Workspace administrator if access is blocked."
             }
             Self::Network => {
-                "Could not reach Google. Check your internet connection, then try again."
+                "Could not reach your calendar provider. Check your internet connection, then try again."
             }
             Self::Service => {
                 "Google Calendar is unavailable. Check that the Calendar API is enabled for the app, or try again later."
@@ -100,10 +146,20 @@ impl Problem {
             }
             Self::Changed => "The calendar connection changed. Please try again.",
             Self::Cancelled => "Sign-in cancelled. Your previous connection was kept.",
-            Self::TimedOut => "Sign-in timed out. Click Connect to try again.",
+            Self::TimedOut => "The calendar request timed out. Try again.",
             Self::Storage => "Could not save the calendar connection on this computer.",
             Self::Cleanup => {
                 "Disconnected. Unlock or start your system keyring, then choose Finish disconnecting to remove the saved sign-in."
+            }
+            Self::InvalidFeed => {
+                "This link did not return a supported calendar. Check the subscription link and try again."
+            }
+            Self::FeedUrl => "Use an HTTPS or webcal calendar subscription link.",
+            Self::FeedTimezone => {
+                "This calendar uses an unsupported time zone. Choose a feed using a standard city time zone, such as Europe/Zagreb."
+            }
+            Self::FeedLimit => {
+                "This calendar is too large or has an unsupported recurrence. Your previous events were kept."
             }
             Self::Preview => "Account changes are unavailable in preview mode.",
         }
@@ -151,7 +207,19 @@ pub async fn calendars(
                 id: connection.calendar_id,
                 name: "Primary calendar".into(),
                 primary: true,
+                color: String::new(),
             }])
+        }
+        Backend::Subscription => {
+            if unlock {
+                subscription::events(
+                    &connection,
+                    &chrono::Local::now().format("%Y-%m").to_string(),
+                    true,
+                )
+                .await?;
+            }
+            Ok(connection.subscriptions.clone())
         }
         Backend::Google => {
             let access = google::access_token(&connection, unlock).await?;
@@ -211,6 +279,7 @@ pub async fn fetch(
         let mut data = match connection.backend {
             Backend::Google => google::events(&connection, &month).await?,
             Backend::Legacy => legacy(&connection, &month).await?,
+            Backend::Subscription => subscription::events(&connection, &month, false).await?,
             Backend::Disconnected => return Err(Problem::Disconnected),
         };
         data.connection_revision = connection.revision.clone();

@@ -1573,6 +1573,7 @@ mod tests {
                     all_day: true,
                     url: String::new(),
                     meeting_url: None,
+                    ..Default::default()
                 })
                 .collect(),
             ..CalendarData::default()

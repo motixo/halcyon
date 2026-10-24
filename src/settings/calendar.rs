@@ -17,6 +17,12 @@ pub enum Message {
         Result<Vec<account::CalendarChoice>, account::Problem>,
     ),
     Select(usize),
+    Toggle(usize, bool),
+    SubscriptionForm(bool),
+    SubscriptionName(String),
+    SubscriptionUrl(account::SecretText),
+    AddSubscription,
+    RemoveSubscription(String),
     ConfirmDisconnect(bool),
     Disconnect,
     Disconnected(Result<account::Connection, account::Problem>),
@@ -38,6 +44,9 @@ pub struct Editor {
     pub error: Option<String>,
     pub confirm_disconnect: bool,
     pub publisher_help: bool,
+    pub subscription_form: bool,
+    pub subscription_name: String,
+    pub subscription_url: account::SecretText,
     attempt: u64,
 }
 impl Default for Editor {
@@ -55,6 +64,9 @@ impl Default for Editor {
             error: None,
             confirm_disconnect: false,
             publisher_help: false,
+            subscription_form: false,
+            subscription_name: String::new(),
+            subscription_url: account::SecretText::default(),
             attempt: 0,
         }
     }
@@ -174,6 +186,9 @@ impl Settings {
                 self.calendar.refresh();
                 match result {
                     Ok(connection) => {
+                        self.calendar.subscription_form = false;
+                        self.calendar.subscription_name.clear();
+                        self.calendar.subscription_url.0.clear();
                         self.calendar.connection = connection;
                         self.calendar.error = None;
                         return self.calendar.check(false);
@@ -227,8 +242,8 @@ impl Settings {
                         self.calendar.labels =
                             choices.iter().map(|choice| choice.name.clone()).collect();
                         self.calendar.choices = choices;
-                        self.calendar.error = self.calendar.selected.is_none().then(||
-                            "The selected calendar is no longer available. Choose another calendar.".into());
+                        self.calendar.error = self.calendar.connection.selected_calendars().iter().any(|selected| !self.calendar.choices.iter().any(|c| c.id == selected.id)).then(||
+                            "A selected calendar is no longer available. Choose calendars again.".into());
                     }
                     Err(problem) => self.calendar.error = Some(problem.to_string()),
                 }
@@ -250,6 +265,81 @@ impl Settings {
                         Err(problem) => self.calendar.error = Some(problem.to_string()),
                     }
                 }
+            }
+            Message::Toggle(index, enabled) => {
+                if self.calendar.busy {
+                    return Task::none();
+                }
+                if let Some(choice) = self.calendar.choices.get(index).cloned() {
+                    let mut selected = self.calendar.connection.selected_calendars();
+                    selected.retain(|c| {
+                        self.calendar
+                            .choices
+                            .iter()
+                            .any(|available| available.id == c.id)
+                    });
+                    selected.retain(|c| c.id != choice.id);
+                    if enabled {
+                        selected.push(choice);
+                    }
+                    if selected.is_empty() {
+                        self.calendar.error = Some("Keep at least one calendar selected.".into());
+                        return Task::none();
+                    }
+                    match account::save_selections(&self.calendar.connection, selected) {
+                        Ok(connection) => {
+                            self.calendar.connection = connection;
+                            self.calendar.loading = false;
+                            self.calendar.error = None;
+                        }
+                        Err(problem) => self.calendar.error = Some(problem.to_string()),
+                    }
+                }
+            }
+            Message::SubscriptionForm(show) => {
+                if self.calendar.busy {
+                    return Task::none();
+                }
+                self.calendar.subscription_form = show;
+                if !show {
+                    self.calendar.subscription_url.0.clear();
+                }
+            }
+            Message::SubscriptionName(name) => {
+                self.calendar.subscription_name = name.chars().take(80).collect()
+            }
+            Message::SubscriptionUrl(secret) => {
+                self.calendar.subscription_url =
+                    account::SecretText(secret.0.chars().take(8192).collect())
+            }
+            Message::AddSubscription | Message::RemoveSubscription(_) => {
+                if self.calendar.busy || self.calendar.connection.cleanup_pending() {
+                    return Task::none();
+                }
+                self.calendar.busy = true;
+                self.calendar.error = None;
+                self.calendar.attempt = self.calendar.attempt.wrapping_add(1);
+                let attempt = self.calendar.attempt;
+                let expected = self.calendar.connection.clone();
+                let name = self.calendar.subscription_name.clone();
+                let secret = self.calendar.subscription_url.clone();
+                let remove = if let Message::RemoveSubscription(id) = message {
+                    Some(id)
+                } else {
+                    None
+                };
+                return cosmic::task::future(async move {
+                    let result = tokio::time::timeout(Duration::from_secs(60), async move {
+                        if let Some(id) = remove {
+                            account::remove_subscription(expected, id).await
+                        } else {
+                            account::add_subscription(expected, name, secret).await
+                        }
+                    })
+                    .await
+                    .unwrap_or(Err(account::Problem::TimedOut));
+                    wrap(Message::Finished(attempt, result))
+                });
             }
             Message::ConfirmDisconnect(on) => self.calendar.confirm_disconnect = on,
             Message::Disconnect => {
@@ -372,6 +462,7 @@ mod tests {
             calendar_name: "Personal".into(),
             revision: "before-selection".into(),
             credential: "fixture".into(),
+            ..Default::default()
         };
         std::fs::write(
             account::account_path().unwrap(),
@@ -384,11 +475,13 @@ mod tests {
                 id: "primary".into(),
                 name: "Personal".into(),
                 primary: true,
+                color: String::new(),
             },
             account::CalendarChoice {
                 id: "team".into(),
                 name: "Team".into(),
                 primary: false,
+                color: String::new(),
             },
         ];
         let _ = settings.update_calendar(Message::Loaded(

@@ -162,6 +162,7 @@ pub fn load_connection() -> Connection {
                                 calendar_name: "Primary calendar".into(),
                                 revision: format!("legacy:{}", data.account),
                                 credential: String::new(),
+                                ..Default::default()
                             };
                         }
                     }
@@ -189,7 +190,9 @@ pub(super) fn replace(expected: &Connection, connection: &Connection) -> Result<
 pub(super) fn disconnect(expected: &Connection) -> Result<Connection, Problem> {
     let disconnected = Connection {
         revision: nonce()?,
-        credential: if expected.backend == Backend::Google || expected.cleanup_pending() {
+        credential: if matches!(expected.backend, Backend::Google | Backend::Subscription)
+            || expected.cleanup_pending()
+        {
             expected.credential.clone()
         } else {
             String::new()
@@ -206,6 +209,33 @@ pub fn save_selection(
     let connection = Connection {
         calendar_id: choice.id.clone(),
         calendar_name: choice.name.clone(),
+        selections: vec![choice.clone()],
+        revision: nonce()?,
+        ..expected.clone()
+    };
+    replace(expected, &connection)?;
+    Ok(connection)
+}
+pub fn save_selections(
+    expected: &Connection,
+    choices: Vec<super::CalendarChoice>,
+) -> Result<Connection, Problem> {
+    if choices.is_empty()
+        || choices.len() > 32
+        || choices.iter().any(|c| c.id.is_empty())
+        || choices
+            .iter()
+            .map(|c| &c.id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != choices.len()
+    {
+        return Err(Problem::InvalidResponse);
+    }
+    let connection = Connection {
+        calendar_id: choices[0].id.clone(),
+        calendar_name: choices[0].name.clone(),
+        selections: choices,
         revision: nonce()?,
         ..expected.clone()
     };
@@ -244,17 +274,20 @@ pub(super) fn save_cache(
     if connection.backend == Backend::Legacy {
         persist(connection)?;
     }
-    atomic(
-        &cache_path(month).ok_or(Problem::InvalidResponse)?,
-        &serde_json::to_vec(data).map_err(|_| Problem::Storage)?,
-    )
+    let bytes = serde_json::to_vec(data).map_err(|_| Problem::Storage)?;
+    if bytes.len() > 16 * 1024 * 1024 {
+        return Err(Problem::FeedLimit);
+    }
+    atomic(&cache_path(month).ok_or(Problem::InvalidResponse)?, &bytes)
 }
 pub fn cached(connection: &Connection, month: &str) -> Option<crate::data::CalendarData> {
     if !connection.connected() {
         return None;
     }
-    let data: crate::data::CalendarData =
-        serde_json::from_slice(&std::fs::read(cache_path(month)?).ok()?).ok()?;
+    let data: crate::data::CalendarData = serde_json::from_slice(
+        &crate::tools::read_bounded(&cache_path(month)?, 16 * 1024 * 1024).ok()??,
+    )
+    .ok()?;
     let identity = data.connection_revision == connection.revision
         && data.calendar_id == connection.calendar_id;
     let legacy = connection.backend == Backend::Legacy && data.connection_revision.is_empty();

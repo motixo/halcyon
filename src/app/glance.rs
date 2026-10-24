@@ -18,10 +18,22 @@ pub(super) fn agenda_spans(
     foreground: Color,
     accent: Color,
 ) -> Vec<AgendaSpan> {
+    agenda_spans_private(event, foreground, accent, false)
+}
+
+pub(super) fn agenda_spans_private(
+    event: &CalendarEvent,
+    foreground: Color,
+    accent: Color,
+    private: bool,
+) -> Vec<AgendaSpan> {
+    if private {
+        return vec![AgendaSpan::new("Busy").color(foreground)];
+    }
     let mut spans = vec![
         AgendaSpan::new(event.title.clone())
             .color(foreground)
-            .link_maybe((!event.url.is_empty()).then(|| event.url.clone())),
+            .link(event.details_key()),
     ];
     if let Some(url) = event.join_url() {
         spans.push(AgendaSpan::new("  "));
@@ -291,8 +303,13 @@ impl Cards {
     }
     fn glance_event_height_at_width(&self, event: &CalendarEvent, width: f32) -> f32 {
         let _style = crate::widget_style::scope(&self.config);
+        let visible = if self.config.calendar_private {
+            event.private_copy()
+        } else {
+            event.clone()
+        };
         let title = agenda_paragraph(
-            event,
+            &visible,
             self.glance_event_font(),
             self.glance_title_width(event, width),
         )
@@ -308,7 +325,7 @@ impl Cards {
         } else {
             30.
         };
-        detail.max(timing) + self.glance_event_padding() * 2.
+        detail.max(timing) + self.glance_event_padding() * 2. + self.event_details_height(event)
     }
     fn glance_agenda_height(&self) -> f32 {
         self.glance_agenda_height_at_width(self.glance_width())
@@ -774,7 +791,7 @@ impl Cards {
             timing.push(label(end, 10., p.muted));
         }
         let mut detail = vec![
-            rich_text(agenda_spans(
+            rich_text(agenda_spans_private(
                 event,
                 if event.finished() {
                     p.muted
@@ -782,6 +799,7 @@ impl Cards {
                     p.foreground
                 },
                 color,
+                self.config.calendar_private,
             ))
             .size(self.glance_event_font())
             .line_height(1.25)
@@ -801,6 +819,7 @@ impl Cards {
                 color,
             ));
         }
+        let marker_color = event.source_color().unwrap_or(color);
         let marker = container(text::body(""))
             .width(2.)
             .height(if self.glance_compact() { 20. } else { 26. })
@@ -808,7 +827,7 @@ impl Cards {
                 cosmic::iced::widget::container::Style {
                     background: Some(Background::Color(Color {
                         a: if highlighted { 0.9 } else { 0.3 },
-                        ..color
+                        ..marker_color
                     })),
                     border: Border {
                         radius: 1.into(),
@@ -828,30 +847,35 @@ impl Cards {
             title.into(),
         ];
         let panel = self.glance_panel();
-        container(
+        let mut content = vec![
             row::with_children(cells)
                 .spacing(8)
-                .align_y(Alignment::Center),
-        )
-        .padding([self.glance_event_padding(), 0.])
-        .width(Length::Fill)
-        .height(self.glance_event_height(event))
-        .class(cosmic::theme::Container::custom(move |_| {
-            cosmic::iced::widget::container::Style {
-                background: (panel && highlighted)
-                    .then_some(Background::Color(Color { a: 0.1, ..color })),
-                border: Border {
-                    color: Color {
-                        a: if panel && highlighted { 0.45 } else { 0. },
-                        ..color
+                .align_y(Alignment::Center)
+                .into(),
+        ];
+        if self.event_details_open(event) {
+            content.push(self.event_details_view(event, p));
+        }
+        container(column::with_children(content).spacing(0))
+            .padding([self.glance_event_padding(), 0.])
+            .width(Length::Fill)
+            .height(self.glance_event_height(event))
+            .class(cosmic::theme::Container::custom(move |_| {
+                cosmic::iced::widget::container::Style {
+                    background: (panel && highlighted)
+                        .then_some(Background::Color(Color { a: 0.1, ..color })),
+                    border: Border {
+                        color: Color {
+                            a: if panel && highlighted { 0.45 } else { 0. },
+                            ..color
+                        },
+                        width: 1.,
+                        radius: 10.into(),
                     },
-                    width: 1.,
-                    radius: 10.into(),
-                },
-                ..Default::default()
-            }
-        }))
-        .into()
+                    ..Default::default()
+                }
+            }))
+            .into()
     }
     fn glance_agenda(&self) -> Element<'_, Message> {
         let p = self.glance_palette();
@@ -925,18 +949,28 @@ impl Cards {
                     .append_pair("authuser", &calendar.account);
             }
         }
-        let heading = mouse_area(label(
-            if day == today {
-                "TODAY ↗"
-            } else {
-                "TOMORROW ↗"
-            },
-            10.,
-            p.accent,
-        ))
-        .on_press(Message::Open(url.into()))
-        .interaction(cosmic::iced::mouse::Interaction::Pointer)
-        .into();
+        let google_link = self.calendar_connection.backend == crate::calendar::Backend::Google
+            && !self.config.calendar_private;
+        let heading: Element<'_, Message> = if google_link {
+            mouse_area(label(
+                if day == today {
+                    "TODAY ↗"
+                } else {
+                    "TOMORROW ↗"
+                },
+                10.,
+                p.accent,
+            ))
+            .on_press(Message::Open(url.into()))
+            .interaction(cosmic::iced::mouse::Interaction::Pointer)
+            .into()
+        } else {
+            label(
+                if day == today { "TODAY" } else { "TOMORROW" },
+                10.,
+                p.accent,
+            )
+        };
         // Earlier events toggle beside the day name instead of taking a row.
         let earlier = self.glance_day_agenda(day).earlier;
         let heading = if earlier > 0 {
@@ -953,7 +987,7 @@ impl Cards {
                 timestamp(
                     self.glance_calendar().map(|c| c.updated_at.as_str()),
                     self.calendar_today_error,
-                    "Google Calendar",
+                    "Calendar",
                     p,
                 ),
             )
@@ -1274,6 +1308,7 @@ mod tests {
                 all_day: false,
                 url: String::new(),
                 meeting_url: None,
+                ..Default::default()
             }],
             ..Default::default()
         });
@@ -1283,25 +1318,39 @@ mod tests {
         cards.config.glance.show_weather = false;
         cards.config.glance.show_calendar = true;
         cards.config.glance.show_tomorrow = false;
-        for style in [GlanceStyle::Transparent, GlanceStyle::Panel] {
-            cards.config.glance.style = style;
-            let [width, height] = cards.glance_size();
-            let mut native = Native::new(Size::new(width, height));
-            native.capture(
-                cards.glance(),
-                &cosmic::Theme::dark(),
-                &format!("glance-earlier-inline-{style:?}"),
-            );
-            let earlier = native.bounds(cards.glance(), "calendar-earlier");
-            // On the TODAY line, not a row of its own below the day.
-            assert!(
-                earlier.y + earlier.height <= cards.glance_padding() + DAY_HEADING_HEIGHT + 1.,
-                "{style:?}: {earlier:?}"
-            );
-            assert!(
-                earlier.x > 40.,
-                "{style:?} beside the day name: {earlier:?}"
-            );
+        for backend in [
+            crate::calendar::Backend::Subscription,
+            crate::calendar::Backend::Google,
+        ] {
+            cards.calendar_connection.backend = backend.clone();
+            for style in [GlanceStyle::Transparent, GlanceStyle::Panel] {
+                cards.config.glance.style = style;
+                let [width, height] = cards.glance_size();
+                let mut native = Native::new(Size::new(width, height));
+                native.capture(
+                    cards.glance(),
+                    &cosmic::Theme::dark(),
+                    &format!("glance-earlier-inline-{backend:?}-{style:?}"),
+                );
+                let earlier = native.bounds(cards.glance(), "calendar-earlier");
+                // On the TODAY line, not a row of its own below the day.
+                assert!(
+                    earlier.y + earlier.height <= cards.glance_padding() + DAY_HEADING_HEIGHT + 1.,
+                    "{style:?}: {earlier:?}"
+                );
+                let day = native.text_bounds(
+                    cards.glance(),
+                    if backend == crate::calendar::Backend::Google {
+                        "TODAY ↗"
+                    } else {
+                        "TODAY"
+                    },
+                );
+                assert!(
+                    earlier.x >= day.x + day.width + 4.,
+                    "Earlier stays beside the actual heading: {day:?} {earlier:?}"
+                );
+            }
         }
     }
 
@@ -1330,6 +1379,7 @@ mod tests {
                         all_day: true,
                         url: "https://calendar.google.com/event?fixture".into(),
                         meeting_url: Some("https://meet.google.com/fixture".into()),
+                        ..Default::default()
                     };
                     let title_width = cards.glance_title_width(&event, width);
                     let paragraph =
@@ -1338,8 +1388,9 @@ mod tests {
                     let height = cards.glance_event_height(&event);
                     let row_width = width - 2. * cards.glance_padding() - 4.;
                     let mut native = Native::new(Size::new(row_width, height));
+                    let details_key = event.details_key();
                     for (span, expected) in
-                        [(0, event.url.as_str()), (2, event.join_url().unwrap())]
+                        [(0, details_key.as_str()), (2, event.join_url().unwrap())]
                     {
                         let bounds = paragraph.span_bounds(span);
                         assert!(!bounds.is_empty());
@@ -1394,6 +1445,7 @@ mod tests {
                     all_day: true,
                     url: "https://calendar.google.com/event?fixture".into(),
                     meeting_url: Some("https://meet.google.com/fixture".into()),
+                    ..Default::default()
                 })
                 .collect(),
             ..CalendarData::default()
@@ -1487,6 +1539,7 @@ mod tests {
                     all_day: false,
                     url: "https://calendar.google.com/event?fixture".into(),
                     meeting_url: None,
+                    ..Default::default()
                 })
                 .collect(),
             ..CalendarData::default()
@@ -1561,6 +1614,7 @@ mod tests {
                 all_day: true,
                 url: String::new(),
                 meeting_url: None,
+                ..Default::default()
             })
             .collect();
         assert_eq!(cards.glance_events(today).len(), 40);
@@ -1748,6 +1802,7 @@ mod tests {
                 all_day: true,
                 url: String::new(),
                 meeting_url: None,
+                ..Default::default()
             }],
             ..CalendarData::default()
         });

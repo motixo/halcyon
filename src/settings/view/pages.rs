@@ -95,7 +95,7 @@ impl Settings {
         let status = if widget == Widget::Notes && self.tools.dirty() {
             "Unsaved note"
         } else if widget == Widget::Calendar && !self.calendar.connection.connected() {
-            "Connect Google Calendar"
+            "Connect your calendar"
         } else if widget == Widget::Weather && self.config.location.is_none() {
             "Choose a city"
         } else if widget == Widget::Projects && self.config.project_roots.is_empty() {
@@ -348,6 +348,12 @@ impl Settings {
                 ),
             ]
         };
+        events.push(switch(
+            "Hide event details",
+            "Show Busy instead of titles",
+            self.config.calendar_private,
+            Message::CalendarPrivacy,
+        ));
         events.push(
             column::with_children(vec![
                 self.help("meeting-highlight", "Highlight before",

@@ -523,6 +523,7 @@ pub enum Message {
     DevboxDragLeave(DevboxSection),
     ArrangeDesktop,
     OpenDesktop(&'static str),
+    CalendarPrivacy(bool),
     Today(bool),
     Tomorrow(bool),
     Notice(u16),
@@ -2522,6 +2523,7 @@ impl Settings {
                     "System settings opened",
                 );
             }
+            Message::CalendarPrivacy(value) => self.save(json!({"calendar_private": value})),
             Message::Today(value) => self.save(json!({"calendar_show_today": value})),
             Message::Tomorrow(value) => self.save(json!({"calendar_show_tomorrow": value})),
             Message::WeatherDewPoint(value) => {
@@ -2847,6 +2849,9 @@ impl Settings {
                 return media;
             }
             Message::OpenCalendar => {
+                if self.calendar.connection.web_url().is_empty() {
+                    return Task::none();
+                }
                 return run_command(
                     "/usr/bin/xdg-open".into(),
                     vec![self.calendar.connection.web_url()],

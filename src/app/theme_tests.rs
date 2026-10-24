@@ -65,6 +65,7 @@ fn shared_theme_native_widgets_remain_visible_on_light_and_dark_wallpapers() {
             all_day: true,
             url: "https://example.com/event".into(),
             meeting_url: Some("https://example.com/join".into()),
+            ..Default::default()
         }],
         ..Default::default()
     };

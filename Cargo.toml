@@ -47,6 +47,8 @@ secret-service = { version = "=5.2.0", features = ["rt-tokio-crypto-rust"] }
 base64 = "=0.22.1"
 sha2 = "=0.11.0"
 getrandom = "=0.4.3"
+ical = "=0.11.0"
+rrule = "=0.14.0"
 
 [profile.release]
 # Release packages ship without symbols.

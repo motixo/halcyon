@@ -34,6 +34,7 @@ fn meeting(
         all_day: false,
         url: "https://calendar.google.com/event?sample".into(),
         meeting_url: None,
+        ..Default::default()
     }
 }
 
@@ -53,6 +54,7 @@ fn todays_agenda_stays_finished_and_history_remains_accessible() {
                 all_day: true,
                 url: String::new(),
                 meeting_url: None,
+                ..Default::default()
             },
         ],
         ..Default::default()
@@ -555,5 +557,71 @@ fn widgets_remain_readable_on_a_vivid_wallpaper() {
         scene.into(),
         &cosmic::Theme::dark(),
         "widgets-on-teal-wallpaper",
+    );
+}
+
+#[test]
+fn calendar_details_and_private_mode_work_in_both_agendas() {
+    let (mut cards, _) = Cards::init(
+        Core::default(),
+        Config {
+            enabled_widgets: vec![],
+            ..Default::default()
+        },
+    );
+    let today = Local::now().date_naive();
+    let event = CalendarEvent {
+        title: "Release planning".into(),
+        start: today.to_string(),
+        end: (today + Days::days(1)).to_string(),
+        all_day: true,
+        calendar_name: "Work".into(),
+        description: "Review the next milestone and the open questions.".into(),
+        location: "Meeting room".into(),
+        meeting_url: Some("https://meet.google.com/fixture".into()),
+        ..Default::default()
+    };
+    cards.calendar = Some(CalendarData {
+        month: today.format("%Y-%m").to_string(),
+        events: vec![event.clone()],
+        ..Default::default()
+    });
+    cards.calendar_today = cards.calendar.clone();
+    cards.config.calendar_show_tomorrow = true;
+    let key = event.details_key();
+    let height = cards.calendar_natural_height();
+    let _ = cards.update(Message::Open(key.clone()));
+    assert!(cards.event_details_open(&event));
+    assert!(cards.calendar_natural_height() >= height + 184.);
+    let mut native = Native::new(Size::new(360., 600.));
+    native.capture(
+        cards.calendar_card(),
+        &cosmic::Theme::dark(),
+        "calendar-event-details",
+    );
+    for density in [
+        crate::config::GlanceDensity::Compact,
+        crate::config::GlanceDensity::Comfortable,
+    ] {
+        cards.config.glance.density = density;
+        native.capture(
+            cards.glance(),
+            &cosmic::Theme::dark(),
+            &format!("calendar-glance-{density:?}"),
+        );
+    }
+    let _ = cards.update(Message::Open(key.clone()));
+    assert!(!cards.event_details_open(&event));
+    cards.config.calendar_private = true;
+    let _ = cards.update(Message::Open(key));
+    assert!(!cards.event_details_open(&event));
+    let spans = glance::agenda_spans_private(&event, Color::WHITE, Color::WHITE, true);
+    assert_eq!(spans.len(), 1);
+    assert_eq!(spans[0].text, "Busy");
+    assert!(spans[0].link.is_none());
+    native.capture(
+        cards.calendar_card(),
+        &cosmic::Theme::dark(),
+        "calendar-busy",
     );
 }

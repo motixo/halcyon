@@ -78,6 +78,7 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
         Message::GlanceDensity(_) => add(&["glance", "density"]),
         Message::GlanceTomorrow(_) => add(&["glance", "show_tomorrow"]),
         Message::GlanceOpacity(_) => add(&["glance", "opacity"]),
+        Message::CalendarPrivacy(_) => add(&["calendar_private"]),
         Message::Today(_) => add(&["calendar_show_today"]),
         Message::Tomorrow(_) => add(&["calendar_show_tomorrow"]),
         Message::ClockFormat(_) => add(&["clock", "format_24h"]),

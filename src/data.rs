@@ -1012,7 +1012,7 @@ impl CalendarData {
         agenda
     }
 }
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct CalendarEvent {
     pub title: String,
     pub start: String,
@@ -1021,6 +1021,14 @@ pub struct CalendarEvent {
     pub url: String,
     #[serde(default)]
     pub meeting_url: Option<String>,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub location: String,
+    #[serde(default)]
+    pub calendar_name: String,
+    #[serde(default)]
+    pub calendar_color: String,
 }
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MeetingState {
@@ -1030,6 +1038,63 @@ pub enum MeetingState {
     Finished,
 }
 impl CalendarEvent {
+    pub fn chronological_order(&self, other: &Self) -> std::cmp::Ordering {
+        let key = |event: &Self| {
+            chrono::DateTime::parse_from_rfc3339(&event.start)
+                .ok()
+                .map(|time| time.timestamp())
+                .or_else(|| {
+                    use chrono::TimeZone;
+                    let date = chrono::NaiveDate::parse_from_str(&event.start, "%Y-%m-%d").ok()?;
+                    chrono::Local
+                        .from_local_datetime(&date.and_hms_opt(0, 0, 0)?)
+                        .earliest()
+                        .map(|time| time.timestamp())
+                })
+        };
+        key(self)
+            .cmp(&key(other))
+            .then(self.title.cmp(&other.title))
+    }
+
+    pub fn details_key(&self) -> String {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        for value in [&self.calendar_name, &self.start, &self.end, &self.title] {
+            hash.update(value.as_bytes());
+            hash.update([0]);
+        }
+        format!(
+            "halcyon-event:{}",
+            hash.finalize()
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        )
+    }
+    pub fn source_color(&self) -> Option<cosmic::iced::Color> {
+        let raw = self.calendar_color.strip_prefix('#')?;
+        if raw.len() != 6 {
+            return None;
+        }
+        let n = u32::from_str_radix(raw, 16).ok()?;
+        Some(cosmic::iced::Color::from_rgb8(
+            (n >> 16) as u8,
+            (n >> 8) as u8,
+            n as u8,
+        ))
+    }
+    pub fn private_copy(&self) -> Self {
+        Self {
+            title: "Busy".into(),
+            start: self.start.clone(),
+            end: self.end.clone(),
+            all_day: self.all_day,
+            calendar_color: self.calendar_color.clone(),
+            ..Default::default()
+        }
+    }
+
     pub fn meeting_state_at(
         &self,
         now: chrono::DateTime<chrono::Local>,
@@ -1058,7 +1123,12 @@ impl CalendarEvent {
         let url = self.meeting_url.as_deref()?;
         reqwest::Url::parse(url)
             .ok()
-            .filter(|u| u.scheme() == "https" && u.has_host() && u.username().is_empty())
+            .filter(|u| {
+                u.scheme() == "https"
+                    && u.has_host()
+                    && u.username().is_empty()
+                    && u.password().is_none()
+            })
             .map(|_| url)
     }
     pub fn on_date(&self, day: chrono::NaiveDate) -> bool {
@@ -1413,6 +1483,7 @@ print(json.dumps({'updated_at': os.environ['DESKTOP_CARDS_CONFIG'], 'projects': 
             all_day: false,
             url: String::new(),
             meeting_url: Some("https://meet.google.com/example".into()),
+            ..Default::default()
         };
         assert_eq!(
             event.meeting_state_at(start - chrono::Duration::minutes(11), 10),
@@ -1531,6 +1602,7 @@ print(json.dumps({'updated_at': os.environ['DESKTOP_CARDS_CONFIG'], 'projects': 
             all_day: true,
             url: String::new(),
             meeting_url: None,
+            ..Default::default()
         };
         assert!(e.on_date(chrono::NaiveDate::from_ymd_opt(2026, 10, 17).unwrap()));
         assert!(!e.on_date(chrono::NaiveDate::from_ymd_opt(2026, 10, 18).unwrap()));
@@ -1551,6 +1623,7 @@ print(json.dumps({'updated_at': os.environ['DESKTOP_CARDS_CONFIG'], 'projects': 
             all_day: false,
             url: String::new(),
             meeting_url: None,
+            ..Default::default()
         };
         assert!(e.on_date(start.date_naive()));
         assert!(!e.on_date(end.date_naive()));

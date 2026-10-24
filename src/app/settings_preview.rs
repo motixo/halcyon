@@ -112,6 +112,7 @@ impl SettingsSamples {
         let source = config;
         let config = config.clone();
         let cards = Cards {
+            calendar_details: None,
             core,
             ids,
             layout_editor: layout::LayoutEditor::default(),
@@ -197,6 +198,7 @@ impl SettingsSamples {
                 all_day: false,
                 url: String::new(),
                 meeting_url: Some("https://meet.google.com/".into()),
+                ..Default::default()
             })
             .collect(),
             ..Default::default()

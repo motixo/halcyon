@@ -11,6 +11,8 @@ pub struct CalendarChoice {
     pub id: String,
     pub name: String,
     pub primary: bool,
+    #[serde(default)]
+    pub color: String,
 }
 
 pub(super) fn http() -> Result<Client, Problem> {
@@ -61,7 +63,7 @@ pub(super) async fn json(response: Result<Response, reqwest::Error>) -> Result<V
     Ok(body)
 }
 pub(super) async fn access_token(connection: &Connection, unlock: bool) -> Result<String, Problem> {
-    let credential = keyring::read(&connection.credential, unlock).await?;
+    let credential: Credential = keyring::read(&connection.credential, unlock).await?;
     let token = json(
         http()?
             .post(TOKEN)
@@ -95,7 +97,7 @@ pub(super) async fn calendars(access: &str) -> Result<Vec<CalendarChoice>, Probl
                     ("minAccessRole", "reader"),
                     (
                         "fields",
-                        "nextPageToken,items(id,summary,summaryOverride,primary,accessRole)",
+                        "nextPageToken,items(id,summary,summaryOverride,primary,accessRole,backgroundColor)",
                     ),
                     ("pageToken", &token),
                 ])
@@ -113,6 +115,7 @@ pub(super) async fn calendars(access: &str) -> Result<Vec<CalendarChoice>, Probl
                         .unwrap_or("Calendar")
                         .into(),
                     primary: value["primary"].as_bool().unwrap_or(false),
+                    color: value["backgroundColor"].as_str().unwrap_or_default().into(),
                 });
             }
         }
@@ -146,6 +149,39 @@ pub(super) fn window(month: &str) -> Result<(String, String), Problem> {
 }
 pub(super) async fn events(connection: &Connection, month: &str) -> Result<CalendarData, Problem> {
     let access = access_token(connection, false).await?;
+    let choices = connection.selected_calendars();
+    if choices.len() > 32 {
+        return Err(Problem::InvalidResponse);
+    }
+    let mut result = CalendarData::default();
+    for choice in choices {
+        let selected = Connection {
+            calendar_id: choice.id.clone(),
+            ..connection.clone()
+        };
+        let mut data = calendar_events(&selected, month, &access).await?;
+        for event in &mut data.events {
+            event.calendar_name = choice.name.clone();
+            event.calendar_color = choice.color.clone();
+        }
+        result.events.extend(data.events);
+        if result.events.len() > 20000
+            || result.events.iter().map(event_text_bytes).sum::<usize>() > EVENT_TEXT_BUDGET
+        {
+            return Err(Problem::InvalidResponse);
+        }
+    }
+    result.events.sort_by(CalendarEvent::chronological_order);
+    result.account = connection.account.clone();
+    result.month = month.into();
+    result.updated_at = chrono::Utc::now().to_rfc3339();
+    Ok(result)
+}
+async fn calendar_events(
+    connection: &Connection,
+    month: &str,
+    access: &str,
+) -> Result<CalendarData, Problem> {
     let client = http()?;
     let (start, end) = window(month)?;
     let mut url = reqwest::Url::parse("https://www.googleapis.com/calendar/v3/calendars/").unwrap();
@@ -169,6 +205,9 @@ pub(super) async fn events(connection: &Connection, month: &str) -> Result<Calen
                 .iter()
                 .filter_map(normalize_event),
         );
+        if events.iter().map(event_text_bytes).sum::<usize>() > EVENT_TEXT_BUDGET {
+            return Err(Problem::InvalidResponse);
+        }
         match body["nextPageToken"].as_str() {
             Some(next) if !next.is_empty() && next != token => token = next.into(),
             None | Some("") => {
@@ -186,7 +225,7 @@ pub(super) async fn events(connection: &Connection, month: &str) -> Result<Calen
     }
     Err(Problem::InvalidResponse)
 }
-fn safe_link(value: &str) -> Option<String> {
+pub(super) fn safe_link(value: &str) -> Option<String> {
     reqwest::Url::parse(value)
         .ok()
         .filter(|url| {
@@ -197,7 +236,7 @@ fn safe_link(value: &str) -> Option<String> {
         })
         .map(|url| url.into())
 }
-fn meeting_link(event: &Value) -> Option<String> {
+pub(super) fn meeting_link(event: &Value) -> Option<String> {
     if let Some(entries) = event["conferenceData"]["entryPoints"].as_array() {
         for entry in entries {
             if entry["entryPointType"] == "video" {
@@ -242,6 +281,46 @@ fn meeting_link(event: &Value) -> Option<String> {
     }
     None
 }
+fn description_text(input: &str) -> String {
+    static TAGS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static BREAKS: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    static ENTITIES: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let bounded: String = input.chars().take(8000).collect();
+    let breaks =
+        BREAKS.get_or_init(|| regex::Regex::new(r"(?i)<br\s*/?>|</(?:p|div|li)\s*>").unwrap());
+    let lines = breaks.replace_all(&bounded, "\n");
+    let tags = TAGS.get_or_init(|| regex::Regex::new(r"(?s)<[^>]*>").unwrap());
+    let plain = tags.replace_all(&lines, "");
+    let entities = ENTITIES.get_or_init(|| {
+        regex::Regex::new(r"&(?:amp|lt|gt|quot|apos|nbsp|#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6});")
+            .unwrap()
+    });
+    entities
+        .replace_all(&plain, |c: &regex::Captures<'_>| match &c[0] {
+            "&amp;" => "&".into(),
+            "&lt;" => "<".into(),
+            "&gt;" => ">".into(),
+            "&quot;" => "\"".into(),
+            "&apos;" => "'".into(),
+            "&nbsp;" => " ".into(),
+            value => {
+                let digits = &value[2..value.len() - 1];
+                let number = if digits.starts_with(['x', 'X']) {
+                    u32::from_str_radix(&digits[1..], 16).ok()
+                } else {
+                    digits.parse::<u32>().ok()
+                };
+                number
+                    .and_then(char::from_u32)
+                    .filter(|c| !c.is_control() || matches!(c, '\n' | '\t'))
+                    .map(|c| c.to_string())
+                    .unwrap_or_default()
+            }
+        })
+        .trim()
+        .to_string()
+}
+
 pub(super) fn normalize_event(event: &Value) -> Option<CalendarEvent> {
     if event["status"] == "cancelled"
         || matches!(
@@ -276,5 +355,13 @@ pub(super) fn normalize_event(event: &Value) -> Option<CalendarEvent> {
             .and_then(safe_link)
             .unwrap_or_default(),
         meeting_url: meeting_link(event),
+        description: description_text(event["description"].as_str().unwrap_or_default()),
+        location: event["location"]
+            .as_str()
+            .unwrap_or_default()
+            .chars()
+            .take(1000)
+            .collect(),
+        ..Default::default()
     })
 }

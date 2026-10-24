@@ -1019,3 +1019,85 @@ fn styles_browser_filters_previews_and_returns_to_colors_and_theme() {
     let _ = app.update(Message::Page(Page::Themes));
     assert!(!app.style_browser, "the browser is a view of one visit");
 }
+
+#[test]
+fn calendar_subscription_form_and_selection_use_real_controls() {
+    if child("calendar_subscription_form_and_selection_use_real_controls") {
+        return;
+    }
+    let (mut app, _) = Settings::init(Core::default(), Page::Calendar);
+    app.calendar.client_ready = false;
+    for size in [Size::new(820., 600.), Size::new(1024., 720.)] {
+        let _ = app.update(Message::Resized(size));
+        let mut native = Native::new(size);
+        app.calendar.subscription_form = false;
+        click(&mut app, &mut native, "calendar-subscription-open");
+        assert!(app.calendar.subscription_form);
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("calendar-link-{}", size.width),
+        );
+        let secret = "https://example.invalid/private-credential.ics";
+        let message =
+            calendar::Message::SubscriptionUrl(crate::calendar::SecretText(secret.into()));
+        assert!(!format!("{message:?}").contains(secret));
+        let _ = app.update(Message::Calendar(message));
+        let _ = app.update(Message::Calendar(calendar::Message::SubscriptionForm(
+            false,
+        )));
+        assert!(app.calendar.subscription_url.0.is_empty());
+    }
+    let choices: Vec<_> = ["Work", "Personal"]
+        .into_iter()
+        .map(|name| crate::calendar::CalendarChoice {
+            id: name.into(),
+            name: name.into(),
+            primary: false,
+            color: String::new(),
+        })
+        .collect();
+    let connection = crate::calendar::Connection {
+        backend: crate::calendar::Backend::Subscription,
+        account: "Calendar subscriptions".into(),
+        calendar_id: choices[0].id.clone(),
+        calendar_name: choices[0].name.clone(),
+        revision: "fixture".into(),
+        credential: "opaque-keyring-id".into(),
+        subscriptions: choices.clone(),
+        selections: vec![choices[0].clone()],
+    };
+    std::fs::write(
+        crate::calendar::account_path().unwrap(),
+        serde_json::to_vec(&connection).unwrap(),
+    )
+    .unwrap();
+    app.calendar.connection = connection;
+    app.calendar.choices = choices;
+    let mut native = Native::new(Size::new(1024., 720.));
+    click(&mut app, &mut native, "calendar-choice-1");
+    assert_eq!(crate::calendar::load_connection().selections.len(), 2);
+    click(&mut app, &mut native, "calendar-choice-0");
+    assert_eq!(
+        crate::calendar::load_connection().selections[0].name,
+        "Personal"
+    );
+    click(&mut app, &mut native, "calendar-choice-1");
+    assert_eq!(crate::calendar::load_connection().selections.len(), 1);
+    assert!(app.calendar.error.is_some());
+    app.calendar.error = None;
+    native.capture(
+        app.settings_view(),
+        &cosmic::Theme::dark(),
+        "calendar-subscriptions",
+    );
+    let _ = app.update(Message::CalendarPrivacy(true));
+    assert!(Config::load().calendar_private);
+    native.capture(
+        app.settings_view(),
+        &cosmic::Theme::dark(),
+        "calendar-private-settings",
+    );
+    click(&mut app, &mut native, "settings-undo");
+    assert!(!Config::load().calendar_private);
+}

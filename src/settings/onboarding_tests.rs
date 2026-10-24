@@ -147,6 +147,7 @@ fn connected_account_selector_and_errors_fit_and_reject_old_responses() {
             calendar_name: "Personal".into(),
             revision: "new".into(),
             credential: "fixture".into(),
+            ..Default::default()
         };
         app.calendar.client_ready = true;
         let choices = vec![
@@ -154,11 +155,13 @@ fn connected_account_selector_and_errors_fit_and_reject_old_responses() {
                 id: "primary".into(),
                 name: "Personal".into(),
                 primary: true,
+                color: String::new(),
             },
             crate::calendar::CalendarChoice {
                 id: "team".into(),
                 name: "Team calendar".into(),
                 primary: false,
+                color: String::new(),
             },
         ];
         let _ = app.update(Message::Calendar(calendar::Message::Loaded(

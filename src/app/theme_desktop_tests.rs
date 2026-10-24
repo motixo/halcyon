@@ -56,6 +56,7 @@ fn sample_cards() -> Cards {
             all_day: true,
             url: "https://example.com/event".into(),
             meeting_url: Some("https://example.com/join".into()),
+            ..Default::default()
         }],
         ..Default::default()
     };

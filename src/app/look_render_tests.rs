@@ -109,6 +109,7 @@ fn sample_data(cards: &mut Cards) {
                 all_day: false,
                 url: String::new(),
                 meeting_url: None,
+                ..Default::default()
             },
             CalendarEvent {
                 title: "Design review".into(),
@@ -117,6 +118,7 @@ fn sample_data(cards: &mut Cards) {
                 all_day: false,
                 url: String::new(),
                 meeting_url: None,
+                ..Default::default()
             },
         ],
         month: Local::now().format("%Y-%m").to_string(),

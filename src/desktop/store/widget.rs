@@ -233,6 +233,7 @@ pub static FIELDS: [WidgetField; 84] = fields![
 // Local preferences participate in transactions and Undo but are never
 // captured or exported by the profile library.
 pub static LOCAL_FIELDS: &[WidgetField] = &fields![
+    "/calendar_private", "Calendar privacy", Style, boolean;
     "/widget_display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
     "/appearance/match_wallpaper", "Matching wallpaper", Style, boolean;
     "/appearance/match_cosmic_colors", "Follow COSMIC colors", Style, boolean;

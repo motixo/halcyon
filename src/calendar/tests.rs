@@ -10,6 +10,7 @@ fn sample_connection() -> Connection {
         calendar_name: "Work".into(),
         revision: "revision-a".into(),
         credential: "credential-a".into(),
+        ..Default::default()
     }
 }
 
@@ -111,10 +112,17 @@ fn google_events_keep_agenda_fields_and_filter_unsafe_links_and_declines() {
         "conferenceData":{"entryPoints":[{"entryPointType":"video","uri":"https://zoom.us/j/123"}]}});
     let event = google::normalize_event(&raw).unwrap();
     assert_eq!(event.meeting_url.as_deref(), Some("https://zoom.us/j/123"));
+    assert!(event.description.contains("Private context"));
     assert!(
-        !serde_json::to_string(&event)
+        !serde_json::to_string(&event.private_copy())
             .unwrap()
             .contains("Private context")
+    );
+    let mut formatted = raw.clone();
+    formatted["description"] = json!("<p>Agenda&nbsp;&amp; goals</p>Room&#32;2");
+    assert_eq!(
+        google::normalize_event(&formatted).unwrap().description,
+        "Agenda & goals\nRoom 2"
     );
     raw["conferenceData"] = json!(null);
     assert_eq!(
@@ -206,6 +214,7 @@ fn calendar_cache_cannot_cross_accounts_calendars_or_logout() {
             id: "shared@example.com".into(),
             name: "Team".into(),
             primary: false,
+            color: String::new(),
         },
     )
     .unwrap();
@@ -214,6 +223,32 @@ fn calendar_cache_cannot_cross_accounts_calendars_or_logout() {
         store::save_cache(&connection, month, &data),
         Err(Problem::Changed)
     );
+    let mut choices = changed.selected_calendars();
+    choices.push(CalendarChoice {
+        id: "personal".into(),
+        name: "Personal".into(),
+        primary: true,
+        color: "#abcdef".into(),
+    });
+    let multiple = store::save_selections(&changed, choices.clone()).unwrap();
+    assert_eq!(store::load_connection().selections, choices);
+    assert_eq!(
+        store::save_selections(&changed, choices.clone()),
+        Err(Problem::Changed)
+    );
+    assert_eq!(
+        store::save_selections(&multiple, vec![]),
+        Err(Problem::InvalidResponse)
+    );
+    assert_eq!(
+        store::save_selections(&multiple, vec![choices[0].clone(), choices[0].clone()]),
+        Err(Problem::InvalidResponse)
+    );
+    assert_eq!(
+        store::save_cache(&changed, month, &data),
+        Err(Problem::Changed)
+    );
+    let changed = multiple;
     let disconnected = store::disconnect(&changed).unwrap();
     assert!(!disconnected.connected());
     assert_eq!(store::load_connection(), disconnected);
@@ -238,7 +273,7 @@ fn month_windows_include_adjacent_week_days() {
     assert!(google::window("2026-99").is_err());
 }
 
-fn require_private_keyring() {
+pub(super) fn require_private_keyring() {
     assert_eq!(
         std::env::var("DESKTOP_CARDS_KEYRING_TEST").as_deref(),
         Ok("private")
@@ -277,12 +312,12 @@ async fn private_keyring_roundtrip() {
     let id = store::nonce().unwrap();
     let credential = sample_credential();
     keyring::save(&id, &credential).await.unwrap();
-    let loaded = keyring::read(&id, false).await.unwrap();
+    let loaded = keyring::read::<Credential>(&id, false).await.unwrap();
     assert_eq!(loaded.refresh_token, credential.refresh_token);
     assert_eq!(loaded.client.client_id, credential.client.client_id);
     keyring::remove(&id).await.unwrap();
     assert!(matches!(
-        keyring::read(&id, false).await,
+        keyring::read::<Credential>(&id, false).await,
         Err(Problem::SignIn)
     ));
 }
@@ -306,13 +341,16 @@ async fn private_disconnect_rejects_stale_accounts_before_removing_credentials()
             id: "team".into(),
             name: "Team".into(),
             primary: false,
+            color: String::new(),
         },
     )
     .unwrap();
     assert_eq!(disconnect(connection).await, Err(Problem::Changed));
     assert_eq!(store::load_connection(), selected);
     assert!(
-        keyring::read(&selected.credential, false).await.is_ok(),
+        keyring::read::<Credential>(&selected.credential, false)
+            .await
+            .is_ok(),
         "a rejected disconnect must keep the current account's credential"
     );
     keyring::remove(&selected.credential).await.unwrap();
@@ -340,7 +378,9 @@ async fn private_disconnect_keeps_credentials_when_the_store_is_busy() {
     assert_eq!(disconnect(connection.clone()).await, Err(Problem::Changed));
     assert_eq!(store::load_connection(), connection);
     assert!(
-        keyring::read(&connection.credential, false).await.is_ok(),
+        keyring::read::<Credential>(&connection.credential, false)
+            .await
+            .is_ok(),
         "a busy account store must not destroy the saved credential"
     );
     drop(lock);
@@ -397,12 +437,58 @@ async fn private_disconnect_can_finish_keyring_cleanup_after_retry() {
         pending.credential, connection.credential,
         "retain the cleanup reference for a retry"
     );
-    assert!(keyring::read(&connection.credential, false).await.is_ok());
+    assert!(
+        keyring::read::<Credential>(&connection.credential, false)
+            .await
+            .is_ok()
+    );
     let disconnected = disconnect(pending).await.unwrap();
     assert!(!disconnected.connected() && disconnected.credential.is_empty());
     assert_eq!(store::load_connection(), disconnected);
     assert!(matches!(
-        keyring::read(&connection.credential, false).await,
+        keyring::read::<Credential>(&connection.credential, false).await,
         Err(Problem::SignIn)
     ));
+}
+
+#[test]
+fn calendar_upgrade_and_privacy_preserve_times_without_exposing_details() {
+    let old = serde_json::json!({"backend":"google", "account":"alex@example.com", "calendar_id":"work", "calendar_name":"Work", "revision":"old", "credential":"opaque"});
+    let connection: Connection = serde_json::from_value(old).unwrap();
+    assert_eq!(connection.selected_calendars()[0].id, "work");
+    let event = crate::data::CalendarEvent {
+        title: "Private appointment".into(),
+        start: "2026-10-24T09:00:00+02:00".into(),
+        end: "2026-10-24T10:00:00+02:00".into(),
+        description: "Confidential context".into(),
+        location: "Private office".into(),
+        calendar_name: "Personal".into(),
+        url: "https://example.com/private".into(),
+        meeting_url: Some("https://meet.google.com/private".into()),
+        ..Default::default()
+    };
+    let private = event.private_copy();
+    assert_eq!(private.title, "Busy");
+    assert_eq!(private.start, event.start);
+    assert_eq!(private.end, event.end);
+    assert!(private.join_url().is_none());
+    assert!(
+        private.description.is_empty()
+            && private.location.is_empty()
+            && private.calendar_name.is_empty()
+    );
+    let mut later = event.clone();
+    later.start = "2026-10-24T08:00:00Z".into();
+    assert!(
+        event.chronological_order(&later).is_lt(),
+        "sort by instant, not offset text"
+    );
+    let mut summer = event.clone();
+    summer.start = "2026-10-25T02:45:00+02:00".into();
+    let mut winter = event.clone();
+    winter.start = "2026-10-25T02:15:00+01:00".into();
+    assert!(
+        summer.chronological_order(&winter).is_lt(),
+        "repeated daylight-saving hour uses actual instants"
+    );
 }

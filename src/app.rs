@@ -6,6 +6,7 @@ use crate::data::{
 };
 use crate::drawer::{self, DragResult, ReorderDrag, Sidebar, Widget};
 mod autoswitch;
+mod calendar_details;
 mod clock;
 mod devbox;
 #[cfg(test)]
@@ -185,6 +186,7 @@ pub struct Cards {
     fetching: bool,
     capture_key: Option<String>,
     calendar: Option<CalendarData>,
+    calendar_details: Option<String>,
     calendar_connection: crate::calendar::Connection,
     calendar_today: Option<CalendarData>,
     today_fetching: bool,
@@ -274,6 +276,7 @@ impl cosmic::Application for Cards {
             next_weather: Instant::now(),
             fetching: false,
             capture_key: None,
+            calendar_details: None,
             calendar_today: calendar.clone(),
             today_fetching: false,
             calendar_today_error: false,
@@ -1043,7 +1046,29 @@ impl Cards {
                 crate::paths::CONTROLLER,
                 vec!["settings".into(), "--page".into(), "projects".into()],
             ),
-            Message::Open(url) => self.launch("xdg-open", vec![url]),
+            Message::Open(url) => {
+                if url.starts_with("halcyon-event:") {
+                    if !self.config.calendar_private {
+                        let exists = self
+                            .calendar
+                            .iter()
+                            .chain(self.calendar_today.iter())
+                            .flat_map(|c| &c.events)
+                            .any(|e| e.details_key() == url);
+                        if exists {
+                            self.calendar_details = if self.calendar_details.as_ref() == Some(&url)
+                            {
+                                None
+                            } else {
+                                Some(url)
+                            };
+                        }
+                    }
+                    self.sync_widget_surfaces()
+                } else {
+                    self.launch("xdg-open", vec![url])
+                }
+            }
             Message::ControlFinished(result) => {
                 if let Err(e) = result {
                     eprintln!("Halcyon: {e}");
@@ -1589,6 +1614,7 @@ impl Cards {
         if connection == self.calendar_connection {
             return Task::none();
         }
+        self.calendar_details = None;
         self.calendar_connection = connection;
         self.calendar = None;
         self.calendar_today = None;
@@ -1674,12 +1700,17 @@ impl Cards {
         .into()
     }
     fn calendar_event_height(&self, event: &CalendarEvent, width: f32) -> f32 {
-        let title = glance::agenda_text_height(event, 15., (width - 115.).max(20.));
+        let visible = if self.config.calendar_private {
+            event.private_copy()
+        } else {
+            event.clone()
+        };
+        let title = glance::agenda_text_height(&visible, 15., (width - 115.).max(20.));
         let status = matches!(
             event.meeting_state_at(Local::now(), self.config.meeting_notice_minutes),
             MeetingState::Soon(_) | MeetingState::Live
         );
-        (title + if status { 15. } else { 0. }).max(30.) + 12.
+        (title + if status { 15. } else { 0. }).max(30.) + 12. + self.event_details_height(event)
     }
     fn calendar_natural_height(&self) -> f32 {
         let now = Local::now();
@@ -1902,7 +1933,7 @@ impl Cards {
                     )
                     .width(Length::Fixed(43.));
                     let mut detail: Vec<Element<'_, Message>> = vec![
-                        cosmic::iced::widget::rich_text(glance::agenda_spans(
+                        cosmic::iced::widget::rich_text(glance::agenda_spans_private(
                             event,
                             if event.finished() {
                                 p.muted
@@ -1910,6 +1941,7 @@ impl Cards {
                                 p.foreground
                             },
                             color,
+                            self.config.calendar_private,
                         ))
                         .size(15.)
                         .line_height(1.25)
@@ -1922,6 +1954,7 @@ impl Cards {
                     if !status.is_empty() {
                         detail.push(label(status, 9., color));
                     }
+                    let marker_color = event.source_color().unwrap_or(color);
                     let marker = container(text::body(""))
                         .width(Length::Fixed(2.))
                         .height(Length::Fixed(26.))
@@ -1929,7 +1962,7 @@ impl Cards {
                             cosmic::iced::widget::container::Style {
                                 background: Some(Background::Color(Color {
                                     a: if highlighted { 0.9 } else { 0.30 },
-                                    ..color
+                                    ..marker_color
                                 })),
                                 border: Border {
                                     radius: 1.into(),
@@ -1973,6 +2006,9 @@ impl Cards {
                         }))
                         .into(),
                     );
+                    if self.event_details_open(event) {
+                        agenda.push(self.event_details_view(event, p));
+                    }
                 }
             }
             // With day headings, the toggle sits beside the day name.
@@ -1985,19 +2021,17 @@ impl Cards {
             .as_ref()
             .map(|calendar| calendar.account.as_str())
             .filter(|account| !account.is_empty());
-        let mut calendar_url =
-            reqwest::Url::parse("https://calendar.google.com/calendar/u/0/r").unwrap();
-        if let Some(account) = account {
-            calendar_url
-                .query_pairs_mut()
-                .append_pair("authuser", account);
-        }
+        let calendar_url = self.calendar_connection.web_url();
         let footer = container(spread(
             mouse_area(
                 text::body(if self.calendar_error {
                     "Check connection →".into()
                 } else {
-                    format!("{} ↗", account.unwrap_or("Google Calendar"))
+                    if self.config.calendar_private || calendar_url.is_empty() {
+                        "Calendar".into()
+                    } else {
+                        format!("{} ↗", account.unwrap_or("Google Calendar"))
+                    }
                 })
                 .size(9.)
                 .font(crate::widget_style::font())
@@ -2008,11 +2042,13 @@ impl Cards {
                     cosmic::iced::advanced::text::EllipsizeHeightLimit::Lines(1),
                 )),
             )
-            .on_press(if self.calendar_error {
-                Message::CalendarSettings
-            } else {
-                Message::Open(calendar_url.into())
-            })
+            .on_press(
+                if self.calendar_error || calendar_url.is_empty() || self.config.calendar_private {
+                    Message::CalendarSettings
+                } else {
+                    Message::Open(calendar_url.into())
+                },
+            )
             .interaction(cosmic::iced::mouse::Interaction::Pointer)
             .into(),
             row::with_children(vec![
@@ -2021,7 +2057,7 @@ impl Cards {
                         .as_ref()
                         .map(|calendar| calendar.updated_at.as_str()),
                     self.calendar_error,
-                    "Google Calendar",
+                    "Calendar",
                     p,
                 ),
                 action(
@@ -2484,6 +2520,7 @@ mod tests {
                     all_day: true,
                     url: String::new(),
                     meeting_url: None,
+                    ..Default::default()
                 })
                 .collect(),
             ..CalendarData::default()
@@ -2625,6 +2662,7 @@ mod tests {
             all_day: false,
             url: String::new(),
             meeting_url: Some("https://meet.google.com/example".into()),
+            ..Default::default()
         };
         let _ = cards.update(Message::CalendarToday(
             cards.calendar_connection.revision.clone(),

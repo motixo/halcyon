@@ -137,9 +137,18 @@ Do not post installation tokens, credentials or private widget contents there.
 ## Widget connections
 
 - **Weather:** searches and selected coordinates go to Open-Meteo.
-- **Google Calendar:** connecting an account allows Halcyon to fetch the selected
-  calendar. Sign-in tokens stay in the system keyring. Calendar data does not go
-  to the activity collector.
+- **Google Calendar:** connecting an account allows Halcyon to read the calendars
+  you select. Sign-in tokens stay in the system keyring.
+- **Calendar subscriptions (0.3.0 development):** HTTPS/iCal links are fetched
+  directly from their provider. Private links stay in the system keyring, not in
+  preferences, exported setups or logs. The provider receives normal HTTPS
+  requests and the connection IP. Redirects do not send the private link as a
+  Referer header. Halcyon does not send feeds through its own server.
+- **Cached agenda:** event titles, times, descriptions, locations and links are
+  cached in private local files for offline viewing. Disconnecting removes this
+  cache. “Hide event details” displays Busy on the desktop and hides event/Join
+  links; it does not erase the local cache. Calendar contents never go to the
+  activity collector.
 - **Music:** controls use local MPRIS over D-Bus. Artwork may be fetched from the
   public HTTPS URL supplied by the player.
 - **Projects, notes and settings:** remain local; activity reports do not include

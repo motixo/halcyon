@@ -272,8 +272,10 @@ async fn prepare(auth: &Authorization) -> Result<(Connection, Credential), Probl
         account: account.into(),
         calendar_id: choice.id.clone(),
         calendar_name: choice.name.clone(),
+        selections: vec![choice.clone()],
         revision: store::nonce()?,
         credential: store::nonce()?,
+        ..Default::default()
     };
     Ok((
         connection,
@@ -285,7 +287,7 @@ async fn prepare(auth: &Authorization) -> Result<(Connection, Credential), Probl
 }
 /// Removes a credential that is no longer used; if the keyring refuses,
 /// remembers its ID so a later sign-in or disconnect removes it.
-async fn forget(id: &str) {
+pub(super) async fn forget(id: &str) {
     if id.is_empty() || keyring::remove(id).await.is_ok() {
         return;
     }
@@ -314,7 +316,10 @@ async fn commit(
         forget(&connection.credential).await;
         return Err(problem);
     }
-    if auth.0.expected.backend == Backend::Google {
+    if matches!(
+        auth.0.expected.backend,
+        Backend::Google | Backend::Subscription
+    ) {
         forget(&auth.0.expected.credential).await;
     }
     // Credentials left behind by an earlier switch get another try now that
