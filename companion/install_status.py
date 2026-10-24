@@ -154,9 +154,10 @@ def generation_status(result, home, library, installed=None, running=None, host=
     elif deferred or active_generation != generation or state['state'] == 'logout_required':
         label, reason = 'Log out to activate', state['reason']
     elif host is not True:
-        label, reason = ('Compatibility update needed', 'startup_not_ready') if state.get('policy') else ('Checking compatibility', 'host_not_verified')
+        label, reason = ('Using standard panel', (installed or {}).get('startup_error') or 'startup_not_ready') if state.get('policy') else ('Checking compatibility', 'host_not_verified')
     else:
         label, reason = 'Ready', state['reason']
+    result['applet_issues'] = (installed or {}).get('applet_issues', [])[:64]
     result['running'] = host
     if host is not None and result['healthy'] is not False:
         result['healthy'] = host
@@ -171,7 +172,7 @@ def generation_status(result, home, library, installed=None, running=None, host=
     # exception strings. Diagnostic output cannot change the activation state.
     result['diagnostics'] = dict(version=1, installation=result['installation'],
         provenance=result['provenance'], enabled=result['enabled'], status=label,
-        reason=reason, installed_generation=generation, active_generation=active_generation,
+        reason=reason, applet_issues=result['applet_issues'], installed_generation=generation, active_generation=active_generation,
         installed_cohort=None, qualification_cohort=state.get('cohort'), runtime_targets=(installed or {}).get('targets', []), running_profiles=running_profiles)
     return result
 
@@ -231,10 +232,17 @@ def main():
                         _, selected, _, _ = selected_generation(home, context=context)
                         owner = host_identity(selected['binary_sha256'])
                         host = False
-                        if owner is not None and selected['payload_sha256'] == manifest['payload_sha256']:
+                        try:
                             observation = Session(versions=measured['package_versions'])
-                            try: host = observation.inventory(owner)
+                            try:
+                                if owner is not None and selected['payload_sha256'] == manifest['payload_sha256']:
+                                    host = observation.inventory(owner)
+                                measured['applet_issues'] = observation.applet_issues(owner if host else None)
+                                observation.check()
                             finally: observation.close()
+                        except (OSError, ValueError) as error:
+                            code = str(error)
+                            measured['startup_error'] = code if re.fullmatch(r'[a-z_]{1,80}',code) else 'startup_check_failed'
                     else:
                         measured = installed_identity(catalog)
                         _, selected, _, _ = selected_generation(home, context=context)

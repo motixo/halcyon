@@ -75,6 +75,24 @@ struct Status {
     qualification_cohort: Option<String>,
     #[serde(default)]
     runtime_targets: Vec<String>,
+    #[serde(default)]
+    applet_issues: Vec<AppletIssue>,
+}
+#[derive(Deserialize, serde::Serialize)]
+struct AppletIssue {
+    applet: String,
+    reason: String,
+}
+fn applet_problem(reason: &str) -> Option<&'static str> {
+    Some(match reason {
+        "desktop_entry_missing" => "Applet is not installed",
+        "desktop_exec_missing" => "Applet has no launch command",
+        "desktop_exec_invalid" | "desktop_entry_invalid" => "Applet launcher is invalid",
+        "desktop_exec_unresolved" => "Applet launch path could not be checked",
+        "applet_executable_missing" => "Applet program is missing or not executable",
+        "applet_not_observed" => "Applet process not observed; it may still be starting",
+        _ => return None,
+    })
 }
 thread_local! {
     static NATIVE_VIEW: std::cell::RefCell<Option<Installation>> = const { std::cell::RefCell::new(None) };
@@ -139,6 +157,26 @@ impl Installation {
             _ => None,
         }
     }
+    /// Separate optional applet problems from the companion's availability.
+    /// Only validated IDs and known codes leave the diagnostics boundary.
+    pub fn applet_messages(&self) -> Vec<String> {
+        let Some(value) = self
+            .diagnostics()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+        else {
+            return Vec::new();
+        };
+        value["applet_issues"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .take(64)
+            .filter_map(|issue| {
+                let text = applet_problem(issue["reason"].as_str()?)?;
+                Some(format!("{text}: {}", issue["applet"].as_str()?))
+            })
+            .collect()
+    }
     fn parse(bytes: &[u8]) -> Self {
         if bytes.len() > 65536 {
             return Self::Pending;
@@ -182,6 +220,20 @@ impl Installation {
             .take(64)
             .filter_map(|value| safe_hash(&Some(value.clone())))
             .collect();
+        let applet_issues: Vec<_> = status
+            .applet_issues
+            .iter()
+            .take(64)
+            .filter(|issue| {
+                !issue.applet.is_empty()
+                    && issue.applet.len() <= 200
+                    && issue
+                        .applet
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+                    && applet_problem(&issue.reason).is_some()
+            })
+            .collect();
         let diagnostics = serde_json::json!({
             "version": 1, "enabled": status.enabled, "compatible": status.compatible,
             "status": status.status.map(CompatibilityStatus::label), "reason": reason,
@@ -190,6 +242,7 @@ impl Installation {
             "installed_cohort": safe_hash(&status.installed_cohort), "running_profiles": running_profiles,
             "qualification_cohort": safe_hash(&status.qualification_cohort),
             "runtime_targets": status.runtime_targets.iter().take(64).filter_map(|v| safe_hash(&Some(v.clone()))).collect::<Vec<_>>(),
+            "applet_issues": applet_issues,
         })
         .to_string();
         match (status.installation.as_str(), status.provenance) {
@@ -394,6 +447,38 @@ time.sleep(20)
                 ..
             }
         ));
+    }
+    #[test]
+    fn configured_applet_diagnostics_do_not_change_ready_and_exclude_paths() {
+        let data = serde_json::json!({"format":"halcyon-islands-installation", "version":1,
+        "installation":"installed", "provenance":"package", "enabled":true,
+        "compatible":true, "status_version":2, "status":"Ready",
+        "applet_issues":[
+            {"applet":"net.tropicbliss.CosmicExtAppletCaffeine", "reason":"desktop_entry_missing"},
+            {"applet":"/home/private/token", "reason":"desktop_entry_missing"},
+            {"applet":"org.example.Bad", "reason":"/private/command"}
+        ]});
+        let parsed = Installation::parse(&serde_json::to_vec(&data).unwrap());
+        assert_eq!(parsed.status_label(), "Ready");
+        assert_eq!(
+            parsed.applet_messages(),
+            vec!["Applet is not installed: net.tropicbliss.CosmicExtAppletCaffeine"]
+        );
+        assert!(!parsed.diagnostics().unwrap().contains("private"));
+        let mut many = data;
+        many["applet_issues"] = serde_json::json!(
+            (0..100)
+                .map(|i| serde_json::json!({
+                    "applet":format!("org.example.Applet{i}"), "reason":"applet_not_observed"
+                }))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            Installation::parse(&serde_json::to_vec(&many).unwrap())
+                .applet_messages()
+                .len(),
+            64
+        );
     }
     #[test]
     fn runtime_boundary_v2_scope_and_disabled_are_truthful() {

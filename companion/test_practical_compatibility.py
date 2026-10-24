@@ -89,25 +89,28 @@ class Processes(config_fixture.Configuration):
             s=self.observation();self.assertTrue(s.inventory())
             host=self.host(count);self.assertTrue(s.inventory(host))
             p=self.groups.pop();os.killpg(p.pid,signal.SIGKILL);p.wait(timeout=2);s.close()
-    def test_missing_excess_foreign_and_old_running_children_refuse(self):
+    def test_optional_children_do_not_determine_panel_readiness(self):
         s=self.observation();self.assertTrue(s.inventory())
-        host=self.host(0);self.assertFalse(s.inventory(host))
+        host=self.host(0);self.assertTrue(s.inventory(host))
+        self.assertEqual(s.applet_issues(host)[0]['reason'],'applet_not_observed')
         foreign=self.host(1)
-        with self.assertRaises(ValueError):s.inventory(host)
-        with self.assertRaises(ValueError):s.inventory() # pre-existing applet cannot satisfy startup
-        # An updated executable cannot bless a still-running old object.
+        self.assertTrue(s.inventory(host));self.assertTrue(s.inventory())
+        self.assertEqual(s.applet_issues(host)[0]['reason'],'applet_not_observed')
+        # Replacing an applet is observed, but a fresh status still measures the
+        # panel separately from that old optional applet process.
         old=self.bin/'cosmic-applets';old.rename(self.bin/'old');shutil.copy2('/usr/bin/sleep',old)
-        s2=self.observation()
-        with self.assertRaises(ValueError):s2.inventory(foreign)
-    def test_excess_counts_and_executable_or_config_aba_refuse(self):
-        s=self.observation();host=self.host(2);self.assertFalse(s.inventory(host))
+        with self.assertRaises(ValueError):s.check()
+        s2=self.observation();self.assertTrue(s2.inventory(foreign))
+        self.assertEqual(s2.applet_issues(foreign)[0]['reason'],'applet_not_observed')
+    def test_extra_optional_children_do_not_bypass_executable_or_config_aba(self):
+        s=self.observation();host=self.host(2);self.assertTrue(s.inventory(host))
         p=self.bin/'cosmic-comp';raw=p.read_bytes();p.rename(self.bin/'previous');p.write_bytes(raw);p.chmod(0o755)
         with self.assertRaises(ValueError):s.check()
         s2=self.observation();path=self.center();raw=path.read_bytes();path.write_bytes(b'Some([])');path.write_bytes(raw)
         with self.assertRaises(ValueError):s2.check()
     def test_supported_aliases_need_not_be_multiplex(self):
         (self.bin/'cosmic-applet-audio').unlink();shutil.copy2('/usr/bin/sleep',self.bin/'cosmic-applet-audio')
-        s=self.observation();self.assertEqual(s.configuration.counts,{'cosmic-applet-audio':1});self.assertTrue(s.inventory())
+        s=self.observation();self.assertEqual(s.configuration.counts,{'com.system76.CosmicAppletAudio':1});self.assertTrue(s.inventory())
     def test_package_metadata_changed_during_family_query_refuses(self):
         status=self.root/'var/lib/dpkg/status';status.parent.mkdir(parents=True);status.write_bytes(b'old')
         original=c.family
@@ -153,9 +156,10 @@ class Wired(unittest.TestCase):
                 result=refresh.stage_locked(self.home,self.library,session='first',fixture=True,enable=True)
             self.assertEqual(result['state'],'staged')
             with patch('panel_launcher.session_identity',return_value='second'):
-                for host,label in [(False,'Compatibility update needed'),(True,'Ready')]:
-                    result=install_status.detect(self.home,self.library,True,{},installed=c.family(VERSIONS),host=host)
+                for host,label in [(False,'Using standard panel'),(True,'Ready')]:
+                    result=install_status.detect(self.home,self.library,True,{},installed={**c.family(VERSIONS), 'applet_issues':[dict(applet='org.example.Missing',reason='desktop_entry_missing')]},host=host)
                     self.assertEqual(result['status'],label,result)
+                    self.assertEqual(result['diagnostics']['applet_issues'],[dict(applet='org.example.Missing',reason='desktop_entry_missing')])
                     self.assertTrue(result['compatible']);self.assertIsNone(result['qualification_cohort'])
                 self.assertEqual(result['reason'],'family_ready_hardware_not_qualified')
             with patch('panel_launcher.session_identity',return_value='first'):

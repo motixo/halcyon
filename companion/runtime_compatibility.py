@@ -1,7 +1,7 @@
 """Supported-family startup, deliberately NOT host attestation or qualification.
 
 Trust the system's installed public executables, pin their objects for this
-operation, then require the real ABI probe and child-owned readiness. Historical
+operation, then require the real ABI probe and host-owned IPC readiness. Historical
 exact native evidence stays separate. No GPU, kernel, library or resource scan.
 """
 import os
@@ -10,27 +10,16 @@ import re
 import stat
 import subprocess
 
-from bundle_contract import CONFIGURATION_SOURCE, CONFIGURATION_RESOLVER
+from bundle_contract import CONFIGURATION_SOURCE
 from panel_configuration import Snapshot, Watch
 from runtime_identity import _proc_bytes, _stat, _owned_by_host, host_process, LOADER_ENV
 
-POLICY = dict(version=1, id='cosmic-1.10-1.11-startup-v1', families=['1.10','1.11'],
+POLICY = dict(version=2, id='cosmic-1.10-1.11-startup-v2', families=['1.10','1.11'],
     assurance='supported-family-probed-startup-not-hardware-qualification',
-    native_source=CONFIGURATION_SOURCE,
-    binary_sha256='07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8',
+    native_source={**CONFIGURATION_SOURCE, 'patch_sha256':'e71f296feeb08e8cad16fc82717b33e8187b481ec294aa812cabef0084f0e4eb'},
+    binary_sha256='c5b961ae53b20a090feea53949009cc92f8039bdf6b4cbf301892494b46debb5',
     protocol=1, runtime_probe=1, max_outputs=32)
 CORE = ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon')
-# Public desktop Exec contracts from the retained pinned cosmic-applets package.
-# Both standalone 1.10 executables and 1.11 multiplex aliases are supported.
-APPLETS = {
-    'CosmicAppList': ('cosmic-app-list', []),
-    **{'CosmicApplet'+name: ('cosmic-applet-'+exe, []) for name,exe in (
-        ('A11y','a11y'),('Audio','audio'),('Battery','battery'),('Bluetooth','bluetooth'),
-        ('InputSources','input-sources'),('Minimize','minimize'),('Network','network'),
-        ('Notifications','notifications'),('Power','power'),('StatusArea','status-area'),
-        ('Tiling','tiling'),('Time','time'))},
-    **{'CosmicPanel'+name+'Button': ('cosmic-panel-button', ['com.system76.'+app]) for name,app in (
-        ('App','CosmicAppLibrary'),('Launcher','CosmicLauncher'),('Workspaces','CosmicWorkspaces'))}}
 
 
 def enabled(catalog):
@@ -92,11 +81,11 @@ class Session:
             self.observation=family(versions)
             if not self.env.get('XDG_SESSION_ID') or any(self.env.get(k) for k in LOADER_ENV):
                 raise ValueError('session_or_loader_environment')
-            def pin(path):
+            def pin(path, core=False):
                 self.watch.add(path, entry=True)
                 resolved=path.resolve(strict=True)
-                allowed={root/'usr/bin'/n for n in (*CORE,'cosmic-applets',*(v[0] for v in APPLETS.values()))}
-                if resolved not in allowed: raise ValueError('executable_outside_supported_contract')
+                if core and resolved not in {root/'usr/bin'/n for n in CORE}:
+                    raise ValueError('executable_outside_supported_contract')
                 self.watch.add(resolved)
                 fd=os.open(resolved,os.O_RDONLY|os.O_NONBLOCK|os.O_CLOEXEC)
                 info=os.fstat(fd)
@@ -105,18 +94,13 @@ class Session:
                 if resolved in self.files: os.close(fd)
                 else: self.files[resolved]=(fd,self.stamp(info))
                 return str(resolved)
-            self.processes={n:pin(root/'usr/bin'/n) for n in CORE}
-            applets={}; children={}
-            for name,(exe,args) in APPLETS.items():
-                path=root/'usr/bin'/exe
-                self.watch.add(path, entry=True)
-                if not path.exists(): continue # Only unconfigured missing desktop IDs are optional.
-                resolved=pin(path); process=Path(resolved).name
-                children[process]=resolved
-                applets['com.system76.'+name]=dict(process=process,args=args,exec_name=exe)
-            self.processes.update(children)
-            self.configuration=Snapshot(dict(resolver=CONFIGURATION_RESOLVER,native_source=CONFIGURATION_SOURCE,
-                max_outputs=32,processes=children,applets=applets), self.env)
+            self.processes={n:pin(root/'usr/bin'/n, core=True) for n in CORE}
+            self.configuration=Snapshot(env=self.env)
+            for applet in self.configuration.applets.values():
+                if 'resolved' in applet:
+                    try: pin(Path(applet['executable']))
+                    except (OSError, ValueError):
+                        applet.clear(); applet['issue']='applet_executable_missing'
             self.check()
         except BaseException:
             self.close(); raise
@@ -142,13 +126,13 @@ class Session:
                 try:
                     if p.stat().st_uid != os.getuid(): continue
                     comm=_proc_bytes(p/'comm',4096).decode().strip()
-                    possible=any(comm==n or comm==n[:15] for n in (*CORE,'cosmic-applets',*(v[0] for v in APPLETS.values())))
+                    possible=any(comm==n or comm==n[:15] for n in CORE)
                     # A dead single-thread zombie is terminal; a Z leader with
                     # live workers is not. Missing required counts still refuse.
                     fields=_proc_bytes(p/'stat').rsplit(b') ',1)[-1].split()
                     if len(fields)>17 and fields[0] in (b'Z',b'X') and int(fields[17])==1: continue
                     name=Path(os.readlink(p/'exe').removesuffix(' (deleted)')).name
-                    if name not in found and not possible and name not in {v[0] for v in APPLETS.values()}|{'cosmic-applets'}: continue
+                    if name not in found and not possible: continue
                     possible=True
                     env=dict(v.split(b'=',1) for v in _proc_bytes(p/'environ',1024*1024).split(b'\0') if b'=' in v)
                     if env.get(b'XDG_SESSION_ID') != session: continue
@@ -157,19 +141,47 @@ class Session:
                     if any(env.get(k.encode()) for k in LOADER_ENV): raise ValueError('process_loader_environment')
                     actual=self.stamp((p/'exe').stat()); expected=self.files[Path(self.processes[name])][1]
                     if actual != expected: raise ValueError('old_or_replaced_executable')
-                    if name not in CORE and (host is None or not _owned_by_host(before,host,self.proc)):
-                        raise ValueError('unowned_applet')
                     if _stat(p) != before: raise ValueError('process_changed')
                     found[name].append((int(entry.name),before))
                 except (OSError,ValueError,UnicodeError,IndexError):
                     if possible: raise ValueError('required_process_unavailable')
         for name,actors in found.items():
-            expected=1 if name in CORE else self.configuration.counts[name] if host else 0
-            if len(actors)!=expected: return False
+            if len(actors)!=1: return False
         core={n:found[n] for n in CORE}
         if self.core is None: self.core=core
         elif self.core!=core: return False
         self.check(); return True
+
+    def applet_issues(self, host=None):
+        """Applet observations are diagnostics, never panel readiness authority."""
+        issues = [dict(applet=name, reason=a['issue'])
+            for name,a in self.configuration.applets.items() if 'issue' in a]
+        if host is None: return issues[:64]
+        expected = {}
+        for name,a in self.configuration.applets.items():
+            if 'resolved' not in a or a['wrapped'] or not self.configuration.counts[name]: continue
+            key = (self.files[Path(a['resolved'])][1], Path(a['executable']).name, tuple(a['args']))
+            row = expected.setdefault(key, dict(count=0, ids=[], seen=0))
+            row['count'] += self.configuration.counts[name]; row['ids'].append(name)
+        with os.scandir(self.proc) as entries:
+            for number,entry in enumerate(entries):
+                if number > 65536: raise ValueError('process_inventory_limit')
+                if not entry.name.isdigit(): continue
+                p = self.proc/entry.name
+                try:
+                    if p.stat().st_uid != os.getuid(): continue
+                    before = _stat(p)
+                    if not _owned_by_host(before,host,self.proc): continue
+                    fields = _proc_bytes(p/'stat').rsplit(b') ',1)[-1].split()
+                    if fields[0] in (b'Z',b'X') and int(fields[17])==1: continue
+                    argv = _proc_bytes(p/'cmdline',65536).rstrip(b'\0').decode().split('\0')
+                    key = (self.stamp((p/'exe').stat()), Path(argv[0]).name, tuple(argv[1:]))
+                    if key in expected and _stat(p)==before: expected[key]['seen'] += 1
+                except (OSError, ValueError, IndexError, UnicodeError): continue
+        for row in expected.values():
+            if row['seen'] < row['count']:
+                issues.extend(dict(applet=name,reason='applet_not_observed') for name in row['ids'])
+        return issues[:64]
 
     def close(self):
         if self.configuration: self.configuration.close()

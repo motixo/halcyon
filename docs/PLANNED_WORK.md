@@ -19,8 +19,8 @@ historical preparation state, not a current publication hold.
 ## Islands rejects configured applets — issue #12
 
 Recorded 2026-10-24. [Report and panel configuration](https://github.com/profilaz3/halcyon/issues/12).
-**Startup rejection reproduced locally; not fixed or released.** Prioritize
-restoring existing Islands layouts before the next release.
+**Fixed locally for 0.3.0; not released.** Ordinary startup discovers configured
+applets without the fixed list, and reports individual applet problems separately.
 
 After upgrading from 0.2.0 to 0.2.5 on COSMIC 1.11, the reporter gets the stock
 panel at every login. Their Workspaces (`com.system76.CosmicAppletWorkspaces`)
@@ -33,26 +33,31 @@ isolated configuration/process fixture: Audio is accepted; each reported ID
 independently raises `unqualified_configured_applet` before desktop-entry
 resolution. The reporter's machine and live panels were not touched.
 
-Two defects need a combined correction:
+Implemented:
 
-- `panel_configuration.Snapshot._inventory` rejects IDs outside its policy;
-  `runtime_compatibility.Session` also hard-codes executable pinning and process
-  discovery. Adding just two names would repeat this failure for other applets.
-- The launcher discards the preparation exception. Status then shows
-  `startup_not_ready` / “Compatibility update needed” without the real reason.
+- Native XDG desktop-entry discovery for arbitrary configured applet IDs,
+  standalone/multiplex launchers, wrappers, repeated instances and displays.
+- Host/core readiness remains required; missing or failed optional applets no
+  longer force stock fallback. Executable/configuration changes still invalidate
+  startup, and owned-process cleanup remains enforced.
+- CLI and Settings show bounded applet-specific notices. An absent host no longer
+  implies a compatibility update. Launcher failures retain a sanitized reason.
+- The native host skips empty/malformed applet commands instead of panicking.
+  Startup policy v2 binds its freshly built ELF; historical evidence is unchanged.
 
-Derive ordinary supported-family startup's applet inventory from configured
-desktop entries and executable contracts, with bounded discovery, change
-detection, host-owned readiness and cleanup. Keep historical exact qualification
-separate. Preserve actionable failure details through CLI and Settings. Do not
-remove the user's applets or require a stock-only layout.
+Validation: original production Session reproduction fails on the baseline and
+passes after the fix. Focused discovery/status/lifecycle, owned-group cleanup,
+Rust diagnostics and native command parsing pass. The real 0.2.0 package migrates
+and disables correctly in isolation. A private nested COSMIC session passed the
+ABI probe and IPC checks, rendered actual Workspaces and a custom Audio desktop
+entry, and stayed alive with missing/invalid applets. Caffeine's ID is covered by
+process fixtures; its actual Flatpak/popup and the reporter's login are not yet
+verified. No live user panel was replaced.
 
-Acceptance: both reported IDs and another custom applet; standalone/multiplex
-executables; multiple displays and repeated instances; missing/changed entries
-and binaries; failed startup/cleanup; clear CLI/UI explanations. Actual applet
-popup, login and disable checks remain necessary before claiming native support.
-This issue is separate from the Settings rendering and monitor-placement fixes.
-No GitHub reply, closure or publication was performed during this investigation.
+This issue is separate from Settings rendering and monitor placement; those local
+changes are preserved. Final 0.3.0 package acceptance must bind the new native
+ELF rather than inherit 0.2.5's historical approval. No GitHub reply, closure or
+publication was performed by this fix.
 
 ## Historical release preparation
 

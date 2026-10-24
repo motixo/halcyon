@@ -1,8 +1,9 @@
 """Read-only launch inventory for the pinned native cosmic-panel config semantics.
 
 This is deliberately a bounded supported subset, not a general RON/desktop-entry
-interpreter. Unsupported/ambiguous input selects stock before launching. No user
-configuration is written. See docs/COMPATIBILITY.md for the qualified scope.
+interpreter. Ambiguous panel configuration selects stock before launching;
+individual applet errors are diagnostic in ordinary startup. No user configuration
+is written. See docs/COMPATIBILITY.md for the qualified scope.
 """
 import ctypes
 import hashlib
@@ -242,12 +243,13 @@ def output_names(env=None):
 
 
 class Snapshot:
-    def __init__(self, policy, env=None):
+    def __init__(self, policy=None, env=None):
         self.env = dict(os.environ if env is None else env)
         self.watch = Watch(); self.records = {}; self.policy = policy
+        self.applets = {}
         try:
             self.outputs = output_names(self.env)
-            if len(self.outputs) > policy['max_outputs']: raise ValueError('unqualified_output_count')
+            if len(self.outputs) > (policy['max_outputs'] if policy is not None else 32): raise ValueError('unqualified_output_count')
             self.counts, bars = self._inventory()
             self.identity = identity(dict(resolver=RESOLVER, native_source=CONFIGURATION_SOURCE, outputs=self.outputs, bars=bars, files=self.records,
                                           counts=self.counts, path=self.env.get('PATH')))
@@ -304,6 +306,48 @@ class Snapshot:
         if not path.is_dir(): raise ValueError('configuration_directory')
         return True
 
+    def _configured_applet(self, path):
+        """Observe the native loader's input; never execute it or gate the host."""
+        if path is None: return dict(issue='desktop_entry_missing')
+        try:
+            fields = desktop(self.read(path))
+            command = fields.get('Exec')
+            if not command: return dict(issue='desktop_exec_missing')
+            # The pinned native host uses Rust Shlex, then Command, not a shell.
+            argv = shlex.split(command, comments=True, posix=True)
+            if not argv or not argv[0] or any('\0' in arg for arg in argv):
+                return dict(issue='desktop_exec_invalid')
+            executable = Path(argv[0])
+            if not executable.is_absolute():
+                if '/' in argv[0]: return dict(issue='desktop_exec_unresolved')
+                executable = None
+                for directory in self.env.get('PATH', os.defpath).split(':'):
+                    if not Path(directory).is_absolute():
+                        return dict(issue='desktop_exec_unresolved')
+                    choice = Path(directory)/argv[0]
+                    self.watch.add(choice, entry=True)
+                    if choice.is_file() and os.access(choice, os.X_OK):
+                        executable = choice; break
+                if executable is None: return dict(issue='applet_executable_missing')
+            self.watch.add(executable, entry=True)
+            resolved = executable.resolve(strict=True)
+            self.watch.add(resolved)
+            if not resolved.is_file() or not os.access(executable, os.X_OK):
+                return dict(issue='applet_executable_missing')
+            # Wrappers may replace themselves or delegate outside the host tree.
+            # Do not mistake that for a dead applet; the native host owns launching.
+            wrapped = 'X-Flatpak' in fields or executable.name in (
+                'env', 'flatpak', 'sh', 'bash', 'dash', 'zsh', 'bwrap', 'systemd-run')
+            fd = os.open(resolved, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            try: wrapped |= os.read(fd, 2) == b'#!'
+            finally: os.close(fd)
+            return dict(executable=str(executable), resolved=str(resolved),
+                        args=argv[1:], wrapped=wrapped)
+        except FileNotFoundError:
+            return dict(issue='applet_executable_missing')
+        except (OSError, ValueError, UnicodeError):
+            return dict(issue='desktop_entry_invalid')
+
     def _inventory(self):
         env = self.env
         if env.get('FLATPAK_ID') or env.get('COSMIC_PANEL_CONFIG'): raise ValueError('configuration_environment_unsupported')
@@ -350,9 +394,10 @@ class Snapshot:
                 if wings is not None and (not isinstance(wings,tuple) or len(wings)!=2): raise ValueError('configuration_wings')
                 plugins = (strings(wings[0]) if wings else []) + (strings(center) if center is not None else []) + (strings(wings[1]) if wings else [])
                 bars.append((entry, output, plugins))
-        counts = {p:0 for p in self.policy['processes']}
+        counts = {p:0 for p in self.policy['processes']} if self.policy is not None else {}
         wanted = {p for _,_,ps in bars for p in ps}
-        if wanted - self.policy['applets'].keys(): raise ValueError('unqualified_configured_applet')
+        if len(wanted) > 256: raise ValueError('configured_applet_limit')
+        if self.policy is not None and wanted - self.policy['applets'].keys(): raise ValueError('unqualified_configured_applet')
         # Pinned Iter visits direct files sorted, then queued subdirectories in
         # reverse encountered order, before the next XDG root. file_stem (not
         # flattened desktop ID) selects each plugin's first matching path.
@@ -367,8 +412,12 @@ class Snapshot:
                 if visited > 10000: raise ValueError('desktop_inventory_limit')
                 if path.is_dir(): pending.appendleft(path)
                 elif path.suffix == '.desktop' and path.stem in wanted and path.stem not in paths: paths[path.stem] = path
-        if wanted - paths.keys(): raise ValueError('configured_desktop_missing')
-        for plugin,path in paths.items():
+        if self.policy is None:
+            for plugin in sorted(wanted):
+                self.applets[plugin] = self._configured_applet(paths.get(plugin))
+                counts[plugin] = 0
+        elif wanted - paths.keys(): raise ValueError('configured_desktop_missing')
+        for plugin,path in (paths.items() if self.policy is not None else ()):
             fields = desktop(self.read(path))
             command = fields.get('Exec')
             if not command or 'X-Flatpak' in fields: raise ValueError('desktop_exec_unsupported')
@@ -396,7 +445,7 @@ class Snapshot:
         for name,output,plugins in bars:
             enabled = self.islands_enabled(name)
             selected = None
-            if len(set(plugins)) != len(plugins): raise ValueError('duplicate_plugin_on_bar_unsupported')
+            if self.policy is not None and len(set(plugins)) != len(plugins): raise ValueError('duplicate_plugin_on_bar_unsupported')
             if output == ('variant','All'): multiplier = len(self.outputs)
             elif output == ('variant','Active'): multiplier = 1
             elif isinstance(output,tuple) and len(output)==3 and output[:2]==('variant','Name') and isinstance(output[2],str):
@@ -405,8 +454,9 @@ class Snapshot:
                 multiplier = int(selected is not None)
             else: raise ValueError('configuration_output')
             for plugin in plugins:
-                process = self.policy['applets'][plugin]['process']; counts[process] += multiplier
-                if counts[process] > 64: raise ValueError('configured_count_limit')
+                process = self.policy['applets'][plugin]['process'] if self.policy is not None else plugin
+                counts[process] += multiplier
+                if self.policy is not None and counts[process] > 64: raise ValueError('configured_count_limit')
             normalized.append(dict(name=name,output=output,plugins=plugins,multiplier=multiplier,
                                    islands_enabled=enabled,selected_output=selected))
         return counts, normalized

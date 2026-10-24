@@ -1,6 +1,6 @@
 # Islands compatibility and immutable qualification
 
-## Supported-family startup in 0.2.5
+## Supported-family startup (next release; policy v2)
 
 Islands supports attempted startup on COSMIC **1.10 and 1.11**, including AMD,
 Intel and NVIDIA desktops. Physical hardware and COSMIC 1.10 have **not** been
@@ -14,20 +14,28 @@ Panel and session must belong to the same supported family; patch/rebuild/source
 suffixes may differ. The installed compositor/settings daemon must be present.
 The verified companion must have the pinned native source/ELF, protocol 1 and
 probe 1. Its real loader/Wayland probe must succeed before starting a panel.
-Unknown families, unsupported configuration/desktop commands, source or interface
-failures choose stock. No environment variable bypasses this product policy.
+Unknown families, ambiguous panel configuration, source or interface failures
+choose stock. Missing or invalid individual applets are reported independently. No environment variable bypasses this product policy.
 
 This policy trusts the ordinary system package installation for OS code, providers
 and resources. It does **not** attest their archive hashes, dependency closure,
-kernel or GPU. Core session executables and the known configured applet commands
-are pinned to opened installed objects for one operation; running old/replaced
-objects, a restarted core, unowned/leftover applets and configuration races refuse
-startup. Exact core counts and actual configured child counts/ancestry remain
-required. Both standalone applets and multiplex executable aliases are supported.
-The known desktop contracts cover the default COSMIC panel/dock applets; arbitrary
-third-party executables are not silently admitted. Zero, one and multiple bars
-and outputs use the same resolver (up to its native 32-output bound). The parser
-retains sidecar, enabled absent-name fallback, All/Active/Name and ABA checks.
+kernel or GPU. Core session executables and discovered configured applet commands
+are pinned to opened installed objects for one operation. A restarted core,
+replaced executable or configuration race invalidates that observation. Readiness
+requires the expected core session and verified host-owned IPC; optional applet
+process counts do not decide whether the panel can run.
+
+Configured desktop IDs are resolved using native XDG precedence without a fixed
+applet list. Standalone/multiplex executables, third-party entries, wrappers and
+repeated applets are supported. Missing/invalid entries and unobserved direct
+children produce bounded applet-specific diagnostics. Wrapper disappearance is
+not treated as failure. These observations do not prove popup/rendering health.
+The native host skips malformed launch commands instead of panicking.
+
+Zero, one and multiple bars and outputs use the same resolver (up to its native
+32-output bound), retaining sidecar, enabled absent-name fallback, All/Active/Name
+and ABA checks. Exact historical qualification retains its recorded child
+contracts; it does not constrain ordinary startup to the previously tested list.
 
 One immutable verified bundle/catalog context is used per operation. There is no
 persistent path/stat acceptance cache. The five-second prelaunch deadline includes
@@ -40,8 +48,8 @@ worker/Settings deadlines, and never starts, replaces or kills a host.
 ### Status and upgrades
 
 Installation provenance and management remain available while checking. **Ready**
-means the active verified host owns the expected IPC and configured process
-inventory, not that this hardware was qualified. Diagnostics distinguish
+means the active verified host owns the expected IPC and the core session is
+valid, not that every applet or this hardware was qualified. Diagnostics distinguish
 `family_ready_hardware_not_qualified` from historical qualification. **Log out to
 activate** applies only to a genuinely deferred/different selected generation.
 An already-selected generation without a healthy host reports **Compatibility
@@ -839,7 +847,12 @@ their parser/code dependencies and test relevant fallback behavior. Custom nativ
 plugins or applet executables still require explicit supported code policy.
 
 
-## Final packaging and explicit practical-policy release gate
+## Historical 0.2.5 packaging and practical-policy release gate
+
+The following gate binds the original 0.2.5 ELFs. Policy v2 requires a fresh
+companion build and new final-artifact acceptance; it must not reuse the old
+ELF qualification or approval. The historical gate intentionally rejects new
+binaries until the next release acceptance is recorded.
 
 Reuse the existing accepted main and companion ELFs; Python policy changes need
 new helper/package manifests, not native rebuilds. Build main and Islands packages

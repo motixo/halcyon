@@ -198,7 +198,11 @@ def _prepare_launch(bundle, context=None):
         admitted.close = close
         handed_off = True
         return admitted
-    except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError):
+    except (ImportError, OSError, ValueError, KeyError, TypeError, AttributeError, subprocess.SubprocessError) as error:
+        code = str(error)
+        # Never print desktop commands, private paths or arbitrary exception text.
+        if not re.fullmatch(r'[a-z_]{1,80}', code): code = 'startup_check_failed'
+        sys.stderr.write(f'Islands startup check failed: {code}\n')
         return None
     finally:
         if not handed_off:

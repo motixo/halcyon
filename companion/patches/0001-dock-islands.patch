@@ -3279,3 +3279,41 @@
                  cosmic_corner_radius_manager: registry_state
                      .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
                      .ok(),
+--- a/cosmic-panel-bin/src/space/wrapper_space.rs
++++ b/cosmic-panel-bin/src/space/wrapper_space.rs
+@@ -548,8 +548,4 @@
+-                let mut exec_iter = Shlex::new(panel_client.exec.as_deref().unwrap());
+-                let exec = exec_iter.next().expect("exec parameter must contain at least on word");
+-
+-                let mut args = Vec::new();
+-                for arg in exec_iter {
+-                    trace!("child argument: {}", &arg);
+-                    args.push(arg);
+-                }
++                let Some((exec, mut args)) = applet_command(panel_client.exec.as_deref().unwrap()) else {
++                    error!("Invalid launch command for applet {}", panel_client.name);
++                    continue;
++                };
+@@ -1846,0 +1843,22 @@
++
++// A malformed optional applet must not terminate the entire panel host.
++fn applet_command(command: &str) -> Option<(String, Vec<String>)> {
++    let mut words = Shlex::new(command);
++    let executable = words.next()?;
++    let args: Vec<_> = words.by_ref().collect();
++    (!words.had_error && !executable.is_empty()).then_some((executable, args))
++}
++
++#[cfg(test)]
++mod applet_command_tests {
++    use super::applet_command;
++
++    #[test]
++    fn optional_applet_commands_preserve_arguments_and_reject_malformed_input() {
++        assert_eq!(applet_command("applet --mode 'two words'"),
++            Some(("applet".into(), vec!["--mode".into(), "two words".into()])));
++        for command in ["", "  ", "# comment", "\"\"", "applet 'unfinished"] {
++            assert!(applet_command(command).is_none(), "{command:?}");
++        }
++    }
++}

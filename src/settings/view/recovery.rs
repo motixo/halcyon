@@ -10,25 +10,31 @@ impl Settings {
                     .on_press(Message::OpenIslandsGuide)
                     .into(),
             )]),
-            Installation::Installed { .. } => pages::section(vec![split(
-                detail("Islands", self.desktop.islands.installation.status_label()),
-                row::with_children(vec![
-                    button::text("Check again")
-                        .on_press_maybe(
-                            (!self.installation_busy).then_some(Message::RecheckInstallation),
-                        )
-                        .into(),
-                    button::text("Copy diagnostics")
-                        .on_press(Message::CopyIslandsDiagnostics)
-                        .into(),
-                    button::text("Islands")
-                        .id("manage-islands".into())
-                        .on_press(Message::Page(Page::DesktopDock))
-                        .into(),
-                ])
-                .spacing(8)
-                .into(),
-            )]),
+            Installation::Installed { .. } => {
+                let mut rows = vec![split(
+                    detail("Islands", self.desktop.islands.installation.status_label()),
+                    row::with_children(vec![
+                        button::text("Check again")
+                            .on_press_maybe(
+                                (!self.installation_busy).then_some(Message::RecheckInstallation),
+                            )
+                            .into(),
+                        button::text("Copy diagnostics")
+                            .on_press(Message::CopyIslandsDiagnostics)
+                            .into(),
+                        button::text("Islands")
+                            .id("manage-islands".into())
+                            .on_press(Message::Page(Page::DesktopDock))
+                            .into(),
+                    ])
+                    .spacing(8)
+                    .into(),
+                )];
+                for message in self.desktop.islands.installation.applet_messages() {
+                    rows.push(label(message, 12., MUTED));
+                }
+                pages::section(rows)
+            }
             Installation::Pending => cosmic::widget::space().height(0).into(),
         }
     }

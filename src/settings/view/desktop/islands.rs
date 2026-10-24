@@ -31,6 +31,9 @@ impl Settings {
             return section(items);
         }
         let state = &self.desktop.islands;
+        for message in state.installation.applet_messages() {
+            items.push(label(message, 12., WARN));
+        }
         if let Some(status) = state.availability_message() {
             items.push(banner(
                 status,
