@@ -751,3 +751,104 @@ fn disabled_and_corrupt_start_state_never_acquires_a_timestamp() {
     assert!(load(&path).is_err());
     assert!(record_start(&path, 2000).is_err());
 }
+
+#[tokio::test]
+async fn short_daily_sessions_deliver_after_warmup_and_survive_restarts() {
+    let path = fixture();
+    let boot = 1_792_843_200; // 2026-10-24 12:00 UTC
+    record_start(&path, boot).unwrap();
+    let mut state = load(&path).unwrap();
+    state.country = Some("HR".into());
+    let id = state.installation.clone();
+    save(&path, &state).unwrap();
+    let client = client().unwrap();
+    for (offset, day) in [(0, "2026-10-24"), (86400, "2026-10-25")] {
+        let started = boot + offset;
+        record_start(&path, started).unwrap();
+        let (url, request) = local_server("200 OK", &format!(r#"{{"ok":true,"day":"{day}"}}"#));
+        let url = reqwest::Url::parse(&url).unwrap();
+        // Production's warmup gate suppresses activity before five minutes.
+        cycle(
+            &path,
+            &client,
+            url.clone(),
+            "http://127.0.0.1:1",
+            false,
+            started + 299,
+        )
+        .await;
+        assert_ne!(load(&path).unwrap().last_success.as_deref(), Some(day));
+        cycle(
+            &path,
+            &client,
+            url.clone(),
+            "http://127.0.0.1:1",
+            true,
+            started + 300,
+        )
+        .await;
+        let request = request.join().unwrap();
+        let sent: serde_json::Value =
+            serde_json::from_str(request.split_once("\r\n\r\n").unwrap().1).unwrap();
+        assert_eq!(sent["installation"], id);
+        assert_eq!(sent["first_started_at"], boot);
+        assert_eq!(load(&path).unwrap().last_success.as_deref(), Some(day));
+        // One-hour shutdown, then a second boot: persisted state suppresses duplicates.
+        record_start(&path, started + 7200).unwrap();
+        cycle(
+            &path,
+            &client,
+            url,
+            "http://127.0.0.1:1",
+            true,
+            started + 7500,
+        )
+        .await;
+        assert_eq!(load(&path).unwrap().retry_after, 0);
+    }
+    std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+}
+
+#[tokio::test]
+async fn failed_short_session_stays_pending_and_next_day_delivers_without_backfill() {
+    let path = fixture();
+    let boot = 1_792_843_200;
+    record_start(&path, boot).unwrap();
+    let mut state = load(&path).unwrap();
+    state.country = Some("HR".into());
+    save(&path, &state).unwrap();
+    let client = client().unwrap();
+    let (url, request) = local_server("503 Unavailable", "offline");
+    cycle(
+        &path,
+        &client,
+        reqwest::Url::parse(&url).unwrap(),
+        "http://127.0.0.1:1",
+        true,
+        boot + 300,
+    )
+    .await;
+    request.join().unwrap();
+    let state = load(&path).unwrap();
+    assert!(state.last_success.is_none());
+    assert_eq!(state.retry_after, boot + 300 + RETRY_SECONDS);
+    // Rebooting inside the retry window must not cause a request storm.
+    record_start(&path, boot + 3600).unwrap();
+    assert!(claim(&path, "2026-10-24", boot + 3900).unwrap().is_none());
+    let (url, request) = local_server("200 OK", r#"{"ok":true,"day":"2026-10-25"}"#);
+    cycle(
+        &path,
+        &client,
+        reqwest::Url::parse(&url).unwrap(),
+        "http://127.0.0.1:1",
+        true,
+        boot + 86400 + 300,
+    )
+    .await;
+    request.join().unwrap();
+    assert_eq!(
+        load(&path).unwrap().last_success.as_deref(),
+        Some("2026-10-25")
+    );
+    std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+}
