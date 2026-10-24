@@ -1,41 +1,20 @@
 {
-  "seq": 7,
+  "seq": 8,
   "actions": [
-    {
-      "op": "wait",
-      "seconds": 3
-    },
-    {
-      "op": "shot",
-      "name": "11-outline-stable"
-    },
-    {
-      "op": "click",
-      "x": 945,
-      "y": 653
-    },
-    {
-      "op": "wait",
-      "seconds": 3
-    },
-    {
-      "op": "shot",
-      "name": "12-theme-undo"
-    },
     {
       "op": "ops",
       "args": [
         "user",
-        "after-theme-undo-state",
+        "baseline-after-undo",
         "/usr/bin/python3",
         "-c",
-        "import pathlib,json,hashlib\nH=pathlib.Path.home();out={}\nfor rel in ['.config/halcyon/config.json','.config/cosmic-desktop-cards/config.json','.local/state/halcyon/desktop-recovery/original/manifest.json','.local/state/halcyon/desktop-undo.json','.local/state/halcyon/usage.json']:\n p=H/rel\n if p.exists():\n  raw=p.read_bytes();v=json.loads(raw)\n  if rel.endswith('usage.json'):v.pop('installation',None)\n  out[rel]={'sha256':hashlib.sha256(raw).hexdigest(),'value':v}\nprint(json.dumps(out,indent=2))\n"
+        "import pathlib,json,hashlib\nH=pathlib.Path.home();out={}\nfor rel in ['.config/halcyon/config.json','.config/cosmic-desktop-cards/config.json','.local/share/halcyon/desktop-recovery/original/manifest.json','.local/share/halcyon/desktop-undo.json','.local/state/halcyon/usage.json']:\n p=H/rel\n if p.exists():\n  raw=p.read_bytes();v=json.loads(raw)\n  if rel.endswith('usage.json'):v.pop('installation',None)\n  out[rel]={'sha256':hashlib.sha256(raw).hexdigest(),'value':v}\nprint(json.dumps(out,indent=2))\n"
       ]
     },
     {
       "op": "click",
-      "x": 292,
-      "y": 447
+      "x": 846,
+      "y": 476
     },
     {
       "op": "wait",
@@ -43,7 +22,7 @@
     },
     {
       "op": "shot",
-      "name": "13-layout-settings"
+      "name": "14-arrange-entered"
     }
   ],
   "run": 40056332210
