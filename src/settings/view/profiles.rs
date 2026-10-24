@@ -73,6 +73,22 @@ fn bundled_name(profile: &crate::desktop::profiles::Profile) -> Option<&str> {
 pub(super) fn look_preview(id: &str) -> Option<cosmic::widget::image::Handle> {
     look_image(id, false)
 }
+/// Asset presence is cheap: testing whether a preview exists must not decode
+/// an image that the stock-bar miniature will never display.
+fn look_bytes(id: &str, wallpaper: bool) -> Option<&'static [u8]> {
+    macro_rules! looks {
+        ($($id:literal),*) => {
+            match (id, wallpaper) {
+                $(
+                    ($id, false) => Some(&include_bytes!(concat!("../../../assets/looks/", $id, ".jpg"))[..]),
+                    ($id, true) => Some(&include_bytes!(concat!("../../../assets/looks/", $id, "-wallpaper.jpg"))[..]),
+                )*
+                _ => None,
+            }
+        };
+    }
+    looks!("halcyon", "calm", "evening", "focus", "paper", "rose")
+}
 /// Decoded once per look and kind.
 pub(super) fn look_rgba(id: &str, wallpaper: bool) -> Option<std::sync::Arc<image::RgbaImage>> {
     use std::sync::{Arc, Mutex};
@@ -85,25 +101,14 @@ pub(super) fn look_rgba(id: &str, wallpaper: bool) -> Option<std::sync::Arc<imag
     {
         return image.clone();
     }
-    macro_rules! looks {
-        ($($id:literal),*) => {
-            match (id, wallpaper) {
-                $(
-                    ($id, false) => Some(&include_bytes!(concat!("../../../assets/looks/", $id, ".jpg"))[..]),
-                    ($id, true) => Some(&include_bytes!(concat!("../../../assets/looks/", $id, "-wallpaper.jpg"))[..]),
-                )*
-                _ => None,
-            }
-        };
-    }
-    let bytes: Option<&[u8]> = looks!("halcyon", "calm", "evening", "focus", "paper", "rose");
+    let bytes = look_bytes(id, wallpaper);
     let image = bytes
         .and_then(|bytes| image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg).ok())
         .map(|image| Arc::new(image.to_rgba8()));
     decoded.push(((id.to_string(), wallpaper), image.clone()));
     image
 }
-fn look_image(id: &str, wallpaper: bool) -> Option<cosmic::widget::image::Handle> {
+pub(super) fn look_image(id: &str, wallpaper: bool) -> Option<cosmic::widget::image::Handle> {
     use cosmic::widget::image::Handle;
     static HANDLES: std::sync::Mutex<Vec<((String, bool), Option<Handle>)>> =
         std::sync::Mutex::new(Vec::new());
@@ -614,8 +619,8 @@ impl Settings {
         height: f32,
     ) -> Element<'a, Message> {
         // A starter look shows its rendered desktop, filling the tile.
-        let standard_bars =
-            look_preview(preset.id).is_some() && !self.desktop.islands.installation.installed();
+        let standard_bars = look_bytes(preset.id, false).is_some()
+            && !self.desktop.islands.installation.installed();
         if !standard_bars && let Some(handle) = look_preview(preset.id) {
             return container(
                 cosmic::widget::image(handle)

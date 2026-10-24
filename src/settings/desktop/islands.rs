@@ -82,8 +82,10 @@ impl DesktopEditor {
             }
             return;
         }
-        if let Some(store) = self.store().filter(|s| s.fixture_root().is_some()) {
-            self.islands.installation = crate::desktop::islands::Installation::discover(store);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
+        if let Some(store) = self.store() {
+            self.islands.installation =
+                crate::desktop::islands::Installation::discover_until(store, deadline);
         }
         if !self.islands.installation.installed() {
             self.islands.lease = None;
@@ -96,16 +98,24 @@ impl DesktopEditor {
         let result = self
             .store()
             .ok_or_else(|| "Desktop settings are unavailable".to_string())
-            .and_then(Client::connect)
-            .and_then(|mut c| c.capabilities());
+            .and_then(|store| {
+                if crate::desktop::islands::Installation::on_native_thread() {
+                    // Isolated fixtures do not run a production helper.
+                    Client::connect(store)
+                } else {
+                    Client::connect_observed(store, &self.islands.installation, deadline)
+                }
+            })
+            .and_then(|mut client| {
+                client.capabilities()?;
+                Ok(client)
+            });
         self.islands.compatible = result.is_ok();
-        self.islands.status = result.err();
+        self.islands.status = result.as_ref().err().cloned();
         if !self.arranging() {
             self.islands.geometry = None;
             self.islands.measured_output = None;
-            if self.islands.compatible
-                && let Some(store) = self.store()
-                && let Ok(mut client) = Client::connect(store)
+            if let Ok(mut client) = result
                 && let Ok(Response::Draft { layout, view, .. }) =
                     client.request(&Request::Inspect {
                         panel: self.selected.entry().into(),
@@ -216,13 +226,18 @@ impl DesktopEditor {
         self.edit(|d| d.set_islands(s));
     }
     pub fn island_edit(&mut self, edit: Edit) {
-        if !matches!(edit, Edit::Cancel | Edit::Check)
-            && !self
+        if !matches!(edit, Edit::Cancel | Edit::Check) {
+            let observed = self
                 .store()
-                .is_some_and(|s| crate::desktop::islands::Installation::discover(s).installed())
-        {
-            self.check_islands();
-            return;
+                .map(crate::desktop::islands::Installation::discover)
+                .unwrap_or_default();
+            // Keep the observation used to admit this edit. A separate status
+            // query must not be required just to make the draft manageable.
+            self.islands.installation = observed;
+            if !self.islands.installation.installed() {
+                self.check_islands();
+                return;
+            }
         }
         match edit {
             Edit::Enabled(enabled) => {
@@ -230,7 +245,8 @@ impl DesktopEditor {
                     self.island_edit(Edit::Cancel);
                 }
                 self.set_island_draft(|s| s.enabled = enabled);
-                self.check_islands();
+                // Apply validates the change; don't repeat discovery and IPC
+                // between drafting this value and immediately applying it.
             }
             Edit::Placement(mode) => {
                 self.set_island_draft(|s| s.placement = mode);

@@ -24,57 +24,79 @@ fn go(message: Step) -> Message {
 
 /// A wizard background, decoded once.
 fn backdrop(welcome: bool) -> Option<Handle> {
-    static DECODED: std::sync::OnceLock<[Option<Handle>; 2]> = std::sync::OnceLock::new();
-    let decode = |bytes: &[u8]| {
-        let image = image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg).ok()?;
-        let rgba = image.to_rgba8();
-        Some(Handle::from_rgba(
-            rgba.width(),
-            rgba.height(),
-            rgba.into_raw(),
-        ))
+    static WELCOME: std::sync::OnceLock<Option<Handle>> = std::sync::OnceLock::new();
+    static BACKDROP: std::sync::OnceLock<Option<Handle>> = std::sync::OnceLock::new();
+    let (cache, bytes): (_, &[u8]) = if welcome {
+        (
+            &WELCOME,
+            include_bytes!("../../../assets/wizard/welcome.jpg"),
+        )
+    } else {
+        (
+            &BACKDROP,
+            include_bytes!("../../../assets/wizard/backdrop.jpg"),
+        )
     };
-    DECODED.get_or_init(|| {
-        [
-            decode(include_bytes!("../../../assets/wizard/welcome.jpg")),
-            decode(include_bytes!("../../../assets/wizard/backdrop.jpg")),
-        ]
-    })[usize::from(!welcome)]
-    .clone()
+    cache
+        .get_or_init(|| {
+            let image =
+                image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg).ok()?;
+            let rgba = image.to_rgba8();
+            Some(Handle::from_rgba(
+                rgba.width(),
+                rgba.height(),
+                rgba.into_raw(),
+            ))
+        })
+        .clone()
 }
 
-/// The chosen look's wallpaper (or the wizard backdrop) cropped to
-/// `aspect`, since a picture drawn larger than its box isn't clipped.
+/// The pinned renderer can draw Cover outside a clipped stack. Crop the
+/// already decoded pixels instead, retaining only the most recent crop. Never
+/// decode again or accumulate a texture for every window size while resizing.
 fn band(look: Option<&str>, aspect: f32) -> Option<Handle> {
-    static CROPPED: std::sync::Mutex<Vec<((Option<String>, u32), Option<Handle>)>> =
-        std::sync::Mutex::new(Vec::new());
-    let key = (look.map(str::to_string), (aspect * 50.).round() as u32);
-    let mut cropped = CROPPED.lock().ok()?;
-    if let Some((_, handle)) = cropped.iter().find(|(known, _)| *known == key) {
-        return handle.clone();
+    static LAST: std::sync::Mutex<Option<((Option<String>, u32), Handle)>> =
+        std::sync::Mutex::new(None);
+    if !aspect.is_finite() || aspect <= 0. {
+        return None;
     }
-    let source = match look.and_then(|id| super::profiles::look_rgba(id, true)) {
-        Some(image) => Some(image),
-        None => image::load_from_memory_with_format(
-            include_bytes!("../../../assets/wizard/backdrop.jpg"),
-            image::ImageFormat::Jpeg,
-        )
-        .ok()
-        .map(|image| std::sync::Arc::new(image.to_rgba8())),
+    let key = (look.map(str::to_owned), (aspect * 50.).round() as u32);
+    let mut last = LAST.lock().ok()?;
+    if let Some((known, handle)) = last.as_ref()
+        && known == &key
+    {
+        return Some(handle.clone());
+    }
+    let source = look
+        .and_then(|id| super::profiles::look_image(id, true))
+        .or_else(|| backdrop(false))?;
+    let Handle::Rgba {
+        width,
+        height,
+        pixels,
+        ..
+    } = &source
+    else {
+        return None;
     };
-    let handle = source.map(|image| {
-        let (w, h) = (image.width(), image.height());
-        let (cw, ch) = if w as f32 / h as f32 > aspect {
-            (((h as f32) * aspect) as u32, h)
-        } else {
-            (w, ((w as f32) / aspect) as u32)
-        };
-        let part =
-            image::imageops::crop_imm(&*image, (w - cw) / 2, (h - ch) / 2, cw, ch).to_image();
-        Handle::from_rgba(part.width(), part.height(), part.into_raw())
-    });
-    cropped.push((key, handle.clone()));
-    handle
+    let (cw, ch) = if *width as f32 / *height as f32 > aspect {
+        (((*height as f32 * aspect) as u32).clamp(1, *width), *height)
+    } else {
+        (*width, ((*width as f32 / aspect) as u32).clamp(1, *height))
+    };
+    // Copy contiguous rows instead of invoking a per-pixel image conversion.
+    let stride = *width as usize * 4;
+    let row_len = cw as usize * 4;
+    let x = ((width - cw) / 2) as usize * 4;
+    let y = ((height - ch) / 2) as usize;
+    let mut cropped = Vec::with_capacity(row_len * ch as usize);
+    for row in y..y + ch as usize {
+        let start = row * stride + x;
+        cropped.extend_from_slice(&pixels[start..start + row_len]);
+    }
+    let handle = Handle::from_rgba(cw, ch, cropped);
+    *last = Some((key, handle.clone()));
+    Some(handle)
 }
 
 fn words<'a>(value: impl Into<String>, size: f32, color: Color) -> Element<'a, Message> {
@@ -836,5 +858,46 @@ impl Settings {
         ])
         .spacing(8)
         .into()
+    }
+}
+
+#[cfg(test)]
+mod image_tests {
+    use super::*;
+    #[test]
+    fn resize_crop_is_bounded_and_reuses_decoded_pixels() {
+        let first = band(None, 4.).unwrap();
+        assert_eq!(first.id(), band(None, 4.).unwrap().id());
+        let Handle::Rgba { pixels: source, .. } = backdrop(false).unwrap() else {
+            panic!("source pixels");
+        };
+        let Handle::Rgba { pixels: crop, .. } = &first else {
+            panic!("crop pixels");
+        };
+        assert_eq!(
+            &crop[..],
+            &source[300 * 1600 * 4..700 * 1600 * 4],
+            "centered 1600x400 strip"
+        );
+
+        for aspect in 5..85 {
+            let cropped = band(None, aspect as f32).unwrap();
+            let Handle::Rgba {
+                width,
+                height,
+                ref pixels,
+                ..
+            } = cropped
+            else {
+                panic!("decoded crop");
+            };
+            assert_eq!(width, 1600);
+            assert!(height <= 320);
+            assert_eq!(pixels.len(), width as usize * height as usize * 4);
+        }
+        // One entry, not one per historical size: revisiting recreates a crop.
+        assert_ne!(first.id(), band(None, 4.).unwrap().id());
+        assert!(band(None, f32::NAN).is_none());
+        assert!(band(None, 0.).is_none());
     }
 }

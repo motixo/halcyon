@@ -249,3 +249,70 @@ Desktop and Settings are active with zero automatic restarts; the running binary
 SHA256 matches the tested build. The user's saved preview layout and appearance
 were merged into the installed preferences. A subsequent live Ocean palette
 selection applied ocean-4k.png successfully. Settings was reopened on Appearance.
+
+
+Settings and welcome responsiveness — 2026-10-24 (local 0.3.0 work)
+
+The welcome wizard's dock/panel preview kept an unbounded crop cache keyed by
+window aspect ratio. With no chosen look it decoded the same 1600x1000 JPEG for
+each new ratio on the UI thread. It now reuses decoded wallpaper pixels and
+keeps only the most recent crop. The pinned renderer leaks Cover images beyond
+the preview even with clipping enabled, so a correctly sized crop is retained.
+Resizing no longer decodes JPEGs or accumulates textures for historical sizes.
+Welcome and later-step backdrops are decoded independently, and stock-bar look
+tiles check bundled asset presence without decoding the unused Islands screenshot.
+The first display of a required JPEG still performs a one-time decode; this is
+not an asynchronous asset-loading implementation.
+
+While a native settings worker was busy, every intermediate dock/panel slider
+value was queued. Consecutive samples of the same unfinished slider now keep
+only the newest value. Releases, bar switches, discrete choices and Undo remain
+ordered barriers; Undo retains the identity shown when it was requested.
+
+The isolated `settings::wizard_tests::responsiveness_probe` uses the actual view
+and software renderer, in an unoptimized test build. For 80 distinct resize view
+builds the measured time fell from 33,472.970 ms to 7.761 ms after the final
+crop correction. First-display decoding remains; ordinary warm page-view timings
+were largely unchanged. The rejected Cover implementation and its screenshots
+are retained separately and are not the final result.
+These diagnose redundant CPU work, not GPU frame rates, click-to-paint latency,
+or confirmation of the cause on a reporter's hardware. No installed app was
+replaced or user desktop preferences changed.
+
+Run the explicit diagnostic separately from normal tests:
+
+    cargo test --locked --offline --bin halcyon settings::wizard_tests::responsiveness_probe -- --ignored --nocapture
+
+The reporting worker also has tests for short daily sessions: activity after
+five minutes, duplicate suppression after restart, and next-day delivery with
+the same identity. Failed requests keep the six-hour retry deadline on disk.
+Offline days are not backfilled, and collector deployment/authorization is a
+separate requirement from correct client scheduling.
+
+Dock/Panel tabs now switch the loaded draft immediately when no Arrange lease
+is active, rather than entering the native worker and running compatibility
+queries. Live leases and already queued writes remain serialized. Measured
+geometry from the previously selected bar is discarded; explicit Check/Arrange
+obtains fresh geometry. A worker status read uses one fresh installation
+observation and one bounded read-only IPC connection for capabilities and
+geometry. Write/activation validation remains separate. Draft-only worker
+completions no longer replan every previously opened settings page.
+
+The resolved dependency feature tree enables `iced_tiny_skia`, not `iced_wgpu`:
+this app currently uses software rendering. Scroll diagnostics must therefore
+measure optimized drawing as well as message handlers. The diagnostic's
+`software_scroll_*` samples include widget-tree wheel handling, CPU rendering
+and screenshot readback, so they are not compositor presentation/frame timings.
+No GPU backend change is part of this patch.
+
+An optimized diagnostic at 1280x800 measured ten wheel-event/draw/readback cycles
+in 103.301 ms for Themes, 87.457 ms for General, and 100.199 ms for Dock & panel.
+These are about 9–10 ms per cycle on this machine, not evidence of the reporter's
+hardware behaving identically. The optimized measurement preceded the final
+retention fix for a freshly observed Islands installation; drawing code was
+unchanged by that fix. Final debug regressions cover that correction as well.
+
+Validation: 62 distinct focused regressions and the explicit diagnostic passed;
+formatting and whitespace checks passed. Welcome steps were captured at 820x600
+and 1280x800 and the corrected preview clipping was inspected. Current source is
+local development work, not an installation, published build or collector update.

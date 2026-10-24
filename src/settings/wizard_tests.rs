@@ -20,7 +20,12 @@ fn child(name: &str) -> bool {
     std::fs::write(root.join("dconf-profile"), "").unwrap();
     std::fs::write(root.join("config.json"), "{}").unwrap();
     let result = std::process::Command::new(std::env::current_exe().unwrap())
-        .args(["--exact", &format!("settings::wizard_tests::{name}")])
+        .args([
+            "--exact",
+            &format!("settings::wizard_tests::{name}"),
+            "--include-ignored",
+            "--nocapture",
+        ])
         .env("DESKTOP_CARDS_WIZARD_TEST", name)
         .env("DESKTOP_CARDS_CONFIG", root.join("config.json"))
         .env("DESKTOP_CARDS_DESKTOP_ROOT", root.join("desktop"))
@@ -32,6 +37,9 @@ fn child(name: &str) -> bool {
         .output()
         .unwrap();
     std::fs::remove_dir_all(root).unwrap();
+    if name == "responsiveness_probe" {
+        eprint!("{}", String::from_utf8_lossy(&result.stdout));
+    }
     assert!(
         result.status.success(),
         "{}\n{}",
@@ -133,6 +141,90 @@ fn open(size: Size) -> (Settings, Native) {
 
 fn step(app: &Settings) -> wizard::Step {
     app.wizard.as_ref().unwrap().step
+}
+
+/// Explicit diagnostic, not a wall-time CI assertion. Uses an isolated desktop
+/// and the real widget tree; software-rendered timings are not GPU frame rates.
+#[test]
+#[ignore]
+fn responsiveness_probe() {
+    if child("responsiveness_probe") {
+        return;
+    }
+    seed_desktop();
+    let measure = |label: &str, f: &mut dyn FnMut()| {
+        let start = std::time::Instant::now();
+        f();
+        println!(
+            "PERF {label}: {:.3} ms",
+            start.elapsed().as_secs_f64() * 1000.
+        );
+    };
+    let start = std::time::Instant::now();
+    let (mut app, mut native) = open(Size::new(1280., 800.));
+    println!(
+        "PERF init_and_renderer: {:.3} ms",
+        start.elapsed().as_secs_f64() * 1000.
+    );
+    let theme = controls_theme(&app.config);
+    measure("welcome_cold_view", &mut || {
+        drop(app.settings_view());
+    });
+    measure("welcome_render", &mut || {
+        native.render(app.settings_view(), &theme);
+    });
+    measure("start_click", &mut || {
+        click(&mut app, &mut native, "wizard-start");
+    });
+    measure("look_cold_view", &mut || {
+        drop(app.settings_view());
+    });
+    measure("look_warm_views_20", &mut || {
+        for _ in 0..20 {
+            drop(app.settings_view());
+        }
+    });
+    app.wizard.as_mut().unwrap().step = wizard::Step::Bars;
+    measure("bars_resize_views_80", &mut || {
+        for n in 0..80 {
+            app.window = Size::new(820. + n as f32 * 3., 600. + n as f32);
+            drop(app.settings_view());
+        }
+    });
+    app.wizard = None;
+    app.window = Size::new(1280., 800.);
+    for page in [
+        Page::Overview,
+        Page::Themes,
+        Page::General,
+        Page::DesktopDock,
+        Page::Calendar,
+        Page::Appearance,
+    ] {
+        measure(&format!("page_{page:?}"), &mut || {
+            let _ = app.update(Message::Page(page));
+        });
+        measure(&format!("view_{page:?}_20"), &mut || {
+            for _ in 0..20 {
+                drop(app.settings_view());
+            }
+        });
+        if matches!(page, Page::Themes | Page::General | Page::DesktopDock) {
+            native.render(app.settings_view(), &theme);
+            measure(&format!("software_scroll_{page:?}_10"), &mut || {
+                for _ in 0..10 {
+                    native.event(
+                        app.settings_view(),
+                        Event::Mouse(mouse::Event::WheelScrolled {
+                            delta: mouse::ScrollDelta::Lines { x: 0., y: -1. },
+                        }),
+                        cosmic::iced::Point::new(700., 400.),
+                    );
+                    native.render(app.settings_view(), &theme);
+                }
+            });
+        }
+    }
 }
 
 #[test]
@@ -340,4 +432,105 @@ fn skipping_dock_and_panel_keeps_them_and_ready_says_so() {
         "the summary shows what's applied"
     );
     assert_eq!(user(DOCK, "border_radius"), None, "nothing was written");
+}
+
+#[test]
+fn busy_sliders_keep_latest_sample_and_preserve_completion_and_undo_order() {
+    if child("busy_sliders_keep_latest_sample_and_preserve_completion_and_undo_order") {
+        return;
+    }
+    seed_desktop();
+    let (mut app, _) = Settings::init(Core::default(), Page::DesktopDock);
+    app.native_busy = true;
+    app.last_desktop_change = Some((
+        crate::desktop::Owner::DockPanel,
+        "Earlier action".into(),
+        "shown-id".into(),
+    ));
+    for value in 0..100 {
+        let _ = app.update(Message::DesktopEditor(desktop::Message::Opacity(value)));
+    }
+    assert_eq!(
+        app.native_deferred.len(),
+        1,
+        "obsolete pointer samples must not form a backlog"
+    );
+    let _ = app.update(Message::DesktopEditor(desktop::Message::Apply));
+    let _ = app.update(Message::DesktopEditor(desktop::Message::Select(
+        crate::desktop::panels::PanelKind::Panel,
+    )));
+    for value in 0..50 {
+        let _ = app.update(Message::DesktopEditor(desktop::Message::Opacity(value)));
+    }
+    let _ = app.update(Message::DesktopEditor(desktop::Message::Apply));
+    let _ = app.update(Message::UndoDesktop);
+    let queued = &app.native_deferred;
+    assert_eq!(queued.len(), 6);
+    assert!(matches!(
+        &queued[0],
+        Message::DesktopEditor(desktop::Message::Opacity(99))
+    ));
+    assert!(matches!(
+        &queued[1],
+        Message::DesktopEditor(desktop::Message::Apply)
+    ));
+    assert!(matches!(
+        &queued[2],
+        Message::DesktopEditor(desktop::Message::Select(
+            crate::desktop::panels::PanelKind::Panel
+        ))
+    ));
+    assert!(matches!(
+        &queued[3],
+        Message::DesktopEditor(desktop::Message::Opacity(49))
+    ));
+    assert!(matches!(
+        &queued[4],
+        Message::DesktopEditor(desktop::Message::Apply)
+    ));
+    assert!(matches!(&queued[5], Message::UndoDesktopShown(Some(id)) if id == "shown-id"));
+    app.native_deferred.pop_back(); // Verify final slider values before Undo.
+    app.native_busy = false;
+    while let Some(message) = app.native_deferred.pop_front() {
+        let _ = app.update(message);
+    }
+    assert_eq!(user(DOCK, "opacity").as_deref(), Some("0.99"));
+    assert_eq!(user(PANEL, "opacity").as_deref(), Some("0.49"));
+}
+
+#[test]
+fn dock_panel_navigation_does_not_wait_for_islands_and_checks_discover_once() {
+    if child("dock_panel_navigation_does_not_wait_for_islands_and_checks_discover_once") {
+        return;
+    }
+    seed_desktop();
+    let (mut app, _) = Settings::init(Core::default(), Page::DesktopDock);
+    let root = desktop_root();
+    crate::desktop::islands::fixture_installed(&root);
+    let store = crate::desktop::DesktopStore::from_env().unwrap();
+    app.desktop.islands.installation = crate::desktop::islands::Installation::discover(&store);
+    let counter = root.join("check-count");
+    std::fs::write(root.join("slow-islands-probe.py"), format!(
+        "import pathlib,time\np=pathlib.Path({:?})\np.write_text(str(int(p.read_text())+1 if p.exists() else 1))\ntime.sleep(0.3)\nprint(pathlib.Path({:?}).read_text())\n",
+        counter.to_str().unwrap(), root.join("islands-installation.json").to_str().unwrap()
+    )).unwrap();
+    for kind in [
+        crate::desktop::panels::PanelKind::Panel,
+        crate::desktop::panels::PanelKind::Dock,
+    ] {
+        let _ = app.update(Message::DesktopEditor(desktop::Message::Select(kind)));
+        assert_eq!(
+            app.desktop.selected, kind,
+            "tab selection updates immediately"
+        );
+        assert!(!app.native_busy, "tab selection is not a native write job");
+        assert!(app.native_deferred.is_empty());
+        assert!(
+            !counter.exists(),
+            "plain navigation must not start compatibility discovery"
+        );
+    }
+    // Real checking still observes installation afresh, but only once per read.
+    app.desktop.check_islands();
+    assert_eq!(std::fs::read_to_string(counter).unwrap(), "1");
 }

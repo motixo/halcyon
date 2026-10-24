@@ -16,7 +16,7 @@ impl std::fmt::Debug for Delivery {
     }
 }
 pub enum Done {
-    Desktop(desktop::DesktopEditor, Option<cosmic::widget::Id>),
+    Desktop(desktop::DesktopEditor, Option<cosmic::widget::Id>, bool),
     Profiles(profiles::ProfilesEditor, profiles::Outcome),
     Wizard(wizard::Wizard, wizard::Outcome),
     Undo(
@@ -84,12 +84,28 @@ impl Settings {
                         }
                         _ => message.clone(),
                     };
-                    self.native_deferred.push_back(request);
+                    // Only replace the immediately preceding sample of the
+                    // same continuous control. Releases, Undo, bar selection
+                    // and other actions remain ordered barriers.
+                    if let Some(last) = self.native_deferred.back_mut()
+                        && same_slider(last, &request)
+                    {
+                        *last = request;
+                    } else {
+                        self.native_deferred.push_back(request);
+                    }
                 }
             }
             return Some(Task::none());
         }
         if !self.native_worker_needed() {
+            return None;
+        }
+        // Switching tabs reads the in-memory drafts, not the companion. A
+        // live Arrange lease still has to be cancelled by its owning worker.
+        if matches!(message, Message::DesktopEditor(desktop::Message::Select(_)))
+            && !self.desktop.arranging()
+        {
             return None;
         }
         match message {
@@ -120,6 +136,7 @@ impl Settings {
                 self.begin_native();
                 Some(task(move || {
                     use crate::desktop::actions;
+                    let revision = crate::desktop::store::revision();
                     let prior = actions::history_store()
                         .ok()
                         .and_then(|s| s.latest_change().ok())
@@ -149,7 +166,7 @@ impl Settings {
                             }
                         }
                     }
-                    Done::Desktop(editor, focus)
+                    Done::Desktop(editor, focus, crate::desktop::store::revision() != revision)
                 }))
             }
             Message::Profiles(edit)
@@ -276,10 +293,17 @@ impl Settings {
         self.native_busy = false;
         self.status.clear();
         let task = match done {
-            Done::Desktop(mut editor, focus) => {
+            Done::Desktop(mut editor, focus, changed) => {
                 editor.islands.installation = self.desktop.islands.installation.clone();
                 self.desktop = editor;
-                let refresh = self.after_desktop_change();
+                // A picker, slider draft or read-only check did not change the
+                // desktop. Replanning every previously opened page here makes
+                // controls lag even though the worker itself is asynchronous.
+                let refresh = if changed {
+                    self.after_desktop_change()
+                } else {
+                    Task::none()
+                };
                 Task::batch([
                     refresh,
                     focus
@@ -353,4 +377,26 @@ pub(super) fn window_action(control: WindowControl) -> Task<Message> {
         WindowControl::Minimize => Action::Minimize,
         WindowControl::Close => Action::Close,
     }))
+}
+
+/// These messages only update an unfinished slider draft. Discrete choices
+/// and completion messages deliberately do not participate.
+fn same_slider(a: &Message, b: &Message) -> bool {
+    use desktop::Message as Edit;
+    matches!(
+        (a, b),
+        (
+            Message::DesktopEditor(Edit::Opacity(_)),
+            Message::DesktopEditor(Edit::Opacity(_))
+        ) | (
+            Message::DesktopEditor(Edit::Radius(_)),
+            Message::DesktopEditor(Edit::Radius(_))
+        ) | (
+            Message::DesktopEditor(Edit::Padding(_)),
+            Message::DesktopEditor(Edit::Padding(_))
+        ) | (
+            Message::DesktopEditor(Edit::Spacing(_)),
+            Message::DesktopEditor(Edit::Spacing(_))
+        )
+    )
 }

@@ -480,7 +480,11 @@ impl DesktopEditor {
                     self.island_edit(islands::Edit::Cancel);
                 }
                 self.selected = kind;
-                self.check_islands();
+                // The selected draft is already loaded. Old measured geometry
+                // belongs to the other bar; Arrange/Check obtains fresh data
+                // when needed without delaying plain tab navigation.
+                self.islands.geometry = None;
+                self.islands.measured_output = None;
                 self.picker = None;
                 self.focus = None;
                 self.starter_open = false;
