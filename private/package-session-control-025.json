@@ -1,18 +1,33 @@
 {
-  "seq": 2,
+  "seq": 3,
   "actions": [
     {
-      "op": "key",
-      "keys": "alt-f4"
+      "op": "click",
+      "x": 443,
+      "y": 382
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "shot",
+      "name": "05-usage-opted-out"
     },
     {
       "op": "ops",
       "args": [
-        "launch",
-        "settings-installed",
-        "/usr/bin/halcyon",
-        "--settings",
-        "general"
+        "snapshot",
+        "usage-optout"
+      ]
+    },
+    {
+      "op": "ops",
+      "args": [
+        "user",
+        "start-widgets",
+        "/usr/bin/halcyon-ctl",
+        "start"
       ]
     },
     {
@@ -21,20 +36,16 @@
     },
     {
       "op": "click",
-      "x": 850,
-      "y": 565
-    },
-    {
-      "op": "scroll",
-      "steps": 6
+      "x": 317,
+      "y": 207
     },
     {
       "op": "wait",
-      "seconds": 1
+      "seconds": 2
     },
     {
       "op": "shot",
-      "name": "04-installed-general-privacy"
+      "name": "06-themes-before"
     }
   ],
   "run": 40056332210
