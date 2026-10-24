@@ -29,6 +29,7 @@ class PackageTests(unittest.TestCase):
         files = [
             "scripts/desktop-cards", "scripts/calendar-sync.py", "scripts/project-status.py",
             "companion/panel_launcher.py", "companion/install_status.py",
+            "companion/runtime_compatibility.py",
             "companion/bundle_contract.py", "companion/runtime_identity.py", "companion/refresh.py", "companion/install.py", "companion/panel_configuration.py", "companion/runtime_target.py", "companion/verification.py",
             "docs/google-calendar-setup.html", "LICENSE", "THIRD_PARTY.md", "ASSETS.md",
             "packaging/debian/copyright", "packaging/debian/changelog",
@@ -75,6 +76,7 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(archive.extractfile(client).read(), self.client.read_bytes())
             self.assertIn("usr/lib/cosmic-ext-halcyon/islands-status.py", members)
             self.assertIn("usr/lib/cosmic-ext-halcyon/panel_launcher.py", members)
+            self.assertIn("usr/lib/cosmic-ext-halcyon/runtime_compatibility.py", members)
             self.assertIn("usr/share/backgrounds/halcyon/scene.jpg", members)
             self.assertIn("usr/lib/systemd/user/halcyon.service", members)
             self.assertIn("usr/share/doc/cosmic-ext-halcyon/THIRD_PARTY_LICENSES.txt", members)
