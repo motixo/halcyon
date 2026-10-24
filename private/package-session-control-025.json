@@ -1,40 +1,28 @@
 {
-  "seq": 5,
+  "seq": 6,
   "actions": [
+    {
+      "op": "click",
+      "x": 994,
+      "y": 651
+    },
+    {
+      "op": "wait",
+      "seconds": 3
+    },
+    {
+      "op": "shot",
+      "name": "10-outline-applied"
+    },
     {
       "op": "ops",
       "args": [
         "user",
-        "before-theme-state",
+        "after-theme-state",
         "/usr/bin/python3",
         "-c",
         "import pathlib,json,hashlib\nH=pathlib.Path.home();out={}\nfor rel in ['.config/halcyon/config.json','.config/cosmic-desktop-cards/config.json','.local/state/halcyon/desktop-recovery/original/manifest.json','.local/state/halcyon/desktop-undo.json','.local/state/halcyon/usage.json']:\n p=H/rel\n if p.exists():\n  raw=p.read_bytes();v=json.loads(raw)\n  if rel.endswith('usage.json'):v.pop('installation',None)\n  out[rel]={'sha256':hashlib.sha256(raw).hexdigest(),'value':v}\nprint(json.dumps(out,indent=2))\n"
       ]
-    },
-    {
-      "op": "click",
-      "x": 884,
-      "y": 484
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "08-outline-preview"
-    },
-    {
-      "op": "scroll",
-      "steps": 6
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "09-theme-apply-controls"
     }
   ],
   "run": 40056332210
