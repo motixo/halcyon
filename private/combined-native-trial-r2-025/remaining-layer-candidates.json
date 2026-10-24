@@ -1,0 +1,68 @@
+{
+  "/usr/lib/x86_64-linux-gnu/libVkLayer_INTEL_nullhw.so": {
+    "activation": {},
+    "bytes_retained": false,
+    "config": "/usr/share/vulkan/explicit_layer.d/VkLayer_INTEL_nullhw.json",
+    "kind": "explicit",
+    "package": "mesa-vulkan-drivers",
+    "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+    "required_or_excluded": "depends on exact loader/source and observed process selectors; not inferred from file presence",
+    "sha256": "f1aa54a000fb823e07a87ec64553b8bc4017b77fc07b6fc5986d7c8715039eb2",
+    "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+  },
+  "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_anti_lag.so": {
+    "activation": {
+      "disable_environment": {
+        "DISABLE_LAYER_MESA_ANTI_LAG": "1"
+      },
+      "enable_environment": {
+        "ENABLE_LAYER_MESA_ANTI_LAG": "1"
+      }
+    },
+    "bytes_retained": false,
+    "config": "/usr/share/vulkan/implicit_layer.d/VkLayer_MESA_anti_lag.json",
+    "kind": "implicit",
+    "package": "mesa-vulkan-drivers",
+    "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+    "required_or_excluded": "depends on exact loader/source and observed process selectors; not inferred from file presence",
+    "sha256": "45ea9dc669628ba0001935655443e6f8bceed22a25a48fc891961724649b4065",
+    "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+  },
+  "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_device_select.so": {
+    "activation": {
+      "disable_environment": {
+        "NODEVICE_SELECT": "1"
+      }
+    },
+    "bytes_retained": false,
+    "config": "/usr/share/vulkan/implicit_layer.d/VkLayer_MESA_device_select.json",
+    "kind": "implicit",
+    "package": "mesa-vulkan-drivers",
+    "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+    "required_or_excluded": "depends on exact loader/source and observed process selectors; not inferred from file presence",
+    "sha256": "9a489f3f3ee8944cbe3ae09da5ee77c64b6801cc8ad8d07e573ee8f46e437bbc",
+    "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+  },
+  "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_overlay.so": {
+    "activation": {},
+    "bytes_retained": false,
+    "config": "/usr/share/vulkan/explicit_layer.d/VkLayer_MESA_overlay.json",
+    "kind": "explicit",
+    "package": "mesa-vulkan-drivers",
+    "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+    "required_or_excluded": "depends on exact loader/source and observed process selectors; not inferred from file presence",
+    "sha256": "de3e5fb588956a6dd909d0e8b635a32665adfa16f15fbb67a17ea21441021367",
+    "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+  },
+  "/usr/lib/x86_64-linux-gnu/libVkLayer_MESA_screenshot.so": {
+    "activation": {},
+    "bytes_retained": false,
+    "config": "/usr/share/vulkan/explicit_layer.d/VkLayer_MESA_screenshot.json",
+    "kind": "explicit",
+    "package": "mesa-vulkan-drivers",
+    "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+    "required_or_excluded": "depends on exact loader/source and observed process selectors; not inferred from file presence",
+    "sha256": "f36ba01aa9066fde287d743861c584cee7377b2cd27b9c5c1b1a47d51cbce6d4",
+    "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+  }
+}
