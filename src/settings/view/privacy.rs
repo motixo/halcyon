@@ -3,18 +3,22 @@ use super::*;
 impl Settings {
     pub(in crate::settings) fn usage_control(&self) -> Element<'_, Message> {
         let mut controls = vec![
-            container(
-                cosmic::widget::checkbox(self.usage_enabled)
-                    .label("Share usage data")
-                    .on_toggle_maybe((!self.usage_busy).then_some(Message::ShareUsage)),
-            )
-            .id(cosmic::widget::Id::new("share-usage-data"))
-            .into(),
-            label(crate::usage::DISCLOSURE, 12., MUTED),
-            label(crate::usage::CHOICE_DISCLOSURE, 12., MUTED),
-            button::text("Privacy details")
-                .on_press(Message::OpenPrivacy)
+            row::with_children(vec![
+                container(
+                    cosmic::widget::checkbox(self.usage_enabled)
+                        .label("Share usage data")
+                        .on_toggle_maybe((!self.usage_busy).then_some(Message::ShareUsage)),
+                )
+                .id(cosmic::widget::Id::new("share-usage-data"))
                 .into(),
+                button::text("Privacy")
+                    .on_press(Message::OpenPrivacy)
+                    .into(),
+            ])
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .into(),
+            label("Only used to count installations.", 12., MUTED),
         ];
         if self.usage_busy {
             controls.push(label("Saving choice…", 12., MUTED));

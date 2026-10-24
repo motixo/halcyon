@@ -20,8 +20,6 @@ const COUNTRY_ENDPOINT: &str = "https://api.country.is/";
 const ENDPOINT: &str = include_str!("../assets/usage-endpoint.txt");
 // A click cancels this process's activity before its asynchronous disk write.
 static PAUSED: AtomicBool = AtomicBool::new(false);
-pub const DISCLOSURE: &str = "Sends a random installation ID, app version, first country and first desktop start (when known) to Google daily. Counts active days. Country.is sees your IP; Halcyon does not store it. No widget content.";
-pub const CHOICE_DISCLOSURE: &str = "Turning this off stops new activity and country requests. One status update is still sent with a random ID, your choice and its time—even on first setup. Offline delivery retries for up to 7 days; identifiable records expire within 90 days of receipt.";
 fn yes() -> bool {
     true
 }
