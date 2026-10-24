@@ -1,0 +1,85 @@
+name: Ordinary development package session acceptance, unqualified
+on:
+  push:
+    branches: [ci/qualification-inputs-025]
+    paths:
+      - '.github/workflows/package-session-025.yml'
+      - 'private/package-session-025/**'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: package-session-025-only
+  cancel-in-progress: false
+jobs:
+  timing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      WORK: /mnt/ps025
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Create owned disposable area; require 70GB disk and actual KVM
+        run: |
+          set -Eeuo pipefail
+          test "${RUNNER_ENVIRONMENT}" = github-hosted
+          sudo mkdir "$WORK"
+          sudo chown "$(id -u):$(id -g)" "$WORK"
+          mkdir "$WORK/evidence"
+          date -u > "$WORK/evidence/job-start.txt"
+          printf '%s\n' "$GITHUB_SHA" > "$WORK/evidence/infra-commit.txt"
+          sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" python3 private/package-session-025/prerequisites.py
+      - name: Download verified QEMU dependencies to local prefix, no host installation
+        timeout-minutes: 8
+        run: set -Eeuo pipefail; bash private/package-session-025/runner-tools.sh 2>&1 | tee "$WORK/evidence/runner-tools.log"
+      - name: Restore exact prepared NEW 1783 image, not the original guest
+        timeout-minutes: 25
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: set -Eeuo pipefail; python3 -u private/package-session-025/restore_prepared.py 2>&1 | tee "$WORK/evidence/restore.log"
+      - name: Explicit frozen development test-input artifacts, never release assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: development-test-inputs-b6419c70-${{ github.run_id }}
+          path: private/package-session-025/test-input-packages/*.deb
+          retention-days: 90
+          compression-level: 0
+      - name: Offline package UI acceptance with bounded screenshot checkpoints
+        timeout-minutes: 65
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$WORK/control"
+          python3 -u private/package-session-025/bridge.py > "$WORK/evidence/bridge.log" 2>&1 &
+          bridge=$!
+          trap 'touch "$WORK/control/bridge-stop"; wait "$bridge" || true' EXIT
+          sudo env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin WORK="$WORK" LD_LIBRARY_PATH="$WORK/tools/usr/lib/x86_64-linux-gnu" PYTHONPATH="$WORK/tools/usr/lib/python3/dist-packages" python3 -u private/package-session-025/run_session.py 2>&1 | tee "$WORK/evidence/session.log"
+      - name: Preserve small evidence, input identities and failures
+        if: always()
+        run: |
+          set -Eeuo pipefail
+          if [ -d "$WORK/evidence" ]; then
+            date -u > "$WORK/evidence/job-end.txt"
+            df -B1 "$WORK" > "$WORK/evidence/final-disk.txt"
+            free -b > "$WORK/evidence/final-memory.txt"
+            sha256sum -c "$WORK/evidence/host-dpkg-before.sha256" > "$WORK/evidence/host-dpkg-unchanged.txt" || true
+            if [ -d "$WORK/trial/evidence" ]; then sudo cp -a "$WORK/trial/evidence" "$WORK/evidence/startup-vm"; fi
+            cp private/package-session-025/package-pins.json "$WORK/evidence/"
+            find private/package-session-025 -type f -print0 | sort -z | xargs -0 sha256sum > "$WORK/evidence/recipe-hashes.txt"
+            sudo chmod -R a+rX "$WORK/evidence"
+          fi
+      - name: Retain timing evidence for 90 days, never image or product publication
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: package-session-acceptance-${{ github.run_id }}
+          path: /mnt/ps025/evidence/
+          retention-days: 90
+          compression-level: 6
+          if-no-files-found: warn

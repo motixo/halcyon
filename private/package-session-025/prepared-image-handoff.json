@@ -1,0 +1,63 @@
+{
+  "format": "halcyon-prepared-image-handoff",
+  "version": 1,
+  "construction": "complete",
+  "basic_stock_smoke": "observed-pass",
+  "qualification": "NOT QUALIFIED",
+  "publication": "ON HOLD",
+  "upcoming_release": "0.2.5",
+  "infra_branch": "ci/qualification-inputs-025",
+  "infra_commit": "f49b34db176b16b3c66cb106157d79a845ccab01",
+  "run_id": 40031988970,
+  "prepared_artifact": {
+    "id": 12535269783,
+    "name": "cosmic-1783-prepared-40031988970",
+    "size_in_bytes": 9549451357,
+    "digest": "sha256:64b6d3aae3fe479d40d58861b7f4e0d1f972f147efc205b8e71b9e136d311ac0",
+    "expires_at": "2027-01-21T22:11:31Z"
+  },
+  "evidence_artifact": {
+    "id": 12536340633,
+    "name": "cosmic-1783-evidence-40031988970",
+    "size_in_bytes": 9845244,
+    "digest": "sha256:59c9169dcf4dba7eef26cbb8cb14e43b3908bbd4ec17579b1a7d0860ed3aba2e",
+    "expires_at": "2027-01-21T22:11:31Z"
+  },
+  "disk": {
+    "name": "cosmic-1.11-1783-r1.qcow2",
+    "sha256": "4b26c9e9f3430a070d0c48d781f127837b3ce300c62384179aa5a9eeb51a1cc6",
+    "bytes": 9545056256,
+    "virtual_bytes": 42949672960,
+    "backing_file": null
+  },
+  "vars": {
+    "name": "cosmic-vars.fd",
+    "sha256": "4c4005a39d0313392cfdabab7c433c3bb57057686c5cbdfb2399699081676854"
+  },
+  "firmware": {
+    "name": "OVMF_CODE_4M.fd",
+    "sha256": "ad23261d43116abc3747d59a7837fbf578c9586a8993f4eeba064cd07eccb083"
+  },
+  "lock_sha256": "907d3da61464d165b1005bed9e094817ecf06de9c06261af2d7f1399d156a058",
+  "old_packages": 1787,
+  "new_packages": 1783,
+  "kernel": "7.2.6-76070206-generic",
+  "graphics_scope": "single 1280x800 output; virtio software-rendered graphics; q35/KVM; 4 vCPU; 6 GiB guest RAM",
+  "mandatory_followups": [
+    "review/fix streaming source/input capacity before payload mirror",
+    "full verified payload/source discovery and runtime file inventories",
+    "final 0.2.5 main and Islands artifacts/catalog/runtime profiles",
+    "all 23 native scenarios plus four Updates scenarios on final artifacts",
+    "independent promotion evidence review"
+  ],
+  "explicit_exclusions": [
+    "full native 1.10 unavailable",
+    "physical GPU",
+    "multi-monitor",
+    "fractional scale",
+    "source suffix attestation",
+    "product release approval"
+  ],
+  "original_artifact_id": 12506756949,
+  "original_local_archive_unchanged": true
+}
