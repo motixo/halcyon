@@ -1,10 +1,10 @@
 {
-  "seq": 3,
+  "seq": 4,
   "actions": [
     {
       "op": "click",
-      "x": 443,
-      "y": 382
+      "x": 967,
+      "y": 439
     },
     {
       "op": "wait",
@@ -12,40 +12,17 @@
     },
     {
       "op": "shot",
-      "name": "05-usage-opted-out"
-    },
-    {
-      "op": "ops",
-      "args": [
-        "snapshot",
-        "usage-optout"
-      ]
+      "name": "07-style-choices"
     },
     {
       "op": "ops",
       "args": [
         "user",
-        "start-widgets",
-        "/usr/bin/halcyon-ctl",
-        "start"
+        "public-runtime-supplement",
+        "/usr/bin/python3",
+        "-c",
+        "# Guest ordinary-user supplement for exact paths omitted by the first byte cap.\nimport os,pathlib,json,hashlib,subprocess,stat\nassert os.getuid()==1000\npaths=['/usr/bin/cosmic-applet-status-area','/usr/bin/cosmic-applet-network','/usr/bin/cosmic-applet-osk','/usr/bin/cosmic-applet-battery','/usr/bin/cosmic-term','/usr/bin/cosmic-viewer','/usr/bin/cosmic-applet-audio','/usr/bin/cosmic-player','/usr/lib/cosmic-ext-halcyon-islands/cosmic-panel-islands']\nrows={};objects={};total=0\nfor name in paths:\n p=pathlib.Path(name);resolved=str(p.resolve(strict=True));s=p.stat();row={'path':name,'resolved':resolved,'size':s.st_size,'mode':oct(stat.S_IMODE(s.st_mode)),'uid':s.st_uid,'gid':s.st_gid,'symlinks':[{'path':str(x),'target':os.readlink(x)} for x in [p,*p.parents] if x.is_symlink()]}\n if resolved not in objects:\n  assert total+s.st_size<=900_000_000 and s.st_size<=512*1024**2\n  with p.open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()\n  r=subprocess.run(['readelf','-W','-l','-d','-n',name],capture_output=True,text=True,timeout=8);assert len(r.stdout)+len(r.stderr)<1000000\n  objects[resolved]={'sha256':digest,'readelf':{'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr}};total+=s.st_size\n row.update(sha256=objects[resolved]['sha256']);r=subprocess.run(['dpkg-query','-S',name],capture_output=True,text=True,timeout=5);row['package_owner']={'returncode':r.returncode,'stdout':r.stdout,'stderr':r.stderr};rows[name]=row\nprint(json.dumps({'format':'halcyon-bounded-runtime-supplement','qualified':False,'complete_dependency_closure':False,'max_bytes':900000000,'hashed_bytes':total,'files':rows,'objects':objects},indent=2))\n"
       ]
-    },
-    {
-      "op": "wait",
-      "seconds": 3
-    },
-    {
-      "op": "click",
-      "x": 317,
-      "y": 207
-    },
-    {
-      "op": "wait",
-      "seconds": 2
-    },
-    {
-      "op": "shot",
-      "name": "06-themes-before"
     }
   ],
   "run": 40056332210
