@@ -928,3 +928,146 @@ fn applying_frosted_colors_preserves_existing_system_effect_preferences() {
         }
     }
 }
+
+fn legacy_frosted_theme_bytes(on: bool) -> Vec<u8> {
+    serde_json::to_vec_pretty(&json!({
+        "format": "desktop-cards-profile",
+        "version": 7,
+        "name": "Legacy colors",
+        "appearance_only": true,
+        "appearance": {"dark": {
+            "accent": "#247a91",
+            "frosted": {"panel": false, "applets": on, "system_interface": on, "windows": on}
+        }}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn legacy_frosted_themes_import_without_weakening_validation() {
+    for on in [false, true] {
+        let bytes = legacy_frosted_theme_bytes(on);
+        let shared = import(&bytes).unwrap();
+        let local = import_local(&bytes).unwrap();
+        assert_eq!(shared, local);
+        assert_eq!(
+            local
+                .appearance
+                .as_ref()
+                .unwrap()
+                .dark
+                .as_ref()
+                .unwrap()
+                .frosted,
+            Some(FrostedLook {
+                panel: Some(false),
+                applets: Some(on),
+                system_interface: Some(on),
+                windows: Some(on),
+            })
+        );
+        assert_eq!(import_local(&export_local(&local).unwrap()).unwrap(), local);
+        // The historical allowlist still rejects global panel On, unrelated
+        // fields and unknown fields. Do not normalize malformed input away.
+        for (pointer, value) in [
+            ("/appearance/dark/frosted/panel", json!(true)),
+            ("/appearance/dark/outline_width", json!(2)),
+            ("/appearance/dark/frosted/future_effect", json!(true)),
+        ] {
+            let mut invalid: Value = serde_json::from_slice(&bytes).unwrap();
+            widget::put(&mut invalid, pointer, Some(value)).unwrap();
+            let invalid = serde_json::to_vec(&invalid).unwrap();
+            assert!(import(&invalid).is_err(), "{pointer}");
+            assert!(import_local(&invalid).is_err(), "{pointer}");
+        }
+    }
+}
+
+#[test]
+fn legacy_frosted_baseline_load_and_theme_apply_preserve_bytes_and_system_effects() {
+    for legacy_on in [false, true] {
+        for current_on in [false, true] {
+            let (fixture, store, installed) = reported(
+                &format!("legacy-frosted-baseline-{legacy_on}-{current_on}"),
+                true,
+            );
+            for variant in ThemeVariant::ALL {
+                for surface in appearance::Surface::ALL {
+                    write_v2(
+                        &fixture,
+                        variant.builder_namespace(),
+                        surface.key(),
+                        &current_on.to_string(),
+                    );
+                }
+            }
+            let bytes = legacy_frosted_theme_bytes(legacy_on);
+            let library = ProfileLibrary::new(&store);
+            let id = ProfileId::parse(BEFORE_THEMES).unwrap();
+            let path = store
+                .state_dir()
+                .join(crate::desktop::store::PROFILES_DIR)
+                .join("before-themes.json");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, &bytes).unwrap();
+            let legacy = library.load(&id).unwrap();
+            assert_eq!(legacy, import(&bytes).unwrap());
+            let entries = library.list().unwrap();
+            assert_eq!(
+                entries
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .unwrap()
+                    .profile
+                    .as_ref()
+                    .unwrap(),
+                &legacy
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+
+            // A new built-in must get past retain_before_themes with the old
+            // baseline present. Applying that legacy baseline is color-only too.
+            for profile in [record(Family::Paper), legacy.clone()] {
+                let before = AppearanceDraft::load(&store)
+                    .unwrap()
+                    .color(ThemeVariant::Dark, ColorRole::Accent)
+                    .known()
+                    .copied();
+                let planned = plan(
+                    &store,
+                    &installed,
+                    &profile,
+                    &profile.domains().into_iter().collect(),
+                );
+                assert!(planned.can_apply(), "{:?}", planned.blocking_reasons());
+                assert!(
+                    !planned
+                        .patch()
+                        .iter()
+                        .any(|(key, _)| key.namespace().ends_with(".Builder")
+                            && key.key().starts_with("frosted"))
+                );
+                apply(&store, &planned).unwrap();
+                let draft = AppearanceDraft::load(&store).unwrap();
+                assert_ne!(
+                    draft
+                        .color(ThemeVariant::Dark, ColorRole::Accent)
+                        .known()
+                        .copied(),
+                    before
+                );
+                for variant in ThemeVariant::ALL {
+                    for surface in appearance::Surface::ALL {
+                        assert_eq!(draft.frosted(variant, surface).known(), Some(&current_on));
+                    }
+                }
+                assert_eq!(
+                    fs::read(&path).unwrap(),
+                    bytes,
+                    "baseline bytes must never be rewritten"
+                );
+                assert_eq!(library.load(&id).unwrap(), legacy);
+            }
+        }
+    }
+}

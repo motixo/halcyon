@@ -409,6 +409,16 @@ pub fn plan(
                 if let Some(patch) = profile
                     .appearance
                     .as_ref()
+                    .map(|look| {
+                        if profile.appearance_only {
+                            // Read compatibility preserves old effect fields;
+                            // color application must write neither On nor Off.
+                            super::themes::visual_appearance(look)
+                        } else {
+                            look.clone()
+                        }
+                    })
+                    .as_ref()
                     .and_then(|look| plan_appearance(store, installed, look, relink, &mut part))
                 {
                     merge(&mut result, &mut part, patch);

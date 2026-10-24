@@ -631,10 +631,24 @@ fn visual_variant(v: &VariantLook) -> VariantLook {
         ..Default::default()
     }
 }
-fn visual_appearance(a: &AppearanceLook) -> AppearanceLook {
+pub(super) fn visual_appearance(a: &AppearanceLook) -> AppearanceLook {
     AppearanceLook {
         light: a.light.as_ref().map(visual_variant),
         dark: a.dark.as_ref().map(visual_variant),
+        ..Default::default()
+    }
+}
+/// Historical theme records may carry frosting flags. Keep the old file
+/// allowlist distinct from the effective color-only projection: loading must
+/// preserve the record, while applying must ignore both legacy On and Off.
+fn compatible_appearance(a: &AppearanceLook) -> AppearanceLook {
+    let variant = |v: &VariantLook| VariantLook {
+        frosted: v.frosted.clone().filter(|f| f.panel != Some(true)),
+        ..visual_variant(v)
+    };
+    AppearanceLook {
+        light: a.light.as_ref().map(variant),
+        dark: a.dark.as_ref().map(variant),
         ..Default::default()
     }
 }
@@ -655,7 +669,7 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     }
     if p.appearance
         .as_ref()
-        .is_some_and(|a| visual_appearance(a) != *a)
+        .is_some_and(|a| compatible_appearance(a) != *a)
     {
         return Err(
             "Themes cannot change application fonts, mode, density or window layout".into(),
