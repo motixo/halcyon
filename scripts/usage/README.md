@@ -43,13 +43,21 @@ status; legacy activity cannot change status. A newly seen activity token can
 start an enabled row, including after retention has removed the old identity.
 No permanent tombstone is retained beyond the disclosed window.
 
-The idle worker checks disk/deadlines at most every 30 seconds rather than every
-second. A successful local checkbox save signals its worker immediately; signals
-coalesce and are retained if work is already in progress. Other processes observe
-the saved choice at their next idle check. During a network operation the existing
-50 ms choice checks remain in force. The five-minute startup warmup and six-hour
-retry spacing are unchanged; an idle retry or day rollover can be up to 30 seconds
-late. This reduces idle checks, not the number or content of daily reports.
+The worker has no healthy idle polling tick. It sleeps until a state-file
+notification, a local explicit choice, or its next real deadline: startup warmup,
+UTC day rollover, six-hour retry or pending-choice expiry. A status-only/disabled
+worker with no pending choice has no timer. File notifications observe atomic
+replacement across processes and rebind after state-directory replacement.
+Local notifications coalesce and remain pending if network work is in progress.
+During a network operation the existing 50 ms choice checks remain in force.
+
+One-shot Linux realtime timers notice elapsed deadlines after resume and cancel
+on wall-clock steps so the worker can recompute its UTC/retry state. They do not
+wake the computer from suspend. The five-minute monotonic startup warmup remains.
+Only unavailable file watching/timers or due work unable to acquire/save state
+uses a one-minute error backoff; this is not routine reporting or a new network
+retry policy. Corrupt state still fails closed. Report contents/frequency and the
+seven-day/28-attempt status limit are unchanged.
 
 The state file migrates old client state while preserving the random token.
 New fields intentionally make older strict state readers reject it, preventing

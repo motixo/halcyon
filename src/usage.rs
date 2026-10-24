@@ -7,16 +7,15 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+mod scheduling;
 
 const RETRY_SECONDS: i64 = 6 * 60 * 60;
 const STATUS_LIFETIME: i64 = 7 * 86400;
 const MAX_ATTEMPTS: u8 = 28;
 const MAX_REVISION: u64 = 9_007_199_254_740_991;
 const WARMUP: Duration = Duration::from_secs(300);
-// Missed/cross-process preference changes and suspend/clock changes are checked
-// at this bounded cadence. Local explicit choices wake the worker immediately.
-const IDLE_CHECK: Duration = Duration::from_secs(30);
-static WORK_READY: std::sync::OnceLock<tokio::sync::Notify> = std::sync::OnceLock::new();
+static WORK_READY: std::sync::OnceLock<std::sync::Arc<tokio::sync::Notify>> =
+    std::sync::OnceLock::new();
 const COUNTRY_ENDPOINT: &str = "https://api.country.is/";
 const ENDPOINT: &str = include_str!("../assets/usage-endpoint.txt");
 // A click cancels this process's activity before its asynchronous disk write.
@@ -685,7 +684,11 @@ async fn run(path: PathBuf, activity: bool) {
     if activity {
         let _ = record_start(&path, Utc::now().timestamp());
     }
+    let mut watch = scheduling::StateWatch::new(path.clone(), work_ready().clone());
     loop {
+        // Install/rebind before reading, so changes between reading and waiting
+        // leave a stored notification rather than disappearing into a race.
+        let watch_ok = watch.refresh();
         cycle(
             &path,
             &client,
@@ -695,25 +698,17 @@ async fn run(path: PathBuf, activity: bool) {
             Utc::now().timestamp(),
         )
         .await;
-        let remaining = WARMUP.saturating_sub(started.elapsed());
-        let delay = if activity && !remaining.is_zero() {
-            remaining.min(IDLE_CHECK)
-        } else {
-            IDLE_CHECK
-        };
-        wait_for_work(work_ready(), delay).await;
+        let deadline = scheduling::next(
+            &path,
+            activity,
+            WARMUP.saturating_sub(started.elapsed()),
+            watch_ok,
+        );
+        scheduling::wait(work_ready(), deadline).await;
     }
 }
-fn work_ready() -> &'static tokio::sync::Notify {
-    WORK_READY.get_or_init(tokio::sync::Notify::new)
-}
-async fn wait_for_work(ready: &tokio::sync::Notify, fallback: Duration) {
-    // notify_one stores a permit if the click lands during cycle(), so a change
-    // between processing and sleeping is not lost. Repeated clicks coalesce.
-    tokio::select! {
-        _ = ready.notified() => {},
-        _ = tokio::time::sleep(fallback) => {},
-    }
+fn work_ready() -> &'static std::sync::Arc<tokio::sync::Notify> {
+    WORK_READY.get_or_init(|| std::sync::Arc::new(tokio::sync::Notify::new()))
 }
 #[cfg(test)]
 #[path = "usage/tests.rs"]

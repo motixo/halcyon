@@ -1,45 +1,5 @@
 use super::*;
 use std::os::unix::fs::PermissionsExt;
-#[tokio::test]
-async fn idle_worker_sleeps_but_choice_notifications_are_prompt_and_coalesced() {
-    let ready = tokio::sync::Notify::new();
-    // An idle worker cannot spin; a missed external event still has a fallback.
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), wait_for_work(&ready, IDLE_CHECK))
-            .await
-            .is_err()
-    );
-    tokio::time::timeout(
-        Duration::from_secs(1),
-        wait_for_work(&ready, Duration::from_millis(10)),
-    )
-    .await
-    .unwrap();
-    // A click before the wait (including while cycle is running) is retained.
-    ready.notify_one();
-    ready.notify_one();
-    ready.notify_one();
-    tokio::time::timeout(
-        Duration::from_millis(100),
-        wait_for_work(&ready, IDLE_CHECK),
-    )
-    .await
-    .unwrap();
-    assert!(
-        tokio::time::timeout(Duration::from_millis(20), wait_for_work(&ready, IDLE_CHECK))
-            .await
-            .is_err()
-    );
-    let signal = async {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        ready.notify_one();
-    };
-    tokio::time::timeout(Duration::from_secs(1), async {
-        tokio::join!(wait_for_work(&ready, IDLE_CHECK), signal);
-    })
-    .await
-    .unwrap();
-}
 fn fixture() -> PathBuf {
     let mut bytes = [0u8; 8];
     getrandom::fill(&mut bytes).unwrap();

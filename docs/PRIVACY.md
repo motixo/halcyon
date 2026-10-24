@@ -88,7 +88,11 @@ the server. Failed attempts wait at least six hours, including after restart.
 There is no activity backfill or offline daily-report queue. Opening Settings
 alone can deliver a preference update but never daily activity or country lookups.
 Debug builds, tests and isolated captures/previews cannot automatically report.
-Installing a package alone does not send a report.
+Installing a package alone does not send a report. The worker sleeps between
+scheduled work and reporting-preference file changes; there is no routine
+30-second reporting poll. A local checkbox change signals the worker immediately.
+Failed file watching/timer setup or a busy state file can cause a one-minute
+recovery check, without bypassing daily limits or six-hour network retry spacing.
 
 Reports go over HTTPS to the maintainer's Google Apps Script web app. It hashes
 the token with SHA-256 before storing it in a **private Google Sheet**. The
