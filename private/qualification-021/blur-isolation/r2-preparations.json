@@ -1,0 +1,23 @@
+{
+  "native_storage_fixture": "R1 native stock frosting import actual output",
+  "verified_builder_fields": 22,
+  "public_preparation_fixture": "R3 public Fro\u200bsted/ocean native snapshot, 12 true builder/theme flags",
+  "tests_passed": 13,
+  "focus_calibration": "Three retained actual editor frames accepted, wallpaper-only rejected",
+  "contexts": [
+    "stock-native-blur",
+    "public-frosted",
+    "public-native-off"
+  ],
+  "inputs": {
+    "guest_run": 39963889546,
+    "retained_artifact": 12506756949,
+    "retained_zip_sha256": "e87c617f179da525d7d06e3e74b862fa87dcefabdbcbcb02f2e7258802a6ccd4",
+    "base_qcow_sha256": "d3ea6c9f93c68ca0013722c4d22d77408f590ba54bf4b929a25faa50eaeb5c98",
+    "vars_sha256": "25d24fad9e38e155e239bcdcd4edb058cf033e34903613f662cf44ba19a7d352",
+    "package_run": 39966537804,
+    "package_artifact": 12507891179,
+    "package_zip_sha256": "2cdea1fd0ba584bc1c0891033764042b07692b370392fc4f4896d4fef7e11f65",
+    "public_main_deb_sha256": "af1ff76f654f7eaefad6b788235304fff6cc868bcc14011b3b073a99db4af847"
+  }
+}

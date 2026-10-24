@@ -1,8 +1,29 @@
 import unittest
-from configuration import FLAGS,fields,change_flags,verify_media,validate_reexport
+from configuration import FLAGS,fields,change_flags,verify_media,validate_reexport,validate_stored_builder,export_values,ron_tokens
 
 SAMPLE='''(\n    palette: Dark((some_color: "#ABCDEF",)),\n    frosted: Medium,\n    frosted_windows: false,\n    frosted_system_interface: false,\n    frosted_panel: false,\n    frosted_applets: false,\n    alpha_map: (medium: 0.76154,),\n)\n'''
 class Limits(unittest.TestCase):
+    def test_all_three_preparations_with_real_native_output(self):
+        from pathlib import Path
+        import json
+        root=Path(__file__).parent/'fixtures'
+        before=(root/'native-builder-before.ron').read_text();on,_=change_flags(before,True)
+        stored=json.loads((root/'native-stored-builder.json').read_text())
+        self.assertEqual(validate_stored_builder(on,stored)['count'],22)
+        actual_on=(root/'native-builder-after.ron').read_text();off,_=change_flags(actual_on,False)
+        a,b=export_values(actual_on),export_values(off)
+        self.assertTrue(all(b[k]=='false' for k in FLAGS))
+        self.assertTrue(all(ron_tokens(a[k])==ron_tokens(b[k]) for k in a if k not in FLAGS))
+        public=json.loads((root/'public-r3-global-effects.json').read_text())['fields']
+        self.assertEqual(len(public),12)
+        self.assertTrue(all(v.strip()=='true' for v in public.values()))
+    def test_real_native_storage_mutation_is_rejected(self):
+        from pathlib import Path
+        import json
+        root=Path(__file__).parent/'fixtures';on,_=change_flags((root/'native-builder-before.ron').read_text(),True)
+        stored=json.loads((root/'native-stored-builder.json').read_text());stored['frosted_windows']='false'
+        with self.assertRaises(ValueError):validate_stored_builder(on,stored)
+
     def native_fixture(self):
         from pathlib import Path
         root=Path(__file__).parent/'fixtures'

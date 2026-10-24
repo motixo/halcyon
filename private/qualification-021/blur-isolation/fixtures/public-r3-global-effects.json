@@ -1,0 +1,18 @@
+{
+  "source_run": 40027094006,
+  "source_snapshot_sha256": "23028d8e7da05a9c43b3175121a87000fbfaa5ab95d943e3cb184eb7cdc51475",
+  "fields": {
+    ".config/cosmic/com.system76.CosmicTheme.Dark/v2/frosted_applets": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Dark/v2/frosted_system_interface": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Dark/v2/frosted_windows": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Dark.Builder/v2/frosted_applets": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Dark.Builder/v2/frosted_system_interface": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Dark.Builder/v2/frosted_windows": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Light/v2/frosted_applets": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Light/v2/frosted_system_interface": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Light/v2/frosted_windows": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Light.Builder/v2/frosted_applets": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Light.Builder/v2/frosted_system_interface": "true",
+    ".config/cosmic/com.system76.CosmicTheme.Light.Builder/v2/frosted_windows": "true"
+  }
+}

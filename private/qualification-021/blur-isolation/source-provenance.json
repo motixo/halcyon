@@ -90,5 +90,21 @@
     "native_reexecution": false,
     "native_export_is_projection": true,
     "workspaces_failure_tracked_separately": true
+  },
+  "r2": {
+    "contexts": [
+      "stock-native-blur",
+      "public-frosted",
+      "public-native-off"
+    ],
+    "baseline_repeated": false,
+    "hours_repeated": false,
+    "one_overview_per_overlay": true,
+    "preceding_only_in_fresh_overlay": true,
+    "global_off_widget_blur_retained": true,
+    "job_cap": 1,
+    "timeout_minutes": 90,
+    "harness_repair_cap": 1,
+    "cosmetic_export_diffs_retained_not_blocking": true
   }
 }

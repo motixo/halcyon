@@ -222,16 +222,89 @@ jobs:
           GH_REPO: ${{ github.repository }}
           PACKAGE_RUN: ${{ inputs.package_run }}
         run: bash private/qualification-021/theme/prepare.sh
-      - name: Four fresh serial offline overlays and immediate native input comparisons
-        timeout-minutes: 55
-        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh
-      - name: Readable retained evidence
+      - name: R2 stock-native-blur; immediate first, fresh preceding variant only if needed
+        id: blur_stock
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh context stock-native-blur
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ steps.blur_stock.outcome == 'failure' }}
+        with:
+          name: native-blur-r2-initial-stock-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+      - name: Bounded addressed correction only for pre-trigger harness failure (stock)
+        if: ${{ steps.blur_stock.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 private/qualification-021/blur-isolation/repair_gate.py "$RUNNER_TEMP/cosmic" stock-native-blur
+      - name: Finalize owned stock VM and finish a fresh conditional variant
         if: always()
-        run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh finish stock-native-blur
+      - name: R2 public-frosted; immediate first, fresh preceding variant only if needed
+        id: blur_public
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh context public-frosted
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ steps.blur_public.outcome == 'failure' }}
+        with:
+          name: native-blur-r2-initial-public-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+      - name: Bounded addressed correction only for pre-trigger harness failure (public)
+        if: ${{ steps.blur_public.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 private/qualification-021/blur-isolation/repair_gate.py "$RUNNER_TEMP/cosmic" public-frosted
+      - name: Finalize owned public VM and finish a fresh conditional variant
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh finish public-frosted
+      - name: R2 public-native-off; immediate first, fresh preceding variant only if needed
+        id: blur_off
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh context public-native-off
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ steps.blur_off.outcome == 'failure' }}
+        with:
+          name: native-blur-r2-initial-off-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
+      - name: Bounded addressed correction only for pre-trigger harness failure (off)
+        if: ${{ steps.blur_off.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 private/qualification-021/blur-isolation/repair_gate.py "$RUNNER_TEMP/cosmic" public-native-off
+      - name: Finalize owned off VM and finish a fresh conditional variant
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 12
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh finish public-native-off
+      - name: Preserve exact independent comparison summary
+        if: always()
+        run: sudo python3 private/qualification-021/blur-isolation/summary.py "$RUNNER_TEMP/cosmic/evidence"
+      - name: Stop only owned comparison VMs and make evidence readable
+        if: always()
+        run: |
+          for owned in "$RUNNER_TEMP/cosmic/blur-cases/"*; do
+            if [[ -d "$owned" ]]; then sudo python3 private/qualification-021/lockup/stop.py "$owned"; fi
+          done
+          sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: native-blur-isolation-r1-${{ github.run_id }}
+          name: native-blur-isolation-r2-${{ github.run_id }}
           path: ${{ runner.temp }}/cosmic/evidence/
           retention-days: 14
           compression-level: 6

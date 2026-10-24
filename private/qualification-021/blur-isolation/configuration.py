@@ -62,3 +62,26 @@ def validate_reexport(requested, actual, stored_text_tint, generated_background)
     return {'kind':'native-derived-foreground','stored_builder_text_tint':stored_text_tint.strip(),
             'generated_background_on':outer_on[0],'exported_text_tint':tint(actual),
             'source':'cosmic-settings f1d00fc theme_manager.rs ThemeCustomizer::from lines67-77'}
+
+def export_values(text):
+    """Fields in the native pretty export; preserve values, do not render them."""
+    end=text.rfind('\n)')
+    if end<0:raise ValueError('Native export root tuple missing')
+    hits=list(re.finditer(r'^    ([a-z_][a-z_0-9]*): ',text,re.M))
+    if not hits:raise ValueError('Native export fields missing')
+    result={}
+    for i,hit in enumerate(hits):
+        value=text[hit.end():hits[i+1].start() if i+1<len(hits) else end].rstrip()
+        if not value.endswith(','):raise ValueError('Native export field delimiter missing')
+        if hit[1] in result:raise ValueError('Duplicate native export field')
+        result[hit[1]]=value[:-1].strip()
+    return result
+
+def ron_tokens(text):
+    return re.findall(r'"(?:\\.|[^"\\])*"|[^\s]',text)
+
+def validate_stored_builder(requested, stored):
+    values=export_values(requested)
+    mismatches=[key for key,value in values.items() if key not in stored or ron_tokens(stored[key])!=ron_tokens(value)]
+    if mismatches:raise ValueError('Actual stored native builder differs from requested inputs: '+','.join(mismatches))
+    return {'verified_stored_fields':list(values),'count':len(values)}
