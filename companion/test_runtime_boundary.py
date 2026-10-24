@@ -22,6 +22,18 @@ from test_generation_contract import catalog_fixture, bundle_fixture, runtime_fi
 class Boundary(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.addCleanup(self.tmp.cleanup);self.root=Path(self.tmp.name)
+    def test_outer_owner_death_reaps_probe_and_replacement_dispatches_stock(self):
+        # Separate harness owns a subreaper; never alter the test runner/session.
+        for name in ('SIGTERM', 'SIGKILL', 'WORKER_KILL'):
+            with self.subTest(signal=name):
+                result = subprocess.run([os.sys.executable, '-B',
+                    str(Path(__file__).with_name('cancellation_probe_fixture.py')), name],
+                    capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+                report = json.loads(result.stdout)
+                self.assertIsNone(report['probe'])
+                self.assertEqual(report['replacement_dispatch'], ['stock'])
+
     def installed_fixture(self):
         cat=catalog_fixture();row=cat['cohorts'][0]
         for name,pkg in row['packages'].items():

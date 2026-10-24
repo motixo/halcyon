@@ -8,7 +8,7 @@ use std::os::unix::{
     net::UnixStream,
 };
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub fn key(kind: PanelKind) -> ConfigKey {
     ConfigKey::new(NAMESPACE, 1, kind.entry()).expect("fixed island key")
@@ -173,6 +173,7 @@ fn inactive_message(store: &DesktopStore) -> String {
 
 pub struct Client {
     stream: BufReader<UnixStream>,
+    read_only_deadline: Option<Instant>,
 }
 impl Client {
     pub fn connect(store: &DesktopStore) -> Result<Self, String> {
@@ -184,6 +185,11 @@ impl Client {
                 "Islands is not installed or its installation could not be verified".into(),
             );
         }
+        let path = Self::socket_path(store)?;
+        Self::connect_at(&path, || inactive_message(store))
+    }
+
+    fn socket_path(store: &DesktopStore) -> Result<PathBuf, String> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR")
             .map(PathBuf::from)
             .ok_or("No desktop session")?;
@@ -202,7 +208,7 @@ impl Client {
         } else {
             runtime.join("desktop-cards-islands-v1.sock")
         };
-        Self::connect_at(&path, || inactive_message(store))
+        Ok(path)
     }
 
     fn connect_at(path: &std::path::Path, inactive: impl Fn() -> String) -> Result<Self, String> {
@@ -222,24 +228,145 @@ impl Client {
             .map_err(|e| e.to_string())?;
         Ok(Self {
             stream: BufReader::new(stream),
+            read_only_deadline: None,
         })
     }
+    /// Reuse only this operation's installation observation for read-only IPC.
+    /// Requests that can alter a lease or preferences are rejected before IO.
+    pub fn connect_observed(
+        store: &DesktopStore,
+        observed: &Installation,
+        deadline: Instant,
+    ) -> Result<Self, String> {
+        if Installation::on_native_thread() || !observed.installed() || observed.needs_recheck() {
+            return Err("Islands compatibility is still being checked".into());
+        }
+        Self::connect_read_only_at(&Self::socket_path(store)?, deadline)
+    }
+
+    fn connect_read_only_at(path: &std::path::Path, deadline: Instant) -> Result<Self, String> {
+        use std::os::{
+            fd::{AsRawFd, FromRawFd, OwnedFd},
+            unix::ffi::OsStrExt,
+        };
+        if Instant::now() >= deadline {
+            return Err("Islands status timed out".into());
+        }
+        let meta = std::fs::symlink_metadata(path).map_err(|_| "Islands is not running")?;
+        if !meta.file_type().is_socket() || meta.uid() != unsafe { libc::geteuid() } {
+            return Err("The panel socket is not owned by this user".into());
+        }
+        let bytes = path.as_os_str().as_bytes();
+        let mut address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+        if bytes.len() >= address.sun_path.len() || bytes.contains(&0) {
+            return Err("Invalid panel socket path".into());
+        }
+        address.sun_family = libc::AF_UNIX as _;
+        for (to, from) in address.sun_path.iter_mut().zip(bytes) {
+            *to = *from as _;
+        }
+        let fd = unsafe {
+            libc::socket(
+                libc::AF_UNIX,
+                libc::SOCK_STREAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+                0,
+            )
+        };
+        if fd < 0 {
+            return Err("Cannot open panel socket".into());
+        }
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        // AF_UNIX nonblocking connect either completes immediately or refuses a
+        // full listen queue. No blocking connect or diagnostic package query.
+        if unsafe {
+            libc::connect(
+                fd.as_raw_fd(),
+                (&address as *const libc::sockaddr_un).cast(),
+                std::mem::size_of_val(&address) as _,
+            )
+        } != 0
+        {
+            return Err("Islands is not responding".into());
+        }
+        Ok(Self {
+            stream: BufReader::new(UnixStream::from(fd)),
+            read_only_deadline: Some(deadline),
+        })
+    }
+
+    fn read_only_exchange(&mut self, bytes: &[u8], deadline: Instant) -> Result<Vec<u8>, String> {
+        // The socket is nonblocking. One absolute operation budget includes all
+        // requests and trickled replies, rather than resetting per read byte.
+        let mut sent = 0;
+        let mut data = Vec::new();
+        loop {
+            if Instant::now() >= deadline {
+                return Err("Islands status timed out".into());
+            }
+            if sent < bytes.len() {
+                match self.stream.get_mut().write(&bytes[sent..]) {
+                    Ok(0) => return Err("Islands disconnected".into()),
+                    Ok(n) => {
+                        sent += n;
+                        continue;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(_) => return Err("Islands disconnected".into()),
+                }
+            } else {
+                // A bounded chunk avoids BufRead losing a partial reply on EAGAIN.
+                let mut chunk = [0; 4096];
+                match self.stream.get_mut().read(&mut chunk) {
+                    Ok(0) => return Err("Islands disconnected".into()),
+                    Ok(n) => {
+                        data.extend_from_slice(&chunk[..n]);
+                        if data.len() > MAX_WIRE_BYTES {
+                            return Err("Invalid panel reply".into());
+                        }
+                        if data.contains(&b'\n') {
+                            return Ok(data);
+                        }
+                        continue;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                    Err(_) => return Err("Islands disconnected".into()),
+                }
+            }
+            std::thread::sleep(
+                Duration::from_millis(5).min(deadline.saturating_duration_since(Instant::now())),
+            );
+        }
+    }
+
     pub fn request(&mut self, request: &Request) -> Result<Response, String> {
+        if self.read_only_deadline.is_some()
+            && !matches!(
+                request,
+                Request::Capabilities | Request::MaterialSupport | Request::Inspect { .. }
+            )
+        {
+            return Err("Read-only status cannot authorize a panel change".into());
+        }
         let mut bytes = serde_json::to_vec(request).map_err(|e| e.to_string())?;
         bytes.push(b'\n');
         if bytes.len() > MAX_WIRE_BYTES {
             return Err("Island request is too large".into());
         }
-        self.stream
-            .get_mut()
-            .write_all(&bytes)
-            .map_err(|_| "The Islands panel component disconnected")?;
-        let mut data = Vec::new();
-        self.stream
-            .by_ref()
-            .take((MAX_WIRE_BYTES + 1) as u64)
-            .read_until(b'\n', &mut data)
-            .map_err(|_| "The panel did not acknowledge the change")?;
+        let data = if let Some(deadline) = self.read_only_deadline {
+            self.read_only_exchange(&bytes, deadline)?
+        } else {
+            self.stream
+                .get_mut()
+                .write_all(&bytes)
+                .map_err(|_| "The Islands panel component disconnected")?;
+            let mut data = Vec::new();
+            self.stream
+                .by_ref()
+                .take((MAX_WIRE_BYTES + 1) as u64)
+                .read_until(b'\n', &mut data)
+                .map_err(|_| "The panel did not acknowledge the change")?;
+            data
+        };
         if data.is_empty() {
             return Err("The Islands panel component disconnected".into());
         }
@@ -266,6 +393,60 @@ mod tests {
         panels::{PanelDraft, Setting},
         store::{Owner, tests::Fixture},
     };
+    #[test]
+    fn observed_status_is_read_only_and_trickle_cannot_extend_deadline() {
+        let fixture = Fixture::new("islands-read-only-deadline");
+        let path = fixture.0.join("panel.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(1)))
+                .unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            reader.read_line(&mut request).unwrap();
+            assert!(matches!(
+                serde_json::from_str::<Request>(&request).unwrap(),
+                Request::MaterialSupport
+            ));
+            let mut response =
+                serde_json::to_vec(&Response::MaterialSupport { version: 1 }).unwrap();
+            response.push(b'\n');
+            stream.write_all(&response).unwrap();
+            request.clear();
+            reader.read_line(&mut request).unwrap();
+            assert!(matches!(
+                serde_json::from_str::<Request>(&request).unwrap(),
+                Request::Capabilities
+            ));
+            for _ in 0..50 {
+                if stream.write_all(b" ").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(15));
+            }
+        });
+        let started = Instant::now();
+        let mut client =
+            Client::connect_read_only_at(&path, started + Duration::from_millis(150)).unwrap();
+        assert!(matches!(
+            client.request(&Request::MaterialSupport),
+            Ok(Response::MaterialSupport { version: 1 })
+        ));
+        assert!(
+            client
+                .request(&Request::Cancel { token: 1 })
+                .unwrap_err()
+                .contains("Read-only")
+        );
+        assert!(client.capabilities().unwrap_err().contains("timed out"));
+        assert!(started.elapsed() < Duration::from_millis(500));
+        drop(client);
+        server.join().unwrap();
+        assert!(Client::connect_read_only_at(&path, Instant::now()).is_err());
+    }
+
     #[test]
     fn stale_socket_reports_failure_and_respects_isolation() {
         let fixture = Fixture::new("islands-stale-socket");

@@ -224,9 +224,10 @@ def runtime_compatible(bundle, timeout=5):
         env = {k: v for k, v in os.environ.items()
                if k not in ('WAYLAND_SOCKET', 'PANEL_NOTIFICATIONS_FD',
                             'DAEMON_NOTIFICATIONS_FD', 'COSMIC_SESSION_SOCK')}
+        from verification import probe_parent_death
         result = subprocess.run([str(bundle / 'cosmic-panel-islands'), '--islands-probe'],
                                 env=env, capture_output=True, text=True, timeout=timeout,
-                                close_fds=True)
+                                close_fds=True, preexec_fn=probe_parent_death())
         report = json.loads(result.stdout)
         return (result.returncode == 0 and isinstance(report, dict)
                 and report.get('probe') == 1 and report.get('ready') is True)

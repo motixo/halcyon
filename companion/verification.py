@@ -15,13 +15,19 @@ import time
 MAX_REPLY = 65536
 
 
+class Cancelled(BaseException):
+    """Must not be swallowed by subprocess/select EINTR retry handling."""
+
+
 def _isolate(keep, parent):
     os.setsid()
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) or os.getppid() != parent:
-        os._exit(1)
-    def cancel(*_): raise InterruptedError('verification_cancelled')
+    def cancel(*_): raise Cancelled('verification_cancelled')
     signal.signal(signal.SIGTERM, cancel)
+    libc = ctypes.CDLL(None, use_errno=True)
+    # Owner death must unwind subprocess.run so it kills AND reaps its probe.
+    # Install the handler before arming the signal; check the fork/prctl race.
+    if libc.prctl(1, signal.SIGTERM, 0, 0, 0) or os.getppid() != parent:
+        os._exit(1)
     for name in ('WAYLAND_SOCKET','PANEL_NOTIFICATIONS_FD','DAEMON_NOTIFICATIONS_FD','COSMIC_SESSION_SOCK'):
         os.environ.pop(name, None)
     for name in os.listdir('/proc/self/fd'):
@@ -29,6 +35,21 @@ def _isolate(keep, parent):
         if fd > 2 and fd != keep:
             try: os.close(fd)
             except OSError: pass
+
+
+def probe_parent_death():
+    """Second-hop lifetime binding, used only by the isolated verifier.
+
+    The native probe does not spawn children. Even a forced worker death must
+    kill it; ordinary owner cancellation additionally lets the worker reap it.
+    Construct before fork so the expected parent cannot become the new reaper.
+    """
+    parent = os.getpid()
+    libc = ctypes.CDLL(None, use_errno=True)
+    def bind():
+        if libc.prctl(1, signal.SIGKILL, 0, 0, 0) or os.getppid() != parent:
+            os._exit(1)
+    return bind
 
 
 def _send(sock, value, fd=None):

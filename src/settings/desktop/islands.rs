@@ -485,8 +485,14 @@ pub struct RuntimeStatus {
     pub output: Option<String>,
 }
 impl RuntimeStatus {
-    pub fn read(store: &DesktopStore, installed: bool, panel: PanelKind, output: String) -> Self {
-        if !installed {
+    pub fn read(
+        store: &DesktopStore,
+        installation: &crate::desktop::islands::Installation,
+        panel: PanelKind,
+        output: String,
+        deadline: std::time::Instant,
+    ) -> Self {
+        if !installation.installed() || installation.needs_recheck() {
             return Self::default();
         }
         let mut result = Self {
@@ -494,7 +500,7 @@ impl RuntimeStatus {
             requested_output: output.clone(),
             ..Self::default()
         };
-        match Client::connect(store).and_then(|mut c| {
+        match Client::connect_observed(store, installation, deadline).and_then(|mut c| {
             c.capabilities()?;
             Ok(c)
         }) {

@@ -647,6 +647,7 @@ pub struct Settings {
     installation_generation: u64,
     installation_busy: bool,
     installation_retry: bool,
+    installation_deadline: Option<std::time::Instant>,
     native_busy: bool,
     native_deferred: std::collections::VecDeque<Message>,
     native_tasks: Vec<Task<Message>>,
@@ -857,6 +858,7 @@ impl cosmic::Application for Settings {
             installation_generation: 0,
             installation_busy: false,
             installation_retry: false,
+            installation_deadline: None,
             native_busy: false,
             native_deferred: Default::default(),
             native_tasks: Vec::new(),
@@ -2935,6 +2937,8 @@ impl Settings {
                 self.installation_busy = true;
                 self.installation_generation += 1;
                 let generation = self.installation_generation;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
+                self.installation_deadline = Some(deadline);
                 self.desktop.islands.installation = self.desktop.islands.installation.checking();
                 return Task::batch([
                     updates,
@@ -2942,7 +2946,9 @@ impl Settings {
                         let state = tokio::task::spawn_blocking(move || {
                             crate::desktop::DesktopStore::from_env()
                                 .map(|store| {
-                                    crate::desktop::islands::Installation::discover_presence(&store)
+                                    crate::desktop::islands::Installation::discover_presence_until(
+                                        &store, deadline,
+                                    )
                                 })
                                 .unwrap_or_default()
                         })
@@ -2961,17 +2967,18 @@ impl Settings {
                 }
                 let panel = self.desktop.selected;
                 let output = self.desktop.island_output();
+                let deadline = self
+                    .installation_deadline
+                    .unwrap_or_else(std::time::Instant::now);
                 return cosmic::task::future(async move {
                     let (state, runtime) = tokio::task::spawn_blocking(move || {
                         let Ok(store) = crate::desktop::DesktopStore::from_env() else {
                             return (Default::default(), Default::default());
                         };
-                        let state = crate::desktop::islands::Installation::discover(&store);
+                        let state =
+                            crate::desktop::islands::Installation::discover_until(&store, deadline);
                         let runtime = desktop::islands::RuntimeStatus::read(
-                            &store,
-                            state.installed(),
-                            panel,
-                            output,
+                            &store, &state, panel, output, deadline,
                         );
                         (state, runtime)
                     })
@@ -10337,6 +10344,118 @@ mod tests {
                 ),
             );
         }
+    }
+
+    #[test]
+    fn runtime_boundary_worker_one_observation_and_whole_refresh_deadline() {
+        if desktop_test_child(
+            "runtime_boundary_worker_one_observation_and_whole_refresh_deadline",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let root = store.fixture_root().unwrap();
+        crate::desktop::islands::fixture_installed(root);
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        let helper = root.join("status-islands-probe.py");
+        std::fs::write(
+            &helper,
+            r#"import json,sys,time
+from pathlib import Path
+root=Path(__file__).parent
+presence='--presence' in sys.argv
+with (root/'status-calls').open('a') as log: log.write('presence\n' if presence else 'compat\n')
+record=json.loads((root/'islands-installation.json').read_text())
+record.update(status_version=1,status='Checking',compatible=None)
+print(json.dumps(record),flush=True)
+if not presence:
+    time.sleep(float((root/'status-delay').read_text()))
+    record.update(status='Ready',compatible=True)
+    print(json.dumps(record),flush=True)
+"#,
+        )
+        .unwrap();
+        // Reproduce the reviewed call chain independently: connect remains fresh
+        // for write authority. It must not be used for the read-only UI refresh.
+        std::fs::write(root.join("status-delay"), "0").unwrap();
+        let observed = crate::desktop::islands::Installation::discover(&store);
+        assert!(observed.installed());
+        let _ = crate::desktop::islands::Client::connect(&store);
+        assert_eq!(
+            std::fs::read_to_string(root.join("status-calls")).unwrap(),
+            "compat\ncompat\n"
+        );
+        eprintln!("reviewed discover + Client::connect chain: two compatibility invocations");
+        for (delay, timeout) in [("0.15", false), ("30", true)] {
+            std::fs::write(root.join("status-delay"), delay).unwrap();
+            std::fs::write(root.join("status-calls"), "").unwrap();
+            let start = std::time::Instant::now();
+            let task = app.handle(Message::RecheckInstallation);
+            assert!(start.elapsed() < std::time::Duration::from_millis(150));
+            assert!(app.installation_busy);
+            assert!(app.desktop.islands.installation.installed());
+            assert_eq!(
+                app.desktop.islands.installation.status_label(),
+                "Checking compatibility"
+            );
+            let generation = app.installation_generation;
+            let duplicate = app.handle(Message::RefreshInstallation);
+            settle_settings(&mut app, duplicate);
+            settle_settings(&mut app, task);
+            let elapsed = start.elapsed();
+            eprintln!(
+                "actual Settings worker: delay={delay}s elapsed={elapsed:?} timeout={timeout}"
+            );
+            let calls = std::fs::read_to_string(root.join("status-calls")).unwrap();
+            assert_eq!(
+                calls, "presence\ncompat\n",
+                "one full verification per refresh"
+            );
+            assert!(elapsed < std::time::Duration::from_secs(7), "{elapsed:?}");
+            if timeout {
+                assert!(elapsed > std::time::Duration::from_secs(5));
+            }
+            assert!(!app.installation_busy);
+            assert_eq!(app.installation_retry, timeout);
+            assert!(app.desktop.islands.installation.installed());
+            send_settings(
+                &mut app,
+                Message::InstallationChecked(
+                    generation - 1,
+                    crate::desktop::islands::Installation::Absent,
+                    Default::default(),
+                ),
+            );
+            assert!(app.desktop.islands.installation.installed());
+            if timeout {
+                send_settings(&mut app, Message::RefreshInstallation);
+                assert_eq!(app.installation_generation, generation);
+                assert_eq!(
+                    std::fs::read_to_string(root.join("status-calls")).unwrap(),
+                    calls
+                );
+                assert_eq!(
+                    app.desktop.islands.installation.status_label(),
+                    "Checking compatibility"
+                );
+            }
+            assert!(app.native_deferred.is_empty());
+            assert!(app.native_tasks.is_empty());
+        }
+        // A deliberate retry after the timeout is the only new full check.
+        std::fs::write(root.join("status-delay"), "0").unwrap();
+        send_settings(&mut app, Message::RecheckInstallation);
+        assert!(!app.installation_retry);
+        assert_eq!(
+            std::fs::read_to_string(root.join("status-calls")).unwrap(),
+            "presence\ncompat\npresence\ncompat\n"
+        );
     }
 
     #[test]

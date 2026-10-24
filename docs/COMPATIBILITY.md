@@ -689,3 +689,21 @@ creation/teardown and descriptor/worker counts; RSS targets are 256 MiB for one
 full row and 384 MiB for two. Refusals and fixture timings are not positive native
 acceptance. If a genuine required target cannot meet these bounds, keep it
 blocked and report the measured bottleneck; never omit required checks to pass.
+
+### Runtime cancellation and Settings observation lifetime
+
+The prelaunch verifier uses a catchable parent-death cancellation signal so its
+ABI subprocess is killed and reaped when the outer launcher exits, including
+forced outer death. The probe also has its own kernel parent-death kill binding;
+forced worker termination cannot leave a live probe mistaken for a panel.
+Session descriptors remain isolated. This does not change host supervision,
+readiness, notification routing, latches or stock dispatch policy.
+
+One Settings refresh shares an absolute six-second budget across presence,
+compatibility and read-only IPC. IPC reuses that operation's installation
+observation; Checking/timeout does not trigger another verification. Its socket
+is nonblocking, replies are bounded, and trickled bytes cannot restart the budget.
+This connection accepts only Capabilities, MaterialSupport and Inspect. All
+transaction/write connections still obtain fresh installation authority. Known
+installation controls remain available while Checking, and timeout requires an
+explicit retry rather than repeated focus-triggered work.

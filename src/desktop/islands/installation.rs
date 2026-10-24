@@ -102,7 +102,8 @@ impl Installation {
             Some(_root) => {
                 #[cfg(test)]
                 {
-                    return _root.join("slow-islands-probe.py").is_file();
+                    return _root.join("slow-islands-probe.py").is_file()
+                        || _root.join("status-islands-probe.py").is_file();
                 }
                 #[cfg(not(test))]
                 {
@@ -229,19 +230,30 @@ impl Installation {
                 }
         )
     }
-    pub fn discover_presence(store: &DesktopStore) -> Self {
-        Self::discover_mode(store, true)
+    pub fn discover_presence_until(store: &DesktopStore, deadline: std::time::Instant) -> Self {
+        Self::discover_mode(store, true, deadline)
     }
     pub fn discover(store: &DesktopStore) -> Self {
-        Self::discover_mode(store, false)
+        Self::discover_until(store, std::time::Instant::now() + Duration::from_secs(6))
     }
-    fn discover_mode(store: &DesktopStore, presence: bool) -> Self {
+    pub fn discover_until(store: &DesktopStore, deadline: std::time::Instant) -> Self {
+        Self::discover_mode(store, false, deadline)
+    }
+    fn discover_mode(store: &DesktopStore, presence: bool, deadline: std::time::Instant) -> Self {
         if Self::needs_worker(store) {
             if let Some(state) = NATIVE_VIEW.with(|v| v.borrow().clone()) {
                 return state;
             }
         }
         if let Some(root) = store.fixture_root() {
+            #[cfg(test)]
+            if root.join("status-islands-probe.py").is_file() {
+                return Self::run_helper(
+                    &root.join("status-islands-probe.py"),
+                    presence,
+                    deadline.saturating_duration_since(std::time::Instant::now()),
+                );
+            }
             #[cfg(test)]
             if root.join("slow-islands-probe.py").is_file() {
                 let output = std::process::Command::new("/usr/bin/python3")
@@ -267,11 +279,19 @@ impl Installation {
         if !helper.is_file() {
             return Self::Absent;
         }
-        Self::run_helper(helper, presence, Duration::from_secs(6))
+        Self::run_helper(
+            helper,
+            presence,
+            deadline.saturating_duration_since(std::time::Instant::now()),
+        )
     }
     fn run_helper(helper: &std::path::Path, presence: bool, limit: Duration) -> Self {
         use std::io::Read;
         use std::os::fd::AsRawFd;
+        let started = std::time::Instant::now();
+        if limit.is_zero() {
+            return Self::Pending;
+        }
         let Ok(mut child) = std::process::Command::new("/usr/bin/python3")
             .args([
                 "-B",
@@ -292,7 +312,6 @@ impl Installation {
             let _ = child.wait();
             return Self::Pending;
         }
-        let started = std::time::Instant::now();
         let mut buffered = Vec::new();
         let mut total = 0;
         let mut latest = Self::Pending;
