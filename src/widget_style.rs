@@ -320,6 +320,37 @@ mod tests {
         }
     }
     #[test]
+    fn decorative_material_scrims_keep_light_and_dark_text_readable() {
+        for family in crate::desktop_theme::Family::ALL {
+            for kind in crate::materials::Kind::ALL {
+                let mut config = crate::config::Config::default();
+                config.appearance.family = Some(family);
+                config.materials.shared = Some(crate::materials::Finish::new(kind));
+                let saved = config.materials;
+                let unassisted = config.palette();
+                config.appearance.contrast_assist = true;
+                let p = config.palette();
+                assert_eq!(config.materials, saved);
+                if p.background.a == 0. {
+                    assert_eq!(unassisted.background.a, 0.);
+                    continue;
+                }
+                for wallpaper in [Color::BLACK, Color::WHITE] {
+                    let bg = blend(p.background, wallpaper, p.background.a);
+                    for ink in [p.foreground, p.muted, p.accent] {
+                        assert!(ratio(ink, bg) >= 4.5, "{family:?}/{kind:?}");
+                    }
+                }
+                let _scope = scope(&config);
+                assert!(matches!(
+                    background(p.background),
+                    cosmic::iced::Background::Color(_)
+                ));
+            }
+        }
+    }
+
+    #[test]
     fn assistance_is_optional_and_does_not_replace_the_saved_opacity() {
         let mut config = crate::config::Config::default();
         config.appearance.opacity = 70;

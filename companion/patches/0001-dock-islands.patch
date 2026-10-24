@@ -237,7 +237,7 @@
 +}
 --- /dev/null
 +++ b/cosmic-panel-bin/src/islands.rs
-@@ -0,0 +1,1079 @@
+@@ -0,0 +1,1081 @@
 +//! Desktop Cards companion extension. Stock panel schemas remain unchanged.
 +use crate::iced::elements::CosmicMappedInternal;
 +use crate::iced::elements::background::{BackgroundElement, PanelBorder, background_element};
@@ -1314,7 +1314,9 @@
 +}
 +impl PanelSpace {
 +    pub(crate) fn material_blur(&self) -> bool {
-+        self.islands.material.is_some() && self.config.opacity > 0.001 || self.colors.panel_blur(self.config.opacity)
++        // Native backdrop enhancement is deferred; finish and native color
++        // preferences still determine the decorative background.
++        false
 +    }
 +}
 --- /dev/null
@@ -2926,7 +2928,6 @@
 +        name.to_owned(),
 +    )
 +}
-
 --- /dev/null
 +++ b/dock-islands-core/src/material.rs
 @@ -0,0 +1,135 @@
@@ -3255,3 +3256,26 @@
 +    let _ = settings.layout("DP-2");
 +    assert_eq!(serde_json::to_vec(&settings).unwrap(), before);
 +}
+--- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/state.rs
++++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/state.rs
+@@ -1,7 +1,5 @@
+ use crate::space_container::SpaceContainer;
+-use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::{
+-    self, ExtBackgroundEffectManager,
+-};
++use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::ExtBackgroundEffectManager;
+ use crate::xdg_shell_wrapper::server_state::ServerState;
+ use crate::xdg_shell_wrapper::shared_state::GlobalState;
+ use crate::xdg_shell_wrapper::space::WrapperSpace;
+@@ -317,8 +315,9 @@
+                 data_device_manager: DataDeviceManagerState::bind(&globals, &qh)
+                     .expect("data device manager is not available"),
+                 overlap_notify: overlap_notify.ok(),
+-                ext_background_effect_manager:
+-                    ext_background_effect::ExtBackgroundEffectManager::new(&globals, &qh).ok(),
++                // Decorative materials only: do not bind or advertise native
++                // backdrop effects to hosted applets/popups on unvalidated paths.
++                ext_background_effect_manager: None,
+                 cosmic_corner_radius_manager: registry_state
+                     .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
+                     .ok(),

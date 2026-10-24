@@ -224,16 +224,8 @@ pub fn appearance(family: Family, accent: Option<[u8; 3]>) -> AppearanceLook {
             outline: Some(ColorChoice::Auto),
             ..Default::default()
         };
-        // A frosted style frosts COSMIC too, but never the panel: the
-        // installed cosmic-panel crash-loops with a frosted background.
-        if family.spec().frosted {
-            look.frosted = Some(FrostedLook {
-                panel: Some(false),
-                applets: Some(true),
-                system_interface: Some(true),
-                windows: Some(true),
-            });
-        }
+        // Color synchronization does not own native backdrop effects. Leave
+        // existing system preferences untouched, including on legacy Frosted.
         look.background = Some(hex(family.surface_for(seed, dark)));
         look.primary = Some(hex(family.container_for(seed, dark)));
         look
@@ -634,12 +626,8 @@ fn visual_variant(v: &VariantLook) -> VariantLook {
         primary: v.primary.clone(),
         secondary: v.secondary.clone(),
         outline: v.outline.clone(),
-        // A frosted style may frost windows, applets and system UI, never
-        // the panel (the installed cosmic-panel crash-loops with it).
-        frosted: v
-            .frosted
-            .clone()
-            .filter(|frosted| frosted.panel != Some(true)),
+        // Imported/previously saved color themes cannot opt into global blur.
+        // Explicit system settings and guarded Undo remain separate actions.
         ..Default::default()
     }
 }
@@ -913,24 +901,26 @@ pub fn recolor(p: &mut Profile, accent: Option<[u8; 3]>) {
 mod frosted_tests {
     use super::*;
     #[test]
-    fn no_style_frosts_the_panel() {
-        // The installed cosmic-panel crash-loops with a frosted background.
+    fn color_themes_never_write_native_frosting() {
         for family in Family::ALL {
             let look = appearance(family, None);
             for variant in [look.light.as_ref(), look.dark.as_ref()]
                 .into_iter()
                 .flatten()
             {
-                if let Some(frosted) = &variant.frosted {
-                    assert_ne!(frosted.panel, Some(true), "{family:?}");
-                }
-                assert_eq!(
-                    variant.frosted.is_some(),
-                    family.spec().frosted,
-                    "{family:?} frosts COSMIC exactly when it is a frosted style"
-                );
+                assert!(variant.frosted.is_none(), "{family:?}");
+                assert!(variant.accent.is_some());
+                assert!(variant.background.is_some());
             }
         }
+        let legacy: VariantLook = serde_json::from_value(json!({
+            "accent": "#247a91",
+            "frosted": {"windows": true, "applets": true, "system_interface": true}
+        }))
+        .unwrap();
+        let colors = visual_variant(&legacy);
+        assert!(colors.frosted.is_none());
+        assert_eq!(colors.accent, legacy.accent);
     }
 }
 

@@ -300,27 +300,11 @@ impl Cards {
             .map(|p| crate::layout::decode(*p, self.widget_size(widget), self.screen_size))
             .unwrap_or_else(|| self.default_position(widget))
     }
-    /// Compositor blur behind each visible card of a frosted style: the
-    /// card's rounded rectangle inside the surface (not the shadow margin);
-    /// off for every other surface.
+    /// Decorative materials never activate native backdrop blur. Clear any
+    /// pending effect without changing card geometry, shadows or input regions.
     pub(super) fn blur_surfaces(&self) -> Task<Message> {
         use cosmic::iced::platform_specific::shell::commands::blur::blur;
-        let frosted = self.config.materials.widgets().is_some()
-            || self.config.theme_roles().is_some_and(|roles| roles.frosted);
-        let m = crate::widget_style::shadow_margin(&self.config);
-        let radius = crate::widget_style::corner_radius(&self.config);
-        Task::batch(Widget::ALL.map(|widget| {
-            let filled = match widget {
-                Widget::Clock => false,
-                Widget::Glance => self.config.glance_panel(),
-                _ => !self.config.transparent_widgets(),
-            };
-            let rects = (frosted && filled && self.config.widget_visible(widget)).then(|| {
-                let [width, height] = self.widget_size(widget);
-                crate::widget_style::rounded_rects(m, m, width, height, radius)
-            });
-            blur(self.widget_id(widget), rects).discard()
-        }))
+        Task::batch(Widget::ALL.map(|widget| blur(self.widget_id(widget), None).discard()))
     }
     /// The style's shadow margin around every widget surface, in pixels:
     /// (each side, both sides).
@@ -1521,6 +1505,47 @@ impl Cards {
 mod tests {
     use super::*;
     use cosmic::Application;
+    #[test]
+    fn decorative_finishes_only_clear_native_blur_without_changing_geometry() {
+        use cosmic::iced::futures::StreamExt;
+        use cosmic::iced::runtime::{Action, platform_specific, task};
+        for finish in std::iter::once(None).chain(
+            crate::materials::Kind::ALL.map(|kind| Some(crate::materials::Finish::new(kind))),
+        ) {
+            let mut config = Config::default();
+            config.appearance.family = Some(crate::desktop_theme::Family::Frosted);
+            config.materials.shared = finish;
+            config.glance.enabled = true;
+            config.glance.own_background = true;
+            config.glance.style = crate::config::GlanceStyle::Transparent;
+            let (cards, _) = Cards::init(Core::default(), config);
+            let before: Vec<_> = Widget::ALL.map(|w| cards.card_input_rects(w)).into();
+            let mut cleared = Vec::new();
+            if let Some(mut stream) = task::into_stream(cards.blur_surfaces()) {
+                cosmic::iced::futures::executor::block_on(async {
+                    while let Some(action) = stream.next().await {
+                        match action {
+                            Action::PlatformSpecific(platform_specific::Action::Wayland(
+                                platform_specific::wayland::Action::BlurSurface(id, region),
+                            )) => {
+                                assert!(region.is_none(), "{finish:?}");
+                                cleared.push(id);
+                            }
+                            _ => panic!("clearing blur must not move or recreate a surface"),
+                        }
+                    }
+                });
+            }
+            assert_eq!(cleared.len(), Widget::ALL.len());
+            for (widget, input) in Widget::ALL.into_iter().zip(before) {
+                assert!(cleared.contains(&cards.widget_id(widget)));
+                assert_eq!(cards.card_input_rects(widget), input);
+            }
+            assert!(!cards.config.glance_panel());
+            assert!(cards.core.auto_blur().is_empty());
+        }
+    }
+
     #[test]
     fn sized_native_cards_fill_their_surface_and_keep_busy_agendas_scrollable() {
         use crate::native_test::Native;

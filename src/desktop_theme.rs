@@ -121,8 +121,8 @@ pub struct StyleSpec {
     pub geometry: (u8, u16, u8),
     pub border_width: f32,
     pub shadow: Shadow,
-    /// The compositor blurs the wallpaper behind each card, and COSMIC's
-    /// windows, applets and system UI are frosted (never the panel).
+    /// Legacy frosted style classification; rendering is decorative and
+    /// does not enable native backdrop effects.
     pub frosted: bool,
     /// Cards are transparent over the wallpaper by default.
     pub transparent: bool,
@@ -296,7 +296,7 @@ const GLASS: StyleSpec = StyleSpec {
 const FROSTED: StyleSpec = StyleSpec {
     id: "frosted",
     title: "Frosted glass",
-    description: "Glass with the wallpaper blurred behind it",
+    description: "Soft tinted glass with readable surfaces",
     frosted: true,
     wallpaper: ([30, 40, 60], [150, 100, 140]),
     ..GLASS
@@ -947,7 +947,7 @@ mod tests {
                 serde_json::to_value(family).unwrap(),
                 serde_json::json!(spec.id)
             );
-            // A frosted style is never transparent: blur needs a card.
+            // A frosted style retains its filled decorative card.
             assert!(!(spec.frosted && spec.transparent), "{}", spec.id);
         }
     }

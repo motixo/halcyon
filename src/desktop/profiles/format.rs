@@ -536,12 +536,10 @@ impl VariantLook {
                 (Surface::SystemInterface, frosted.system_interface),
                 (Surface::Windows, frosted.windows),
             ] {
-                // A frosted COSMIC panel 1.10 aborts on the current
-                // compositor; a setup can turn it off, never on.
-                if let Some(on) = on
-                    && !(surface == Surface::Panel && on)
-                {
-                    values.frosted.insert(surface, on);
+                // Legacy/imported setups may explicitly turn effects off,
+                // but must not newly activate unvalidated native blur paths.
+                if on == Some(false) {
+                    values.frosted.insert(surface, false);
                 }
             }
         }
@@ -1344,17 +1342,24 @@ mod frosted_panel_tests {
     use super::*;
 
     #[test]
-    fn a_setup_can_turn_the_frosted_panel_off_but_never_on() {
-        let look = |panel: bool| -> VariantLook {
-            serde_json::from_value(serde_json::json!({
-                "frosted": { "panel": panel, "applets": true }
-            }))
-            .unwrap()
-        };
-        let on = look(true).values(ThemeVariant::Dark).unwrap();
-        assert_eq!(on.frosted.get(&Surface::Panel), None, "never written on");
-        assert_eq!(on.frosted.get(&Surface::Applets), Some(&true));
-        let off = look(false).values(ThemeVariant::Dark).unwrap();
-        assert_eq!(off.frosted.get(&Surface::Panel), Some(&false));
+    fn setups_can_disable_but_never_enable_native_frosting() {
+        for variant in ThemeVariant::ALL {
+            for on in [false, true] {
+                let look: VariantLook = serde_json::from_value(serde_json::json!({
+                    "frosted": {
+                        "panel": on, "applets": on,
+                        "system_interface": on, "windows": on
+                    }
+                }))
+                .unwrap();
+                let values = look.values(variant).unwrap();
+                for surface in Surface::ALL {
+                    assert_eq!(
+                        values.frosted.get(&surface),
+                        if on { None } else { Some(&false) }
+                    );
+                }
+            }
+        }
     }
 }

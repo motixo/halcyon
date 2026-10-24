@@ -145,11 +145,19 @@ impl Settings {
                     container(toggler(self.config.appearance.contrast_assist).on_toggle(Message::ContrastAssist)).id(cosmic::widget::Id::new("material-readability")).into()),
             ]));
         }
-        rows.push(label(if self.material_native {
-            "Shared finish · compositor blur when available. Previews show tint and finish."
-        } else {
-            if self.desktop.islands.installation.installed() { "Widgets use native blur when available. Dock & panel materials need a running capable host." } else { "Widgets use native blur when available." }
-        }, 11., MUTED));
+        rows.push(label(
+            if self.material_native {
+                "Decorative widget glass · bar rendering follows the running companion."
+            } else {
+                if self.desktop.islands.installation.installed() {
+                    "Decorative widget glass. Dock & panel finishes need a running capable host."
+                } else {
+                    "Decorative widget glass. Stock dock & panel follow COSMIC appearance."
+                }
+            },
+            11.,
+            MUTED,
+        ));
         rows.push(self.preview_stage(self.card_preview()));
         rows.push(split(
             label("Real widget preview · sample data", 11., MUTED),

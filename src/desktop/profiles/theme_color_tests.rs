@@ -895,3 +895,36 @@ fn review_r1_generation_noop_roles_remain_guarded_until_commit() {
         assert_eq!(cfg.appearance.native_mode_palettes, 0);
     }
 }
+
+#[test]
+fn applying_frosted_colors_preserves_existing_system_effect_preferences() {
+    for enabled in [false, true] {
+        let (fixture, store, installed) = reported(&format!("decorative-frosted-{enabled}"), true);
+        for variant in ThemeVariant::ALL {
+            for surface in appearance::Surface::ALL {
+                write_v2(
+                    &fixture,
+                    variant.builder_namespace(),
+                    surface.key(),
+                    &enabled.to_string(),
+                );
+            }
+        }
+        let mut profile = record(Family::Frosted);
+        preserve_custom(&store, &installed, &mut profile).unwrap();
+        let planned = plan(
+            &store,
+            &installed,
+            &profile,
+            &profile.domains().into_iter().collect(),
+        );
+        assert!(planned.can_apply(), "{:?}", planned.blocking_reasons());
+        apply(&store, &planned).unwrap();
+        let draft = AppearanceDraft::load(&store).unwrap();
+        for variant in ThemeVariant::ALL {
+            for surface in appearance::Surface::ALL {
+                assert_eq!(draft.frosted(variant, surface).known(), Some(&enabled));
+            }
+        }
+    }
+}

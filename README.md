@@ -45,9 +45,13 @@ Keep one shared finish or adjust Widgets, Dock and Panel independently. Transpar
 tint and Widget readability let you tune the result without replacing your colors.
 Liquid adds a brief optional edge glint on widgets; bar highlights are static.
 Changes apply immediately, with Undo, and materials travel with saved setups.
+The 0.2.5 material path uses decorative translucency, tint, edges and highlights;
+it does not request native backdrop blur or optical refraction. Color theme
+application does not enable COSMIC frosting. Existing system effects remain
+under your control; see [the material change notes](docs/decorative-materials-025.md).
 
 Widget materials work in the main app. **Dock and Panel materials require the
-updated, active 0.2.0 companion**, with either Native or Islands layout. Install
+matching, active companion**, with either Native or Islands layout. Install
 the add-on, run `halcyon-islands enable`, then log out and back in. Older or inactive
 companions keep their previous bar appearance. There is no blur-strength control
 or optical refraction effect.
@@ -65,8 +69,9 @@ or optical refraction effect.
   </tr>
 </table>
 
-*Native captures in an isolated COSMIC session, using the same wallpaper and
-synthetic notes. Rendering depends on the compositor, theme and wallpaper.*
+*Earlier native-blur captures, using the same wallpaper and synthetic notes.
+They illustrate the finishes, not exact 0.2.5 decorative rendering. Stock COSMIC
+bars follow their own appearance; matching finishes require our active host.*
 
 ## Widgets
 
