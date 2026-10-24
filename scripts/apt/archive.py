@@ -45,7 +45,7 @@ def verify_tree(root, expected):
     data = json.loads(descriptor.read_bytes())
     if data.get('format') != 'halcyon-apt-stage' or data.get('version') != 1:
         raise ValueError('archive_schema')
-    excluded = ('archive.json', 'signed.json', str(SUITE/'InRelease'), str(SUITE/'Release.gpg'))
+    excluded = ('archive.json', 'archive.json.asc', 'signed.json', str(SUITE/'InRelease'), str(SUITE/'Release.gpg'))
     if inventory(root, excluded) != data['files']:
         raise ValueError('archive_bytes_changed')
     return data
@@ -228,6 +228,7 @@ def verify_signed(root, expected, keyring):
     data = verify_tree(root, expected)
     descriptor = json.loads((root/'signed.json').read_bytes())
     signatures = {str(SUITE/name): sha(root/SUITE/name) for name in ('InRelease', 'Release.gpg')}
+    signatures['archive.json.asc'] = sha(root/'archive.json.asc')
     if descriptor.get('archive_sha256') != expected or descriptor.get('signatures') != signatures:
         raise ValueError('signature_inventory_mismatch')
     with tempfile.TemporaryDirectory(prefix='halcyon-gpgv-') as home:
@@ -237,6 +238,7 @@ def verify_signed(root, expected, keyring):
         if clear.read_bytes() != (root/SUITE/'Release').read_bytes():
             raise ValueError('inrelease_payload_mismatch')
         statuses.append(run([*common, str(root/SUITE/'Release.gpg'), str(root/SUITE/'Release')]))
+        statuses.append(run([*common, str(root/'archive.json.asc'), str(root/'archive.json')]))
         for status in statuses:
             valid = [line.split()[2] for line in status.decode().splitlines() if line.startswith('[GNUPG:] VALIDSIG ')]
             if valid != [descriptor['signing_subkey']]:
@@ -292,8 +294,10 @@ def sign(root, expected, out, home, subkey, keyring):
         common = ['gpg', '--batch', '--homedir', str(home), '--local-user', subkey+'!', '--digest-algo', 'SHA256']
         run([*common, '--output', str(release.with_name('InRelease')), '--clearsign', str(release)])
         run([*common, '--output', str(release.with_name('Release.gpg')), '--detach-sign', str(release)])
+        run([*common, '--armor', '--output', str(staged/'archive.json.asc'), '--detach-sign', str(staged/'archive.json')])
         write(staged/'signed.json', canonical(dict(archive_sha256=expected, signing_subkey=subkey,
-            signatures={str(SUITE/name): sha(staged/SUITE/name) for name in ('InRelease', 'Release.gpg')})))
+            signatures={**{str(SUITE/name): sha(staged/SUITE/name) for name in ('InRelease', 'Release.gpg')},
+                        'archive.json.asc': sha(staged/'archive.json.asc')})))
         verify_signed(staged, expected, keyring)
         sync_tree(staged)
         os.rename(staged, out)

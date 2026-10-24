@@ -2,6 +2,7 @@
 """Build explicit enrollment assets; never install or generate signing keys."""
 import argparse
 import gzip
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -112,10 +113,18 @@ fi
                 'Upstream-Name: Halcyon\nSource: https://github.com/profilaz3/halcyon\n\n'
                 'Files: *\nCopyright: 2026 profilaz3\nLicense: GPL-3+\n'
                 ' See /usr/share/common-licenses/GPL-3.\n')
-            put(f'usr/share/doc/{name}/changelog.gz', gzip.compress(
+            changelog = 'changelog.Debian.gz' if '-' in version else 'changelog.gz'
+            put(f'usr/share/doc/{name}/{changelog}', gzip.compress(
                 (f'halcyon-updates ({version}) noble; urgency=medium\n\n'
                  '  * Explicit scoped system update enrollment.\n\n'
                  ' -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Thu, 01 Jan 2026 00:00:00 +0000\n').encode(), mtime=0))
+            # dpkg verification and the already-published 0.2.5 identity adapter
+            # require this for the package-owned public keyring. Conffiles keep
+            # dpkg's normal conffile ownership/removal semantics.
+            checksums = ''.join(f'{hashlib.md5(path.read_bytes()).hexdigest()}  {path.relative_to(root)}\n'
+                                for path in sorted(root.rglob('*'))
+                                if path.is_file() and 'DEBIAN' not in path.relative_to(root).parts)
+            put('DEBIAN/md5sums', checksums)
             root.chmod(0o755)
             for path in root.rglob('*'):
                 if path.is_dir():

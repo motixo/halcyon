@@ -1,0 +1,83 @@
+{
+  "format": "halcyon-apt-distribution",
+  "version": 1,
+  "archive_url": "https://profilaz3.github.io/halcyon/apt",
+  "pages_max_bytes": 850000000,
+  "public_key_sha256": "bc0db85de8d205c56526c7c5dd439e50f9558c47450f57aa47dd7bf1467b772f",
+  "releases": [
+    {
+      "tag": "v0.2.5",
+      "release": "0.2.5",
+      "policy": "cosmic-1.10-1.11-startup-v1",
+      "assets": {
+        "cosmic-ext-halcyon_0.2.5_amd64.deb": {
+          "kind": "main-deb",
+          "sha256": "46d4f77021f9a8cd4acdd1d89f7344e916864a19087cf3c9970000e3f5e54e77",
+          "bytes": 20097786
+        },
+        "cosmic-ext-halcyon-islands_0.2.5_amd64.deb": {
+          "kind": "islands-deb",
+          "sha256": "36695c188bd92ece235d62e86ee8c6b2e67af93dde20d569e75599e9b1f02c26",
+          "bytes": 12403548
+        },
+        "halcyon-0.2.5-corresponding-source.tar.gz": {
+          "kind": "corresponding-source",
+          "sha256": "6c138f871ee44380c31e48d92ca3f73196e2767dd94c175e963d68624fa82f32",
+          "bytes": 371846515
+        },
+        "halcyon-0.2.5-focused-native-evidence.zip": {
+          "kind": "native-evidence",
+          "sha256": "f6770df74d7475d4bd22522792a6193f82a495a735bf385cb7a1ae91bf8e0c2f",
+          "bytes": 11288273
+        },
+        "RELEASE-NOTES.md": {
+          "kind": "release-notes",
+          "sha256": "bf0301c202b87b0bdc72893210e5de6769246211e8b25c280edfb93f6ad5bdb0",
+          "bytes": 1307
+        },
+        "release-provenance.json": {
+          "kind": "source-provenance",
+          "sha256": "815770b09fbe3cd90e0518b1c8212c8f42cdd45069c4b5d5e7dc62cc0d223930",
+          "bytes": 3601
+        },
+        "release-manifest.json": {
+          "kind": "release-manifest",
+          "sha256": "ea237af6b49635dcb9f0fe03e1523df6aaf66fd332a2729c8a335b8d82cff292",
+          "bytes": 1485
+        },
+        "approval.json": {
+          "kind": "release-approval",
+          "sha256": "563ac8ecc85fb1d6f29e66e062c7d88393d2cdc67002c05785d42a798eb0e5ab",
+          "bytes": 1882
+        }
+      }
+    }
+  ],
+  "bootstrap": {
+    "tag": "apt-bootstrap-0.2.5-1",
+    "version": "0.2.5-1",
+    "assets": {
+      "halcyon-archive-keyring_0.2.5-1_all.deb": {
+        "sha256": "4a0b973025c98b03d4ed901bc499f1af61c001dcdd1f1d7885b4009811ac2262",
+        "bytes": 1758,
+        "kind": "enrollment-deb"
+      },
+      "halcyon-update-source_0.2.5-1_all.deb": {
+        "sha256": "fad29b1760e53d7bf1115829d71f2568f7c208f6176b6480aee3a0c85d2d00af",
+        "bytes": 2066,
+        "kind": "enrollment-deb"
+      },
+      "halcyon-apt-bootstrap-0.2.5-1-source.tar.gz": {
+        "sha256": "882ea3090d53c08f2198832a317d404278aee0ce928ec111fe3ee9f82ef3332b",
+        "bytes": 16188,
+        "kind": "corresponding-source"
+      },
+      "bootstrap-manifest.json": {
+        "kind": "bootstrap-manifest",
+        "sha256": "6781f04a53e300a76cde744fd8a43d1f35a1a23a5f88d121f3bfa3b4c3b3b830",
+        "bytes": 820
+      }
+    }
+  },
+  "approval": "The protected halcyon-apt environment must separately pin this file SHA256 after parent review. No native acceptance is added by this distribution manifest."
+}
