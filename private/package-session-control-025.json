@@ -1,92 +1,9 @@
 {
-  "seq": 9,
+  "seq": 10,
   "actions": [
     {
-      "op": "drag",
-      "x1": 300,
-      "y1": 190,
-      "x2": 600,
-      "y2": 340
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "15-clock-moved"
-    },
-    {
-      "op": "drag",
-      "x1": 870,
-      "y1": 468,
-      "x2": 1014,
-      "y2": 552
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "16-clock-resized"
-    },
-    {
-      "op": "click",
-      "x": 997,
-      "y": 71
-    },
-    {
-      "op": "wait",
-      "seconds": 2
-    },
-    {
-      "op": "shot",
-      "name": "17-arrange-done"
-    },
-    {
-      "op": "ops",
-      "args": [
-        "snapshot",
-        "after-arrange"
-      ]
-    },
-    {
-      "op": "click",
-      "x": 891,
-      "y": 152
-    },
-    {
-      "op": "text",
-      "text": "clock"
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "18-settings-input-after-arrange"
-    },
-    {
       "op": "key",
-      "keys": "esc"
-    },
-    {
-      "op": "ops",
-      "args": [
-        "launch",
-        "editor",
-        "/usr/bin/cosmic-edit"
-      ]
-    },
-    {
-      "op": "wait",
-      "seconds": 3
-    },
-    {
-      "op": "key",
-      "keys": "ctrl-n"
+      "keys": "ctrl-a"
     },
     {
       "op": "text",
@@ -98,7 +15,137 @@
     },
     {
       "op": "shot",
-      "name": "19-editor-input-after-arrange"
+      "name": "20-editor-input-confirmed"
+    },
+    {
+      "op": "ops",
+      "args": [
+        "user",
+        "close-owned-editor",
+        "/usr/bin/pkill",
+        "-TERM",
+        "-x",
+        "cosmic-edit"
+      ]
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "click",
+      "x": 293,
+      "y": 448
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "click",
+      "x": 843,
+      "y": 476
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "click",
+      "x": 964,
+      "y": 556
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "click",
+      "x": 352,
+      "y": 699
+    },
+    {
+      "op": "click",
+      "x": 352,
+      "y": 699
+    },
+    {
+      "op": "click",
+      "x": 352,
+      "y": 699
+    },
+    {
+      "op": "click",
+      "x": 473,
+      "y": 699
+    },
+    {
+      "op": "click",
+      "x": 473,
+      "y": 699
+    },
+    {
+      "op": "click",
+      "x": 473,
+      "y": 699
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "shot",
+      "name": "21-clock-size-controls"
+    },
+    {
+      "op": "click",
+      "x": 998,
+      "y": 71
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "ops",
+      "args": [
+        "snapshot",
+        "after-resize-controls"
+      ]
+    },
+    {
+      "op": "click",
+      "x": 895,
+      "y": 151
+    },
+    {
+      "op": "text",
+      "text": "clock"
+    },
+    {
+      "op": "wait",
+      "seconds": 1
+    },
+    {
+      "op": "shot",
+      "name": "22-input-after-resize"
+    },
+    {
+      "op": "key",
+      "keys": "esc"
+    },
+    {
+      "op": "click",
+      "x": 315,
+      "y": 241
+    },
+    {
+      "op": "wait",
+      "seconds": 2
+    },
+    {
+      "op": "shot",
+      "name": "23-installed-dock-management"
     }
   ],
   "run": 40056332210
