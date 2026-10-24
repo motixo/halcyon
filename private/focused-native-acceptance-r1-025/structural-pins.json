@@ -1,0 +1,13 @@
+{
+  "catalog_sha256": "57b08cacfb9018ecbf14fa07fe3e38e6034cc5bca761eef57dff743d042bc35c",
+  "records": {
+    "structural-catalog.json.gz": "c2478b06d0c0f10e61f90f38f5c1af95f2beb9d737227cbde49cccb250be28a1",
+    "structural-runtime-profile.json": "17d90fbb61f6b839b2c2fa31b0b162db2179c3bb1315cd48267d834cfecfff6e",
+    "structural-dependency-review.json": "a45db420ea3719a3831aa363bd1609c79147c3537ca5e89d833df040b22ea0fc",
+    "structural-native-scope-review.json": "648e9f431800c1a31563229f0501d6d50facc5a14c67833aebebb18d1a36784a",
+    "structural-structural-evidence.json": "904f9cecd23f71d93bf64ef4b2dba3ac58809a8a687faf6ee0d5d0b927b53a57",
+    "structural-identity-receipt.json": "da67445493e223910c9cbc5b17b21e6975d7da6c1ece3bfe84e59dbecedbf07d"
+  },
+  "image_sha256": "4b26c9e9f3430a070d0c48d781f127837b3ce300c62384179aa5a9eeb51a1cc6",
+  "package_receipt_sha256": "5799460790291b134d6c6fee39315a244cf742315ef8b76347e08ca2a5123fc5"
+}

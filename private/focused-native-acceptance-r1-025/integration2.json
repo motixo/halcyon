@@ -1,0 +1,55 @@
+{
+  "format": "halcyon-development-integration-receipt",
+  "version": 1,
+  "development_only": true,
+  "review_status": "Parent accepted scoped corrections for native trial; development only; native acceptance pending",
+  "packaging_source_commit": "97ff0b794776790418848353c863a4b844ffa503",
+  "package_version": "0.2.5~dev.integration.5",
+  "source_archive_sha256": "4e762931940d40b48bb4de90562ebe1ab08db3ac5fd487c9ee8a9afd01904660",
+  "native_reuse_binding_sha256": "1f1fa349203941865e3d006721c3bb8d8b5754d5d03fb1c8829b32f088a154c2",
+  "license_binding_sha256": "2657a381e2f5c8e25c7b57d0b29d66fca3ba6b3dc93ad50a59f8b954ca646641",
+  "packages": {
+    "main": {
+      "package": "cosmic-ext-halcyon",
+      "version": "0.2.5~dev.integration.5",
+      "sha256": "c2a2d82bc7c1051564da719f3b5f27ada24d003a1f049c0bd73f2bca11557ec3",
+      "bytes": 20093654,
+      "elf_sha256": "8a3d9b2db6518d57e697b1ec562969781b07b496bce9c253b7f4b6ffca359dab",
+      "native_build_source_commit": "2fb427434770f14135f25c209c48bc58a67a9f66"
+    },
+    "islands": {
+      "package": "cosmic-ext-halcyon-islands",
+      "version": "0.2.5~dev.integration.5",
+      "sha256": "7abf19d8fbbaefc96ec10547669d02a182d3f207a7c9c3a15ef08fa39277f570",
+      "bytes": 6015204,
+      "elf_sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+      "native_build_source_commit": "21d5d83eed4c4e9e9808e3018dfdd04ef787c5cb"
+    }
+  },
+  "companion_unstripped_sha256": "cff2d995e5da5c81bad4f1d7c4c6a6b65671fd6e9bcc4df3fa81040d39682163",
+  "payload_sha256": "f3bb6c779355b9fb4180a18c84dd7453e8d00b51720edc7376d8535bceb15635",
+  "manifest_sha256": "6c5abbd1acdda3d1e43440d0754b4f114d9d3c05711478b0ddab793016feffe3",
+  "catalog_sha256": "55a3e32c0e1c8ed6908a291afe9c27be2c63cf6bbdd3cdbb83deb761cd43e98d",
+  "cohort_count": 0,
+  "runtime_targets": [],
+  "helper_hashes": {
+    "panel_launcher.py": "2445c851cbd274a5de841e11119904f0532044af15a9e9fc34e300e60a0a926e",
+    "bundle_contract.py": "232e6e5f4b0c7a801e7f9093926b0ecfb16bba0cdb270f1cb498599b9deb1662",
+    "runtime_identity.py": "962599de58e0be3c1cfbb92e4a39f9335e4869a51a088fd6e957c328434e8844",
+    "install_status.py": "8f6ca3e694fdc9edce67e5bb800ccc6b7892d8bc07013e8fb15612edae765688",
+    "install.py": "46e3e98cdaf11f0fd4416b5cb37ccafc2cd8d07e594647e6b48032bc8b488d74",
+    "refresh.py": "f29d50b9a06f2d47d4d09d630964d470498414446b8892a6282b6fbfc75fc591",
+    "selector.py": "ac1c56d1ed3b83b5f0f4a2afbb277defb6b4491d9154c04176bfad3ba50e5be5",
+    "panel_configuration.py": "6be28029f5d1e6725a21e91ded03d0c882ab3206469f7facc1f272695b49c97f",
+    "runtime_target.py": "38e3252a3aba45c18c29c88cfbdc8beebcc1073468e67c4c73d28ac84debf931",
+    "verification.py": "0a258bca4b4c76d60da608c093c5bb2ed005ee8efe958f102452a5ea38ac2582"
+  },
+  "changed_helpers_since_integration4": [
+    "panel_launcher.py"
+  ],
+  "audits_passed": true,
+  "packaging_tests_passed": 17,
+  "lintian_errors": 0,
+  "lintian_main_warnings": 3,
+  "native_qualification": "NOT PERFORMED; empty catalog grants no admission"
+}
