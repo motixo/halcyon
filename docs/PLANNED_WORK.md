@@ -16,6 +16,44 @@ records the real startup, host-settings and helper changes needed before a
 working Flatpak can be submitted. Existing release notes below describe the
 historical preparation state, not a current publication hold.
 
+## Islands rejects configured applets — issue #12
+
+Recorded 2026-10-24. [Report and panel configuration](https://github.com/profilaz3/halcyon/issues/12).
+**Startup rejection reproduced locally; not fixed or released.** Prioritize
+restoring existing Islands layouts before the next release.
+
+After upgrading from 0.2.0 to 0.2.5 on COSMIC 1.11, the reporter gets the stock
+panel at every login. Their Workspaces (`com.system76.CosmicAppletWorkspaces`)
+and Caffeine (`net.tropicbliss.CosmicExtAppletCaffeine`) IDs are absent from the
+startup policy's hard-coded list. The reporter says the layout worked in 0.2.0
+and the separate native ABI probe passes.
+
+Confirmed using production `runtime_compatibility.Session` in the existing
+isolated configuration/process fixture: Audio is accepted; each reported ID
+independently raises `unqualified_configured_applet` before desktop-entry
+resolution. The reporter's machine and live panels were not touched.
+
+Two defects need a combined correction:
+
+- `panel_configuration.Snapshot._inventory` rejects IDs outside its policy;
+  `runtime_compatibility.Session` also hard-codes executable pinning and process
+  discovery. Adding just two names would repeat this failure for other applets.
+- The launcher discards the preparation exception. Status then shows
+  `startup_not_ready` / “Compatibility update needed” without the real reason.
+
+Derive ordinary supported-family startup's applet inventory from configured
+desktop entries and executable contracts, with bounded discovery, change
+detection, host-owned readiness and cleanup. Keep historical exact qualification
+separate. Preserve actionable failure details through CLI and Settings. Do not
+remove the user's applets or require a stock-only layout.
+
+Acceptance: both reported IDs and another custom applet; standalone/multiplex
+executables; multiple displays and repeated instances; missing/changed entries
+and binaries; failed startup/cleanup; clear CLI/UI explanations. Actual applet
+popup, login and disable checks remain necessary before claiming native support.
+This issue is separate from the Settings rendering and monitor-placement fixes.
+No GitHub reply, closure or publication was performed during this investigation.
+
 ## Historical release preparation
 
 Feature requests and user reports, with implementation and investigation status.
