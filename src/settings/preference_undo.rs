@@ -36,6 +36,8 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
     let mut add = |parts: &[&str]| fields.push(pointer(parts));
     match message {
         Message::WidgetDisplay(_) => add(&["widget_display"]),
+        Message::WidgetMonitor(w, _) => add(&["widget_monitors", w.key(), "display"]),
+        Message::WidgetMonitorHide(w, _) => add(&["widget_monitors", w.key(), "hide_disconnected"]),
         Message::Widget(widget, _) if widget.is_tool() => add(&[widget.key(), "enabled"]),
         Message::Widget(Widget::Glance, visible) => {
             add(&["glance", "enabled"]);

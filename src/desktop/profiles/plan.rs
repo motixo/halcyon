@@ -1551,6 +1551,37 @@ fn plan_widgets(
     {
         members.push(("/appearance/accent", None));
     }
+    // A portable layout applies to saved display variants too. Assignments
+    // stay local; the transaction records each variant map for exact Undo.
+    let mut display_edits = std::collections::BTreeMap::new();
+    for (pointer, desired) in &members {
+        let (key, field) = if let Some(key) = pointer.strip_prefix("/widget_positions/") {
+            (key, "position")
+        } else if let Some(key) = pointer.strip_prefix("/widget_sizes/") {
+            (key, "size")
+        } else {
+            continue;
+        };
+        let path = format!("/monitor_layouts/{key}");
+        let Some(field_spec) = widget::field(&path) else {
+            continue;
+        };
+        let Some(original) = widget::get(current, field_spec.pointer) else {
+            continue;
+        };
+        let edited = display_edits.entry(field_spec.pointer).or_insert(original);
+        if let Some(layouts) = edited.as_object_mut() {
+            for layout in layouts.values_mut() {
+                if let Some(layout) = layout.as_object_mut() {
+                    layout.insert(
+                        field.into(),
+                        desired.clone().unwrap_or(serde_json::Value::Null),
+                    );
+                }
+            }
+        }
+    }
+    members.extend(display_edits.into_iter().map(|(p, v)| (p, Some(v))));
     let mut patch = WidgetPatch::new();
     for (pointer, desired) in members {
         let original = widget::get(current, pointer);

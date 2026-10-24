@@ -362,8 +362,29 @@ fn capture_workspaces(
 /// The widget configuration with Config's defaults filled in, as JSON.
 fn read_widgets(path: &std::path::Path) -> Result<(Value, Value), String> {
     let text = config::read_config_text(path)?;
-    let raw = config::parse_config_text(text.as_deref())?;
+    let mut raw = config::parse_config_text(text.as_deref())?;
     let typed = config::check_config_value(&raw)?;
+    // Export the visible layout, without exporting this machine's display IDs.
+    let contexts = if config::Config::path().as_deref() == Some(path) {
+        crate::layout_state::read(&typed).widget_displays
+    } else {
+        Default::default()
+    };
+    let contexts = crate::drawer::Widget::ALL
+        .into_iter()
+        .filter_map(|w| {
+            contexts
+                .get(w.key())
+                .cloned()
+                .or_else(|| typed.monitor_preference(w).map(str::to_owned))
+                .map(|display| (w.key().to_string(), display))
+        })
+        .collect();
+    let typed = typed.on_displays(&contexts);
+    if typed.multi_monitor() {
+        raw["widget_positions"] = serde_json::json!(typed.widget_positions);
+        raw["widget_sizes"] = serde_json::json!(typed.widget_sizes);
+    }
     let effective = serde_json::to_value(&typed).map_err(|error| error.to_string())?;
     Ok((raw, effective))
 }

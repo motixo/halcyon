@@ -123,7 +123,7 @@ impl Cards {
         self.config
             .glance
             .auto_width(self.glance_panel())
-            .min((self.screen_size[0] - 48.).max(1.))
+            .min((self.widget_screen(Widget::Glance)[0] - 48.).max(1.))
     }
     pub(super) fn glance_width(&self) -> f32 {
         self.explicit_size(Widget::Glance)
@@ -383,10 +383,10 @@ impl Cards {
                     Widget::Glance,
                     *position,
                     size,
-                    self.screen_size,
+                    self.widget_screen(Widget::Glance),
                 );
                 if let Some(size) = self.explicit_size(Widget::Glance) {
-                    crate::layout::clamp(point, size, self.screen_size)
+                    crate::layout::clamp(point, size, self.widget_screen(Widget::Glance))
                 } else {
                     point
                 }
@@ -395,7 +395,7 @@ impl Cards {
                 crate::layout::clamp(
                     [82., 88.],
                     self.explicit_size(Widget::Glance).unwrap_or(size),
-                    self.screen_size,
+                    self.widget_screen(Widget::Glance),
                 )
             })
     }
@@ -409,13 +409,13 @@ impl Cards {
         let positions = if self.layout_editor.active {
             self.layout_editor.positions()
         } else {
-            &self.config.widget_positions
+            self.effective_positions()
         };
         let position = self.glance_position(positions);
         [
             self.glance_width(),
             self.glance_natural_height()
-                .min((self.screen_size[1] - position[1] - 48.).max(1.)),
+                .min((self.widget_screen(Widget::Glance)[1] - position[1] - 48.).max(1.)),
         ]
     }
     fn glance_needs_outer_scroll(&self, height: f32) -> bool {
@@ -435,12 +435,12 @@ impl Cards {
         {
             return None;
         }
-        let clock = self.position_from(Widget::Clock, &self.config.widget_positions);
+        let clock = self.position_from(Widget::Clock, self.effective_positions());
         let encoded = crate::layout_state::encode_position(
             Widget::Glance,
             clock,
             [self.glance_width(), 1.],
-            self.screen_size,
+            self.widget_screen(Widget::Glance),
         );
         match Config::seed_glance_position(encoded) {
             Ok(config) => Some(config),

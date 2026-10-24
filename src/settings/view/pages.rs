@@ -40,7 +40,7 @@ impl Settings {
     ) -> Element<'_, Message> {
         let combined = self.config.glance.enabled
             && matches!(widget, Widget::Clock | Widget::Weather | Widget::Calendar);
-        split(
+        let header = split(
             heading(title, ""),
             row::with_children(vec![
                 label(
@@ -59,7 +59,17 @@ impl Settings {
             .spacing(8)
             .align_y(Alignment::Center)
             .into(),
-        )
+        );
+        if !combined
+            && (self.displays.outputs().len() > 1
+                || self.config.widget_monitors.contains_key(widget.key()))
+        {
+            column::with_children(vec![header, self.widget_display_controls(widget)])
+                .spacing(8)
+                .into()
+        } else {
+            header
+        }
     }
 
     /// Each widget has one row: its name opens settings and its switch controls visibility.

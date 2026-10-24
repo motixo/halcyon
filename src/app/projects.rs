@@ -674,7 +674,9 @@ impl Cards {
         let width = self
             .explicit_size(Widget::Projects)
             .map(|size| size[0])
-            .unwrap_or_else(|| 360_f32.min((self.screen_size[0] - 48.).max(1.)));
+            .unwrap_or_else(|| {
+                360_f32.min((self.widget_screen(Widget::Projects)[0] - 48.).max(1.))
+            });
         let groups = self
             .projects
             .as_ref()

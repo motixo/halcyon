@@ -127,7 +127,8 @@ impl Cards {
     /// Whether a tool is on the desktop. Music shows while it has something
     /// to show (see `music_present`), and always while arranging.
     pub(super) fn tool_shown(&self, widget: Widget) -> bool {
-        self.config.widget_visible(widget)
+        self.widget_available(widget)
+            && self.config.widget_visible(widget)
             && (widget != Widget::Music || self.layout_editor.active || self.music_present())
     }
 
@@ -293,7 +294,7 @@ impl Cards {
     fn note_lifted(&self) -> bool {
         self.tools.draft.as_ref().is_some_and(|draft| draft.typing)
             && self.config.widget_visible(Widget::Notes)
-            && !self.layout_editor.active
+            && !(self.layout_editor.active && self.arranging_widget(Widget::Notes))
     }
 
     /// Hiding the note or arranging the desktop pauses its draft: the
@@ -637,7 +638,9 @@ impl Cards {
 
     fn tool_surface(&self, widget: Widget) -> Task<Message> {
         let size = self.tool_surface_size(widget);
-        let position = if self.tool_shown(widget) && !self.layout_editor.active {
+        let position = if self.tool_shown(widget)
+            && !(self.layout_editor.active && self.arranging_widget(widget))
+        {
             self.placed_position(widget)
         } else {
             [-10000., 0.]
@@ -645,7 +648,7 @@ impl Cards {
         let editing = widget == Widget::Notes && self.note_lifted();
         get_layer_surface(SctkLayerSurfaceSettings {
             id: self.widget_id(widget),
-            output: self.layer_output(),
+            output: self.widget_layer_output(widget),
             layer: if editing { Layer::Top } else { Layer::Bottom },
             keyboard_interactivity: if editing {
                 KeyboardInteractivity::Exclusive
@@ -695,7 +698,9 @@ impl Cards {
                 );
                 continue;
             }
-            let point = if self.tool_shown(widget) && !self.layout_editor.active {
+            let point = if self.tool_shown(widget)
+                && !(self.layout_editor.active && self.arranging_widget(widget))
+            {
                 self.placed_position(widget)
             } else {
                 [-10000., 0.]

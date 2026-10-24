@@ -511,11 +511,7 @@ impl Settings {
             inspector.push(self.placement_inspector());
             inspector.push(self.simple_status());
             container(column::with_children(inspector).spacing(6))
-                .height(if self.error {
-                    Length::Shrink
-                } else {
-                    Length::Fixed(126.)
-                })
+                .height(Length::Shrink)
                 .padding([6, 22])
                 .width(Length::Fill)
                 .into()

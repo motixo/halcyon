@@ -215,6 +215,48 @@ cause. A short smoke test alone cannot dismiss an hour-long lock-up report.
 If this problem is reproduced during current release testing, treat it as a
 release blocker rather than hiding it in the backlog.
 
+## Multi-monitor: 0.3.0 local implementation
+
+Updated 2026-10-24. Implemented locally on `feat/multi-monitor-030`; not installed,
+pushed or released. This extends the earlier global display selector below.
+
+- Layout shows the connected screens in their logical arrangement. Select one
+  to edit its widgets; Identify briefly labels the physical screens without
+  taking keyboard or pointer input.
+- Each widget can inherit the default display or choose a separate display.
+  These controls also appear on its own settings page, so a hidden widget can
+  be recovered without finding its card on the desktop. Missing displays temporarily use an available display, or hide the widget
+  when **Hide if disconnected** is enabled. The original preference survives.
+- Position and size are saved separately for each widget/display. Editing a
+  temporary placement does not overwrite its layout on the preferred screen.
+- Arrange on desktop opens on the screen selected in Layout. Other screens'
+  widgets remain outside that editing overlay. Disconnect/geometry changes
+  cancel in-progress drags and retire their input surfaces.
+- Compositor-provided logical sizes drive each widget's geometry independently.
+  Mixed scaling and portrait layouts use those logical dimensions, rather than
+  treating every screen as the first screen's pixel size.
+- When readable, unique EDID serials provide a local hashed display identity
+  across connection changes. Displays without an unambiguous identity keep
+  connection-name matching; identical/ambiguous devices are not guessed.
+- Saved Setups capture the effective layout without physical display identities.
+  Applying a layout updates saved display variants and supports Undo, preserving
+  display assignments and disconnect choices.
+- Dock & panel links from Layout to its existing native placement controls.
+  Resolution, rotation and OS display arrangement remain in COSMIC Settings.
+
+Validation uses isolated Wayland output handles, native widget interaction and
+small/large Settings captures. These checks do not qualify real docking,
+resume, GPU behavior or a physical mixed-DPI setup. The requested laptop could
+not be inspected: its local hostname did not resolve, and the existing trusted
+Tailscale laptop address refused SSH on port 22. No remote preferences changed.
+Physical laptop verification remains the next acceptance step when accessible.
+
+Local validation: the full app suite passed 989 tests with eight existing skips.
+After the final first-use and hidden-widget UI refinements, all eight dedicated
+multi-monitor tests, 30 placement tests and four display Settings tests passed.
+The production compile, formatting and whitespace checks passed. Two existing
+unused-code warnings in Calendar and widget styling remain unchanged.
+
 ## Multi-monitor report: remember the chosen display
 
 Recorded: 2026-10-23. Priority: high. Status: open user report; implementation and review corrections complete locally; native multi-output verification pending.

@@ -145,8 +145,10 @@ impl Cards {
             .reconcile(&cfg.devbox, cfg.widget_visible(Widget::Devbox));
         let notes_shown = cfg.widget_visible(Widget::Notes);
         let notes_changed = notes_shown != self.config.widget_visible(Widget::Notes);
-        let display_changed = self.config.widget_display != cfg.widget_display;
+        let display_changed = self.config.widget_display != cfg.widget_display
+            || self.config.widget_monitors != cfg.widget_monitors;
         self.config = cfg;
+        self.refresh_display_layouts();
         if display_changed {
             tasks.push(self.reconcile_output());
         }
@@ -297,7 +299,12 @@ impl Cards {
         let _ = std::fs::remove_file(path);
         let value: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
         match value["action"].as_str()? {
-            "arrange" => Some(Message::Arrange),
+            "arrange" => Some(match value["display"].as_str() {
+                Some(display) if crate::displays::valid_name(display) => {
+                    Message::ArrangeDisplay(display.into())
+                }
+                _ => Message::Arrange,
+            }),
             "reset-layout" => Some(Message::ResetLayout),
             "close" => Some(Message::HideControls),
             "rail" => Some(Message::ShowControls),

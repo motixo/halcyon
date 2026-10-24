@@ -22,6 +22,7 @@ mod direct;
 mod display_tests;
 mod drafts;
 mod legacy;
+mod monitors;
 mod motion;
 mod native_jobs;
 mod navigation;
@@ -432,6 +433,12 @@ pub enum Message {
     UsageSaved(Result<bool, String>),
     OpenPrivacy,
     WidgetDisplay(Option<String>),
+    WidgetMonitor(Widget, Option<String>),
+    WidgetMonitorHide(Widget, bool),
+    MonitorPreview(String),
+    IdentifyDisplays,
+    ClearDisplayLabels(Vec<window::Id>),
+    DisplayIdentities(u64, std::collections::BTreeMap<String, String>),
     DisplayOutput(crate::displays::OutputEvent, crate::displays::WlOutput),
     Wizard(wizard::Message),
     /// Starts first-run setup again (App settings).
@@ -614,6 +621,7 @@ pub struct Settings {
     usage_busy: bool,
     usage_error: Option<String>,
     displays: crate::displays::Registry,
+    identified_displays: Vec<(window::Id, String)>,
     core: Core,
     page: Page,
     /// First-run setup, shown instead of the pages while it runs.
@@ -831,6 +839,7 @@ impl cosmic::Application for Settings {
             usage_error: usage.err(),
             usage_busy: false,
             displays: Default::default(),
+            identified_displays: Vec::new(),
             core,
             page,
             wizard,
@@ -1265,6 +1274,19 @@ impl cosmic::Application for Settings {
         }
         Subscription::batch(subscriptions)
     }
+    fn view_window(&self, id: window::Id) -> Element<'_, Message> {
+        if let Some((_, label)) = self
+            .identified_displays
+            .iter()
+            .find(|(known, _)| *known == id)
+        {
+            return cosmic::widget::container(cosmic::widget::text::title3(label.clone()))
+                .padding(20)
+                .class(cosmic::theme::Container::Card)
+                .into();
+        }
+        cosmic::widget::text::body("").into()
+    }
     fn view(&self) -> Element<'_, Message> {
         use cosmic::Apply;
         let core = &self.core;
@@ -1540,6 +1562,37 @@ impl Settings {
             }
             Message::DisplayOutput(event, handle) => {
                 self.displays.update(event, handle);
+                if std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").is_none() {
+                    let generation = self.displays.generation;
+                    return cosmic::task::future(async move {
+                        let ids = tokio::task::spawn_blocking(crate::displays::physical_identities)
+                            .await
+                            .unwrap_or_default();
+                        Message::DisplayIdentities(generation, ids)
+                    });
+                }
+            }
+            Message::DisplayIdentities(generation, ids) => {
+                self.displays.accept_identities(generation, ids);
+            }
+            Message::MonitorPreview(display) => self.select_monitor_preview(display),
+            Message::IdentifyDisplays => return self.identify_displays(),
+            Message::ClearDisplayLabels(ids) => {
+                self.identified_displays.retain(|(id, _)| !ids.contains(id));
+                return Task::batch(ids.into_iter().map(cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface));
+            }
+            Message::WidgetMonitor(widget, display) => {
+                if display
+                    .as_deref()
+                    .is_some_and(|d| self.displays.unique(d).is_none())
+                {
+                    self.failed("That display is no longer connected.".into());
+                } else {
+                    self.save_widget_monitor(widget, "display", serde_json::json!(display));
+                }
+            }
+            Message::WidgetMonitorHide(widget, hide) => {
+                self.save_widget_monitor(widget, "hide_disconnected", hide.into())
             }
             Message::WidgetDisplay(name) => {
                 if name != self.config.widget_display
@@ -1551,7 +1604,14 @@ impl Settings {
                         "That display is no longer available with a unique connection name.".into(),
                     );
                 } else {
-                    self.save(serde_json::json!({"widget_display": name}));
+                    self.placement.leave();
+                    if self.placement.dirty() {
+                        let _ = self.update_placement(placement::Message::Save);
+                    }
+                    if !self.placement.dirty() {
+                        self.save(serde_json::json!({"widget_display": name}));
+                        self.placement.refresh(&self.config);
+                    }
                 }
             }
             Message::Preview => return Task::none(),
@@ -2514,7 +2574,11 @@ impl Settings {
                     return Task::none();
                 }
                 self.working("Opening desktop arrangement…");
-                return desktop_command("arrange", "Drag widgets, then save your layout");
+                return desktop_command_on_display(
+                    "arrange",
+                    "Drag widgets, then save your layout",
+                    self.placement.display.clone(),
+                );
             }
             Message::OpenDesktop(page) => {
                 return run_command(
@@ -4614,7 +4678,11 @@ fn desktop_command_path() -> Option<PathBuf> {
         crate::paths::runtime_dir().map(|dir| dir.join("command.json"))
     }
 }
-fn desktop_command(action: &'static str, status: &'static str) -> Task<Message> {
+fn desktop_command_on_display(
+    action: &'static str,
+    status: &'static str,
+    display: Option<String>,
+) -> Task<Message> {
     let path = desktop_command_path();
     let isolated = preview();
     cosmic::task::future(async move {
@@ -4634,8 +4702,11 @@ fn desktop_command(action: &'static str, status: &'static str) -> Task<Message> 
                 .ok_or_else(|| "Desktop command directory unavailable".to_string())?;
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             let temp = path.with_extension("tmp");
-            std::fs::write(&temp, json!({"action": action}).to_string())
-                .map_err(|error| error.to_string())?;
+            std::fs::write(
+                &temp,
+                json!({"action": action, "display": display}).to_string(),
+            )
+            .map_err(|error| error.to_string())?;
             std::fs::rename(temp, path).map_err(|error| error.to_string())
         })
         .await

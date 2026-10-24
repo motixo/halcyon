@@ -217,3 +217,135 @@ fn monitor_pinning_config_validation_and_portable_boundary() {
         Some("DP-2")
     );
 }
+
+#[test]
+fn multi_monitor_settings_assignment_preview_undo_and_layout() {
+    if isolated(
+        "settings::display_tests::multi_monitor_settings_assignment_preview_undo_and_layout",
+    ) {
+        return;
+    }
+    use crate::drawer::Widget;
+    Config::save_changes(serde_json::json!({"setup_dismissed":true,"glance":{"enabled":false},"enabled_widgets":["weather","calendar"]})).unwrap();
+    let wire = Wire::new();
+    let a = wire.output(1);
+    let b = wire.output(2);
+    let (mut app, _) = Settings::init(Core::default(), Page::WidgetLayout);
+    let mut ia = info(Some("eDP-1"), (1280, 720));
+    ia.model = "Laptop".into();
+    let mut ib = info(Some("DP-2"), (1920, 1080));
+    ib.model = "External".into();
+    ib.logical_position = Some((1280, 0));
+    ib.scale_factor = 2;
+    let _ = app.update(Message::DisplayOutput(OutputEvent::Created(Some(ia)), a));
+    let _ = app.update(Message::DisplayOutput(
+        OutputEvent::Created(Some(ib)),
+        b.clone(),
+    ));
+    let mut native = crate::native_test::Native::new(cosmic::iced::Size::new(760., 300.));
+    let bounds = native.bounds(
+        app.widget_display_controls(Widget::Weather),
+        "widget-monitor-weather-DP-2",
+    );
+    let point = bounds.center();
+    let mut clicked = false;
+    for event in [
+        cosmic::iced::mouse::Event::CursorMoved { position: point },
+        cosmic::iced::mouse::Event::ButtonPressed(cosmic::iced::mouse::Button::Left),
+        cosmic::iced::mouse::Event::ButtonReleased(cosmic::iced::mouse::Button::Left),
+    ] {
+        let (messages, _) = native.event(
+            app.widget_display_controls(Widget::Weather),
+            cosmic::iced::Event::Mouse(event),
+            point,
+        );
+        for message in messages {
+            clicked |= matches!(message, Message::WidgetMonitor(Widget::Weather, _));
+            let _ = app.update(message);
+        }
+    }
+    assert!(clicked);
+    assert!(!app.error, "{}", app.status);
+    assert_eq!(
+        Config::try_load().unwrap().widget_monitors["weather"]
+            .display
+            .as_deref(),
+        Some("DP-2")
+    );
+    let _ = app.update(Message::UndoPreferences);
+    assert!(
+        Config::try_load()
+            .unwrap()
+            .widget_monitors
+            .get("weather")
+            .is_none_or(|w| w.display.is_none())
+    );
+    let _ = app.update(Message::WidgetMonitor(Widget::Weather, Some("DP-2".into())));
+    let mut snapshot = crate::layout_state::read(&app.config);
+    snapshot.monitors = [
+        ("eDP-1".into(), [1280., 720.]),
+        ("DP-2".into(), [1920., 1080.]),
+    ]
+    .into();
+    snapshot.widget_displays = Widget::ALL
+        .into_iter()
+        .map(|w| {
+            (
+                w.key().into(),
+                if w == Widget::Weather {
+                    "DP-2"
+                } else {
+                    "eDP-1"
+                }
+                .into(),
+            )
+        })
+        .collect();
+    snapshot.display = Some(crate::layout_state::DisplayState {
+        output: Some("eDP-1".into()),
+        ready: true,
+        epoch: 1,
+    });
+    crate::layout_state::publish(&snapshot, crate::layout_state::next_generation());
+    let _ = app.update(Message::MonitorPreview("DP-2".into()));
+    assert_eq!(app.placement.screen(), [1920., 1080.]);
+    let _ = app.update(Message::Placement(placement::Message::Select(
+        "weather".into(),
+    )));
+    let _ = app.update(Message::Placement(placement::Message::Nudge(
+        [-1, 0],
+        false,
+    )));
+    let _ = app.update(Message::Placement(placement::Message::Save));
+    assert!(!app.error, "{}", app.status);
+    let saved = Config::try_load().unwrap();
+    assert!(saved.monitor_layouts["weather"].contains_key("DP-2"));
+    assert!(!saved.widget_positions.contains_key("weather"));
+    let _ = app.update(Message::UndoPreferences);
+    let saved = Config::try_load().unwrap();
+    assert!(
+        saved
+            .monitor_layouts
+            .get("weather")
+            .is_none_or(|m| !m.contains_key("DP-2"))
+    );
+    for (width, height) in [(820., 600.), (1280., 720.)] {
+        let _ = app.update(Message::Resized(cosmic::iced::Size::new(width, height)));
+        let mut capture = crate::native_test::Native::new(cosmic::iced::Size::new(width, height));
+        capture.capture(
+            app.settings_view(),
+            &cosmic::theme::active(),
+            &format!("multi-monitor-layout-{}", width as u32),
+        );
+    }
+    // A disconnected hidden widget still has an accessible assignment control.
+    let _ = app.update(Message::WidgetMonitorHide(Widget::Weather, true));
+    let _ = app.update(Message::DisplayOutput(OutputEvent::Removed, b));
+    // A hidden widget remains reachable from My widgets → Weather, even
+    // though there is no card to click on the layout canvas.
+    let _ = app.update(Message::Page(Page::Weather));
+    let bounds = native.bounds(app.settings_view(), "widget-monitor-weather-default");
+    assert!(bounds.width > 0. && bounds.height > 0.);
+    app.placement.select("weather");
+    let _ = native.render(app.placement_inspector(), &cosmic::theme::active());
+}

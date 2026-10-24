@@ -96,19 +96,30 @@ struct Geometry {
 
 impl Geometry {
     fn read(config: &Config) -> Self {
+        Self::on_display(config, None)
+    }
+    fn on_display(config: &Config, display: Option<&str>) -> Self {
+        let snapshot = crate::layout_state::for_display(config, display, false);
+        let output = snapshot.display.as_ref().and_then(|d| d.output.as_ref());
         Self {
             visible: Widget::ALL
                 .into_iter()
-                .filter(|widget| config.widget_visible(*widget))
+                .filter(|widget| {
+                    config.widget_visible(*widget)
+                        && (snapshot.widget_displays.is_empty()
+                            || snapshot.widget_displays.get(widget.key()) == output)
+                })
                 .map(|widget| widget.key().into())
                 .collect(),
-            snapshot: crate::layout_state::read(config),
-            defaults: crate::layout_state::defaults(config),
+            defaults: crate::layout_state::for_display(config, display, true),
+            snapshot,
         }
     }
 }
 
 pub(super) struct PlacementEditor {
+    pub(super) display: Option<String>,
+    contexts: crate::config::monitors::Contexts,
     snapshot: Snapshot,
     defaults: Snapshot,
     visible: BTreeSet<String>,
@@ -141,6 +152,8 @@ pub(super) struct PlacementEditor {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub(super) struct SavedPlacement {
     #[serde(default)]
+    pub(super) contexts: crate::config::monitors::Contexts,
+    #[serde(default)]
     pub(super) saved_sizes: BTreeMap<String, [f32; 2]>,
     #[serde(default)]
     pub(super) sizes: BTreeMap<String, [f32; 2]>,
@@ -157,6 +170,7 @@ pub(super) struct SavedPlacement {
 impl PlacementEditor {
     pub(super) fn session_draft(&self) -> Option<SavedPlacement> {
         self.dirty().then(|| SavedPlacement {
+            contexts: self.contexts.clone(),
             saved_sizes: self.saved_sizes.clone(),
             sizes: self.sizes.clone(),
             saved_positions: self.saved_positions.clone(),
@@ -198,6 +212,11 @@ impl PlacementEditor {
                 return Err("The saved widget layout contains invalid sizes".into());
             }
         }
+        if saved.contexts != self.contexts {
+            return Err(
+                "Reconnect the displays used by this arrangement before restoring it.".into(),
+            );
+        }
         self.saved_sizes = saved.saved_sizes;
         self.sizes = saved.sizes;
         self.saved_positions = saved.saved_positions;
@@ -218,7 +237,18 @@ impl PlacementEditor {
     }
 
     fn from_geometry(config: &Config, geometry: Geometry) -> Self {
+        let config = config.on_displays(&geometry.snapshot.widget_displays);
         Self {
+            display: geometry
+                .snapshot
+                .display
+                .as_ref()
+                .and_then(|d| d.output.clone()),
+            contexts: if config.multi_monitor() || geometry.snapshot.monitors.len() > 1 {
+                geometry.snapshot.widget_displays.clone()
+            } else {
+                Default::default()
+            },
             snapshot: geometry.snapshot,
             defaults: geometry.defaults,
             visible: geometry.visible,
@@ -261,8 +291,17 @@ impl PlacementEditor {
     }
 
     pub(super) fn refresh(&mut self, config: &Config) {
+        let next = Geometry::on_display(config, self.display.as_deref());
+        let next_contexts = if config.multi_monitor() || next.snapshot.monitors.len() > 1 {
+            next.snapshot.widget_displays.clone()
+        } else {
+            Default::default()
+        };
+        if next_contexts != self.contexts {
+            self.cancel_drag();
+        }
         if self.dirty() || self.dragging() {
-            self.reconcile(Geometry::read(config));
+            self.reconcile(next);
             return;
         }
         let selected = self.selected.clone();
@@ -272,9 +311,10 @@ impl PlacementEditor {
         let inside = self.inside;
         let screen = self.snapshot.screen;
         let actions = std::mem::take(&mut self.session_actions);
-        *self = Self::new(config);
+        *self = Self::from_geometry(config, next);
         self.session_actions = actions;
-        self.selected = selected.filter(|key| self.visible.contains(key));
+        self.selected =
+            selected.filter(|key| Widget::parse(key).is_some_and(|w| config.widget_visible(w)));
         self.guides = guides;
         self.resize_mode = resize_mode;
         if self.snapshot.screen == screen {
@@ -285,7 +325,7 @@ impl PlacementEditor {
 
     /// Selects a visible card without starting a drag (keyboard placement).
     pub(super) fn select(&mut self, key: &str) {
-        if !self.dragging() && self.visible.contains(key) {
+        if !self.dragging() && Widget::parse(key).is_some() {
             self.selected = Some(key.into());
         }
     }
@@ -638,7 +678,11 @@ impl PlacementEditor {
         ] {
             for key in draft.keys().chain(before.keys()) {
                 if draft.get(key) != before.get(key) {
-                    fields.push(format!("/{name}/{key}"));
+                    fields.push(if self.contexts.contains_key(key) {
+                        format!("/monitor_layouts/{key}")
+                    } else {
+                        format!("/{name}/{key}")
+                    });
                 }
             }
         }
@@ -646,7 +690,13 @@ impl PlacementEditor {
             self.materialized
                 .keys()
                 .filter(|key| self.positions.contains_key(*key))
-                .map(|key| format!("/widget_positions/{key}")),
+                .map(|key| {
+                    if self.contexts.contains_key(key) {
+                        format!("/monitor_layouts/{key}")
+                    } else {
+                        format!("/widget_positions/{key}")
+                    }
+                }),
         );
         if self.snap != self.saved_snap {
             fields.push("/placement/snap".into());
@@ -887,7 +937,17 @@ impl Settings {
             .wrap()
             .into();
         };
-        let size = editor.display_size(widget.key()).unwrap();
+        let Some(size) = editor.display_size(widget.key()) else {
+            return column::with_children(vec![
+                text::body(widget.title()).into(),
+                self.widget_display_controls(widget),
+                button::text("Done")
+                    .on_press(message(Message::ClearSelection))
+                    .into(),
+            ])
+            .spacing(6)
+            .into();
+        };
         let dimensions = |axis: usize, title: &'static str| {
             let mut minus = [0, 0];
             minus[axis] = -1;
@@ -911,6 +971,7 @@ impl Settings {
             .into()
         };
         column::with_children(vec![
+            self.widget_display_controls(widget),
             row::with_children(vec![
                 label(widget.title(), 13., accent),
                 button::text("Customize")
@@ -984,7 +1045,12 @@ impl Settings {
         match event {
             Message::Pointer(point, scale) => self.placement.pointer(point, scale),
             Message::Press(key) => self.placement.press(&key),
-            Message::Select(key) => self.placement.select(&key),
+            Message::Select(key) => {
+                if let Some(display) = self.placement.snapshot.widget_displays.get(&key).cloned() {
+                    self.select_monitor_preview(display);
+                }
+                self.placement.select(&key);
+            }
             Message::ResizePress(key) => self.placement.resize_press(&key),
             Message::Resize(direction, large) => self.placement.resize_nudge(direction, large),
             Message::ResizeMode(value) => self.placement.resize_mode = value,
@@ -1047,9 +1113,16 @@ impl Settings {
                 if self.busy || !self.placement.dirty() {
                     return Task::none();
                 }
+                if !self.displays.outputs().is_empty()
+                    && self.displays.contexts(&self.config) != self.placement.contexts
+                {
+                    self.failed("Displays changed. Cancel this move and try again.".into());
+                    return Task::none();
+                }
                 let baseline = self.placement.save_baseline();
                 let revision = crate::desktop::store::revision();
-                match Config::save_layout_draft(
+                match Config::save_layout_on_displays(
+                    &self.placement.contexts,
                     &self.placement.positions,
                     &baseline,
                     &self.placement.sizes,
@@ -1118,6 +1191,16 @@ impl Settings {
         Task::none()
     }
 
+    pub(super) fn select_monitor_preview(&mut self, display: String) {
+        self.placement.cancel_drag();
+        if self.placement.dirty() {
+            let _ = self.update_placement(Message::Save);
+        }
+        if !self.placement.dirty() {
+            self.placement.display = Some(display);
+            self.placement.refresh(&self.config);
+        }
+    }
     /// Local connection choice; ordinary buttons remain keyboard accessible.
     pub(super) fn display_selector(&self) -> Element<'_, super::Message> {
         let options: Vec<Element<'_, super::Message>> = self
@@ -1142,11 +1225,17 @@ impl Settings {
             })
             .collect();
         column::with_children(vec![
-            label("Widget display", 14., FOREGROUND).into(),
+            label("Default widget display", 14., FOREGROUND).into(),
             row::with_children(options).spacing(6).wrap().into(),
-            label(self.displays.status(self.config.widget_display.as_deref()), 12., MUTED).into(),
-            label("The pin stays with this connection when monitors change. Fallback uses the built-in screen, then the alphabetically first connection. Dock & panel have separate choices.", 11., MUTED).into(),
-        ]).spacing(6).into()
+            label(
+                self.displays.status(self.config.widget_display.as_deref()),
+                12.,
+                MUTED,
+            )
+            .into(),
+        ])
+        .spacing(6)
+        .into()
     }
     /// The widget placement canvas on Layout. `height` follows the window.
     pub(super) fn placement_editor(&self, height: f32) -> Element<'_, super::Message> {
@@ -1355,7 +1444,7 @@ impl Settings {
             .align_y(Alignment::Center);
         let mut parts = vec![actions.into(), preview.into(), caption.into()];
         if matches!(self.page, super::Page::Overview | super::Page::WidgetLayout) {
-            parts.insert(0, self.display_selector());
+            parts.insert(0, self.monitor_overview());
         }
         if self.page != super::Page::Overview {
             parts.push(self.placement_inspector());
@@ -1373,6 +1462,22 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn multi_monitor_first_edit_uses_display_context_without_an_assignment() {
+        let config = crate::config::Config::default();
+        let mut geometry = super::Geometry::read(&config);
+        geometry.snapshot.monitors = [
+            ("eDP-1".into(), [1280., 720.]),
+            ("DP-2".into(), [1920., 1080.]),
+        ]
+        .into();
+        geometry.snapshot.widget_displays = [("weather".into(), "eDP-1".into())].into();
+        let editor = super::PlacementEditor::from_geometry(&config, geometry);
+        assert_eq!(
+            editor.contexts.get("weather").map(String::as_str),
+            Some("eDP-1")
+        );
+    }
     use super::*;
     #[test]
     fn center_actions_preserve_neighbors_and_roundtrip_through_undo_and_save() {
@@ -1601,6 +1706,8 @@ mod tests {
 
     fn weather_geometry() -> Geometry {
         let snapshot = Snapshot {
+            monitors: Default::default(),
+            widget_displays: Default::default(),
             display: None,
             screen: [1920., 1080.],
             widgets: vec![WidgetGeometry {

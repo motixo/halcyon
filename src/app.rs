@@ -12,6 +12,7 @@ mod devbox;
 #[cfg(test)]
 mod display_tests;
 mod glance;
+mod monitors;
 
 pub(crate) fn settings_clock_preview(
     config: &Config,
@@ -86,6 +87,7 @@ pub enum Message {
     LayoutResume,
     LayoutKeepSaved,
     ArrangeSurface(u64),
+    ArrangeDisplay(String),
     LayoutDefaults,
     LayoutSnap(bool),
     LayoutCancelDrag,
@@ -139,6 +141,7 @@ pub enum Message {
     SurfaceInput(window::Id, Box<Message>),
     /// Old surfaces are gone: measure the selected output for this epoch.
     RebuildSurfaces(u64),
+    DisplayIdentities(u64, std::collections::BTreeMap<String, String>),
     /// Automatic profile switches finished.
     Switched(Vec<(crate::automation::Due, crate::automation::run::Ran)>),
 }
@@ -149,6 +152,12 @@ pub struct Cards {
     surface_geometry: Option<layout::SurfaceGeometry>,
     displays: crate::displays::Registry,
     selected_output: Option<crate::displays::Output>,
+    arrange_display: Option<String>,
+    pending_arrange: bool,
+    widget_outputs: Vec<Option<crate::displays::Output>>,
+    extra_probes: Vec<monitors::Probe>,
+    display_positions: std::collections::BTreeMap<String, [f32; 2]>,
+    display_sizes: std::collections::BTreeMap<String, [f32; 2]>,
     paused_layout: Option<layout::LayoutEditor>,
     /// Display changes seen; only the latest one rebuilds the surfaces.
     display_generation: u64,
@@ -244,6 +253,12 @@ impl cosmic::Application for Cards {
             surface_geometry: None,
             displays: Default::default(),
             selected_output: None,
+            arrange_display: None,
+            pending_arrange: false,
+            widget_outputs: Vec::new(),
+            extra_probes: Vec::new(),
+            display_positions: Default::default(),
+            display_sizes: Default::default(),
             paused_layout: None,
             display_generation: 0,
             surface_inputs: None,
@@ -463,6 +478,9 @@ impl cosmic::Application for Cards {
 
 impl Cards {
     fn surface_view(&self, id: window::Id) -> Element<'_, Message> {
+        if self.extra_probes.iter().any(|p| p.id == id) {
+            return empty_surface();
+        }
         if id == self.ids[5] {
             return self.layout_view();
         }
@@ -472,7 +490,11 @@ impl Cards {
         if id == self.ids[3] {
             return self.edge_handle();
         }
-        if self.layout_editor.active {
+        if self.layout_editor.active
+            && Widget::ALL
+                .into_iter()
+                .any(|w| self.widget_id(w) == id && self.arranging_widget(w))
+        {
             return empty_surface();
         }
         if id == self.ids[8] {
@@ -551,17 +573,59 @@ impl Cards {
     }
     /// Each transition waits for a fresh probe. Old callbacks cannot create a new set.
     fn reconcile_output(&mut self) -> Task<Message> {
+        self.refresh_display_layouts();
         let selected = self
             .displays
-            .selected(self.config.widget_display.as_deref())
+            .selected(
+                self.arrange_display
+                    .as_deref()
+                    .or(self.config.widget_display.as_deref()),
+            )
             .cloned();
-        if match (&selected, &self.selected_output) {
-            (Some(a), Some(b)) => a.same_geometry(b),
-            (None, None) => true,
-            _ => false,
-        } {
+        let widget_outputs: Vec<_> = Widget::ALL
+            .into_iter()
+            .map(|w| self.widget_output(w).cloned())
+            .collect();
+        let same_widgets = widget_outputs.len() == self.widget_outputs.len()
+            && widget_outputs
+                .iter()
+                .zip(&self.widget_outputs)
+                .all(|(a, b)| match (a, b) {
+                    (Some(a), Some(b)) => a.same_geometry(b),
+                    (None, None) => true,
+                    _ => false,
+                });
+        if same_widgets
+            && match (&selected, &self.selected_output) {
+                (Some(a), Some(b)) => a.same_geometry(b),
+                (None, None) => true,
+                _ => false,
+            }
+        {
             self.selected_output = selected;
-            return Task::none();
+            // A newly connected, unassigned screen still belongs in Settings.
+            return if self.output_known {
+                self.sync_widget_surfaces()
+            } else {
+                Task::none()
+            };
+        }
+        self.widget_outputs = widget_outputs;
+        let old_probes = std::mem::take(&mut self.extra_probes);
+        for output in self.widget_outputs.iter().flatten() {
+            if selected.as_ref().is_some_and(|o| o.handle == output.handle)
+                || self
+                    .extra_probes
+                    .iter()
+                    .any(|p| p.output.handle == output.handle)
+            {
+                continue;
+            }
+            self.extra_probes.push(monitors::Probe {
+                output: output.clone(),
+                id: window::Id::unique(),
+                size: None,
+            });
         }
         self.cancel_layout_drag();
         if self.layout_editor.active {
@@ -583,7 +647,7 @@ impl Cards {
         self.forget_tool_surfaces();
         let old_ids =
             std::mem::replace(&mut self.ids, std::array::from_fn(|_| window::Id::unique()));
-        let destroy = Task::batch(old_ids.map(
+        let destroy = Task::batch(old_ids.into_iter().chain(old_probes.into_iter().map(|p|p.id)).map(
             cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface,
         ));
         destroy
@@ -598,7 +662,7 @@ impl Cards {
             output: self
                 .selected_output
                 .as_ref()
-                .and_then(|output| output.name().map(str::to_owned)),
+                .and_then(|output| self.displays.key(output)),
             ready: self.output_known,
             epoch: self.display_generation,
         });
@@ -722,6 +786,18 @@ impl Cards {
                 // A previously queued Create can finish after migration's
                 // Destroy. Its fresh ID cannot impersonate the new epoch;
                 // close that late surface as well as ignoring its geometry.
+                if let Some(probe) = self.extra_probes.iter_mut().find(|p| p.id == id) {
+                    if size.width.is_finite()
+                        && size.height.is_finite()
+                        && size.width > 0.
+                        && size.height > 0.
+                    {
+                        probe.size = Some([size.width, size.height]);
+                        self.surface_geometry = None;
+                        return self.sync_widget_surfaces();
+                    }
+                    return Task::none();
+                }
                 if !self.ids.contains(&id) && id != window::Id::NONE {
                     return cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface(id);
                 }
@@ -743,6 +819,12 @@ impl Cards {
                         self.output_known = true;
                         self.screen_size = screen;
                         let widgets = self.sync_widget_surfaces();
+                        let arrange = if std::mem::take(&mut self.pending_arrange) {
+                            self.arrange()
+                        } else {
+                            Task::none()
+                        };
+                        let widgets = Task::batch([widgets, arrange]);
                         return if first {
                             Task::batch([
                                 self.controls_surface(self.ids[2], self.sidebar.margin()),
@@ -784,6 +866,7 @@ impl Cards {
                 }
             }
             Message::Arrange => self.arrange(),
+            Message::ArrangeDisplay(display) => self.arrange_on_display(display),
             Message::ResetLayout => self.reset_layout(),
             Message::LayoutPress(widget) => {
                 self.layout_press(widget);
@@ -1098,10 +1181,17 @@ impl Cards {
                 Task::batch([task, self.capture_if_changed()])
             }
             Message::FocusCommand(command) => self.focus_command(&command),
+            Message::DisplayIdentities(generation, identities) => {
+                if self.displays.accept_identities(generation, identities) {
+                    self.reconcile_output()
+                } else {
+                    Task::none()
+                }
+            }
             Message::OutputChanged(event, output) => {
                 self.displays.update(event, output);
                 let migration = self.reconcile_output();
-                Task::batch([migration, self.automation_displays()])
+                Task::batch([migration, self.automation_displays(), self.identity_scan()])
             }
             Message::RebuildSurfaces(epoch) => {
                 if epoch != self.display_generation
@@ -1110,7 +1200,10 @@ impl Cards {
                 {
                     return Task::none();
                 }
-                self.layout_probe(self.ids[5], false)
+                Task::batch([
+                    self.layout_probe(self.ids[5], false),
+                    self.extra_probe_tasks(),
+                ])
             }
             Message::Switched(results) => self.automation_done(results),
             Message::MusicControlDone(result) => match result {
@@ -1718,7 +1811,7 @@ impl Cards {
         let width = self
             .explicit_size(Widget::Calendar)
             .map(|size| size[0])
-            .unwrap_or_else(|| (self.screen_size[0] - 48.).min(360.));
+            .unwrap_or_else(|| (self.widget_screen(Widget::Calendar)[0] - 48.).min(360.));
         let mut rows = Vec::new();
         if days.is_empty() {
             rows.push(18.);

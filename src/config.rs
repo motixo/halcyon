@@ -2,6 +2,7 @@ use crate::drawer::Widget;
 use cosmic::iced::Color;
 use serde::{Deserialize, Serialize};
 
+pub mod monitors;
 mod widget_colors;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -49,6 +50,11 @@ pub struct Config {
     pub devbox: DevboxPreferences,
     /// Local compositor connection name; None chooses a deterministic fallback.
     pub widget_display: Option<String>,
+    pub widget_monitors: std::collections::BTreeMap<String, monitors::WidgetMonitor>,
+    pub monitor_layouts: std::collections::BTreeMap<
+        String,
+        std::collections::BTreeMap<String, monitors::MonitorLayout>,
+    >,
     pub widget_positions: std::collections::BTreeMap<String, [f32; 2]>,
     /// Explicit logical-pixel dimensions; absence preserves content-sized layout.
     pub widget_sizes: std::collections::BTreeMap<String, [f32; 2]>,
@@ -97,6 +103,8 @@ impl Default for Config {
             glance: GlancePreferences::default(),
             devbox: DevboxPreferences::default(),
             widget_display: None,
+            widget_monitors: Default::default(),
+            monitor_layouts: Default::default(),
             widget_positions: std::collections::BTreeMap::new(),
             widget_sizes: Default::default(),
             placement: PlacementPreferences::default(),
@@ -157,6 +165,7 @@ impl Config {
         }
     }
     fn validate(&self) -> Result<(), String> {
+        self.validate_monitors()?;
         if self
             .widget_display
             .as_deref()
@@ -448,7 +457,9 @@ impl Config {
         let path = Self::path().ok_or("Configuration directory unavailable")?;
         Self::save_section_at(&path, "devbox", changes)
     }
-    pub fn save_layout_draft(
+    #[cfg(test)]
+    fn save_layout_draft_at(
+        path: &std::path::Path,
         positions: &std::collections::BTreeMap<String, [f32; 2]>,
         baseline_positions: &std::collections::BTreeMap<String, [f32; 2]>,
         sizes: &std::collections::BTreeMap<String, [f32; 2]>,
@@ -457,9 +468,9 @@ impl Config {
         placement: PlacementPreferences,
         baseline_placement: PlacementPreferences,
     ) -> Result<Self, String> {
-        let path = Self::path().ok_or("Configuration directory unavailable")?;
-        Self::save_layout_draft_at(
-            &path,
+        Self::save_layout_context_at(
+            path,
+            &Default::default(),
             positions,
             baseline_positions,
             sizes,
@@ -469,8 +480,32 @@ impl Config {
             baseline_placement,
         )
     }
-    fn save_layout_draft_at(
+    pub fn save_layout_on_displays(
+        contexts: &monitors::Contexts,
+        positions: &std::collections::BTreeMap<String, [f32; 2]>,
+        baseline_positions: &std::collections::BTreeMap<String, [f32; 2]>,
+        sizes: &std::collections::BTreeMap<String, [f32; 2]>,
+        baseline_sizes: &std::collections::BTreeMap<String, [f32; 2]>,
+        implicit_positions: &std::collections::BTreeMap<String, [f32; 2]>,
+        placement: PlacementPreferences,
+        baseline_placement: PlacementPreferences,
+    ) -> Result<Self, String> {
+        let path = Self::path().ok_or("Configuration directory unavailable")?;
+        Self::save_layout_context_at(
+            &path,
+            contexts,
+            positions,
+            baseline_positions,
+            sizes,
+            baseline_sizes,
+            implicit_positions,
+            placement,
+            baseline_placement,
+        )
+    }
+    fn save_layout_context_at(
         path: &std::path::Path,
+        contexts: &monitors::Contexts,
         positions: &std::collections::BTreeMap<String, [f32; 2]>,
         baseline_positions: &std::collections::BTreeMap<String, [f32; 2]>,
         sizes: &std::collections::BTreeMap<String, [f32; 2]>,
@@ -482,6 +517,31 @@ impl Config {
         // Apply only edits made in this draft while holding the shared file lock.
         // Another editor may have moved untouched cards or changed the grid.
         let value = patch_config(path, |value| {
+            let original_positions = value.get("widget_positions").cloned();
+            let original_sizes = value.get("widget_sizes").cloned();
+            let projected = serde_json::from_value::<Config>(value.clone())
+                .map_err(|e| e.to_string())?
+                .on_displays(contexts);
+            // Project only monitor-owned members. Re-serializing unrelated
+            // f32 values changes JSON precision and creates false conflicts.
+            for key in contexts.keys() {
+                for (section, map) in [
+                    ("widget_positions", &projected.widget_positions),
+                    ("widget_sizes", &projected.widget_sizes),
+                ] {
+                    if value.get(section).is_none() {
+                        value[section] = serde_json::json!({});
+                    }
+                    let members = value[section]
+                        .as_object_mut()
+                        .ok_or("Invalid widget layout")?;
+                    if let Some(entry) = map.get(key) {
+                        members.insert(key.clone(), serde_json::json!(entry));
+                    } else {
+                        members.remove(key);
+                    }
+                }
+            }
             let sizes_changed = sizes != baseline_sizes;
             if positions != baseline_positions || (sizes_changed && !implicit_positions.is_empty())
             {
@@ -542,6 +602,41 @@ impl Config {
                 }
                 if placement.columns != baseline_placement.columns {
                     latest.insert("columns".into(), placement.columns.into());
+                }
+            }
+            for (key, display) in contexts {
+                let before_position = projected.widget_positions.get(key).copied();
+                let before_size = projected.widget_sizes.get(key).copied();
+                let position: Option<[f32; 2]> = value["widget_positions"]
+                    .get(key)
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()
+                    .map_err(|e| e.to_string())?;
+                let size: Option<[f32; 2]> = value["widget_sizes"]
+                    .get(key)
+                    .map(|v| serde_json::from_value(v.clone()))
+                    .transpose()
+                    .map_err(|e| e.to_string())?;
+                if position != before_position || size != before_size {
+                    if value.get("monitor_layouts").is_none() {
+                        value["monitor_layouts"] = serde_json::json!({});
+                    }
+                    if value["monitor_layouts"].get(key).is_none() {
+                        value["monitor_layouts"][key] = serde_json::json!({});
+                    }
+                    value["monitor_layouts"][key][display] =
+                        serde_json::json!(monitors::MonitorLayout { position, size });
+                }
+                // Temporary placements never overwrite the original/default layout.
+                for (section, original) in [
+                    ("widget_positions", &original_positions),
+                    ("widget_sizes", &original_sizes),
+                ] {
+                    if let Some(old) = original.as_ref().and_then(|m| m.get(key)) {
+                        value[section][key] = old.clone();
+                    } else {
+                        value[section].as_object_mut().unwrap().remove(key);
+                    }
                 }
             }
             Ok(())

@@ -299,6 +299,11 @@ impl Cards {
             output,
         );
         self.selected_output = self.displays.selected(None).cloned();
+        self.widget_outputs = Widget::ALL
+            .into_iter()
+            .map(|w| self.widget_output(w).cloned())
+            .collect();
+        self.refresh_display_layouts();
         self.output_known = true;
         wire
     }
@@ -453,4 +458,140 @@ fn monitor_migration_cancels_sidebar_preview_before_replacement_geometry() {
             serde_json::from_slice(&std::fs::read(&config_path).unwrap()).unwrap();
         assert_eq!(value["future_preference"], 37);
     }
+}
+
+#[test]
+fn multi_monitor_widget_surfaces_measure_independently_and_restore_after_hotplug() {
+    if isolated(
+        "app::display_tests::multi_monitor_widget_surfaces_measure_independently_and_restore_after_hotplug",
+    ) {
+        return;
+    }
+    let wire = Wire::new();
+    let laptop = wire.output(1);
+    let external = wire.output(2);
+    let mut config = Config::default();
+    config.widget_display = Some("eDP-1".into());
+    config.widget_monitors.insert(
+        "weather".into(),
+        crate::config::monitors::WidgetMonitor {
+            display: Some("DP-2".into()),
+            hide_disconnected: false,
+        },
+    );
+    config.widget_positions.insert("weather".into(), [0.8, 0.3]);
+    config.widget_sizes.insert("weather".into(), [700., 500.]);
+    config.monitor_layouts.insert(
+        "weather".into(),
+        [(
+            "eDP-1".into(),
+            crate::config::monitors::MonitorLayout {
+                position: Some([0.1, 0.1]),
+                size: Some([320., 200.]),
+            },
+        )]
+        .into(),
+    );
+    let (mut cards, _) = Cards::init(Core::default(), config);
+    send(
+        &mut cards,
+        Message::OutputChanged(
+            OutputEvent::Created(Some(info(Some("eDP-1"), (1280, 720)))),
+            laptop.clone(),
+        ),
+    );
+    ready(&mut cards, [1280., 720.]);
+    send(
+        &mut cards,
+        Message::OutputChanged(
+            OutputEvent::Created(Some(info(Some("DP-2"), (2560, 1440)))),
+            external.clone(),
+        ),
+    );
+    let built = ready(&mut cards, [1280., 720.]);
+    assert_eq!(cards.extra_probes.len(), 1);
+    assert!(!cards.widget_available(Widget::Weather));
+    assert!(
+        built
+            .iter()
+            .find(|b| b.namespace == "halcyon-weather")
+            .is_some_and(|b| matches!(&b.output,IcedOutput::Output(o) if *o==external))
+    );
+    let probe = cards.extra_probes[0].id;
+    send(
+        &mut cards,
+        Message::SurfaceResized(probe, cosmic::iced::Size::new(2560., 1440.)),
+    );
+    assert!(cards.widget_available(Widget::Weather));
+    assert_eq!(cards.widget_screen(Widget::Weather), [2560., 1440.]);
+    assert_eq!(cards.widget_screen(Widget::Clock), [1280., 720.]);
+    assert_eq!(cards.explicit_size(Widget::Weather).unwrap()[0], 700.);
+    let original = cards.placed_position(Widget::Weather);
+    // The Settings preview's selected monitor owns the Arrange overlay;
+    // widgets on the other monitor remain ordinary, interactive surfaces.
+    send(&mut cards, Message::ArrangeDisplay("DP-2".into()));
+    let surfaces = ready(&mut cards, [2560., 1440.]);
+    assert!(cards.layout_editor.active);
+    assert!(cards.arranging_widget(Widget::Weather));
+    assert!(!cards.arranging_widget(Widget::Clock));
+    assert!(
+        surfaces
+            .iter()
+            .filter(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+            .all(|s| matches!(&s.output, IcedOutput::Output(o) if *o == external))
+    );
+    send(&mut cards, Message::LayoutFinish(true));
+    ready(&mut cards, [1280., 720.]);
+    let probe = cards.extra_probes[0].id;
+    send(
+        &mut cards,
+        Message::SurfaceResized(probe, cosmic::iced::Size::new(2560., 1440.)),
+    );
+    assert!(!cards.layout_editor.active);
+    assert_eq!(cards.selected_output.as_ref().unwrap().handle, laptop);
+    // A synthetic card resize must never become the monitor's screen budget.
+    let weather_id = cards.widget_id(Widget::Weather);
+    send(
+        &mut cards,
+        Message::SurfaceResized(weather_id, cosmic::iced::Size::new(42., 42.)),
+    );
+    assert_eq!(cards.widget_screen(Widget::Weather), [2560., 1440.]);
+    send(
+        &mut cards,
+        Message::OutputChanged(OutputEvent::Removed, external.clone()),
+    );
+    ready(&mut cards, [1280., 720.]);
+    assert_eq!(cards.explicit_size(Widget::Weather).unwrap()[0], 320.);
+    let replacement = wire.output(3);
+    send(
+        &mut cards,
+        Message::OutputChanged(
+            OutputEvent::Created(Some(info(Some("DP-2"), (2560, 1440)))),
+            replacement.clone(),
+        ),
+    );
+    ready(&mut cards, [1280., 720.]);
+    let probe = cards.extra_probes[0].id;
+    send(
+        &mut cards,
+        Message::SurfaceResized(probe, cosmic::iced::Size::new(2560., 1440.)),
+    );
+    assert_eq!(cards.placed_position(Widget::Weather), original);
+    assert_eq!(cards.config.widget_positions["weather"], [0.8, 0.3]);
+    let mut config = cards.config.clone();
+    config
+        .widget_monitors
+        .get_mut("weather")
+        .unwrap()
+        .hide_disconnected = true;
+    let task = cards.apply_config(config);
+    actions(&mut cards, task);
+    send(
+        &mut cards,
+        Message::OutputChanged(OutputEvent::Removed, replacement),
+    );
+    ready(&mut cards, [1280., 720.]);
+    assert!(!cards.widget_available(Widget::Weather));
+    assert!(cards.card_input_rects(Widget::Weather).is_empty());
+    assert_eq!(cards.placed_position(Widget::Weather), [-10000., 0.]);
 }

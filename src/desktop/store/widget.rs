@@ -52,6 +52,20 @@ fn font_family(value: &Value) -> bool {
             !name.trim().is_empty() && name.len() <= 128 && !name.chars().any(char::is_control)
         })
 }
+fn monitor_layout(value: &Value) -> bool {
+    let Ok(layouts) = serde_json::from_value::<
+        BTreeMap<String, crate::config::monitors::MonitorLayout>,
+    >(value.clone()) else {
+        return false;
+    };
+    layouts.len() <= 32
+        && layouts.iter().all(|(d, l)| {
+            crate::displays::valid_name(d)
+                && l.position
+                    .is_none_or(|p| p.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)))
+                && l.size.is_none_or(crate::layout::valid_size)
+        })
+}
 fn boolean(value: &Value) -> bool {
     value.is_boolean()
 }
@@ -234,6 +248,33 @@ pub static FIELDS: [WidgetField; 84] = fields![
 // captured or exported by the profile library.
 pub static LOCAL_FIELDS: &[WidgetField] = &fields![
     "/calendar_private", "Calendar privacy", Style, boolean;
+    "/widget_monitors/clock/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/clock/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/clock", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/calendar/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/calendar/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/calendar", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/weather/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/weather/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/weather", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/devbox/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/devbox/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/devbox", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/projects/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/projects/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/projects", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/glance/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/glance/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/glance", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/music/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/music/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/music", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/notes/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/notes/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/notes", "Display layout", Layout, monitor_layout;
+    "/widget_monitors/focus/display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
+    "/widget_monitors/focus/hide_disconnected", "Disconnected widget", Layout, boolean;
+    "/monitor_layouts/focus", "Display layout", Layout, monitor_layout;
     "/widget_display", "Widget display", Layout, |v| v.is_null() || v.as_str().is_some_and(crate::displays::valid_name);
     "/appearance/match_wallpaper", "Matching wallpaper", Style, boolean;
     "/appearance/match_cosmic_colors", "Follow COSMIC colors", Style, boolean;

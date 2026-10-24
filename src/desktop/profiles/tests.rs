@@ -1303,3 +1303,46 @@ fn islands_profiles_are_versioned_and_export_no_monitor_bindings() {
     profile.version = 5;
     assert!(profile.validate().is_err());
 }
+
+#[test]
+fn multi_monitor_setups_capture_effective_layout_and_apply_with_undo() {
+    let desk = desk(
+        "monitor-profile",
+        Srgb::new(0.2, 0.6, 0.4),
+        Srgb::new(0.8, 0.3, 0.2),
+        "teal",
+    );
+    let mut config = desk.json();
+    config["widget_monitors"] = json!({"weather":{"display":"DP-2","hide_disconnected":true}});
+    config["monitor_layouts"] = json!({"weather":{
+        "DP-2":{"position":[0.25,0.5],"size":[480,320]},
+        "eDP-1":{"position":[0.5,0.25],"size":[320,200]}
+    }});
+    fs::write(&desk.config, config.to_string()).unwrap();
+    let profile = capture(&desk.store(), "Across screens").unwrap().profile;
+    assert_eq!(
+        profile.widget_layout.as_ref().unwrap()["widget_sizes"]["weather"],
+        json!([480.0, 320.0])
+    );
+    let exported = export(&profile).unwrap();
+    assert!(!String::from_utf8_lossy(&exported.bytes).contains("DP-2"));
+    config["monitor_layouts"]["weather"]["DP-2"]["size"] = json!([600, 400]);
+    fs::write(&desk.config, config.to_string()).unwrap();
+    let planned = plan(
+        &desk.store(),
+        &desk.installed(),
+        &profile,
+        &[Domain::WidgetLayout].into(),
+    );
+    let change = apply(&desk.store(), &planned).unwrap();
+    let applied = desk.json();
+    for display in ["DP-2", "eDP-1"] {
+        assert_eq!(
+            applied["monitor_layouts"]["weather"][display]["size"],
+            json!([480.0, 320.0])
+        );
+    }
+    assert_eq!(applied["widget_monitors"], config["widget_monitors"]);
+    desk.store().undo_latest(&change.id).unwrap();
+    assert_eq!(desk.json()["monitor_layouts"], config["monitor_layouts"]);
+}

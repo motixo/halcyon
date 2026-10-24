@@ -38,9 +38,12 @@ impl Output {
 #[derive(Default, Debug)]
 pub struct Registry {
     outputs: Vec<Output>,
+    identities: std::collections::BTreeMap<String, String>,
+    pub generation: u64,
 }
 impl Registry {
     pub fn update(&mut self, event: OutputEvent, handle: WlOutput) {
+        self.generation += 1;
         match event {
             OutputEvent::Removed => self.outputs.retain(|o| o.handle != handle),
             OutputEvent::Created(None) => {} // Wait for this handle's InfoUpdate.
@@ -54,9 +57,66 @@ impl Registry {
         }
     }
     pub fn unique(&self, name: &str) -> Option<&Output> {
-        let mut found = self.outputs.iter().filter(|o| o.name() == Some(name));
+        let mut found = self.outputs.iter().filter(|o| {
+            o.name() == Some(name)
+                || o.name()
+                    .and_then(|n| self.identities.get(n))
+                    .is_some_and(|id| id == name)
+        });
         let output = found.next()?;
         found.next().is_none().then_some(output)
+    }
+    pub fn outputs(&self) -> &[Output] {
+        &self.outputs
+    }
+    pub fn accept_identities(
+        &mut self,
+        generation: u64,
+        identities: std::collections::BTreeMap<String, String>,
+    ) -> bool {
+        if generation != self.generation {
+            return false;
+        }
+        self.identities = identities;
+        true
+    }
+    pub fn key(&self, output: &Output) -> Option<String> {
+        let name = output.name()?;
+        self.unique(name)?;
+        self.identities
+            .get(name)
+            .filter(|id| self.unique(id).is_some())
+            .cloned()
+            .or_else(|| Some(name.into()))
+    }
+    pub fn widget<'a>(
+        &'a self,
+        config: &crate::config::Config,
+        widget: crate::drawer::Widget,
+    ) -> Option<&'a Output> {
+        let preferred = config.monitor_preference(widget);
+        if preferred.is_some()
+            && preferred.and_then(|p| self.unique(p)).is_none()
+            && config
+                .widget_monitors
+                .get(widget.key())
+                .is_some_and(|m| m.hide_disconnected)
+        {
+            return None;
+        }
+        self.selected(preferred)
+    }
+    pub fn contexts(&self, config: &crate::config::Config) -> crate::config::monitors::Contexts {
+        if !config.multi_monitor() && self.outputs.len() < 2 {
+            return Default::default();
+        }
+        self.placements(config)
+    }
+    pub fn placements(&self, config: &crate::config::Config) -> crate::config::monitors::Contexts {
+        crate::drawer::Widget::ALL
+            .into_iter()
+            .filter_map(|w| Some((w.key().into(), self.key(self.widget(config, w)?)?)))
+            .collect()
     }
     pub fn selected(&self, preferred: Option<&str>) -> Option<&Output> {
         preferred.and_then(|name| self.unique(name)).or_else(|| {
@@ -76,7 +136,7 @@ impl Registry {
             .outputs
             .iter()
             .filter(|o| o.name().is_some_and(|name| self.unique(name).is_some()))
-            .map(|o| (o.title(), Some(o.name().unwrap().to_string())))
+            .map(|o| (o.title(), self.key(o)))
             .collect();
         named.sort_by(|a, b| a.1.cmp(&b.1));
         let mut choices = vec![("Automatic".into(), None)];
@@ -87,7 +147,12 @@ impl Registry {
             } else {
                 "not connected"
             };
-            choices.push((format!("{name} ({reason})"), Some(name.into())));
+            let title = if name.starts_with("edid:") {
+                "Saved monitor"
+            } else {
+                name
+            };
+            choices.push((format!("{title} ({reason})"), Some(name.into())));
         }
         choices
     }
@@ -102,13 +167,13 @@ impl Registry {
         {
             return "Some displays have no unique connection name and cannot be pinned. Automatic placement is temporary on those displays.".into();
         }
-        if let Some(name) = preferred.filter(|name| self.unique(name).is_none()) {
+        if preferred.is_some_and(|name| self.unique(name).is_none()) {
             format!(
-                "{name} is disconnected; showing widgets on {}. They return when {name} reconnects.",
-                actual.name().unwrap()
+                "Preferred display disconnected · temporarily using {}",
+                actual.title()
             )
         } else {
-            format!("Showing widgets on {}.", actual.title())
+            format!("Default: {}", actual.title())
         }
     }
 }
@@ -152,5 +217,154 @@ mod tests {
             registry.update(OutputEvent::Removed, c.clone());
             assert_eq!(registry.selected(Some("missing")).unwrap().handle, b);
         }
+    }
+}
+
+/// EDID is read on a blocking worker, never while painting Settings. Require a
+/// nonzero serial so identical generic EDIDs do not pretend to identify hardware.
+pub fn physical_identities() -> std::collections::BTreeMap<String, String> {
+    use std::io::Read;
+    let mut result = std::collections::BTreeMap::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for entry in std::fs::read_dir("/sys/class/drm")
+        .into_iter()
+        .flatten()
+        .flatten()
+        .take(64)
+    {
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Some((_, connector)) = name.split_once('-') else {
+            continue;
+        };
+        let mut bytes = [0u8; 128];
+        let Ok(mut file) = std::fs::File::open(entry.path().join("edid")) else {
+            continue;
+        };
+        if file.read_exact(&mut bytes).is_ok()
+            && let Some(id) = edid_identity(&bytes)
+        {
+            if seen.insert(connector.to_string()) {
+                result.insert(connector.into(), id);
+            } else {
+                result.remove(connector);
+            }
+        }
+    }
+    result
+}
+fn edid_identity(bytes: &[u8; 128]) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    if bytes[..8] != [0, 255, 255, 255, 255, 255, 255, 0]
+        || bytes.iter().fold(0u8, |sum, b| sum.wrapping_add(*b)) != 0
+    {
+        return None;
+    }
+    let numeric = &bytes[12..16];
+    let text = [54, 72, 90, 108].into_iter().find_map(|i| {
+        (bytes[i..i + 5] == [0, 0, 0, 255, 0]).then(|| {
+            bytes[i + 5..i + 18]
+                .iter()
+                .copied()
+                .filter(|b| !b.is_ascii_whitespace() && *b != 0)
+                .collect::<Vec<_>>()
+        })
+    });
+    if (numeric == [0, 0, 0, 0] || numeric == [255, 255, 255, 255])
+        && text
+            .as_ref()
+            .is_none_or(|t| t.is_empty() || t.iter().all(|b| *b == b'0'))
+    {
+        return None;
+    }
+    let mut hash = Sha256::new();
+    hash.update(&bytes[8..16]);
+    if let Some(text) = text {
+        hash.update(text);
+    }
+    Some(format!(
+        "edid:{}",
+        hash.finalize()
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    ))
+}
+
+#[cfg(test)]
+mod multi_monitor_tests {
+    use super::*;
+    use crate::{
+        config::{Config, monitors::WidgetMonitor},
+        drawer::Widget,
+    };
+    use test_support::{Wire, info};
+    #[test]
+    fn multi_monitor_physical_identity_port_change_duplicates_and_hide() {
+        let wire = Wire::new();
+        let a = wire.output(1);
+        let b = wire.output(2);
+        let mut r = Registry::default();
+        r.update(
+            OutputEvent::Created(Some(info(Some("eDP-1"), (1920, 1080)))),
+            a.clone(),
+        );
+        r.update(
+            OutputEvent::Created(Some(info(Some("DP-2"), (2560, 1440)))),
+            b.clone(),
+        );
+        let id = "edid:monitor-serial";
+        assert!(r.accept_identities(r.generation, [("DP-2".into(), id.into())].into()));
+        let mut c = Config::default();
+        c.widget_monitors.insert(
+            "weather".into(),
+            WidgetMonitor {
+                display: Some(id.into()),
+                hide_disconnected: false,
+            },
+        );
+        assert_eq!(r.widget(&c, Widget::Weather).unwrap().handle, b);
+        r.update(OutputEvent::Removed, b.clone());
+        assert_eq!(r.widget(&c, Widget::Weather).unwrap().handle, a);
+        c.widget_monitors
+            .get_mut("weather")
+            .unwrap()
+            .hide_disconnected = true;
+        assert!(r.widget(&c, Widget::Weather).is_none());
+        r.update(
+            OutputEvent::Created(Some(info(Some("HDMI-A-1"), (2560, 1440)))),
+            b.clone(),
+        );
+        assert!(r.accept_identities(r.generation, [("HDMI-A-1".into(), id.into())].into()));
+        assert_eq!(r.widget(&c, Widget::Weather).unwrap().handle, b);
+        assert!(!r.accept_identities(r.generation - 1, Default::default()));
+        r.accept_identities(
+            r.generation,
+            [("HDMI-A-1".into(), id.into()), ("eDP-1".into(), id.into())].into(),
+        );
+        assert!(r.unique(id).is_none());
+        assert_eq!(r.key(r.unique("eDP-1").unwrap()).as_deref(), Some("eDP-1"));
+        assert!(r.widget(&c, Widget::Weather).is_none());
+    }
+    #[test]
+    fn multi_monitor_edid_requires_serial_and_checksum() {
+        let mut edid = [0; 128];
+        edid[..8].copy_from_slice(&[0, 255, 255, 255, 255, 255, 255, 0]);
+        let checksum = |bytes: &mut [u8; 128]| {
+            bytes[127] = 0;
+            bytes[127] = 0u8.wrapping_sub(bytes.iter().fold(0u8, |a, b| a.wrapping_add(*b)));
+        };
+        checksum(&mut edid);
+        assert!(edid_identity(&edid).is_none());
+        edid[12] = 1;
+        checksum(&mut edid);
+        let first = edid_identity(&edid).unwrap();
+        edid[40] = 2;
+        checksum(&mut edid);
+        assert_eq!(edid_identity(&edid).unwrap(), first);
+        edid[12] = 2;
+        checksum(&mut edid);
+        assert_ne!(edid_identity(&edid).unwrap(), first);
+        edid[127] ^= 1;
+        assert!(edid_identity(&edid).is_none());
     }
 }

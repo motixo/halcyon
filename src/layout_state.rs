@@ -37,6 +37,10 @@ pub struct DisplayState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Snapshot {
     #[serde(default)]
+    pub monitors: std::collections::BTreeMap<String, [f32; 2]>,
+    #[serde(default)]
+    pub widget_displays: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
     pub display: Option<DisplayState>,
     pub screen: [f32; 2],
     pub widgets: Vec<WidgetGeometry>,
@@ -58,9 +62,20 @@ fn cached() -> Option<Snapshot> {
 
 impl Snapshot {
     fn valid(&self) -> bool {
-        self.screen
-            .iter()
-            .all(|v| v.is_finite() && *v >= 1. && *v <= 32768.)
+        self.monitors.len() <= 32
+            && self.monitors.iter().all(|(k, s)| {
+                crate::displays::valid_name(k)
+                    && s.iter().all(|v| v.is_finite() && *v >= 1. && *v <= 32768.)
+            })
+            && self.widget_displays.len() <= Widget::ALL.len()
+            && self
+                .widget_displays
+                .iter()
+                .all(|(k, d)| Widget::parse(k).is_some() && crate::displays::valid_name(d))
+            && self
+                .screen
+                .iter()
+                .all(|v| v.is_finite() && *v >= 1. && *v <= 32768.)
             && self.widgets.len() == Widget::ALL.len()
             && Widget::ALL
                 .iter()
@@ -79,6 +94,8 @@ impl Snapshot {
 
 fn fallback(config: &Config) -> Snapshot {
     Snapshot {
+        monitors: Default::default(),
+        widget_displays: Default::default(),
         display: None,
         screen: [1920., 1080.],
         widgets: Widget::ALL
@@ -115,7 +132,12 @@ fn default_positions(mut state: Snapshot, config: &Config) -> Snapshot {
     let ordered: Vec<_> = config
         .ordered_right_cards()
         .into_iter()
-        .filter(|w| config.widget_visible(*w))
+        .filter(|w| {
+            config.widget_visible(*w)
+                && (state.widget_displays.is_empty()
+                    || state.display.as_ref().and_then(|d| d.output.as_ref())
+                        == state.widget_displays.get(w.key()))
+        })
         .collect();
     let size_for = |widget: Widget| {
         state
@@ -209,6 +231,31 @@ pub fn placement_size(widget: Widget, size: [f32; 2]) -> [f32; 2] {
     }
 }
 
+/// A preview has one selected display; its widget coordinates remain local.
+pub fn for_display(config: &Config, display: Option<&str>, automatic: bool) -> Snapshot {
+    let mut state = cached().unwrap_or_else(|| fallback(config));
+    if let Some(name) = display
+        && let Some(screen) = state.monitors.get(name)
+    {
+        state.screen = *screen;
+        state.display = Some(DisplayState {
+            output: Some(name.into()),
+            ready: true,
+            epoch: state.display.as_ref().map(|d| d.epoch).unwrap_or(0),
+        });
+    }
+    let mut config = config.on_displays(&state.widget_displays);
+    for g in &mut state.widgets {
+        if let Some(size) = g.natural_size {
+            g.size = size;
+        }
+    }
+    if automatic {
+        config.widget_sizes.clear();
+        config.widget_positions.clear();
+    }
+    project(state, &config)
+}
 pub fn defaults(config: &Config) -> Snapshot {
     let mut state = cached().unwrap_or_else(|| fallback(config));
     for g in &mut state.widgets {

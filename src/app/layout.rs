@@ -58,10 +58,11 @@ pub(super) struct LayoutEditor {
     history: Vec<LayoutState>,
     session_actions: Vec<crate::desktop::LatestChange>,
     guard: Option<serde_json::Value>,
+    contexts: crate::config::monitors::Contexts,
     resize_mode: bool,
     pub(super) selected: Option<Widget>,
     error: Option<String>,
-    exit_failed: bool,
+    pub(super) exit_failed: bool,
 }
 
 impl LayoutEditor {
@@ -115,7 +116,7 @@ impl Cards {
         })
     }
     pub(super) fn custom_layout(&self) -> bool {
-        self.config.has_custom_positions()
+        self.config.has_custom_positions() || self.config.multi_monitor()
             // The legacy columns have fixed widths. Small logical outputs use
             // the same bounded individual geometry as arranged widgets.
             || self.screen_size[0] < 800.
@@ -138,19 +139,19 @@ impl Cards {
         let sizes = if self.layout_editor.active {
             &self.layout_editor.sizes
         } else {
-            &self.config.widget_sizes
+            &self.effective_sizes()
         };
         sizes
             .get(widget.key())
             .copied()
-            .map(|size| crate::layout::sized(widget, size, self.screen_size))
+            .map(|size| crate::layout::sized(widget, size, self.widget_screen(widget)))
     }
     pub(super) fn widget_size(&self, widget: Widget) -> [f32; 2] {
         if let Some(mut size) = self.explicit_size(widget) {
             // A widget grows to fit what it shows instead of scrolling
             // inside a smaller saved size, up to the screen's height.
             if let Some(content) = self.content_height(widget) {
-                size[1] = size[1].max(content.min((self.screen_size[1] - 96.).max(1.)));
+                size[1] = size[1].max(content.min((self.widget_screen(widget)[1] - 96.).max(1.)));
             }
             return size;
         }
@@ -175,14 +176,14 @@ impl Cards {
             return [
                 self.glance_auto_width(),
                 self.glance_automatic_height()
-                    .min((self.screen_size[1] - 96.).max(1.)),
+                    .min((self.widget_screen(widget)[1] - 96.).max(1.)),
             ];
         }
         if widget.is_tool() {
             let [width, height] = crate::tools::cards::size(widget, &self.config);
             return [
-                width.min((self.screen_size[0] - 48.).max(1.)),
-                height.min((self.screen_size[1] - 96.).max(1.)),
+                width.min((self.widget_screen(widget)[0] - 48.).max(1.)),
+                height.min((self.widget_screen(widget)[1] - 96.).max(1.)),
             ];
         }
         let width: f32 = if widget == Widget::Clock { 490. } else { 360. };
@@ -199,11 +200,11 @@ impl Cards {
                 .config
                 .ordered_right_cards()
                 .into_iter()
-                .filter(|w| self.config.widget_visible(*w))
+                .filter(|w| self.config.widget_visible(*w) && self.same_widget_display(*w, widget))
                 .collect();
             if let Some((_, scaled)) = drawer::card_layout_with_devbox(
                 &widgets,
-                (self.screen_size[1] - 96.).max(1.),
+                (self.widget_screen(widget)[1] - 96.).max(1.),
                 self.devbox_natural_height(),
             )
             .into_iter()
@@ -213,8 +214,8 @@ impl Cards {
             }
         }
         [
-            width.min((self.screen_size[0] - 48.).max(1.)),
-            height.min((self.screen_size[1] - 96.).max(1.)),
+            width.min((self.widget_screen(widget)[0] - 48.).max(1.)),
+            height.min((self.widget_screen(widget)[1] - 96.).max(1.)),
         ]
     }
     fn default_position(&self, widget: Widget) -> [f32; 2] {
@@ -224,18 +225,20 @@ impl Cards {
                 widget,
                 size,
                 self.widget_size(Widget::Focus)[1],
-                self.screen_size,
+                self.widget_screen(widget),
             );
         }
         let position = match widget {
             Widget::Clock | Widget::Glance => [82., 88.],
-            Widget::Calendar => [42., (self.screen_size[1] - size[1]) / 2.],
+            Widget::Calendar => [42., (self.widget_screen(widget)[1] - size[1]) / 2.],
             _ => {
                 let widgets: Vec<_> = self
                     .config
                     .ordered_right_cards()
                     .into_iter()
-                    .filter(|w| self.config.widget_visible(*w))
+                    .filter(|w| {
+                        self.config.widget_visible(*w) && self.same_widget_display(*w, widget)
+                    })
                     .collect();
                 let total: f32 = widgets.iter().map(|w| self.widget_size(*w)[1]).sum::<f32>()
                     + widgets.len().saturating_sub(1) as f32 * drawer::CARD_GAP;
@@ -245,12 +248,12 @@ impl Cards {
                     .map(|w| self.widget_size(*w)[1] + drawer::CARD_GAP)
                     .sum();
                 [
-                    self.screen_size[0] - size[0] - 42.,
-                    (self.screen_size[1] - total) / 2. + before,
+                    self.widget_screen(widget)[0] - size[0] - 42.,
+                    (self.widget_screen(widget)[1] - total) / 2. + before,
                 ]
             }
         };
-        crate::layout::clamp(position, size, self.screen_size)
+        crate::layout::clamp(position, size, self.widget_screen(widget))
     }
     /// Where `widget` sits on the desktop: its saved or automatic place,
     /// moved to the nearest free spot when it would cover a widget placed
@@ -258,7 +261,13 @@ impl Cards {
     /// where the column puts them; everything else can move.
     pub(super) fn placed_position(&self, widget: Widget) -> [f32; 2] {
         let mut placed: Vec<[f32; 4]> = Vec::new();
+        if !self.widget_available(widget) {
+            return OFF_DESKTOP;
+        }
         for candidate in PLACEMENT_ORDER {
+            if !self.same_widget_display(candidate, widget) || !self.widget_available(candidate) {
+                continue;
+            }
             let shown = if candidate.is_tool() {
                 self.tool_shown(candidate)
             } else {
@@ -268,11 +277,11 @@ impl Cards {
                 continue;
             }
             let size = self.widget_size(candidate);
-            let mut at = self.position_from(candidate, &self.config.widget_positions);
+            let mut at = self.position_from(candidate, &self.effective_positions());
             let movable =
                 self.custom_layout() || candidate.is_tool() || candidate == Widget::Glance;
             if shown && movable {
-                match crate::layout::free_spot(at, size, &placed, self.screen_size) {
+                match crate::layout::free_spot(at, size, &placed, self.widget_screen(widget)) {
                     Some(free) => at = free,
                     // No room left: off the desktop rather than on top of
                     // another widget, until there is space again.
@@ -285,7 +294,7 @@ impl Cards {
             }
             placed.push([at[0], at[1], size[0], size[1]]);
         }
-        self.position_from(widget, &self.config.widget_positions)
+        self.position_from(widget, &self.effective_positions())
     }
     pub(super) fn position_from(
         &self,
@@ -297,7 +306,9 @@ impl Cards {
         }
         positions
             .get(widget.key())
-            .map(|p| crate::layout::decode(*p, self.widget_size(widget), self.screen_size))
+            .map(|p| {
+                crate::layout::decode(*p, self.widget_size(widget), self.widget_screen(widget))
+            })
             .unwrap_or_else(|| self.default_position(widget))
     }
     /// Decorative materials never activate native backdrop blur. Clear any
@@ -323,7 +334,7 @@ impl Cards {
                 .map(|r| [r[0] + m.round() as u32, r[1] + m.round() as u32, r[2], r[3]])
                 .collect(),
             _ if self.custom_layout() => {
-                if self.config.widget_visible(widget) {
+                if self.config.widget_visible(widget) && self.widget_available(widget) {
                     let size = self.widget_size(widget);
                     vec![[mi, mi, size[0].ceil() as u32, size[1].ceil() as u32]]
                 } else {
@@ -402,11 +413,39 @@ impl Cards {
             return self.apply_config(config);
         }
         let snapshot = crate::layout_state::Snapshot {
+            monitors: self
+                .displays
+                .outputs()
+                .iter()
+                .filter_map(|o| {
+                    let key = self.displays.key(o)?;
+                    let size = if self
+                        .selected_output
+                        .as_ref()
+                        .is_some_and(|s| s.handle == o.handle)
+                    {
+                        self.screen_size
+                    } else {
+                        self.extra_probes
+                            .iter()
+                            .find(|p| p.output.handle == o.handle)
+                            .and_then(|p| p.size)
+                            .or_else(|| {
+                                o.info
+                                    .logical_size
+                                    .filter(|(w, h)| *w > 0 && *h > 0)
+                                    .map(|(w, h)| [w as f32, h as f32])
+                            })?
+                    };
+                    Some((key, size))
+                })
+                .collect(),
+            widget_displays: self.displays.placements(&self.config),
             display: Some(crate::layout_state::DisplayState {
                 output: self
                     .selected_output
                     .as_ref()
-                    .and_then(|output| output.name().map(str::to_owned)),
+                    .and_then(|output| self.displays.key(output)),
                 ready: true,
                 epoch: self.display_generation,
             }),
@@ -433,14 +472,19 @@ impl Cards {
                 .surface_geometry
                 .as_ref()
                 .is_some_and(|geometry| geometry.custom);
-            return publish.chain(Task::batch(Widget::ALL.map(|widget| {
-                let id = self.widget_id(widget);
-                match (custom, widget) {
-                    (false, Widget::Weather) => set_margin(id, 48, -10000, 48, 0),
-                    (false, Widget::Calendar) => set_margin(id, 48, 0, 48, -10000),
-                    _ => set_margin(id, 0, 0, 0, -10000),
-                }
-            })));
+            return publish.chain(Task::batch(
+                Widget::ALL
+                    .into_iter()
+                    .filter(|w| self.arranging_widget(*w))
+                    .map(|widget| {
+                        let id = self.widget_id(widget);
+                        match (custom, widget) {
+                            (false, Widget::Weather) => set_margin(id, 48, -10000, 48, 0),
+                            (false, Widget::Calendar) => set_margin(id, 48, 0, 48, -10000),
+                            _ => set_margin(id, 0, 0, 0, -10000),
+                        }
+                    }),
+            ));
         }
         // The pinned layer-shell Size action corrupts the renderer's height.
         // Keep stable surfaces for ordinary edits; recreate only on real size
@@ -533,6 +577,13 @@ impl Cards {
             self.sidebar.show(Instant::now());
             return Task::none();
         }
+        if self.paused_layout.as_ref().is_some_and(|d| {
+            !d.exit_failed && !d.contexts.is_empty() && d.contexts != self.layout_contexts()
+        }) {
+            // The drag was cancelled before migration and committed changes are
+            // already durable. Start from this display's own layout on resume.
+            self.paused_layout = None;
+        }
         if let Some(mut draft) = self.paused_layout.take() {
             draft.active = true;
             self.layout_editor = draft;
@@ -549,8 +600,11 @@ impl Cards {
         let note = self.save_note_quietly();
         self.pause_note();
         self.sidebar.hide();
-        let mut draft = self.config.widget_positions.clone();
-        for widget in Widget::ALL {
+        let mut draft = self.effective_positions().clone();
+        for widget in Widget::ALL
+            .into_iter()
+            .filter(|w| self.arranging_widget(*w))
+        {
             draft.entry(widget.key().into()).or_insert_with(|| {
                 crate::layout_state::encode_position(
                     widget,
@@ -565,17 +619,17 @@ impl Cards {
         self.keep_apart(&mut draft, None, None);
         self.layout_editor = LayoutEditor {
             active: true,
+            contexts: self.layout_contexts(),
             guard: Config::path()
                 .and_then(|p| crate::config::read_config_text(&p).ok())
                 .and_then(|t| crate::config::parse_config_text(t.as_deref()).ok()),
-            baseline_sizes: self.config.widget_sizes.clone(),
-            sizes: self.config.widget_sizes.clone(),
+            baseline_sizes: self.effective_sizes().clone(),
+            sizes: self.effective_sizes().clone(),
             implicit_positions: draft
                 .iter()
                 .filter(|(key, _)| {
                     !self.config.widget_positions.contains_key(*key)
-                        && Widget::parse(key)
-                            .is_some_and(|widget| self.config.widget_visible(widget))
+                        && Widget::parse(key).is_some_and(|widget| self.arranging_widget(widget))
                 })
                 .map(|(key, point)| (key.clone(), *point))
                 .collect(),
@@ -612,7 +666,7 @@ impl Cards {
         let mut baseline = self.layout_editor.baseline.clone();
         if self.layout_editor.reset {
             for widget in Widget::ALL {
-                if self.config.widget_visible(widget)
+                if self.arranging_widget(widget)
                     && self.layout_editor.draft.contains_key(widget.key())
                 {
                     // A move after Reset is intentional even if it happens
@@ -625,7 +679,7 @@ impl Cards {
         if self.layout_editor.reset {
             for widget in Widget::ALL
                 .into_iter()
-                .filter(|w| self.config.widget_visible(*w))
+                .filter(|w| self.arranging_widget(*w))
             {
                 if self.layout_editor.sizes.contains_key(widget.key()) {
                     size_baseline.remove(widget.key());
@@ -637,7 +691,8 @@ impl Cards {
         let (result, receipts) = crate::desktop::actions::with_receipts(|| {
             crate::desktop::actions::in_action("Widget arrangement", || {
                 crate::desktop::actions::guarded(self.layout_editor.guard.as_ref(), || {
-                    Config::save_layout_draft(
+                    Config::save_layout_on_displays(
+                        &self.layout_editor.contexts,
                         &self.layout_editor.draft,
                         &baseline,
                         &self.layout_editor.sizes,
@@ -654,6 +709,7 @@ impl Cards {
             Ok(config) => {
                 self.layout_editor.error = None;
                 self.config = config;
+                self.refresh_display_layouts();
                 self.layout_editor.baseline = self.layout_editor.draft.clone();
                 self.layout_editor.baseline_sizes = self.layout_editor.sizes.clone();
                 self.layout_editor.saved_grid = self.layout_editor.grid;
@@ -681,7 +737,15 @@ impl Cards {
     }
 
     pub(super) fn finish_arrange(&mut self, save: bool) -> Task<Message> {
-        crate::config::with_nonblocking_locks(|| self.finish_arrange_now(save))
+        crate::config::with_nonblocking_locks(|| {
+            let task = self.finish_arrange_now(save);
+            if self.arrange_display.take().is_some() {
+                self.pending_arrange = false;
+                task.chain(self.reconcile_output())
+            } else {
+                task
+            }
+        })
     }
     fn finish_arrange_now(&mut self, save: bool) -> Task<Message> {
         if !self.layout_editor.active {
@@ -919,7 +983,7 @@ impl Cards {
         };
         let visible: Vec<Widget> = PLACEMENT_ORDER
             .into_iter()
-            .filter(|widget| self.config.widget_visible(*widget))
+            .filter(|widget| self.arranging_widget(*widget))
             .collect();
         let place = |widget: Widget,
                      others: &[[f32; 4]],
@@ -1071,7 +1135,7 @@ impl Cards {
             let (mi, mu) = self.shadow_px();
             let mut surface = SctkLayerSurfaceSettings {
                 id,
-                output: self.layer_output(),
+                output: self.widget_layer_output(widget),
                 layer: Layer::Bottom,
                 keyboard_interactivity: KeyboardInteractivity::None,
                 anchor: Anchor::TOP | Anchor::LEFT,
@@ -1161,7 +1225,7 @@ impl Cards {
             keyboard::Key::Named(Named::Tab) => {
                 let widgets: Vec<_> = Widget::ALL
                     .into_iter()
-                    .filter(|w| self.config.widget_visible(*w))
+                    .filter(|w| self.arranging_widget(*w))
                     .collect();
                 if !widgets.is_empty() {
                     let index = self
@@ -1212,7 +1276,7 @@ impl Cards {
         Task::none()
     }
     pub(super) fn individual_widget(&self, widget: Widget) -> Element<'_, Message> {
-        if !self.config.widget_visible(widget) {
+        if !self.config.widget_visible(widget) || !self.widget_available(widget) {
             return empty_surface();
         }
         let card = match widget {
@@ -1281,7 +1345,7 @@ impl Cards {
             }
         }
         for widget in Widget::ALL {
-            if !self.config.widget_visible(widget) {
+            if !self.arranging_widget(widget) {
                 continue;
             }
             let size = self.widget_size(widget);
@@ -1441,7 +1505,7 @@ impl Cards {
             row::with_children(
                 Widget::ALL
                     .into_iter()
-                    .filter(|w| self.config.widget_visible(*w))
+                    .filter(|w| self.arranging_widget(*w))
                     .map(|w| {
                         cosmic::widget::button::text(w.title())
                             .on_press(Message::LayoutSelect(w))
@@ -1477,13 +1541,17 @@ impl Cards {
     pub(super) fn layout_defaults(&mut self) {
         self.cancel_layout_drag();
         let before = self.layout_editor.state();
+        let visible: Vec<_> = Widget::ALL
+            .into_iter()
+            .filter(|w| self.arranging_widget(*w))
+            .collect();
         self.layout_editor
             .sizes
-            .retain(|key, _| Widget::parse(key).is_none_or(|w| !self.config.widget_visible(w)));
-        self.layout_editor.draft.retain(|key, _| {
-            Widget::parse(key).is_none_or(|widget| !self.config.widget_visible(widget))
-        });
-        if self.config.widget_visible(Widget::Glance) {
+            .retain(|key, _| Widget::parse(key).is_none_or(|w| !visible.contains(&w)));
+        self.layout_editor
+            .draft
+            .retain(|key, _| Widget::parse(key).is_none_or(|widget| !visible.contains(&widget)));
+        if self.arranging_widget(Widget::Glance) {
             // Keep an explicit default so a later sync cannot mistake Reset
             // for Glance's first enable and copy the hidden Clock again.
             let point = crate::layout_state::encode_position(
@@ -1896,6 +1964,11 @@ mod tests {
         })).unwrap();
         let _ = app.finish_arrange(true);
         let saved = Config::load();
+        assert!(
+            app.paused_layout.is_none(),
+            "{:?}",
+            app.paused_layout.as_ref().and_then(|e| e.error.as_ref())
+        );
         assert_eq!(saved.widget_positions["weather"], moved);
         assert_eq!(saved.widget_positions["clock"], [0.8, 0.8]);
         assert_eq!(saved.widget_positions["devbox"], [0.7, 0.7]);
