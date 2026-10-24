@@ -4,13 +4,13 @@ The package contains a panel payload, a versioned local compatibility catalog,
 read-only diagnostics and a user-session bootstrap. Installation never enables
 Islands or restarts a bar. No package script writes a user home.
 
-**The group 3 candidate has no newly admitted native cohort.** It is a development
-artifact for review, not a qualified public update. Existing 0.2.0 assets remain
-immutable. Full native 1.10 remains unavailable; old compositor-only tests used
-newer libraries/applets. Existing complete 1.11 guest observations used old
-released/frozen packages, not this finalized generation package.
+**0.2.5 supports attempted startup on COSMIC 1.10 and 1.11.** GPU and kernel
+versions do not need to match the test VM. Package integrity, native interfaces,
+configured applets and startup readiness are checked, with stock-panel fallback
+on failure. The recorded complete-session test used COSMIC 1.11 with software
+rendering; physical GPUs and a complete 1.10 session are not validated.
 
-For a qualified distributed package, run as your desktop user:
+Install the matching main and Islands packages, then run as your desktop user:
 
 ```sh
 halcyon-islands status --json
@@ -19,7 +19,7 @@ halcyon-islands enable
 halcyon-islands disable
 ```
 
-Enable is explicit and waits for a later login. Unknown COSMIC cohorts use the
+Enable is explicit and waits for a later login. Unsupported COSMIC versions or failed startup use the
 standard panel while retaining your layout. Installed-but-disabled, incompatible
 and damaged installations remain manageable. Diagnostics omit private paths,
 configuration content and credentials.
@@ -41,5 +41,5 @@ for guarded newest-first restoration of those records.
 
 See [the compatibility contract](../../docs/COMPATIBILITY.md) for signed archive
 trust, native qualification, exact artifact identity, generation recovery and
-reproducible regression commands. Normal signed APT delivery and Updates UI are
-the following group 4 work; this package does not enroll an APT source.
+reproducible regression commands. This package does not enroll an APT source. Until repository enrollment is
+available, update both packages from GitHub Releases.

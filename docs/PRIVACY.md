@@ -1,9 +1,16 @@
 # Privacy
 
-The locally implemented **0.2.1 update is not published or deployed yet**.
-Halcyon 0.2.0 reports automatically; older 0.1.0/0.1.1 releases do not report.
-The following describes the new reporting control, pending release and collector
-migration. Publication remains on hold.
+Halcyon **0.2.5** adds a reporting checkbox. Halcyon 0.2.0 reports automatically;
+older 0.1.0/0.1.1 releases do not report.
+
+**Temporary collector limitation:** the server upgrade is deferred. The current
+server rejects 0.2.5 activity and preference updates, although Google still
+receives the attempted requests. Country lookup can still occur while reporting
+is enabled. Turning reporting off works locally without server acknowledgement.
+Preference updates retry for up to seven days, then expire without changing the
+saved choice; expired updates are not sent later. Existing server activity stays
+visible until its normal expiry, and older clients continue reporting. Counts
+therefore omit 0.2.5 activity and do not yet reflect its opt-outs.
 
 ## Your reporting choice
 
@@ -81,7 +88,10 @@ collector does not store IP addresses or log bodies. Google receives the
 connection's IP and may process infrastructure metadata under its own
 [privacy policy](https://policies.google.com/privacy).
 
-## Status, counts and retention
+## Status, counts and retention after the collector upgrade
+
+The following describes the implemented replacement collector. It is **not yet
+deployed**; the temporary limitation above applies to the current server.
 
 Each installation has one current row, not a daily event history. The row keeps
 its latest activity date, version, first country, current reporting status,

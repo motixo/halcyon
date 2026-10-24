@@ -1,15 +1,29 @@
 # Planned work
 
 Feature requests and user reports, with implementation and investigation status.
-On 2026-10-23 the maintainer requested all three entries below be included in the
-current work and explicitly put the 0.2.1 release on hold. Existing reliability
-and distribution work continues. Nothing below is claimed shipped or resolved
-until its implementation and relevant verification are complete. Publication
-remains on hold; the earlier autonomous-release instruction is superseded.
+On 2026-10-23 the maintainer requested the tracked features and held publication
+while implementation continued. The upcoming version is **0.2.5**; older 0.2.1
+task, branch and evidence names remain historical identifiers.
+
+On 2026-10-24 the maintainer asked to defer the blocked blur experiment and
+accelerate release. Release preparation is resumed with a narrower focus:
+finish the runtime compatibility correction, use a conservative material path,
+and verify the actual packages' launch, Settings, Disable/restore and included
+feature behavior before publication. Nothing is claimed shipped yet.
+
+Further blur causation research, wallpaper-frost/GPU prototypes, physical RX 590
+qualification and exhaustive platform coverage are follow-up work, not claims
+of this release. Preserve the reported failures and disclose unverified scope.
+Do not advertise system-update enrollment before its hosting/bootstrap works;
+unavailable enrollment need not delay the GitHub release. Local opt-out is tested
+and effective. The collector upgrade is deferred: its current schema rejects
+0.2.5 reports and preference messages, so counts will be incomplete. This does
+not block the app release; successful server delivery is not claimed.
+Known failures need safe released behavior rather than a waived test.
 
 ## Activity reporting: user control and opt-out counts
 
-Recorded: 2026-10-23. Status: implemented locally; focused verification complete; independent review and live collector migration pending. Publication remains on hold.
+Recorded: 2026-10-23. Status: client implemented and verified; live collector migration deferred. Local opt-out is accepted for release. Server opt-out counts remain unavailable until migration; pending preferences expire after seven days without re-enabling reporting. Older clients continue reporting.
 
 ### Requested experience
 
@@ -88,12 +102,16 @@ exact commands/hashes are in the usage-optout implementation handoff.
 [scripts/usage/README.md](../scripts/usage/README.md) documents client/collector
 compatibility, deployment order and rollback that preserves accepted opt-outs.
 No live collector/Sheet operation, publication or host installation was done.
-The parent owns independent review and actual deployment. 0.2.1 remains on hold.
+Independent review accepted the collector migration corrections: an unrelated
+Reporting tab and occupied blank-header extension columns are preserved before
+any preference-state writes. The client/UI had no additional material finding.
+Live verification and deployment remain pending; 0.2.1 stays on hold.
 
 ## Reliability report: windows stop responding
 
-Recorded: 2026-10-23. Priority: high. Status: unconfirmed user report; investigation
-pending. No public issue URL or reporter details were supplied with this quote.
+Recorded: 2026-10-23. Priority: high. Status: investigation open; native compositor
+crash reproduced separately, reporter causation unconfirmed. No public issue URL
+was supplied with this quote.
 
 > Thanks for sharing this software. I like the level of customization it offers.
 > Unfortunately, I had to uninstall it after an hour of using because it seemed
@@ -103,6 +121,44 @@ pending. No public issue URL or reporter details were supplied with this quote.
 The reported impact is severe enough that the person uninstalled Halcyon.
 The cause is not established: do not assume Islands, a particular material,
 Halcyon's main process or COSMIC is responsible without evidence.
+
+Investigation update: source inspection of both 0.2.0 and the current branch
+found that a failed Arrange cancellation can leave the full-screen input-capture
+surface active. Escape takes this same path. A local fix now releases the layer
+on failed Cancel/Done exits, retains explicit recovery in the edge menu, refuses
+contended settings locks promptly, and rejects stale events that could reopen
+Arrange. Focused RED/GREEN tests and a release build pass. Review found and then
+verified a correction for display-pin changes during recovery; full-session
+acceptance remains pending. This is a demonstrated code fix,
+**not proof of the reporter's lock-up cause or its resolution**.
+
+The corrected native comparisons completed about 61m31s each on stock COSMIC,
+public 0.2.0 main-only, and main plus Islands. Each passed 45 exact saves and
+15 normal closes/reopens including preflight. These are periodic input tests,
+not continuous typing or complete inactivity tests.
+
+Both Halcyon contexts then crashed the compositor while opening workspace
+overview, before suspend: `Custom Shaders not initialized` at
+`src/backend/render/wayland/blur_effect.rs:113`. Native Files applet panics also
+occurred during their otherwise successful core hours. Stock passed its
+workspace/resume sequence, but did not have equivalent native blur enabled.
+The product contexts used Frosted/Ocean. Islands is therefore not necessary for
+this observed crash; blur causation and the need for an hour delay still need
+isolation. The pinned source suggests missing shader initialization on a
+software/offscreen renderer, but that is not yet a causal qualification.
+
+Evidence: `../halcyon-021-runner-probe/private/qualification-021/window-lockup-soak-r3-report.md`.
+Runs: stock 40018232557, main 40027094006, Islands 40035187607.
+The first short native-blur comparison stopped on a test export assertion
+before the blur controls ran. Stock opened its first overview, but a second
+overview crashed/restarted the separate Workspaces application; compositor and
+editor input survived. This is distinct from the Frosted compositor panic.
+Corrected assertions are prepared. The follow-up agent was stopped by an
+automatic provider safety flag; no native comparison result was returned.
+The three missing controls remain unverified.
+Keep the compositor crash open as a release concern; do not describe the
+complete sessions as passed.
+Software rendering does not qualify the RX 590 or resolve the original report.
 
 ### Reported hardware
 
@@ -143,7 +199,7 @@ release blocker rather than hiding it in the backlog.
 
 ## Multi-monitor report: remember the chosen display
 
-Recorded: 2026-10-23. Priority: high. Status: open user report; implementation complete; native multi-output verification pending.
+Recorded: 2026-10-23. Priority: high. Status: open user report; implementation and review corrections complete locally; native multi-output verification pending.
 Source: [GitHub issue #9 — Problems when having multiple monitors](https://github.com/profilaz3/halcyon/issues/9),
 reported by Tri4c3.
 
@@ -151,8 +207,8 @@ Source investigation completed: widgets have no saved display preference;
 their surfaces use compositor-selected outputs. Output changes during the first
 five seconds can be skipped. Islands already remembers a named display, but its
 disconnected-display fallback depends on enumeration order. These code findings
-do not establish which surface the reporter encountered. The scoped implementation
-is complete locally and is not a published fix: Settings → Layout now saves a
+do not establish which surface the reporter encountered. The initial scoped implementation
+is local and is not a published fix: Settings → Layout now saves a
 connection-name Widget display choice. Every widget, tool, Arrange, probe and
 edge surface uses the selected compositor handle. Startup metadata is processed
 without the former five-second gap. Disconnect uses built-in/lexical-name
@@ -174,6 +230,15 @@ core regression pass. Native Settings captures were inspected at 820×600 and
 handoff. Full multi-output COSMIC guest testing (restart/login/reboot, hotplug,
 scaling and input routing) remains required; these tests do not establish the
 reporter's component or resolve the public report. 0.2.1 publication stays on hold.
+
+Independent review identified two corrections, now fixed locally: enabled Islands fallback
+was counted as zero applets by the compatibility resolver, and display migration
+during a sidebar reorder dropped its cancellation baseline. The resolver must
+watch and fingerprint the Islands sidecar and model the actual enabled fallback;
+migration must restore the original order before rebuilding surfaces. The sidebar cancellation correction passed independent review. The compatibility
+parser correction now passes a scoped parent review and focused regressions
+using actual Rust-serialized/loaded fixtures. Native acceptance remains required
+for the combined behavior.
 
 Chosen scope: add a **Widget display** selector using compositor output names,
 preserve the selection while disconnected, and use a deterministic fallback.
@@ -212,6 +277,42 @@ Acceptance: placement stays on the selected display through restart/login/reboot
 regardless of discovery order, and disconnect/reconnect follows the documented
 fallback and restoration behavior. Scoped implementation complete; full native acceptance remains pending.
 No verified release or public issue-resolution claim is made.
+
+## System updates
+
+Target: **0.2.5**. Status: local implementation independently approved; full
+COSMIC/PolicyKit/Store and final-package verification pending. Publication is
+on hold.
+
+- App settings shows the running installation and offers a manual update check
+  only for a verified installation enrolled in the Halcyon APT source.
+- Checks run asynchronously and can be cancelled. Installation remains with
+  the operating system; the app opens COSMIC Store for updates.
+- Manual downloads, source builds and replaced executables show appropriate
+  information rather than offering to update a different installation.
+- Actual disposable package installation satisfies the checksum verification
+  contract; altering the installed key disables update checks.
+- Public enrollment remains unavailable until its source and bootstrap packages
+  are ready and verified. No hosting, enrollment or release is claimed complete.
+
+## Development package session observations (October 24)
+
+Status: investigating exact `0.2.5~dev.integration.1` packages, source `b6419c70`.
+
+- Applying Outline in the software-rendered COSMIC guest produced colored
+  fragments around the stock dock. They persisted after Undo and disappeared
+  after relogin. Desktop input remained usable. Cause and physical-GPU prevalence
+  are unproven; this does not establish the RX590 report's cause.
+- Settings worked through interactive checks, then logged broken pipes and a
+  segmentation fault during deliberate login-session termination. Review
+  disconnect handling; do not describe this as a spontaneous in-session crash.
+- Dock & panel says to install Islands when it is already installed but
+  unavailable. Make the warning match the known installation/compatibility state.
+
+Evidence: `halcyon-021-evidence-recovery/package-session-acceptance-r3/report.md`
+with screenshots and exact receipts. Focused diagnosis is underway. Core package
+interaction checks passed; active Islands, multiple outputs and live collector
+acceptance are separate outstanding checks.
 
 ## Adding future entries
 

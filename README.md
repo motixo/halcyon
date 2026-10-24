@@ -108,10 +108,10 @@ desktop screenshots above.
   <a href="docs/screenshots/settings-panel.png"><img src="docs/screenshots/settings-panel.png" alt="Dock and panel settings with Islands selected, showing placement, size, transparency and corners" width="900"></a>
 </p>
 
-Islands needs the **separate, matching companion release**. Its selector admits
-reviewed COSMIC source combinations and checks startup; unknown sources fall back
-to the stock panel. The 1.10 qualification uses its compositor with host libraries
-and applets, not a complete clean 1.10 OS. For widgets and themes, install only Halcyon. [Islands compatibility and installation →](packaging/islands/README.md)
+Islands needs the **separate, matching companion release**. COSMIC 1.10 and 1.11
+can attempt startup with interface and readiness checks; failed startup falls back
+to the stock panel. Physical GPU coverage and a complete 1.10 session have not been
+validated. For widgets and themes, install only Halcyon. [Islands compatibility and installation →](packaging/islands/README.md)
 
 ## Install
 
@@ -121,18 +121,18 @@ not AMD-only. ARM devices need a separate build.
 This is an early release; please report problems with your Halcyon and COSMIC
 versions.
 
-**Starting with 0.2.0:** running the desktop widgets automatically sends a daily
-activity report to Google: a random installation ID, app version, approximate first country and report
-format version. Country.is supplies the country from the public IP; Halcyon
-discards the IP. This is always on; there is no reporting toggle.
+**In 0.2.5:** usage sharing is on by default, with an opt-out checkbox in setup
+and App settings. Turning it off stops new activity and country requests locally;
+a minimal preference update is still attempted. The collector upgrade is deferred,
+so it currently rejects 0.2.5 reports and preference updates.
 [What is collected and why](docs/PRIVACY.md).
 
 1. Download the main `cosmic-ext-halcyon_<version>_amd64.deb` from
    [GitHub Releases](https://github.com/profilaz3/halcyon/releases/latest).
-2. Install the downloaded file. For v0.2.0:
+2. Install the downloaded file. For v0.2.5:
 
    ```sh
-   sudo apt install ./cosmic-ext-halcyon_0.2.0_amd64.deb
+   sudo apt install ./cosmic-ext-halcyon_0.2.5_amd64.deb
    ```
 
 3. Open **Halcyon** from the app launcher. The first-run setup helps you choose
@@ -191,9 +191,11 @@ Code, documentation and design contributions are welcome.
 
 ## Privacy
 
-Halcyon 0.2.0 and later automatically report daily installation activity to a
-private Google Sheet. Reports contain a random installation ID, app version, approximate first country
-and report format version. The first country is looked up through Country.is;
+Usage sharing is on by default; 0.2.5 adds a checkbox to turn it off. Activity
+requests contain a random installation ID, app version, approximate first country
+and format fields. A minimal preference update is attempted even when opting out.
+The current collector rejects 0.2.5 requests until its upgrade; older clients
+continue reporting to a private Google Sheet. The first country is looked up through Country.is;
 Halcyon does not store the IP address. They contain no calendar, music, notes, projects,
 precise location or hardware details. [Privacy details](docs/PRIVACY.md).
 
