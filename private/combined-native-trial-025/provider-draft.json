@@ -1,0 +1,1488 @@
+{
+  "blocking_inputs": [
+    "Actual matching DRM device observation using 337dd0d helpers, uncaptured child/bus bindings",
+    "Effective EGL/PipeWire/DRI/Vulkan selector metadata and earlier XDG layout-directory precedence",
+    "Source-reachable Zink Vulkan loader/ICD byte closure (separate conditional candidates inventory)",
+    "Actual compositor and companion context/backend plus complete running mappings",
+    "Final helper payload, main package, target/profile/equivalence/evidence bindings and positive native acceptance"
+  ],
+  "candidate_sha256": "3c38ab7d2f22605b374ab1962c92239554240cce6ddb6343fadd178318ac02e1",
+  "equivalence_id": null,
+  "evidence_id": null,
+  "full_candidate_reference": "../real-discovery-acceptance-r1/result/candidate.json",
+  "host_mapped": null,
+  "id": null,
+  "installed_files_lower_bound": {
+    "/usr/bin/cosmic-applets": {
+      "archive_path": "/usr/bin/cosmic-applets",
+      "kind": "executable",
+      "package": "cosmic-applets",
+      "reason": "configured applet multiplex executable",
+      "resolution": "root-contained",
+      "sha256": "7bc6960383d1d7cd0e25cd3f966bd66e264ba541da95e6fe6c6cb3eb10f385e6",
+      "size": 75750432,
+      "source_identity": "a165f3c83bbd770fdb7400a292334ae882075f82772598e2ad58264a9f826a78"
+    },
+    "/usr/bin/cosmic-comp": {
+      "archive_path": "/usr/bin/cosmic-comp",
+      "kind": "executable",
+      "package": "cosmic-comp",
+      "reason": "required session role",
+      "resolution": "root-contained",
+      "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e",
+      "size": 29071424,
+      "source_identity": "a01818c25917ca96c46e67eb14278c953cdc46d8ffc084f75b4eae5f31e7f07f"
+    },
+    "/usr/bin/cosmic-notifications": {
+      "archive_path": "/usr/bin/cosmic-notifications",
+      "kind": "executable",
+      "package": "cosmic-notifications",
+      "reason": "required session role",
+      "resolution": "root-contained",
+      "sha256": "b981d08233e5cd9f57da7b9a2cb4fd1dc7357897785ecd5cd1f9644df17d9261",
+      "size": 23485232,
+      "source_identity": "751f6d5b1269a0ecff2c5ad7e79edc80e069d0a51408ccf054926fd26549018f"
+    },
+    "/usr/bin/cosmic-session": {
+      "archive_path": "/usr/bin/cosmic-session",
+      "kind": "executable",
+      "package": "cosmic-session",
+      "reason": "required session role",
+      "resolution": "root-contained",
+      "sha256": "ba4b4a44d0a9ae740c80182f5fec907618dce50a8f3fe647c7c2398ed9f68a4a",
+      "size": 5939808,
+      "source_identity": "946f96c3365ee74c378f2e6d593f699e35f123d8a5f357d8549e26eac76363ee"
+    },
+    "/usr/bin/cosmic-settings-daemon": {
+      "archive_path": "/usr/bin/cosmic-settings-daemon",
+      "kind": "executable",
+      "package": "cosmic-settings-daemon",
+      "reason": "required session role",
+      "resolution": "root-contained",
+      "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423",
+      "size": 10083072,
+      "source_identity": "111fad8795e87da81a1197fd3853741d7559f405e4dcf82d90f6bdeac092ca3b"
+    },
+    "/usr/lib/x86_64-linux-gnu/gbm/dri_gbm.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/gbm/dri_gbm.so",
+      "kind": "library",
+      "package": "libgbm1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "ab91198ae350a2e6043633532985882512ac224227e31a249112fae52bbe67ed",
+      "size": 138352,
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+      "kind": "loader",
+      "package": "libc6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-session; conditional source review still required; observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da",
+      "size": 236616,
+      "source_identity": "2a54e3825af3cf0f6d2abdd7b970d2c3f7c48e6ecd0daf25bc6d4cd8ba6be02c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0",
+      "kind": "library",
+      "package": "libegl1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; explicit system provider: pinned Smithay use_system_lib/backend_egl + wayland-egl/wayland-sys dlopen features; not inferred from trace",
+      "resolution": "root-contained",
+      "sha256": "875ecbb2a07d60e32216c9f102965abc1e9cc1da7789558e2e9b8b9c107e231d",
+      "size": 72312,
+      "source_identity": "1cf886f1c4817bc860dd97fdac7d4766a49e120de4b448d3cc15f8a235136be9"
+    },
+    "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0",
+      "kind": "library",
+      "package": "libegl-mesa0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "08dc55de6ebca703d6b4f0f392bfefb4ecfd30ab3cbdaba127d2e33b383c9e62",
+      "size": 435672,
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0",
+      "kind": "library",
+      "package": "libglvnd0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "ca01a91104c8887b3d8e59499b58cbb8f604cc285666b50d9ec888eb0c915182",
+      "size": 719304,
+      "source_identity": "1cf886f1c4817bc860dd97fdac7d4766a49e120de4b448d3cc15f8a235136be9"
+    },
+    "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1",
+      "kind": "library",
+      "package": "libllvm20",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "4b93481bd1c9d42c0951275dd275d4a9d30db78c309ae2cc0405669bc6dbbf8a",
+      "size": 143545784,
+      "source_identity": "f7a69af2a51c90cf395aaccf368d0a2c140c2c3462e5ef5a31c2aebd54ee734d"
+    },
+    "/usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0",
+      "kind": "library",
+      "package": "libx11-xcb1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8",
+      "size": 14024,
+      "source_identity": "c6b4a50be274654c75aa0eff6f1fb1bb088a4491721e924f15bc607c1c10914b"
+    },
+    "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0",
+      "kind": "library",
+      "package": "libx11-6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6",
+      "size": 1302184,
+      "source_identity": "c6b4a50be274654c75aa0eff6f1fb1bb088a4491721e924f15bc607c1c10914b"
+    },
+    "/usr/lib/x86_64-linux-gnu/libXau.so.6.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libXau.so.6.0.0",
+      "kind": "library",
+      "package": "libxau6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a",
+      "size": 18696,
+      "source_identity": "b5e05579d185773f035f9ea8596ffdf67821950b2c6294c72a39024de1b0611f"
+    },
+    "/usr/lib/x86_64-linux-gnu/libXdmcp.so.6.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libXdmcp.so.6.0.0",
+      "kind": "library",
+      "package": "libxdmcp6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0",
+      "size": 26776,
+      "source_identity": "674f53cf45e067f8f02ea6b50d51d27fa0394d25658873b9aa1ab790bbba6aba"
+    },
+    "/usr/lib/x86_64-linux-gnu/libbsd.so.0.12.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libbsd.so.0.12.1",
+      "kind": "library",
+      "package": "libbsd0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "e86cd4f0019f42c2ba5e60602e0edc8694d2948377d98c3654d0f6bddb5254bb",
+      "size": 80888,
+      "source_identity": "a96249a4fe9aec3bcea6ecea0b453d229fef7b8a24637c94a0101d077d38e727"
+    },
+    "/usr/lib/x86_64-linux-gnu/libc.so.6": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libc.so.6",
+      "kind": "library",
+      "package": "libc6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-session; conditional source review still required; observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf",
+      "size": 2129424,
+      "source_identity": "2a54e3825af3cf0f6d2abdd7b970d2c3f7c48e6ecd0daf25bc6d4cd8ba6be02c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libcap.so.2.66": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libcap.so.2.66",
+      "kind": "library",
+      "package": "libcap2",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84",
+      "size": 51536,
+      "source_identity": "13e84249522b80479e8ba52a1509e5b08713f6cc78d03ec03e1a64988d9a1193"
+    },
+    "/usr/lib/x86_64-linux-gnu/libdbus-1.so.3.32.4": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libdbus-1.so.3.32.4",
+      "kind": "library",
+      "package": "libdbus-1-3",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "a6ae7b4ef48562b40d7b9ba8efd2e49f6528b7cc6364bea382dcee4b473b5413",
+      "size": 317752,
+      "source_identity": "834b1f2d43efa8ddec724005454ef62ec2108b819b8c08378ba5bc102a97da8d"
+    },
+    "/usr/lib/x86_64-linux-gnu/libdisplay-info.so.0.1.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libdisplay-info.so.0.1.1",
+      "kind": "library",
+      "package": "libdisplay-info1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "2b42e2620667c9f693561c80d647669d03fd6531c49dbed7bb163c4190abbca6",
+      "size": 202744,
+      "source_identity": "3c52c13ac2958a34d46914f80b83dc18c96f00aa805e1059516c03d35ca0541c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libdrm.so.2.134.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libdrm.so.2.134.0",
+      "kind": "library",
+      "package": "libdrm2",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "3385275829d606617ba57e2da7a5f1bb78e3caf950a3c26462af9aaaf00e3e90",
+      "size": 92768,
+      "source_identity": "3445b2c5f9e87d98ebc44b9307eaa2e56c4ee42bc06cd1e66e99bf0087673c63"
+    },
+    "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.134.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.134.0",
+      "kind": "library",
+      "package": "libdrm-amdgpu1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "756415eba51cb7a63685d3ef71392491a0258880f6d102b3df7b94be8084adff",
+      "size": 47704,
+      "source_identity": "3445b2c5f9e87d98ebc44b9307eaa2e56c4ee42bc06cd1e66e99bf0087673c63"
+    },
+    "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.134.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.134.0",
+      "kind": "library",
+      "package": "libdrm-intel1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "607019d5139aa454d0ca8089ba04a321b3517cb60b0ab283a3e9b5c1c20f516b",
+      "size": 143304,
+      "source_identity": "3445b2c5f9e87d98ebc44b9307eaa2e56c4ee42bc06cd1e66e99bf0087673c63"
+    },
+    "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72",
+      "kind": "library",
+      "package": "libedit2",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "195c607216f8581dbf516346ed38f4c73500cac4b84e18eb0a4fd49931e4cd56",
+      "size": 220472,
+      "source_identity": "9591b22286d5f8b461b29bdf9e5f9a9b1fa4b43f242a3c25bb1bc394cae23bda"
+    },
+    "/usr/lib/x86_64-linux-gnu/libelf-0.190.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libelf-0.190.so",
+      "kind": "library",
+      "package": "libelf1t64",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "248c989360783cdc52f3659921de852c2efcc2097253ce58e34443f856412814",
+      "size": 121560,
+      "source_identity": "c55a78dac680226cd254799c692e71c032475c58eb06c6e319cfc611e9d7d72f"
+    },
+    "/usr/lib/x86_64-linux-gnu/libevdev.so.2.3.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libevdev.so.2.3.0",
+      "kind": "library",
+      "package": "libevdev2",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "38125f0052d085b76d67666a6ac1405e31d1bb8b49cb6fb5c6728bf3e9a3f4aa",
+      "size": 116944,
+      "source_identity": "79470ca10fac641a003c5f15b2978d5f15529b1fe9606c64e7fbbdfe772492ba"
+    },
+    "/usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1",
+      "kind": "library",
+      "package": "libexpat1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "286682ecbc5e59a638963b1a4e6351e65eb32fcf4bdcb9cb7569b6a61fe06a8d",
+      "size": 186624,
+      "source_identity": "ad4104c8ef4a6f76f55034db5c7771132083fa05ccaf8d3986ac870377af6d6f"
+    },
+    "/usr/lib/x86_64-linux-gnu/libffi.so.8.1.4": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libffi.so.8.1.4",
+      "kind": "library",
+      "package": "libffi8",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153",
+      "size": 47672,
+      "source_identity": "10d5351064d5d88652d908c2cbe74ec4c6420c281f247fe735f1bc2025a18908"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgallium-26.1.6-1pop0~1787580452~24.04~a5619ea.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgallium-26.1.6-1pop0~1787580452~24.04~a5619ea.so",
+      "kind": "library",
+      "package": "mesa-libgallium",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "72471782d046ae49958f28c722bb569dbbe88c0b53835bad05e56c3b867f6b31",
+      "size": 47003600,
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgbm.so.1.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgbm.so.1.0.0",
+      "kind": "library",
+      "package": "libgbm1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "11993605f74c5aa3526be24d620f151d09fbcac1e3fd8b953fe8a14ee7e3024c",
+      "size": 22976,
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "kind": "library",
+      "package": "libgcc-s1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-session; conditional source review still required; observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb",
+      "size": 183024,
+      "source_identity": "413d71e89d58009ceab1da9bba16733a20d4e790ab4636d7b3b28b22b3546fdd"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgcrypt.so.20.4.3": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgcrypt.so.20.4.3",
+      "kind": "library",
+      "package": "libgcrypt20",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4",
+      "size": 1345072,
+      "source_identity": "8c2c63870167480d548ee05eeca38e5416aeb62c59828aeb5b8e0267ffa85493"
+    },
+    "/usr/lib/x86_64-linux-gnu/libglib-2.0.so.0.8000.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libglib-2.0.so.0.8000.0",
+      "kind": "library",
+      "package": "libglib2.0-0t64",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "448d9d271e77a7f6c4d057336df40c34b02c794f551caf8fa03b5122f25e601b",
+      "size": 1343056,
+      "source_identity": "96ccfcd445a19624bed769ffd72221dec00bd5f80d438f5e8ab50c0a09edbb28"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0.8000.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0.8000.0",
+      "kind": "library",
+      "package": "libglib2.0-0t64",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "2bf396b14b469ca2eed46a785b3bc0bd1fd979261c6bf505bc4debdcd0a6870a",
+      "size": 399752,
+      "source_identity": "96ccfcd445a19624bed769ffd72221dec00bd5f80d438f5e8ab50c0a09edbb28"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgpg-error.so.0.34.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgpg-error.so.0.34.0",
+      "kind": "library",
+      "package": "libgpg-error0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1",
+      "size": 149760,
+      "source_identity": "f654d5023cf3ee77b3dbdddbded020a4b230b52d4942473e348e5c15cb227070"
+    },
+    "/usr/lib/x86_64-linux-gnu/libgudev-1.0.so.0.3.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libgudev-1.0.so.0.3.0",
+      "kind": "library",
+      "package": "libgudev-1.0-0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "fe24380e9898291c58f4b5533bf9199604c919a6e0567ff21652eaad7e4982eb",
+      "size": 51272,
+      "source_identity": "cb4e3875f3ab11808d81e2b1ab34914166e6b57140f3d69d7e133c9ae8dba59d"
+    },
+    "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2",
+      "kind": "library",
+      "package": "libicu74",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "ddbb3718b8bd9cbd780e5ab08b4503c30a6c4fa0706ebe5d074ed6b596c1714e",
+      "size": 30795392,
+      "source_identity": "d796dfb26686169af43f0a5be01bdb2a77aaaedfc379d270fc2abd7615bfc532"
+    },
+    "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2",
+      "kind": "library",
+      "package": "libicu74",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "7560aadde38e5f4237a47a1ddd5891f9b36768a77a60faae30beee003ac01901",
+      "size": 2140336,
+      "source_identity": "d796dfb26686169af43f0a5be01bdb2a77aaaedfc379d270fc2abd7615bfc532"
+    },
+    "/usr/lib/x86_64-linux-gnu/libinput.so.10.13.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libinput.so.10.13.0",
+      "kind": "library",
+      "package": "libinput10",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "3dea9a694022f2d59fbaa2714f3ea614bef6e16b624bfe817a6ea481704d73b3",
+      "size": 344320,
+      "source_identity": "a68b9fc8d00a5621898fa54f61d8a7b81395a10ece4ab24f8296f38d869186c6"
+    },
+    "/usr/lib/x86_64-linux-gnu/liblz4.so.1.9.4": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/liblz4.so.1.9.4",
+      "kind": "library",
+      "package": "liblz4-1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda",
+      "size": 137440,
+      "source_identity": "86110a5a106a1fdc9a58d6d0d37c75ba4b269fecd342994d3ab3e92e15b1282d"
+    },
+    "/usr/lib/x86_64-linux-gnu/liblzma.so.5.4.5": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/liblzma.so.5.4.5",
+      "kind": "library",
+      "package": "liblzma5",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "26b37d25f7ca2a2d348de8ecabacda12e921cd933b21fa069a179760db77219d",
+      "size": 202904,
+      "source_identity": "9d08f8253ce7c36767dfdd5a79d13b0c304705c6987028c0a3c71add0e8d7e0a"
+    },
+    "/usr/lib/x86_64-linux-gnu/libm.so.6": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libm.so.6",
+      "kind": "library",
+      "package": "libc6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-session; conditional source review still required; observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0",
+      "size": 952616,
+      "source_identity": "2a54e3825af3cf0f6d2abdd7b970d2c3f7c48e6ecd0daf25bc6d4cd8ba6be02c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libmd.so.0.1.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libmd.so.0.1.0",
+      "kind": "library",
+      "package": "libmd0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "423e18586b6ea740f4465afd64f7a9a4cb7264ed979c8e7256f9085af5345fef",
+      "size": 55536,
+      "source_identity": "4d0e55335ab7ccd39239e1e639fb99ba9a15d1c8a9d8a0cc138064b36f53e4fe"
+    },
+    "/usr/lib/x86_64-linux-gnu/libmtdev.so.1.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libmtdev.so.1.0.0",
+      "kind": "library",
+      "package": "libmtdev1t64",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "843e4aa13d0407569a5fb9b44f235c3a788e6afde4ed3ee82a9db37d70a466f7",
+      "size": 22664,
+      "source_identity": "ca006fd7db3b761cf9a4f5051934fd70a9d99805997edf20d79f818154491fb2"
+    },
+    "/usr/lib/x86_64-linux-gnu/libnss_systemd.so.2": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libnss_systemd.so.2",
+      "kind": "library",
+      "package": "libnss-systemd",
+      "reason": "observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "b3f70d1548819529281d26c18a71da605a6816e92b13a240b5efc6647e341ad8",
+      "size": 371112,
+      "source_identity": "594bfbf854ab205773ae26e7ad934485d139d5fbc07e5d4409590c4736e9cfef"
+    },
+    "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1",
+      "kind": "library",
+      "package": "libpciaccess0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "81cd0c59c39cc07b7e1d8c2efaeb10646da73e99786d4ca259765ab662b7a7a3",
+      "size": 39408,
+      "source_identity": "5f2a921e5ee10a922a3234dabde9b00545b376924ae40e031cbf2e9402c7e622"
+    },
+    "/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.11.2": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.11.2",
+      "kind": "library",
+      "package": "libpcre2-8-0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "e00576d71d81d3ba0cfa4903c835a44a8723aac96f72f79ff75200b4cff9071b",
+      "size": 625344,
+      "source_identity": "7d571e672c893b732015cb865452faa6a3e2cfe0df31495d17186f93dd2d321c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libpipewire-0.3.so.0.1608.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libpipewire-0.3.so.0.1608.0",
+      "kind": "library",
+      "package": "libpipewire-0.3-0t64",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "7322354ec7b9e178e206e3e3421bf4a3af2d03be241ee500898a97880f73b507",
+      "size": 1129608,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/libpixman-1.so.0.42.2": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libpixman-1.so.0.42.2",
+      "kind": "library",
+      "package": "libpixman-1-0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "73aa0daeedb7228754d798b194e2ff69c8b82a689b9aa4f1d8ab32a8763b0cc5",
+      "size": 710832,
+      "source_identity": "9785cc2a7986d295aa5d2fecbe005fcb27fbfd80c6733b0e322b97f29ed4f704"
+    },
+    "/usr/lib/x86_64-linux-gnu/libseat.so.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libseat.so.1",
+      "kind": "library",
+      "package": "libseat1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "75b76a22d306910fb4b7b0e55eb9882cfca43f3b30cca67636b0d85795bad78f",
+      "size": 68288,
+      "source_identity": "3d3bba1a163e3985d766771b0244165d4e27e3bc7b9abdb7470ee2e0dba728c5"
+    },
+    "/usr/lib/x86_64-linux-gnu/libselinux.so.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libselinux.so.1",
+      "kind": "library",
+      "package": "libselinux1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "0ec0843463f90e227b0e138e1f379774f50b5514bd7f5dbd4c8a87aca0aa6670",
+      "size": 174472,
+      "source_identity": "610179c44a09af3e15565be00ba8a00e6c31d051d5ac93496b75a54f0cb8780e"
+    },
+    "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0",
+      "kind": "library",
+      "package": "libsensors5",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "5464959e6896b27396304c91706089f1339f10430d7381fef0beebf183332a36",
+      "size": 59920,
+      "source_identity": "73cec374ab3ca44dc506b3c9be95e29ecf526db759d1ad4f5668810df97e0267"
+    },
+    "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33",
+      "kind": "library",
+      "package": "libstdc++6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "1fd75fe70354a416d75aef22bcae68c47bd25d20e2d0568c30b1a9838cf62f11",
+      "size": 2592224,
+      "source_identity": "413d71e89d58009ceab1da9bba16733a20d4e790ab4636d7b3b28b22b3546fdd"
+    },
+    "/usr/lib/x86_64-linux-gnu/libsystemd.so.0.38.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libsystemd.so.0.38.0",
+      "kind": "library",
+      "package": "libsystemd0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "20b3c7a971e9c8721ea5aaa7bc85e25e46628780a2022576ca685233781cabf6",
+      "size": 910592,
+      "source_identity": "594bfbf854ab205773ae26e7ad934485d139d5fbc07e5d4409590c4736e9cfef"
+    },
+    "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4",
+      "kind": "library",
+      "package": "libtinfo6",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "e6089d7bb95eee5b545f3770dd69095b0bca47d26701cad145af429561d16306",
+      "size": 208328,
+      "source_identity": "84c70abcc429c05ffb5295cce9e6b2c531700da4805b21cbcba9ed2768ce56b1"
+    },
+    "/usr/lib/x86_64-linux-gnu/libudev.so.1.7.8": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libudev.so.1.7.8",
+      "kind": "library",
+      "package": "libudev1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "44df5397fd51d2871af46f051ab2750d4cdc29391868c3c4ff3f78341ff850a4",
+      "size": 207288,
+      "source_identity": "594bfbf854ab205773ae26e7ad934485d139d5fbc07e5d4409590c4736e9cfef"
+    },
+    "/usr/lib/x86_64-linux-gnu/libwacom.so.9.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libwacom.so.9.0.0",
+      "kind": "library",
+      "package": "libwacom9",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "67fc99dbb4eb53465847d7982d8455bdb10671f1af2cd4b29e42f60915195376",
+      "size": 56176,
+      "source_identity": "bdd7e3ca581cf1c48afc0be304a7615d2e67c482dcd0833f58713546ddcdbc0f"
+    },
+    "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.23.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.23.1",
+      "kind": "library",
+      "package": "libwayland-client0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required; explicit system provider: pinned Smithay use_system_lib/backend_egl + wayland-egl/wayland-sys dlopen features; not inferred from trace",
+      "resolution": "root-contained",
+      "sha256": "24445e83320f1603c8ddfbdba73e471a0ff6e5841ef257f6e3c67f95ec7a9ebd",
+      "size": 68872,
+      "source_identity": "84797b3b213ae2c638cd81b216591b9ecf31d1ed6e9de40a2897bb3030b6256c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libwayland-egl.so.1.23.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libwayland-egl.so.1.23.1",
+      "kind": "library",
+      "package": "libwayland-egl1",
+      "reason": "explicit system provider: pinned Smithay use_system_lib/backend_egl + wayland-egl/wayland-sys dlopen features; not inferred from trace",
+      "resolution": "root-contained",
+      "sha256": "fe86484ad0bba1627e8b45f8cf7be108177efda03ea481592b9d166080a05ca4",
+      "size": 14344,
+      "source_identity": "84797b3b213ae2c638cd81b216591b9ecf31d1ed6e9de40a2897bb3030b6256c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libwayland-server.so.0.23.1": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libwayland-server.so.0.23.1",
+      "kind": "library",
+      "package": "libwayland-server0",
+      "reason": "explicit system provider: pinned Smithay use_system_lib/backend_egl + wayland-egl/wayland-sys dlopen features; not inferred from trace",
+      "resolution": "root-contained",
+      "sha256": "5f21a244bbe5f94e0b7ab27fa221069761a136616e6fde5a863fc3bbc1fa2905",
+      "size": 89544,
+      "source_identity": "84797b3b213ae2c638cd81b216591b9ecf31d1ed6e9de40a2897bb3030b6256c"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0",
+      "kind": "library",
+      "package": "libxcb-dri3-0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "a919146693e71897484c2996beb837273a7a278d1a2afe477bc072f10681f3b0",
+      "size": 22744,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0",
+      "kind": "library",
+      "package": "libxcb-present0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "d06d982abe6e9202aecd22322166be8ba49e68e05889fb6c6faec0daa88530a4",
+      "size": 14536,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0",
+      "kind": "library",
+      "package": "libxcb-randr0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "9fa6b0ec4af163a86bc9a9ded3309a5979155fb5ef2d311fdda7fff0e9eee01a",
+      "size": 67784,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb-shm.so.0.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb-shm.so.0.0.0",
+      "kind": "library",
+      "package": "libxcb-shm0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "ad78a7b22409685ca82e54346c2b9465d697f303e69e74a9c1693bb206e319df",
+      "size": 14552,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0",
+      "kind": "library",
+      "package": "libxcb-sync1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "27c2d6dddde34146904c3c64cfcc885a14a351636d6611877368a48e29355c39",
+      "size": 35032,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0",
+      "kind": "library",
+      "package": "libxcb-xfixes0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "e59ef497333a6ede2096a0bd9eeb6ec4023374c16d3a8d7511d1251fb7f9b9df",
+      "size": 35016,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0",
+      "kind": "library",
+      "package": "libxcb1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440",
+      "size": 162392,
+      "source_identity": "0dfbd468d849449d94067617e488ff765f3ddb3459558439b2788a3619f56b77"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0",
+      "kind": "library",
+      "package": "libxkbcommon0",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-notifications; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9",
+      "size": 293432,
+      "source_identity": "f72bfd2cb4543f8c52cfa8a840eb8141b9d770db9c36302fd7ccb4dd8209d844"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14",
+      "kind": "library",
+      "package": "libxml2",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "209e941be9eb2eb9ab36caaa0b81d1c6b36c8f5d7268c24f19e81039137e6485",
+      "size": 1967424,
+      "source_identity": "709d4667870f3e47309bb957e57d0a72a61be49a418f90d8ebb931b48739241d"
+    },
+    "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0",
+      "kind": "library",
+      "package": "libxshmfence1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "7d40b02b27d449b6b26cea10ea10aafd0cce5a1e2d7859ea57f34b29fe88923f",
+      "size": 14480,
+      "source_identity": "277be5a2b7ea3c65af903c4bf6b5e2b7add23ee522a34eb57b5e3444a8805216"
+    },
+    "/usr/lib/x86_64-linux-gnu/libz.so.1.3": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libz.so.1.3",
+      "kind": "library",
+      "package": "zlib1g",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "f61677c7bdb7c2aa2a243ea781bfd16afcb361cede7b4ef76127a9d8eb9a5242",
+      "size": 113000,
+      "source_identity": "41795754331f2a05524da5b4a796f3c185434f4163c771b0098ca05b0ccfbd84"
+    },
+    "/usr/lib/x86_64-linux-gnu/libzstd.so.1.5.5": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/libzstd.so.1.5.5",
+      "kind": "library",
+      "package": "libzstd1",
+      "reason": "observed executable mapping of /usr/bin/cosmic-comp; conditional source review still required; observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required; observed executable mapping of /usr/bin/cosmic-applets; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb",
+      "size": 755864,
+      "source_identity": "ed9f8fdee8b0d69a4f3a9b23faa0ed4e85ff94e7ed780851c7550a8171b58817"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-adapter.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-adapter.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "c9989837cb6cef3fdc0a319408227b0ec01d0fdffadfec358ac34c6794a16447",
+      "size": 96528,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-client-device.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-client-device.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "32106eebe6e93c0c310432c2fa5aec7ca378a46e6807db7179f2c09e16b5b93c",
+      "size": 67856,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-client-node.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-client-node.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "c319b348d429dbd588bfe1d8904d1c38593cf39d7b362ff6eb95c7fd64915ec3",
+      "size": 243984,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-metadata.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-metadata.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "4ca0c09bd792135ac3b2b6f07b410d48ac98f46ef63b7713684cfe66344adf9d",
+      "size": 59664,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-protocol-native.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-protocol-native.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "46a5649d1afb48aaa28f2c2035df54ca070fc5567e885ef50546645da23a37d0",
+      "size": 264496,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-rt.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-rt.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "2c0adcece289f447d4f4024235f877c59f0845119226358b28bab036439802f8",
+      "size": 35088,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-session-manager.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-session-manager.so",
+      "kind": "library",
+      "package": "libpipewire-0.3-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "f05f9ba5829462c67470e6f4526f3bd02b844df3f528e4df72ac18f8e0365d4c",
+      "size": 166128,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-dbus.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-dbus.so",
+      "kind": "library",
+      "package": "libspa-0.2-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "68a851793cec576e6018aafb1b64fd4cce0c464a6074fb2d5f6909648853765a",
+      "size": 27008,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-journal.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-journal.so",
+      "kind": "library",
+      "package": "libspa-0.2-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "8bb7248cad294807701b584c7823be5ddf459a62886d662371a0d54a8cd66e06",
+      "size": 18816,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-support.so": {
+      "archive_path": "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-support.so",
+      "kind": "library",
+      "package": "libspa-0.2-modules",
+      "reason": "observed executable mapping of /usr/bin/cosmic-settings-daemon; conditional source review still required",
+      "resolution": "root-contained",
+      "sha256": "d7f00cf99ae09e98e4e964b6c1114f1bd0e91b932dca5648ee4e70df66fded5b",
+      "size": 178760,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    },
+    "/usr/share/glvnd/egl_vendor.d/50_mesa.json": {
+      "archive_path": "/usr/share/glvnd/egl_vendor.d/50_mesa.json",
+      "kind": "resource",
+      "package": "libegl-mesa0",
+      "reason": "source-reviewed executable-provider selector; effective overrides remain to capture",
+      "resolution": "root-contained",
+      "sha256": "cd3881df4227c13ca7f9cfe6c78820f21d5f7a00a41b299214f6f827e63be369",
+      "size": 105,
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/pipewire/client.conf": {
+      "archive_path": "/usr/share/pipewire/client.conf",
+      "kind": "resource",
+      "package": "pipewire-bin",
+      "reason": "source-reviewed executable-provider selector; effective overrides remain to capture",
+      "resolution": "root-contained",
+      "sha256": "5cdea4024b596f681217616852a09685eb80d10469d69640ed41f65c0526a2de",
+      "size": 4704,
+      "source_identity": "96f5dcd2bbd694e0621cbb175e195b58eb1aafe2f533624668943cc9a73c1cd4"
+    }
+  },
+  "packages": {
+    "cosmic-applets": {
+      "architecture": "amd64",
+      "sha256": "daa317d8916e02906b1cb46767c3e6d46b1f67dfd40163bdf20735703d662213",
+      "version": "1.11.0~1792531304~24.04~328d142"
+    },
+    "cosmic-comp": {
+      "architecture": "amd64",
+      "sha256": "f493771502e56245158906e92b4da0b5a7f0bc2fb1926f3feb81d6294541b427",
+      "version": "0.1~1792508925~24.04~8cb1802"
+    },
+    "cosmic-notifications": {
+      "architecture": "amd64",
+      "sha256": "62992d0808e15c9f02fadd7cb0546df02f407f1eccb6f6a18019044ec9c53921",
+      "version": "1.11.0~1792526347~24.04~382927d"
+    },
+    "cosmic-session": {
+      "architecture": "amd64",
+      "sha256": "7c387469f64804ccce9e06686430364d4fe1199968c8b3a16d752e6916560340",
+      "version": "1.11.0~1792525615~24.04~4b0a0a2"
+    },
+    "cosmic-settings-daemon": {
+      "architecture": "amd64",
+      "sha256": "5a12e3f2cb47dc8373db235e8641c9b68c452f0c02bd33977db2106d6219722e",
+      "version": "1.11.0~1792526191~24.04~655b14f"
+    },
+    "libbsd0": {
+      "architecture": "amd64",
+      "sha256": "f3857b0863ac5cfd4263e9bf6cfb1d4be88d5321e4070d5bc2b62b0949e6c86f",
+      "version": "0.12.1-1build1.1"
+    },
+    "libc6": {
+      "architecture": "amd64",
+      "sha256": "ff5557d99b51f761c4b7c92368b9cc45565eda17df9bf9eb4b134d09825008be",
+      "version": "2.39-0ubuntu8.9"
+    },
+    "libcap2": {
+      "architecture": "amd64",
+      "sha256": "23c627c77c66552a658e62852f244f4946dc543898e0ec5428d5dc6bffde2d6a",
+      "version": "1:2.66-5ubuntu2.4"
+    },
+    "libdbus-1-3": {
+      "architecture": "amd64",
+      "sha256": "5d630480f04b4b442300ce847a3fa705ea4d14d80ba6de91f99b51a4e4953b08",
+      "version": "1.14.10-4ubuntu4.1"
+    },
+    "libdisplay-info1": {
+      "architecture": "amd64",
+      "sha256": "a3bfce18d53aa9d635d899f1f555e84bbbf2c859d80cef3b4eb1c36b2c772026",
+      "version": "0.1.1-2build1"
+    },
+    "libdrm-amdgpu1": {
+      "architecture": "amd64",
+      "sha256": "e1bd6c689bbc640f730a2a8c3125d9938158d0daf136d1df18f279a102550ee5",
+      "version": "2.4.134-3pop0~1787326260~24.04~3e90b25"
+    },
+    "libdrm-intel1": {
+      "architecture": "amd64",
+      "sha256": "b80a137dd841d3ea73c04f7955931b4d37e485878af8026055d9b6204133456d",
+      "version": "2.4.134-3pop0~1787326260~24.04~3e90b25"
+    },
+    "libdrm2": {
+      "architecture": "amd64",
+      "sha256": "1391779172755515a937e0a01cbd59174468dc6ac9924c6fe33091e0125aac04",
+      "version": "2.4.134-3pop0~1787326260~24.04~3e90b25"
+    },
+    "libedit2": {
+      "architecture": "amd64",
+      "sha256": "3afbc8ddf835049dd4d88275b9d13680e4c4cdd59e191cbd63424152cc08e00e",
+      "version": "3.1-20230828-1build1"
+    },
+    "libegl-mesa0": {
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "architecture": "amd64",
+      "sha256": "8f066d8fba41c06a1599b5a5c813929ef9d4b956d9e60b6b8cb9b4e7271091d2"
+    },
+    "libegl1": {
+      "architecture": "amd64",
+      "sha256": "e549f7776216f7bd3b1c216729fb40a97a562e2eb7c563cde632b4931f9a4e57",
+      "version": "1.7.0-1build1"
+    },
+    "libelf1t64": {
+      "architecture": "amd64",
+      "sha256": "b4aee123a37472d213647594b4f7d4a0d13615b0ca2a6fd33926b768d6b232c2",
+      "version": "0.190-1.1ubuntu0.1"
+    },
+    "libevdev2": {
+      "architecture": "amd64",
+      "sha256": "a14b1ea7b3220a063458590734920879cec8431b4fc5160eb0f044dfb8d76515",
+      "version": "1.13.1+dfsg-1build1"
+    },
+    "libexpat1": {
+      "architecture": "amd64",
+      "sha256": "494b8e672f722130c6bca6a7bc4cc31a43ca891a31d60d868bfdd699a3c20b13",
+      "version": "2.6.1-2ubuntu0.6"
+    },
+    "libffi8": {
+      "architecture": "amd64",
+      "sha256": "637e6a7744de08cd331a41f4efd0d24e6ea9064843dea9d1c6ca87bdb5f038a2",
+      "version": "3.4.6-1build1"
+    },
+    "libgbm1": {
+      "architecture": "amd64",
+      "sha256": "a77d89ac6b0e22fd9fcba3dee380ebf3859e244516d348c0591d703feec7686b",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+    },
+    "libgcc-s1": {
+      "architecture": "amd64",
+      "sha256": "aa7fadbe33b78bcf99885318040601c550c208929565b179891d9a3cc2aa68cd",
+      "version": "14.2.0-4ubuntu2~24.04.1"
+    },
+    "libgcrypt20": {
+      "architecture": "amd64",
+      "sha256": "957b9eeaa83cf6f2d5d5d76dbb8aa31d3297e6781d8a02fa08dcc897ae650a0b",
+      "version": "1.10.3-2ubuntu0.2"
+    },
+    "libglib2.0-0t64": {
+      "architecture": "amd64",
+      "sha256": "ff1b650f655b36dfe202fdbae6bb02b363c7257b6dd23e4f95ab61f716190df3",
+      "version": "2.80.0-6ubuntu3.10"
+    },
+    "libglvnd0": {
+      "architecture": "amd64",
+      "sha256": "33f5e07c74f73c2bfb44086ae0f9e6da52acd6c104d30ffe8fd768d8253d5e82",
+      "version": "1.7.0-1build1"
+    },
+    "libgpg-error0": {
+      "architecture": "amd64",
+      "sha256": "93654ee8180a73a0363f25c51dc673d67cbabcbecd164187b8a2deb54d007aef",
+      "version": "1.47-3build2.1"
+    },
+    "libgudev-1.0-0": {
+      "architecture": "amd64",
+      "sha256": "8bdd42c584a8d18759df2311b126dc679d438e9780038743b792cf5315f248dc",
+      "version": "1:238-5ubuntu1"
+    },
+    "libicu74": {
+      "architecture": "amd64",
+      "sha256": "c9a70989678660eed9a1e904c74fa043da8bec8e2036856fc16e31ced79b04f8",
+      "version": "74.2-1ubuntu3.1"
+    },
+    "libinput10": {
+      "architecture": "amd64",
+      "sha256": "dd76b865f149d0b072d21a532539effefdce7983feb232b25e2adf354207237b",
+      "version": "1.25.0-1ubuntu3.7"
+    },
+    "libllvm20": {
+      "architecture": "amd64",
+      "sha256": "f018e71c72c7a4742fb1aff9dc98b45586f42e6ea464d4918af7e3772b7f0658",
+      "version": "1:20.1.2-0ubuntu1~24.04.3"
+    },
+    "liblz4-1": {
+      "architecture": "amd64",
+      "sha256": "319331270d5cc52d5ebffe51c941d7b01b432bc402c2924b557209a64d4ecbad",
+      "version": "1.9.4-1build1.1"
+    },
+    "liblzma5": {
+      "architecture": "amd64",
+      "sha256": "5bcf5da2339331e21d3f42a831e82c61c54c6b2f29804010e8d59abd0ae52167",
+      "version": "5.6.1+really5.4.5-1ubuntu0.4"
+    },
+    "libmd0": {
+      "architecture": "amd64",
+      "sha256": "e5ba01d3c41f256aaf57ec59aa0554857162e3e7f97cdfbff1ed2c0e8d720ee7",
+      "version": "1.1.0-2build1.1"
+    },
+    "libmtdev1t64": {
+      "architecture": "amd64",
+      "sha256": "fa86080d67defabc076ead97d86ccff14c906d21fe4cc1625ba73a8cf8022dfa",
+      "version": "1.1.6-1.1build1"
+    },
+    "libnss-systemd": {
+      "architecture": "amd64",
+      "sha256": "89e5e01ee8f5f8a7e02bfa90d6afc71f9107b0b2d683883e8a10b39b859ad704",
+      "version": "255.4-1ubuntu8.15pop0~1778766128~24.04~85b5073"
+    },
+    "libpciaccess0": {
+      "architecture": "amd64",
+      "sha256": "87a3b1c2a09f54d229e5e1f5424adc806e8f99bbb8aa8c8dea114b727f7a5a96",
+      "version": "0.17-3ubuntu0.24.04.3"
+    },
+    "libpcre2-8-0": {
+      "architecture": "amd64",
+      "sha256": "110a797a57673d3ee497a141cf988199258058c57525799c63194d81822529a0",
+      "version": "10.42-4ubuntu2.1"
+    },
+    "libpipewire-0.3-0t64": {
+      "architecture": "amd64",
+      "sha256": "16ebea2dc0fb3111d0d30019465e0a948744217ff7e3ee44fdd9bcfb595c319c",
+      "version": "1.6.8-1pop1~1787688714~24.04~fdff050"
+    },
+    "libpipewire-0.3-modules": {
+      "architecture": "amd64",
+      "sha256": "4326e735dad541ed9d3943afc7bf733ede7d657757c4e9bba47711baf41ab5c5",
+      "version": "1.6.8-1pop1~1787688714~24.04~fdff050"
+    },
+    "libpixman-1-0": {
+      "architecture": "amd64",
+      "sha256": "d9c2931c4c424615eeab9dd5ae08bfc608b84e803c1d3ccddf319270db213421",
+      "version": "0.42.2-1build1"
+    },
+    "libseat1": {
+      "architecture": "amd64",
+      "sha256": "d6b1e6f19609044a6fc5f69a01305f3b869b588927ab3074e8a1dcea8d1c394f",
+      "version": "0.8.0-1"
+    },
+    "libselinux1": {
+      "architecture": "amd64",
+      "sha256": "6abaa6c26f46ef17764c4a753e0e84de1cdadde5634fd2987621fdc617988d19",
+      "version": "3.5-2ubuntu2.1"
+    },
+    "libsensors5": {
+      "architecture": "amd64",
+      "sha256": "515ed1fbe2bc99926c44fe10b1beb9c3510068c344adda334303098d669ba1e5",
+      "version": "1:3.6.0-9build1"
+    },
+    "libspa-0.2-modules": {
+      "architecture": "amd64",
+      "sha256": "abac437b3a430de833a2b75be4c25c7d8a87725db106d0e124fb46ba20ab260d",
+      "version": "1.6.8-1pop1~1787688714~24.04~fdff050"
+    },
+    "libstdc++6": {
+      "architecture": "amd64",
+      "sha256": "a51f8de7829211db961a31f02158058ad1a95f92ac6d0a5dff6350e2821c54c0",
+      "version": "14.2.0-4ubuntu2~24.04.1"
+    },
+    "libsystemd0": {
+      "architecture": "amd64",
+      "sha256": "6f18a206897d7da3751b713f6533a3630753a4f0a337ce49415e6e0b0a735113",
+      "version": "255.4-1ubuntu8.15pop0~1778766128~24.04~85b5073"
+    },
+    "libtinfo6": {
+      "architecture": "amd64",
+      "sha256": "b67a6df2bdab61d273eabebd208bb6a3fb12618a390a067e1ee305a409ff03d9",
+      "version": "6.4+20240113-1ubuntu2.2"
+    },
+    "libudev1": {
+      "architecture": "amd64",
+      "sha256": "e61a5d85ba88a969385e3c08140c63f3552289eee1753de610aeffe1b5642bda",
+      "version": "255.4-1ubuntu8.15pop0~1778766128~24.04~85b5073"
+    },
+    "libwacom9": {
+      "architecture": "amd64",
+      "sha256": "87c707e4e7cbef1080b7c6cfb14acb0e5b0a4b07b19ce5545923952fbcf82298",
+      "version": "2.10.0-2"
+    },
+    "libwayland-client0": {
+      "architecture": "amd64",
+      "sha256": "5c50d768235ed53c2a8cca4c2b84e050dbfaa2b24287e515d513f691e33a6b68",
+      "version": "1.23.1-3pop1~1741692146~24.04~dcd01e0"
+    },
+    "libwayland-egl1": {
+      "architecture": "amd64",
+      "sha256": "cec325eddf96659fc97f5efb494ca0563033b9faf0c7c7133eba10e792e505ea",
+      "version": "1.23.1-3pop1~1741692146~24.04~dcd01e0"
+    },
+    "libwayland-server0": {
+      "architecture": "amd64",
+      "sha256": "b35c38de0b0006a35fe1c380336c759ce0c161979f338ae67e521d1e491f4bc4",
+      "version": "1.23.1-3pop1~1741692146~24.04~dcd01e0"
+    },
+    "libx11-6": {
+      "architecture": "amd64",
+      "sha256": "9102f73477081a9a57994c80587ca9760341f644ed51bdfa46f2248083d418b3",
+      "version": "2:1.8.7-1ubuntu0.1"
+    },
+    "libx11-xcb1": {
+      "architecture": "amd64",
+      "sha256": "5ce7093e58aaaf753ed0904351a4e07f209e0c282ee8ef4f5f7988d0b40dccc1",
+      "version": "2:1.8.7-1ubuntu0.1"
+    },
+    "libxau6": {
+      "architecture": "amd64",
+      "sha256": "e40d29f1d1a62393bacaedebe0da3d9006084152a9f7e5e029293f08ce1c5c80",
+      "version": "1:1.0.9-1build6"
+    },
+    "libxcb-dri3-0": {
+      "architecture": "amd64",
+      "sha256": "3d3d0e95e56ae16010a84883196b8153cba62d6831f9aaee2a68c46f20c7c004",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxcb-present0": {
+      "architecture": "amd64",
+      "sha256": "2e36e6557e87dbfd64df3143cbf81a4f75c3447501a545b4730511d228b0dd17",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxcb-randr0": {
+      "architecture": "amd64",
+      "sha256": "b5cb519823a05a617b543dc9b6a9289b7648b20048244abe021caa706309835a",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxcb-shm0": {
+      "architecture": "amd64",
+      "sha256": "229d1280d459f1ba44c22939d3f9b61d9d20932d9a646b3fe4ce50be4cdf2325",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxcb-sync1": {
+      "architecture": "amd64",
+      "sha256": "14286795a258593259923619073e50c15345673befae2733f7b0577b07359aa8",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxcb-xfixes0": {
+      "architecture": "amd64",
+      "sha256": "0b2ab64af92a71e3d1a35e3c819880ee28d04bfac81360df68ae8d8e9663ebd2",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxcb1": {
+      "architecture": "amd64",
+      "sha256": "e1c6611d11ad7398326f1bf028afc34c3b14c51d917a3426b966ed4b9687fa58",
+      "version": "1.15-1ubuntu2"
+    },
+    "libxdmcp6": {
+      "architecture": "amd64",
+      "sha256": "bcd336fce11ce2a45f34d0f95e6980af22529f22147e8f98c156e5cee8ee42bb",
+      "version": "1:1.1.3-0ubuntu6"
+    },
+    "libxkbcommon0": {
+      "architecture": "amd64",
+      "sha256": "2b9caeb423efb540296a1cb20b872cc630c23908407ecb5c1c787a617622d664",
+      "version": "1.6.0-1build1"
+    },
+    "libxml2": {
+      "architecture": "amd64",
+      "sha256": "c5a065f85c1e6f605741e365e40cad71c3ceb0e85e2791400bd35b8896e12ad1",
+      "version": "2.9.14+dfsg-1.3ubuntu3.10"
+    },
+    "libxshmfence1": {
+      "architecture": "amd64",
+      "sha256": "bc6de4bfaf9050a8ba83d4bcfb114131b081084a7972c03417f8523d52b5c742",
+      "version": "1.3-1build5"
+    },
+    "libzstd1": {
+      "architecture": "amd64",
+      "sha256": "dfcf25061e07aad7efd3f4f880ba5ad4d4d09ebe7fc8cc77ab6b8a161d6d4727",
+      "version": "1.5.5+dfsg2-2build1.1"
+    },
+    "mesa-libgallium": {
+      "architecture": "amd64",
+      "sha256": "bec4f801648f5ddc2f78d09754f5d3bbae52ffa1d633b4341959f442114ffb5f",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea"
+    },
+    "zlib1g": {
+      "architecture": "amd64",
+      "sha256": "376249c8de139568221dbb242318cc8cb8f02299e3a62b7432948e1754fbddf9",
+      "version": "1:1.3.dfsg-3.1ubuntu2.3"
+    },
+    "pipewire-bin": {
+      "version": "1.6.8-1pop1~1787688714~24.04~fdff050",
+      "architecture": "amd64",
+      "sha256": "097df73f0ae1f5e55c12223baebd3c25a8be90932658978d394b67a21c1dada8"
+    }
+  },
+  "processes_proposed": {
+    "cosmic-applets": {
+      "count": "configured",
+      "executable": "/usr/bin/cosmic-applets",
+      "lifecycle": "panel-child",
+      "live_profile_qualified": false,
+      "mapped_lower_bound": {
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": "c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da",
+        "/usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8",
+        "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6",
+        "/usr/lib/x86_64-linux-gnu/libXau.so.6.0.0": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a",
+        "/usr/lib/x86_64-linux-gnu/libXdmcp.so.6.0.0": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0",
+        "/usr/lib/x86_64-linux-gnu/libbsd.so.0.12.1": "e86cd4f0019f42c2ba5e60602e0edc8694d2948377d98c3654d0f6bddb5254bb",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf",
+        "/usr/lib/x86_64-linux-gnu/libcap.so.2.66": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84",
+        "/usr/lib/x86_64-linux-gnu/libdbus-1.so.3.32.4": "a6ae7b4ef48562b40d7b9ba8efd2e49f6528b7cc6364bea382dcee4b473b5413",
+        "/usr/lib/x86_64-linux-gnu/libffi.so.8.1.4": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": "d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb",
+        "/usr/lib/x86_64-linux-gnu/libgcrypt.so.20.4.3": "6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4",
+        "/usr/lib/x86_64-linux-gnu/libgpg-error.so.0.34.0": "6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1",
+        "/usr/lib/x86_64-linux-gnu/liblz4.so.1.9.4": "40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda",
+        "/usr/lib/x86_64-linux-gnu/liblzma.so.5.4.5": "26b37d25f7ca2a2d348de8ecabacda12e921cd933b21fa069a179760db77219d",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6": "fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0",
+        "/usr/lib/x86_64-linux-gnu/libmd.so.0.1.0": "423e18586b6ea740f4465afd64f7a9a4cb7264ed979c8e7256f9085af5345fef",
+        "/usr/lib/x86_64-linux-gnu/libsystemd.so.0.38.0": "20b3c7a971e9c8721ea5aaa7bc85e25e46628780a2022576ca685233781cabf6",
+        "/usr/lib/x86_64-linux-gnu/libudev.so.1.7.8": "44df5397fd51d2871af46f051ab2750d4cdc29391868c3c4ff3f78341ff850a4",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.23.1": "24445e83320f1603c8ddfbdba73e471a0ff6e5841ef257f6e3c67f95ec7a9ebd",
+        "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440",
+        "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0": "3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9",
+        "/usr/lib/x86_64-linux-gnu/libzstd.so.1.5.5": "0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb"
+      },
+      "sha256": "7bc6960383d1d7cd0e25cd3f966bd66e264ba541da95e6fe6c6cb3eb10f385e6"
+    },
+    "cosmic-comp": {
+      "count": 1,
+      "executable": "/usr/bin/cosmic-comp",
+      "lifecycle": "session",
+      "live_profile_qualified": false,
+      "mapped_lower_bound": {
+        "/usr/lib/x86_64-linux-gnu/gbm/dri_gbm.so": "ab91198ae350a2e6043633532985882512ac224227e31a249112fae52bbe67ed",
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": "c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da",
+        "/usr/lib/x86_64-linux-gnu/libEGL.so.1.1.0": "875ecbb2a07d60e32216c9f102965abc1e9cc1da7789558e2e9b8b9c107e231d",
+        "/usr/lib/x86_64-linux-gnu/libEGL_mesa.so.0.0.0": "08dc55de6ebca703d6b4f0f392bfefb4ecfd30ab3cbdaba127d2e33b383c9e62",
+        "/usr/lib/x86_64-linux-gnu/libGLdispatch.so.0.0.0": "ca01a91104c8887b3d8e59499b58cbb8f604cc285666b50d9ec888eb0c915182",
+        "/usr/lib/x86_64-linux-gnu/libLLVM.so.20.1": "4b93481bd1c9d42c0951275dd275d4a9d30db78c309ae2cc0405669bc6dbbf8a",
+        "/usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8",
+        "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6",
+        "/usr/lib/x86_64-linux-gnu/libXau.so.6.0.0": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a",
+        "/usr/lib/x86_64-linux-gnu/libXdmcp.so.6.0.0": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0",
+        "/usr/lib/x86_64-linux-gnu/libbsd.so.0.12.1": "e86cd4f0019f42c2ba5e60602e0edc8694d2948377d98c3654d0f6bddb5254bb",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf",
+        "/usr/lib/x86_64-linux-gnu/libcap.so.2.66": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84",
+        "/usr/lib/x86_64-linux-gnu/libdisplay-info.so.0.1.1": "2b42e2620667c9f693561c80d647669d03fd6531c49dbed7bb163c4190abbca6",
+        "/usr/lib/x86_64-linux-gnu/libdrm.so.2.134.0": "3385275829d606617ba57e2da7a5f1bb78e3caf950a3c26462af9aaaf00e3e90",
+        "/usr/lib/x86_64-linux-gnu/libdrm_amdgpu.so.1.134.0": "756415eba51cb7a63685d3ef71392491a0258880f6d102b3df7b94be8084adff",
+        "/usr/lib/x86_64-linux-gnu/libdrm_intel.so.1.134.0": "607019d5139aa454d0ca8089ba04a321b3517cb60b0ab283a3e9b5c1c20f516b",
+        "/usr/lib/x86_64-linux-gnu/libedit.so.2.0.72": "195c607216f8581dbf516346ed38f4c73500cac4b84e18eb0a4fd49931e4cd56",
+        "/usr/lib/x86_64-linux-gnu/libelf-0.190.so": "248c989360783cdc52f3659921de852c2efcc2097253ce58e34443f856412814",
+        "/usr/lib/x86_64-linux-gnu/libevdev.so.2.3.0": "38125f0052d085b76d67666a6ac1405e31d1bb8b49cb6fb5c6728bf3e9a3f4aa",
+        "/usr/lib/x86_64-linux-gnu/libexpat.so.1.9.1": "286682ecbc5e59a638963b1a4e6351e65eb32fcf4bdcb9cb7569b6a61fe06a8d",
+        "/usr/lib/x86_64-linux-gnu/libffi.so.8.1.4": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153",
+        "/usr/lib/x86_64-linux-gnu/libgallium-26.1.6-1pop0~1787580452~24.04~a5619ea.so": "72471782d046ae49958f28c722bb569dbbe88c0b53835bad05e56c3b867f6b31",
+        "/usr/lib/x86_64-linux-gnu/libgbm.so.1.0.0": "11993605f74c5aa3526be24d620f151d09fbcac1e3fd8b953fe8a14ee7e3024c",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": "d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb",
+        "/usr/lib/x86_64-linux-gnu/libgcrypt.so.20.4.3": "6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4",
+        "/usr/lib/x86_64-linux-gnu/libglib-2.0.so.0.8000.0": "448d9d271e77a7f6c4d057336df40c34b02c794f551caf8fa03b5122f25e601b",
+        "/usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0.8000.0": "2bf396b14b469ca2eed46a785b3bc0bd1fd979261c6bf505bc4debdcd0a6870a",
+        "/usr/lib/x86_64-linux-gnu/libgpg-error.so.0.34.0": "6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1",
+        "/usr/lib/x86_64-linux-gnu/libgudev-1.0.so.0.3.0": "fe24380e9898291c58f4b5533bf9199604c919a6e0567ff21652eaad7e4982eb",
+        "/usr/lib/x86_64-linux-gnu/libicudata.so.74.2": "ddbb3718b8bd9cbd780e5ab08b4503c30a6c4fa0706ebe5d074ed6b596c1714e",
+        "/usr/lib/x86_64-linux-gnu/libicuuc.so.74.2": "7560aadde38e5f4237a47a1ddd5891f9b36768a77a60faae30beee003ac01901",
+        "/usr/lib/x86_64-linux-gnu/libinput.so.10.13.0": "3dea9a694022f2d59fbaa2714f3ea614bef6e16b624bfe817a6ea481704d73b3",
+        "/usr/lib/x86_64-linux-gnu/liblz4.so.1.9.4": "40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda",
+        "/usr/lib/x86_64-linux-gnu/liblzma.so.5.4.5": "26b37d25f7ca2a2d348de8ecabacda12e921cd933b21fa069a179760db77219d",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6": "fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0",
+        "/usr/lib/x86_64-linux-gnu/libmd.so.0.1.0": "423e18586b6ea740f4465afd64f7a9a4cb7264ed979c8e7256f9085af5345fef",
+        "/usr/lib/x86_64-linux-gnu/libmtdev.so.1.0.0": "843e4aa13d0407569a5fb9b44f235c3a788e6afde4ed3ee82a9db37d70a466f7",
+        "/usr/lib/x86_64-linux-gnu/libpciaccess.so.0.11.1": "81cd0c59c39cc07b7e1d8c2efaeb10646da73e99786d4ca259765ab662b7a7a3",
+        "/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.11.2": "e00576d71d81d3ba0cfa4903c835a44a8723aac96f72f79ff75200b4cff9071b",
+        "/usr/lib/x86_64-linux-gnu/libpixman-1.so.0.42.2": "73aa0daeedb7228754d798b194e2ff69c8b82a689b9aa4f1d8ab32a8763b0cc5",
+        "/usr/lib/x86_64-linux-gnu/libseat.so.1": "75b76a22d306910fb4b7b0e55eb9882cfca43f3b30cca67636b0d85795bad78f",
+        "/usr/lib/x86_64-linux-gnu/libsensors.so.5.0.0": "5464959e6896b27396304c91706089f1339f10430d7381fef0beebf183332a36",
+        "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.33": "1fd75fe70354a416d75aef22bcae68c47bd25d20e2d0568c30b1a9838cf62f11",
+        "/usr/lib/x86_64-linux-gnu/libsystemd.so.0.38.0": "20b3c7a971e9c8721ea5aaa7bc85e25e46628780a2022576ca685233781cabf6",
+        "/usr/lib/x86_64-linux-gnu/libtinfo.so.6.4": "e6089d7bb95eee5b545f3770dd69095b0bca47d26701cad145af429561d16306",
+        "/usr/lib/x86_64-linux-gnu/libudev.so.1.7.8": "44df5397fd51d2871af46f051ab2750d4cdc29391868c3c4ff3f78341ff850a4",
+        "/usr/lib/x86_64-linux-gnu/libwacom.so.9.0.0": "67fc99dbb4eb53465847d7982d8455bdb10671f1af2cd4b29e42f60915195376",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.23.1": "24445e83320f1603c8ddfbdba73e471a0ff6e5841ef257f6e3c67f95ec7a9ebd",
+        "/usr/lib/x86_64-linux-gnu/libxcb-dri3.so.0.1.0": "a919146693e71897484c2996beb837273a7a278d1a2afe477bc072f10681f3b0",
+        "/usr/lib/x86_64-linux-gnu/libxcb-present.so.0.0.0": "d06d982abe6e9202aecd22322166be8ba49e68e05889fb6c6faec0daa88530a4",
+        "/usr/lib/x86_64-linux-gnu/libxcb-randr.so.0.1.0": "9fa6b0ec4af163a86bc9a9ded3309a5979155fb5ef2d311fdda7fff0e9eee01a",
+        "/usr/lib/x86_64-linux-gnu/libxcb-shm.so.0.0.0": "ad78a7b22409685ca82e54346c2b9465d697f303e69e74a9c1693bb206e319df",
+        "/usr/lib/x86_64-linux-gnu/libxcb-sync.so.1.0.0": "27c2d6dddde34146904c3c64cfcc885a14a351636d6611877368a48e29355c39",
+        "/usr/lib/x86_64-linux-gnu/libxcb-xfixes.so.0.0.0": "e59ef497333a6ede2096a0bd9eeb6ec4023374c16d3a8d7511d1251fb7f9b9df",
+        "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440",
+        "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0": "3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9",
+        "/usr/lib/x86_64-linux-gnu/libxml2.so.2.9.14": "209e941be9eb2eb9ab36caaa0b81d1c6b36c8f5d7268c24f19e81039137e6485",
+        "/usr/lib/x86_64-linux-gnu/libxshmfence.so.1.0.0": "7d40b02b27d449b6b26cea10ea10aafd0cce5a1e2d7859ea57f34b29fe88923f",
+        "/usr/lib/x86_64-linux-gnu/libz.so.1.3": "f61677c7bdb7c2aa2a243ea781bfd16afcb361cede7b4ef76127a9d8eb9a5242",
+        "/usr/lib/x86_64-linux-gnu/libzstd.so.1.5.5": "0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb"
+      },
+      "sha256": "2399b768cc6a4599a6495d0865cf4dc6807cfee2c6e46b3d7466a800f903be5e"
+    },
+    "cosmic-notifications": {
+      "count": 1,
+      "executable": "/usr/bin/cosmic-notifications",
+      "lifecycle": "session",
+      "live_profile_qualified": false,
+      "mapped_lower_bound": {
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": "c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da",
+        "/usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8",
+        "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6",
+        "/usr/lib/x86_64-linux-gnu/libXau.so.6.0.0": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a",
+        "/usr/lib/x86_64-linux-gnu/libXdmcp.so.6.0.0": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0",
+        "/usr/lib/x86_64-linux-gnu/libbsd.so.0.12.1": "e86cd4f0019f42c2ba5e60602e0edc8694d2948377d98c3654d0f6bddb5254bb",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf",
+        "/usr/lib/x86_64-linux-gnu/libcap.so.2.66": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84",
+        "/usr/lib/x86_64-linux-gnu/libffi.so.8.1.4": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": "d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6": "fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0",
+        "/usr/lib/x86_64-linux-gnu/libmd.so.0.1.0": "423e18586b6ea740f4465afd64f7a9a4cb7264ed979c8e7256f9085af5345fef",
+        "/usr/lib/x86_64-linux-gnu/libnss_systemd.so.2": "b3f70d1548819529281d26c18a71da605a6816e92b13a240b5efc6647e341ad8",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.23.1": "24445e83320f1603c8ddfbdba73e471a0ff6e5841ef257f6e3c67f95ec7a9ebd",
+        "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440",
+        "/usr/lib/x86_64-linux-gnu/libxkbcommon.so.0.0.0": "3eb6c7315985803a7c72cb81aa3293b763e6cfc907b70b7b2f641c2827cd90f9"
+      },
+      "sha256": "b981d08233e5cd9f57da7b9a2cb4fd1dc7357897785ecd5cd1f9644df17d9261"
+    },
+    "cosmic-session": {
+      "count": 1,
+      "executable": "/usr/bin/cosmic-session",
+      "lifecycle": "session",
+      "live_profile_qualified": false,
+      "mapped_lower_bound": {
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": "c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": "d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6": "fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0"
+      },
+      "sha256": "ba4b4a44d0a9ae740c80182f5fec907618dce50a8f3fe647c7c2398ed9f68a4a"
+    },
+    "cosmic-settings-daemon": {
+      "count": 1,
+      "executable": "/usr/bin/cosmic-settings-daemon",
+      "lifecycle": "session",
+      "live_profile_qualified": false,
+      "mapped_lower_bound": {
+        "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2": "c20a2dc8917c755f02b94049356320fe1f62ac7d9f8994731f807d9df39302da",
+        "/usr/lib/x86_64-linux-gnu/libX11-xcb.so.1.0.0": "941ab0ca78131e168817049d4c9935bb0e29b584cf05b58c47e3071f1fa81cf8",
+        "/usr/lib/x86_64-linux-gnu/libX11.so.6.4.0": "edd2ddf6e00a81c40b8645f7dbb6d6603c6a0a78d583bdbe7491d8a84de6e3b6",
+        "/usr/lib/x86_64-linux-gnu/libXau.so.6.0.0": "8040da3f8516c1acfe39f04ff022480cdb273705ba5e7a4ca70bbdb1527cd67a",
+        "/usr/lib/x86_64-linux-gnu/libXdmcp.so.6.0.0": "667d97d6da16016400ab10de9f83ef4ab209ceb6adf68ff9650225ec13e723b0",
+        "/usr/lib/x86_64-linux-gnu/libbsd.so.0.12.1": "e86cd4f0019f42c2ba5e60602e0edc8694d2948377d98c3654d0f6bddb5254bb",
+        "/usr/lib/x86_64-linux-gnu/libc.so.6": "3a15d66867d83762c7f2f1e37359cb8f6c5743edb369c65285cb0b1c4f7498bf",
+        "/usr/lib/x86_64-linux-gnu/libcap.so.2.66": "6ac6abc86ac891c6e13486470e26f1d939f47fda9e6b5d5508a7f5ec881adc84",
+        "/usr/lib/x86_64-linux-gnu/libdbus-1.so.3.32.4": "a6ae7b4ef48562b40d7b9ba8efd2e49f6528b7cc6364bea382dcee4b473b5413",
+        "/usr/lib/x86_64-linux-gnu/libffi.so.8.1.4": "00f593fe192f2851b8ce23b25cec2488d769beb5a8f63e8c9e563071e1075153",
+        "/usr/lib/x86_64-linux-gnu/libgcc_s.so.1": "d93224d2b0dab4247598be683adca02f5cf00586f99c187579cd7e92058fb7cb",
+        "/usr/lib/x86_64-linux-gnu/libgcrypt.so.20.4.3": "6ad6d7007ee1ad8319eb18ba9a512cf09dda49396a303774c68b47477020bad4",
+        "/usr/lib/x86_64-linux-gnu/libgpg-error.so.0.34.0": "6cb18a007bfcb623029f4528a36b46578fea7dc34c2b505b8e6e0d99e6348cd1",
+        "/usr/lib/x86_64-linux-gnu/liblz4.so.1.9.4": "40bffd0a098387368b16b992abd5f7cf43c0fa2f05cabe5a6d483719554adfda",
+        "/usr/lib/x86_64-linux-gnu/liblzma.so.5.4.5": "26b37d25f7ca2a2d348de8ecabacda12e921cd933b21fa069a179760db77219d",
+        "/usr/lib/x86_64-linux-gnu/libm.so.6": "fce00b6f25f459cf4ae0b7fae4257909a1a8a86f9149e7c029a5d617baf1ccd0",
+        "/usr/lib/x86_64-linux-gnu/libmd.so.0.1.0": "423e18586b6ea740f4465afd64f7a9a4cb7264ed979c8e7256f9085af5345fef",
+        "/usr/lib/x86_64-linux-gnu/libpcre2-8.so.0.11.2": "e00576d71d81d3ba0cfa4903c835a44a8723aac96f72f79ff75200b4cff9071b",
+        "/usr/lib/x86_64-linux-gnu/libpipewire-0.3.so.0.1608.0": "7322354ec7b9e178e206e3e3421bf4a3af2d03be241ee500898a97880f73b507",
+        "/usr/lib/x86_64-linux-gnu/libselinux.so.1": "0ec0843463f90e227b0e138e1f379774f50b5514bd7f5dbd4c8a87aca0aa6670",
+        "/usr/lib/x86_64-linux-gnu/libsystemd.so.0.38.0": "20b3c7a971e9c8721ea5aaa7bc85e25e46628780a2022576ca685233781cabf6",
+        "/usr/lib/x86_64-linux-gnu/libudev.so.1.7.8": "44df5397fd51d2871af46f051ab2750d4cdc29391868c3c4ff3f78341ff850a4",
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0.23.1": "24445e83320f1603c8ddfbdba73e471a0ff6e5841ef257f6e3c67f95ec7a9ebd",
+        "/usr/lib/x86_64-linux-gnu/libxcb.so.1.1.0": "7958a0136b121bdc4c708968569ad152a9ed208ab026e2537b1005dde64ca440",
+        "/usr/lib/x86_64-linux-gnu/libzstd.so.1.5.5": "0a2128bc10841fb29e76d08d945864dfb0b6a66da5df6df5d8299197439e54bb",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-adapter.so": "c9989837cb6cef3fdc0a319408227b0ec01d0fdffadfec358ac34c6794a16447",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-client-device.so": "32106eebe6e93c0c310432c2fa5aec7ca378a46e6807db7179f2c09e16b5b93c",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-client-node.so": "c319b348d429dbd588bfe1d8904d1c38593cf39d7b362ff6eb95c7fd64915ec3",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-metadata.so": "4ca0c09bd792135ac3b2b6f07b410d48ac98f46ef63b7713684cfe66344adf9d",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-protocol-native.so": "46a5649d1afb48aaa28f2c2035df54ca070fc5567e885ef50546645da23a37d0",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-rt.so": "2c0adcece289f447d4f4024235f877c59f0845119226358b28bab036439802f8",
+        "/usr/lib/x86_64-linux-gnu/pipewire-0.3/libpipewire-module-session-manager.so": "f05f9ba5829462c67470e6f4526f3bd02b844df3f528e4df72ac18f8e0365d4c",
+        "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-dbus.so": "68a851793cec576e6018aafb1b64fd4cce0c464a6074fb2d5f6909648853765a",
+        "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-journal.so": "8bb7248cad294807701b584c7823be5ddf459a62886d662371a0d54a8cd66e06",
+        "/usr/lib/x86_64-linux-gnu/spa-0.2/support/libspa-support.so": "d7f00cf99ae09e98e4e964b6c1114f1bd0e91b932dca5648ee4e70df66fded5b"
+      },
+      "sha256": "0f91fafb1eeb97cee09211418059cc5247af06cc130c206147d349f2ebdd7423"
+    }
+  },
+  "profile_id": null,
+  "proposed_configuration": {
+    "applets": {
+      "com.system76.CosmicAppList": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletA11y": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletAudio": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletBattery": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletBluetooth": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletInputSources": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletMinimize": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletNetwork": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletNotifications": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletPower": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletStatusArea": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletTiling": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicAppletTime": {
+        "args": [],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicPanelAppButton": {
+        "args": [
+          "com.system76.CosmicAppLibrary"
+        ],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicPanelLauncherButton": {
+        "args": [
+          "com.system76.CosmicLauncher"
+        ],
+        "process": "cosmic-applets"
+      },
+      "com.system76.CosmicPanelWorkspacesButton": {
+        "args": [
+          "com.system76.CosmicWorkspaces"
+        ],
+        "process": "cosmic-applets"
+      }
+    },
+    "max_outputs": 1
+  },
+  "qualification_cohort_id": "afaff752298e4be46f8c3f9c894216e886256b9ed457570b41a96d8f2d6ebf00",
+  "scope": "islands-runtime",
+  "state": "STRUCTURAL-DRAFT-INCOMPLETE-NOT-QUALIFIED",
+  "system": {
+    "architecture": "amd64",
+    "distribution": "pop",
+    "suite": "noble"
+  },
+  "version": 1,
+  "work_lower_bound": {
+    "files": 84,
+    "bytes": 391734545
+  },
+  "historical_payload_sha256": "ab64c84f5846f67f6fba1b0cf5d44598e56a234b1f86bd8df03bb3f91a6f4043",
+  "payload_sha256": null,
+  "source_review": "report.md",
+  "local_public_byte_verification": "available-byte-audit.json"
+}

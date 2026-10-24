@@ -1,0 +1,139 @@
+{
+  "state": "SOURCE-REACHABLE-CANDIDATES-NOT-ADMITTED",
+  "reason": "Mesa eglInitialize automatic Zink fallback; actual effective loader ICD selection still uncaptured",
+  "files": {
+    "/usr/lib/x86_64-linux-gnu/libvulkan.so.1.3.280": {
+      "package": "libvulkan1",
+      "version": "1.3.280.0-1pop1~1722439676~24.04~a41a7d6",
+      "sha256": "ae3fb3b62cb5f66212ce64b87ff06627447a416a965fe669c6b3d6101ec62135",
+      "package_sha256": "83f0699b50ca5f1add910ed72bd8019501efe6c493f3caec44f3265a5ad962cb",
+      "source_identity": "aea8e8526d208047dc988b829dca858cdaeedd784ded5272954f034f7d45919f"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_asahi.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "b7dac53a0ba0a22f7d6edd3df1bb8fe0c9c43a64300d56bd640d9d864f5abf08",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_freedreno.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "2cccb9768c7fc8ab37ec5b569d1c339dd2d0a532e6a8eb4928aacc3e35eaad05",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_gfxstream.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "a63a65ca5c351cf180eccece85007524cac55a3dbaa01d9ed970f7495ea9b7bd",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_intel.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "4cc1164242f7a019716ad94b0aeffcd549240d24ec904df01d4dbf6f9f771640",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_intel_hasvk.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "e13d3858b1a76f9ee7bb670a789c1af87d2f31bbe6b856400630526f955a1bb6",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_lvp.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "ef1f6ec8bad6f4ab9ac4fec44d38a1c9d634cf3ce713faf5e9fb74b06270bef6",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_nouveau.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "1922dacc2a3f479fc4775688ff4a1cc479371ecf78e1aa070c462ee79d163431",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_radeon.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "7bf31db67cbf803c7cbd8bbe9280f2ba0cb77d8840529af640dc5978a14e589d",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/lib/x86_64-linux-gnu/libvulkan_virtio.so": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "5891c840b24a982c311f2625617e3f187d63de5c3a6ad266df8d140cae65e620",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/asahi_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "47accccf13966115c6a128ba9f99e5eb219bfc2d44dae4c380ed98171f9eabba",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/freedreno_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "169a5497ae2d8ca597d6e4120a7d85d6656703092b6e43146dd87ebdfcecd7e9",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/gfxstream_vk_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "bf2a13a665c8fb64f4637345006061952e8cba12fd35aae80fc9147350c60e68",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/intel_hasvk_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "ff37837891f21547065041806b3244d61a4fbf9f0536a1c6573ac39f14ff60dd",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/intel_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "9b4eb13de4990a7123419af1a8303e7cb3c0d541e75af6a787eac83beca06cce",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/lvp_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "8468db31369dbd0140b68783f1a7943e6158cadcf5314e949e6be31f42068e13",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/nouveau_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "c5928e200b60ff90b250e2c5e05b7faf3d7afc279b98f047aebf55035dc43b0d",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/radeon_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "bca32a660ca32a42b598d53cdc63b3e3e917ea40c0b3b1e00fdbd3115280b51d",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    },
+    "/usr/share/vulkan/icd.d/virtio_icd.json": {
+      "package": "mesa-vulkan-drivers",
+      "version": "26.1.6-1pop0~1787580452~24.04~a5619ea",
+      "sha256": "1750a1025414936d30b9a10e6d243e2d12fe125c87f90ab1231dd6fc5593cfaa",
+      "package_sha256": "963b3dc6b49daa5640aa88bf5e99ca7452472602f03f7fafab90068b22073e50",
+      "source_identity": "f77b9a053b0443144ca91b55e5b7b1fa34192f7234db1c47e612c00519327bd7"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "cosmic-ext-halcyon_0.2.5~dev.integration.2_amd64.deb": {
+    "size": 20089648,
+    "sha256": "a02cb47d7499b36d2b77aee91e68c11543a858a4f04cf509063598ff138a1de2"
+  },
+  "cosmic-ext-halcyon-islands_0.2.5~dev.integration.2_amd64.deb": {
+    "size": 6012804,
+    "sha256": "76f1c2c6b1391fd023502aed14b2e03cb7cce7cef61ac826ca1c51357c98ff79"
+  }
+}
