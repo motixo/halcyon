@@ -1,5 +1,23 @@
 # Planned work
 
+## Current release and store distribution
+
+Updated 2026-10-24: **0.2.5 is published**. PR #11 added the signed APT channel;
+public enrollment, authenticated downloads, missing-key rejection and normal
+metadata renewal passed. Users can opt into system updates using
+[the enrollment instructions](DISTRIBUTION.md). No global/default Store listing
+or native Store search result is claimed.
+
+Next distribution work: [store listing preparation](STORE-LISTING.md). The
+preferred eligibility discussion is with the COSMIC Flatpak maintainers, with
+Islands remaining an optional APT package. Their contribution rules require
+human-written upstream issue/PR text; no inquiry has been posted. The source audit
+records the real startup, host-settings and helper changes needed before a
+working Flatpak can be submitted. Existing release notes below describe the
+historical preparation state, not a current publication hold.
+
+## Historical release preparation
+
 Feature requests and user reports, with implementation and investigation status.
 On 2026-10-23 the maintainer requested the tracked features and held publication
 while implementation continued. The upcoming version is **0.2.5**; older 0.2.1
