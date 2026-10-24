@@ -324,8 +324,12 @@ class OwnedHost:
         self.lock = threading.RLock()
         self.closed = False
         self.code = None
+        self.stat_fd = None
         try:
-            self.identity = self._stat(self.pid)[1:]
+            # Keep the original proc object open so FD exhaustion cannot prevent
+            # guarded termination. The waitable child still pins PID/PGID/SID.
+            self.stat_fd = os.open(f'/proc/{self.pid}/stat', os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK)
+            self.identity = self._stat(self.pid, fd=self.stat_fd)[1:]
             if self.identity[:2] != (self.pid, self.pid):
                 raise GroupCleanupError('host_session_not_owned')
         except BaseException as e:
@@ -338,18 +342,28 @@ class OwnedHost:
             except OSError: pass
             try: self.process.wait(timeout=GROUP_CLEANUP_SECONDS)
             except subprocess.TimeoutExpired: pass
-            finally: self.stdout.close()
+            finally:
+                self.stdout.close()
+                if self.stat_fd is not None: os.close(self.stat_fd)
             raise GroupCleanupError('host_ownership_setup_failed') from e
 
     @staticmethod
-    def _stat(pid):
-        fd = os.open(f'/proc/{pid}/stat', os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK)
-        try: data = os.read(fd, 8193)
-        finally: os.close(fd)
+    def _stat(pid, *, fd=None, threads=False):
+        if fd is None:
+            owned_fd = os.open(f'/proc/{pid}/stat', os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK)
+            try: data = os.read(owned_fd, 8193)
+            finally: os.close(owned_fd)
+        else:
+            data = os.pread(fd, 8193, 0)
         if len(data) > 8192: raise GroupCleanupError('host_stat_limit')
         fields = data.rsplit(b')', 1)[1].split()
         # State, process group, session, birth ticks; comm may contain ')'.
-        return fields[0], int(fields[2]), int(fields[3]), int(fields[19])
+        result = fields[0], int(fields[2]), int(fields[3]), int(fields[19])
+        if threads:
+            count = int(fields[17])
+            if count < 0: raise GroupCleanupError('host_thread_count_invalid')
+            return (*result, count)
+        return result
 
     def poll(self):
         with self.lock:
@@ -363,7 +377,7 @@ class OwnedHost:
 
     def _check(self):
         self.poll()  # Must still be our waitable child, alive or exited.
-        try: same = self._stat(self.pid)[1:] == self.identity
+        try: same = self._stat(self.pid, fd=self.stat_fd)[1:] == self.identity
         except (OSError, ValueError, IndexError) as e:
             raise GroupCleanupError('host_leader_identity_unavailable') from e
         if not same: raise GroupCleanupError('host_leader_identity_changed')
@@ -388,14 +402,18 @@ class OwnedHost:
                 if not entry.name.isdigit(): continue
                 try:
                     # Public stat only: never unrelated executable/env/maps IO.
-                    state, group, session, start = self._stat(int(entry.name))
+                    state, group, session, start, threads = self._stat(int(entry.name), threads=True)
                 except (FileNotFoundError, ProcessLookupError): continue
                 except (OSError, ValueError, IndexError) as e:
                     raise GroupCleanupError('host_group_scan_incomplete') from e
                 if group == self.pid:
                     if session != self.pid:
                         raise GroupCleanupError('host_group_session_changed')
-                    if state not in (b'Z', b'X'): live.append((int(entry.name), start))
+                    # A main thread may pthread_exit while workers stay alive.
+                    # Top-level Z alone is not group completion. The bounded
+                    # stat count conservatively keeps such actors in cleanup.
+                    if state not in (b'Z', b'X') or threads > 1:
+                        live.append((int(entry.name), start))
         return live
 
     def finish(self):
@@ -420,13 +438,21 @@ class OwnedHost:
             # attempt. Escalate only while the original anchor still validates;
             # propagate the failure, never report stock handoff as completed.
             self.signal_group(signal.SIGKILL)
+            # Even when census IO is unavailable (e.g. EMFILE), give the exact
+            # child bounded time to exit/reap. This does not convert an unknown
+            # descendant census into successful handoff.
+            while self.poll() is None and time.monotonic() < deadline:
+                time.sleep(.01)
             raise GroupCleanupError(str(error) if isinstance(error, GroupCleanupError) else 'host_group_scan_failed') from error
         finally:
             with self.lock:
                 # Retire signal authority before reaping; late watcher calls
                 # cannot target a subsequently reused PID/group.
                 try: self.code = self.poll()
-                finally: self.closed = True
+                finally:
+                    self.closed = True
+                    os.close(self.stat_fd)
+                    self.stat_fd = None
                 if self.code is not None:
                     self.process.wait()
         return self.code
@@ -514,7 +540,7 @@ def wait_ready(child, done, wedged, admission=None):
     if isinstance(measurement, Worker): measurement.close()
     if not done.is_set() and child.poll() is None:
         wedged.set()
-        sys.stderr.write('Islands startup IPC/runtime readiness failed; selecting stock\n')
+        sys.stderr.write('Islands startup IPC/runtime readiness failed; stopping owned host\n')
         try:
             child.signal_group(signal.SIGKILL)
         except ProcessLookupError:
@@ -530,12 +556,24 @@ def run_host(binary, pass_fds=(), env=None, readiness=False, admission=None):
     child = OwnedHost(binary, pass_fds, env)
     stopping = False
     wedged = threading.Event()
-    watcher = threading.Thread(target=watch_output, args=(child.stdout, child, sys.stderr.buffer, wedged), daemon=True)
-    watcher.start()
     done = threading.Event()
+    observer_errors = []
+
+    def observe(function, *args):
+        try:
+            function(*args)
+        except BaseException as error:
+            # A daemon thread cannot propagate to run_host by raising alone.
+            # Wake its main wait and retain the failure through cleanup; never
+            # silently turn an observer failure into stock/return75 success.
+            observer_errors.append(error)
+            done.set()
+
+    watcher = threading.Thread(target=observe, args=(watch_output, child.stdout, child, sys.stderr.buffer, wedged), daemon=True)
+    watcher.start()
     readiness_thread = None
     if readiness:
-        readiness_thread = threading.Thread(target=wait_ready, args=(child, done, wedged, admission), daemon=True)
+        readiness_thread = threading.Thread(target=observe, args=(wait_ready, child, done, wedged, admission), daemon=True)
         readiness_thread.start()
 
     def terminate(signum, frame):
@@ -548,7 +586,7 @@ def run_host(binary, pass_fds=(), env=None, readiness=False, admission=None):
 
     previous = {s: signal.signal(s, terminate) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
     try:
-        while child.poll() is None and not stopping:
+        while not done.is_set() and child.poll() is None and not stopping:
             done.wait(.02)
     finally:
         done.set()
@@ -562,6 +600,8 @@ def run_host(binary, pass_fds=(), env=None, readiness=False, admission=None):
             # Applets share the pipe; group exit releases their descriptors.
             watcher.join(2)
             if not watcher.is_alive(): child.stdout.close()
+    if observer_errors:
+        raise GroupCleanupError('host_observer_failed') from observer_errors[0]
     return code, stopping, wedged.is_set()
 
 

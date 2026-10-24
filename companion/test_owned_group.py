@@ -29,6 +29,31 @@ class OwnedGroup(unittest.TestCase):
                 if mode=='fallback':self.assertTrue(r['stock_started']);self.assertEqual(r['result'],0)
                 if mode=='outer-term':self.assertTrue(r['result'][1])
 
+class ObserverAndThreadEdges(unittest.TestCase):
+    def run_edge(self, mode):
+        result=subprocess.run([sys.executable,'-B',str(Path(__file__).with_name('owned_group_edge_fixture.py')),mode],
+                              text=True,capture_output=True,timeout=12)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        return json.loads(result.stdout)
+
+    def test_real_emfile_is_bounded_without_external_rescue(self):
+        r=self.run_edge('emfile')
+        self.assertFalse(r['external_rescue']);self.assertTrue(r['leader_reaped'])
+        self.assertTrue(r['identity_fd_closed'])
+
+    def test_both_observer_errors_propagate_after_cleanup(self):
+        for mode in ('readiness-error','output-error'):
+            with self.subTest(mode=mode):
+                r=self.run_edge(mode)
+                self.assertEqual(r['error'],'host_observer_failed')
+                self.assertFalse(r['external_rescue']);self.assertTrue(r['leader_reaped'])
+
+    def test_zombie_leader_with_live_thread_is_not_terminal(self):
+        r=self.run_edge('threaded')
+        self.assertEqual(r['threads'],2)
+        self.assertIn(r['pid'],[p for p,_ in r['live_members']])
+        self.assertIsNone(r['worker_at_return'])
+
 class IdentityGuards(unittest.TestCase):
     def host(self):
         child=launcher.OwnedHost('/bin/true',(),None)
