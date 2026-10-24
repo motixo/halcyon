@@ -11,8 +11,8 @@ for context in ['stock-baseline','stock-native-blur','public-frosted','public-na
         if not matched:raise RuntimeError('Independent raw save mismatch: '+context)
     cases[context]={'complete':state['complete'],'setup_error':state['setup_error'],
         'native_failure_observed':state['native_failure_observed'],'actual_input_proofs':raw_proofs,
-        'triggers':state['triggers'],'files_applet_pixmap_panics':state['final_journal']['files_applet_pixmap_panics'],
-        'config':state['treatment'],'all_overviews_and_after_input_passed':
+        'triggers':state['triggers'],'files_applet_pixmap_panics':state['final_journal']['files_applet_pixmap_panics'],'workspaces_panics':state['final_journal'].get('workspaces_panics',[]),'overview_frames_require_independent_review':True,
+        'config':state['treatment'],'runtime_checks_survived_pending_frame_review':
             state['complete'] and not state['native_failure_observed'] and not state['setup_error']
             and len(state['triggers'])==2 and all(t.get('after_canary','').startswith('real exact save') for t in state['triggers'])}
     if not state['complete'] or state['setup_error']:raise RuntimeError('Setup prevented comparison: '+context)
@@ -28,5 +28,5 @@ result={'scope':'Immediate offline native blur isolation; not RX590 attribution 
         'publication':'0.2.5 ON HOLD','cases':cases,'comparability':comparability}
 (root/'native-blur-summary.json').write_text(json.dumps(result,indent=2)+'\n')
 for co,row in cases.items():
-    print(co,'native_failure=',row['native_failure_observed'],'exact_inputs=',len(row['actual_input_proofs']),'all_overviews_input_passed=',row['all_overviews_and_after_input_passed'])
+    print(co,'native_failure=',row['native_failure_observed'],'exact_inputs=',len(row['actual_input_proofs']),'runtime_checks_survived_pending_frame_review=',row['runtime_checks_survived_pending_frame_review'])
     if row['native_failure_observed']:print('::warning::Observed native compositor failure in '+co+'; artifact/log review required')

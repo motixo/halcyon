@@ -1,0 +1,45 @@
+{
+  "id": 40044224132,
+  "html_url": "https://github.com/profilaz3/halcyon/actions/runs/40044224132",
+  "head_sha": "d3aeeb82bb1499a10dde8c04f911c1c6c83ea557",
+  "status": "completed",
+  "conclusion": "failure",
+  "created_at": "2026-10-24T00:17:21Z",
+  "run_started_at": "2026-10-24T00:17:21Z",
+  "updated_at": "2026-10-24T00:27:19Z",
+  "jobs": [
+    {
+      "id": 120722104020,
+      "name": "blur-isolation",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_name": "GitHub Actions 1000000186",
+      "started_at": "2026-10-24T00:17:24Z",
+      "completed_at": "2026-10-24T00:27:18Z",
+      "conclusion": "failure"
+    },
+    {
+      "id": 120722105192,
+      "name": "package",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_name": null,
+      "started_at": "2026-10-24T00:17:22Z",
+      "completed_at": "2026-10-24T00:17:22Z",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 120722105730,
+      "name": "session",
+      "labels": [
+        "ubuntu-24.04"
+      ],
+      "runner_name": null,
+      "started_at": "2026-10-24T00:17:22Z",
+      "completed_at": "2026-10-24T00:17:22Z",
+      "conclusion": "skipped"
+    }
+  ]
+}

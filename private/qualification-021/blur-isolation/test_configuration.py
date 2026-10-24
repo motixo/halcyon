@@ -1,8 +1,25 @@
 import unittest
-from configuration import FLAGS,fields,change_flags,verify_media
+from configuration import FLAGS,fields,change_flags,verify_media,validate_reexport
 
 SAMPLE='''(\n    palette: Dark((some_color: "#ABCDEF",)),\n    frosted: Medium,\n    frosted_windows: false,\n    frosted_system_interface: false,\n    frosted_panel: false,\n    frosted_applets: false,\n    alpha_map: (medium: 0.76154,),\n)\n'''
 class Limits(unittest.TestCase):
+    def native_fixture(self):
+        from pathlib import Path
+        root=Path(__file__).parent/'fixtures'
+        return [ (root/name).read_text() for name in ['native-builder-before.ron','native-builder-after.ron','stored-builder-text-tint.ron','generated-background.ron'] ]
+    def test_real_native_projection_uses_actual_generated_foreground(self):
+        before,after,stored,bg=self.native_fixture();desired,_=change_flags(before,True)
+        self.assertEqual(validate_reexport(desired,after,stored,bg)['kind'],'native-derived-foreground')
+    def test_other_native_palette_changes_are_rejected(self):
+        before,after,stored,bg=self.native_fixture();desired,_=change_flags(before,True)
+        with self.assertRaises(ValueError):validate_reexport(desired,after.replace('#63D0DFFF','#123456FF'),stored,bg)
+    def test_raw_builder_input_cannot_be_overridden(self):
+        before,after,stored,bg=self.native_fixture();desired,_=change_flags(before,True)
+        with self.assertRaises(ValueError):validate_reexport(desired,after,'Some("#010101FF")',bg)
+    def test_foreground_fixture_is_not_a_hardcoded_expected_palette(self):
+        before,after,stored,bg=self.native_fixture();desired,_=change_flags(before,True)
+        with self.assertRaises(ValueError):validate_reexport(desired,after,stored,bg.replace('#F5F5F5FF','#123456FF'))
+
     def test_roundtrip_keeps_unrelated_export_bytes(self):
         enabled,proof=change_flags(SAMPLE,True)
         restored,_=change_flags(enabled,False)

@@ -37,3 +37,28 @@ def verify_media(blocks, public):
             raise ValueError('Public comparison requires exactly one identified read-only candidate ISO')
     elif inserted:
         raise ValueError('Untouched stock comparison must have no inserted candidate media')
+
+def validate_reexport(requested, actual, stored_text_tint, generated_background):
+    """Validate the native export projection against real generated native state.
+
+    Settings ThemeCustomizer::from replaces builder text_tint with the built
+    theme background.on color. This is not a round-trip serializer. Permit
+    exactly that source-defined projection, never an expected palette fixture.
+    """
+    def tint(text):
+        found=re.findall(r'^\s*text_tint:\s*([^\n]+),\s*$',text,re.M)
+        if len(found)!=1:raise ValueError('Ambiguous native text_tint export')
+        return found[0]
+    if stored_text_tint.strip()!=tint(requested):
+        raise ValueError('Stored native builder did not retain requested text_tint')
+    if requested==actual:
+        return {'kind':'byte-exact','stored_builder_text_tint':stored_text_tint.strip()}
+    outer_on=re.findall(r'^    on:\s*("#[0-9A-Fa-f]{8}"),\s*$',generated_background,re.M)
+    if len(outer_on)!=1:raise ValueError('Ambiguous actual generated background.on')
+    projected=re.sub(r'^(\s*text_tint:\s*)([^\n]+)(,\s*)$',
+                     lambda m:m[1]+'Some('+outer_on[0]+')'+m[3],requested,flags=re.M)
+    if projected!=actual:
+        raise ValueError('Native export changed beyond the source-defined foreground projection')
+    return {'kind':'native-derived-foreground','stored_builder_text_tint':stored_text_tint.strip(),
+            'generated_background_on':outer_on[0],'exported_text_tint':tint(actual),
+            'source':'cosmic-settings f1d00fc theme_manager.rs ThemeCustomizer::from lines67-77'}

@@ -1,0 +1,739 @@
+{
+  "run": 40044224132,
+  "executed_infra": "d3aeeb82bb1499a10dde8c04f911c1c6c83ea557",
+  "allocation_used": 1,
+  "allocation_cap": 1,
+  "publication": "0.2.5 ON HOLD",
+  "causal_comparison_complete": false,
+  "rx590_cause": "unproven",
+  "cases": {
+    "stock-baseline": {
+      "runtime_complete_flag": true,
+      "runtime_native_failure_flag_not_authoritative": false,
+      "setup_error": null,
+      "input_proofs": [
+        {
+          "token": "bstockbaseline001",
+          "frame": "003-before-first-overview-input",
+          "byte_exact": true
+        },
+        {
+          "token": "bstockbaseline002",
+          "frame": "007-immediate-after-overview-input",
+          "byte_exact": true
+        },
+        {
+          "token": "bstockbaseline003",
+          "frame": "010-reopened-1-input",
+          "byte_exact": true
+        },
+        {
+          "token": "bstockbaseline004",
+          "frame": "015-after-preserved-sequence-after-overview-input",
+          "byte_exact": true
+        },
+        {
+          "token": "bstockbaseline005",
+          "frame": "018-reopened-2-input",
+          "byte_exact": true
+        }
+      ],
+      "normal_closes": [
+        {
+          "closed": true,
+          "frame": "008-normal-close-1",
+          "native": {
+            "time": 1792801453.9002233,
+            "globals": [
+              {
+                "name": 1,
+                "interface": "wl_compositor",
+                "version": 5
+              },
+              {
+                "name": 2,
+                "interface": "wl_subcompositor",
+                "version": 1
+              },
+              {
+                "name": 3,
+                "interface": "cosmic_corner_radius_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 4,
+                "interface": "wl_data_device_manager",
+                "version": 3
+              },
+              {
+                "name": 5,
+                "interface": "wp_fractional_scale_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 6,
+                "interface": "zwp_keyboard_shortcuts_inhibit_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 7,
+                "interface": "zxdg_output_manager_v1",
+                "version": 3
+              },
+              {
+                "name": 8,
+                "interface": "zwlr_output_manager_v1",
+                "version": 4
+              },
+              {
+                "name": 9,
+                "interface": "zcosmic_output_manager_v1",
+                "version": 3
+              },
+              {
+                "name": 10,
+                "interface": "zwlr_output_power_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 11,
+                "interface": "zcosmic_overlap_notify_v1",
+                "version": 1
+              },
+              {
+                "name": 12,
+                "interface": "wp_presentation",
+                "version": 2
+              },
+              {
+                "name": 13,
+                "interface": "zwp_primary_selection_device_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 14,
+                "interface": "zcosmic_workspace_image_capture_source_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 15,
+                "interface": "ext_output_image_capture_source_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 16,
+                "interface": "ext_foreign_toplevel_image_capture_source_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 17,
+                "interface": "ext_image_copy_capture_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 18,
+                "interface": "wl_shm",
+                "version": 2
+              },
+              {
+                "name": 19,
+                "interface": "wp_cursor_shape_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 20,
+                "interface": "wp_viewporter",
+                "version": 1
+              },
+              {
+                "name": 21,
+                "interface": "org_kde_kwin_server_decoration_manager",
+                "version": 1
+              },
+              {
+                "name": 22,
+                "interface": "zxdg_decoration_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 23,
+                "interface": "ext_session_lock_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 26,
+                "interface": "zwp_pointer_constraints_v1",
+                "version": 1
+              },
+              {
+                "name": 27,
+                "interface": "wp_pointer_warp_v1",
+                "version": 1
+              },
+              {
+                "name": 28,
+                "interface": "zwp_pointer_gestures_v1",
+                "version": 3
+              },
+              {
+                "name": 29,
+                "interface": "zwp_tablet_manager_v2",
+                "version": 1
+              },
+              {
+                "name": 30,
+                "interface": "wp_security_context_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 31,
+                "interface": "zwp_input_method_manager_v2",
+                "version": 1
+              },
+              {
+                "name": 32,
+                "interface": "zwp_text_input_manager_v3",
+                "version": 1
+              },
+              {
+                "name": 33,
+                "interface": "zwp_virtual_keyboard_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 34,
+                "interface": "wp_alpha_modifier_v1",
+                "version": 1
+              },
+              {
+                "name": 35,
+                "interface": "wp_single_pixel_buffer_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 36,
+                "interface": "wl_fixes",
+                "version": 1
+              },
+              {
+                "name": 37,
+                "interface": "zcosmic_keyboard_layout_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 38,
+                "interface": "ext_background_effect_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 39,
+                "interface": "ext_idle_notifier_v1",
+                "version": 2
+              },
+              {
+                "name": 40,
+                "interface": "zwp_idle_inhibit_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 41,
+                "interface": "ext_data_control_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 42,
+                "interface": "zwlr_data_control_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 43,
+                "interface": "zwlr_layer_shell_v1",
+                "version": 5
+              },
+              {
+                "name": 44,
+                "interface": "xdg_wm_base",
+                "version": 7
+              },
+              {
+                "name": 45,
+                "interface": "xdg_wm_dialog_v1",
+                "version": 1
+              },
+              {
+                "name": 46,
+                "interface": "xdg_activation_v1",
+                "version": 1
+              },
+              {
+                "name": 47,
+                "interface": "zxdg_exporter_v2",
+                "version": 1
+              },
+              {
+                "name": 48,
+                "interface": "zxdg_importer_v2",
+                "version": 1
+              },
+              {
+                "name": 49,
+                "interface": "zcosmic_toplevel_info_v1",
+                "version": 3
+              },
+              {
+                "name": 50,
+                "interface": "ext_foreign_toplevel_list_v1",
+                "version": 1
+              },
+              {
+                "name": 51,
+                "interface": "zcosmic_toplevel_manager_v1",
+                "version": 4
+              },
+              {
+                "name": 52,
+                "interface": "ext_workspace_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 53,
+                "interface": "zcosmic_workspace_manager_v2",
+                "version": 2
+              },
+              {
+                "name": 54,
+                "interface": "cosmic_a11y_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 55,
+                "interface": "cosmic_session_lock_layer_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 56,
+                "interface": "zwp_relative_pointer_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 57,
+                "interface": "wl_output",
+                "version": 4
+              },
+              {
+                "name": 58,
+                "interface": "wl_seat",
+                "version": 9
+              }
+            ],
+            "windows": [],
+            "read_only": true,
+            "initial_extension_complete": true
+          }
+        },
+        {
+          "closed": true,
+          "frame": "016-normal-close-2",
+          "native": {
+            "time": 1792801497.1601698,
+            "globals": [
+              {
+                "name": 1,
+                "interface": "wl_compositor",
+                "version": 5
+              },
+              {
+                "name": 2,
+                "interface": "wl_subcompositor",
+                "version": 1
+              },
+              {
+                "name": 3,
+                "interface": "cosmic_corner_radius_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 4,
+                "interface": "wl_data_device_manager",
+                "version": 3
+              },
+              {
+                "name": 5,
+                "interface": "wp_fractional_scale_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 6,
+                "interface": "zwp_keyboard_shortcuts_inhibit_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 7,
+                "interface": "zxdg_output_manager_v1",
+                "version": 3
+              },
+              {
+                "name": 8,
+                "interface": "zwlr_output_manager_v1",
+                "version": 4
+              },
+              {
+                "name": 9,
+                "interface": "zcosmic_output_manager_v1",
+                "version": 3
+              },
+              {
+                "name": 10,
+                "interface": "zwlr_output_power_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 11,
+                "interface": "zcosmic_overlap_notify_v1",
+                "version": 1
+              },
+              {
+                "name": 12,
+                "interface": "wp_presentation",
+                "version": 2
+              },
+              {
+                "name": 13,
+                "interface": "zwp_primary_selection_device_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 14,
+                "interface": "zcosmic_workspace_image_capture_source_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 15,
+                "interface": "ext_output_image_capture_source_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 16,
+                "interface": "ext_foreign_toplevel_image_capture_source_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 17,
+                "interface": "ext_image_copy_capture_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 18,
+                "interface": "wl_shm",
+                "version": 2
+              },
+              {
+                "name": 19,
+                "interface": "wp_cursor_shape_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 20,
+                "interface": "wp_viewporter",
+                "version": 1
+              },
+              {
+                "name": 21,
+                "interface": "org_kde_kwin_server_decoration_manager",
+                "version": 1
+              },
+              {
+                "name": 22,
+                "interface": "zxdg_decoration_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 23,
+                "interface": "ext_session_lock_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 26,
+                "interface": "zwp_pointer_constraints_v1",
+                "version": 1
+              },
+              {
+                "name": 27,
+                "interface": "wp_pointer_warp_v1",
+                "version": 1
+              },
+              {
+                "name": 28,
+                "interface": "zwp_pointer_gestures_v1",
+                "version": 3
+              },
+              {
+                "name": 29,
+                "interface": "zwp_tablet_manager_v2",
+                "version": 1
+              },
+              {
+                "name": 30,
+                "interface": "wp_security_context_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 31,
+                "interface": "zwp_input_method_manager_v2",
+                "version": 1
+              },
+              {
+                "name": 32,
+                "interface": "zwp_text_input_manager_v3",
+                "version": 1
+              },
+              {
+                "name": 33,
+                "interface": "zwp_virtual_keyboard_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 34,
+                "interface": "wp_alpha_modifier_v1",
+                "version": 1
+              },
+              {
+                "name": 35,
+                "interface": "wp_single_pixel_buffer_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 36,
+                "interface": "wl_fixes",
+                "version": 1
+              },
+              {
+                "name": 37,
+                "interface": "zcosmic_keyboard_layout_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 38,
+                "interface": "ext_background_effect_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 39,
+                "interface": "ext_idle_notifier_v1",
+                "version": 2
+              },
+              {
+                "name": 40,
+                "interface": "zwp_idle_inhibit_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 41,
+                "interface": "ext_data_control_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 42,
+                "interface": "zwlr_data_control_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 43,
+                "interface": "zwlr_layer_shell_v1",
+                "version": 5
+              },
+              {
+                "name": 44,
+                "interface": "xdg_wm_base",
+                "version": 7
+              },
+              {
+                "name": 45,
+                "interface": "xdg_wm_dialog_v1",
+                "version": 1
+              },
+              {
+                "name": 46,
+                "interface": "xdg_activation_v1",
+                "version": 1
+              },
+              {
+                "name": 47,
+                "interface": "zxdg_exporter_v2",
+                "version": 1
+              },
+              {
+                "name": 48,
+                "interface": "zxdg_importer_v2",
+                "version": 1
+              },
+              {
+                "name": 49,
+                "interface": "zcosmic_toplevel_info_v1",
+                "version": 3
+              },
+              {
+                "name": 50,
+                "interface": "ext_foreign_toplevel_list_v1",
+                "version": 1
+              },
+              {
+                "name": 51,
+                "interface": "zcosmic_toplevel_manager_v1",
+                "version": 4
+              },
+              {
+                "name": 52,
+                "interface": "ext_workspace_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 53,
+                "interface": "zcosmic_workspace_manager_v2",
+                "version": 2
+              },
+              {
+                "name": 54,
+                "interface": "cosmic_a11y_manager_v1",
+                "version": 2
+              },
+              {
+                "name": 55,
+                "interface": "cosmic_session_lock_layer_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 56,
+                "interface": "zwp_relative_pointer_manager_v1",
+                "version": 1
+              },
+              {
+                "name": 57,
+                "interface": "wl_output",
+                "version": 4
+              },
+              {
+                "name": 58,
+                "interface": "wl_seat",
+                "version": 9
+              }
+            ],
+            "windows": [],
+            "read_only": true,
+            "initial_extension_complete": true
+          }
+        }
+      ],
+      "all_native_panics": [
+        "[  139.417692] cosmic-probe cosmic-session[1301]: thread 'main' (1619) panicked at /build/cosmic-workspaces-k8dbG3/cosmic-workspaces-1.0.12~1790783807~24.04~cb953ea/vendor/wgpu/src/backend/wgpu_core.rs:3865:18:"
+      ],
+      "final_journal_runtime_summary": {
+        "compositor_panics": [],
+        "files_applet_pixmap_panics": []
+      },
+      "executed_source_copies_match_commit": true,
+      "executed_source_file_count": 19,
+      "reviewed_outcome": {
+        "immediate_overview_visibly_opened": true,
+        "first_overview_and_post_input_passed": true,
+        "second_overview_not_visible_in_retained_frame": true,
+        "second_trigger_qualified_pass": false,
+        "separate_native_workspaces_panic": true,
+        "workspaces_pid_before_after": [
+          1619,
+          3434
+        ],
+        "workspaces_error": "Surface::configure: Surface does not support the adapter queue family; ERROR_SURFACE_LOST_KHR; capture protocol error1",
+        "compositor_pid_starttime": [
+          1505,
+          3966
+        ],
+        "compositor_identity_stayed_same": true,
+        "workspaces_panic_first_appears_after_second_trigger_journal": true
+      },
+      "baseline_workspaces_identity": [
+        {
+          "pid": 1619,
+          "exe": "/usr/bin/cosmic-workspaces",
+          "sha256": "7e3cf670bb3dbd63c5b5245bcfba893f42f8a07bab70073cc772e07b0ece5f3d"
+        }
+      ],
+      "final_workspaces_identity": [
+        {
+          "pid": 3434,
+          "exe": "/usr/bin/cosmic-workspaces",
+          "sha256": "7e3cf670bb3dbd63c5b5245bcfba893f42f8a07bab70073cc772e07b0ece5f3d"
+        }
+      ]
+    },
+    "stock-native-blur": {
+      "runtime_complete_flag": false,
+      "runtime_native_failure_flag_not_authoritative": false,
+      "setup_error": "Native re-export differs from the three-field controlled input",
+      "input_proofs": [],
+      "normal_closes": [],
+      "all_native_panics": [],
+      "final_journal_runtime_summary": {
+        "compositor_panics": [],
+        "files_applet_pixmap_panics": []
+      },
+      "executed_source_copies_match_commit": true,
+      "executed_source_file_count": 19,
+      "offline_guard_diagnosis": {
+        "native_export_after": {
+          "frosted_windows": "true",
+          "frosted_system_interface": "true",
+          "frosted_applets": "true",
+          "frosted_panel": "false",
+          "frosted": "Medium"
+        },
+        "source_defined_projection_validation": {
+          "kind": "native-derived-foreground",
+          "stored_builder_text_tint": "Some(\"#E7E7E7FF\")",
+          "generated_background_on": "\"#F5F5F5FF\"",
+          "exported_text_tint": "Some(\"#F5F5F5FF\")",
+          "source": "cosmic-settings f1d00fc theme_manager.rs ThemeCustomizer::from lines67-77"
+        },
+        "native_flags_applied": {
+          "frosted_windows": "true",
+          "frosted_system_interface": "true",
+          "frosted_applets": "true"
+        },
+        "canary_or_overview_attempted": false,
+        "native_success_not_claimed": true
+      }
+    },
+    "public-frosted": {
+      "outcome": "NOT RUN: wrapper stopped on prior setup guard; no second allocation authorized"
+    },
+    "public-native-off": {
+      "outcome": "NOT RUN: wrapper stopped on prior setup guard; no second allocation authorized"
+    }
+  },
+  "causal_questions": {
+    "equivalent_native_blur_overview_crash": "UNANSWERED; configured but trigger not reached",
+    "hour_delay_needed_for_R3_compositor_panic": "UNANSWERED; public immediate case not reached",
+    "native_blur_off_avoids_R3_crash": "UNANSWERED; public native-off case not reached",
+    "software_offscreen_shader_init_hypothesis": "Source-supported inference; not causally confirmed/refuted by this attempt"
+  },
+  "artifact": {
+    "id": 12540977061,
+    "name": "native-blur-isolation-r1-40044224132",
+    "size_in_bytes": 21194197,
+    "digest": "sha256:a4111db1930f789c626c7443a9991ceddac6312ffcd60aba435b3a0596f00263",
+    "expires_at": "2026-11-07T00:27:13Z"
+  },
+  "selected_evidence_sha256": {
+    "native-blur-stock-baseline/isolation-results.json": "2d1521a25f0bfa67d571ea589265b82218b3bdfe3de7fdd1b3c3fc3628c9e2ae",
+    "native-blur-stock-baseline/005-immediate-overview.png": "12c553752189a3b8b7e7eea71b54a58919d81f32bc1fe0d99456adf75b46555f",
+    "native-blur-stock-baseline/013-after-preserved-sequence-overview.png": "b903359ba631c34331dd3f139a1fe9ff84f1b9b8fad793c776916e74e8ddd865",
+    "native-blur-stock-baseline/018-reopened-2-input.png": "f6bded37b9d826b7e42a66216fa27eb35fb61337ce7a47e9b3dd57758c0a27f4",
+    "native-blur-stock-baseline/full-native-journal.txt": "0388f3df8c13f3a960e8559c98268949fb398c7d84d1144b7d8891b0927fa486",
+    "native-blur-stock-native-blur/isolation-results.json": "2b7593144ba75790677fcf8df5e81e2123e2c5a3aa8c6ee63973c22fc601cbc9",
+    "native-blur-stock-native-blur/native-builder-before.txt": "e04a467ca21502543c517cf8403d4d1b53e9a47adfa46cde864a4a090b646806",
+    "native-blur-stock-native-blur/native-builder-after.txt": "c71978bbb1f6fed230ff899d7e164244ab17d32ea6f26a922073d23e4c85bc31",
+    "native-blur-stock-native-blur/native-import.txt": "37e23e3cdbd09bf830ae21b523943fafc82bee914d394dc6da96093bd135903c",
+    "native-blur-stock-native-blur/final-config-state.txt": "0154bf60389c7a09c67c074f24704d53f0ef23495e7819cad860c93919429b0a",
+    "native-blur-stock-native-blur/001-setup-or-input-failure.png": "eb241f781943d6bc02c32a6ff77edfb739ca535b3d27e5d5b600c86eff4c8f9b"
+  }
+}

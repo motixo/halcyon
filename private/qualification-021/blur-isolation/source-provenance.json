@@ -83,5 +83,12 @@
   },
   "publication": "0.2.5 ON HOLD",
   "allocation_cap": 1,
-  "job_timeout_minutes": 90
+  "job_timeout_minutes": 90,
+  "postmortem_guard_repair": {
+    "executed_run": 40044224132,
+    "executed_infra": "d3aeeb82bb1499a10dde8c04f911c1c6c83ea557",
+    "native_reexecution": false,
+    "native_export_is_projection": true,
+    "workspaces_failure_tracked_separately": true
+  }
 }

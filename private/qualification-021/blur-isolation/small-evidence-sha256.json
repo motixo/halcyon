@@ -1,0 +1,38 @@
+{
+  "report.md": {
+    "bytes": 15429,
+    "sha256": "ce7a991f03e66702097fd9dd6a24bddedd326118087b4e65f7c3503cff2e2a50"
+  },
+  "findings.json": {
+    "bytes": 23872,
+    "sha256": "28a3204da97a0a28316255258b82d3a97773dfb44ae790eeb4cf86191adccba5"
+  },
+  "run-metadata.json": {
+    "bytes": 1166,
+    "sha256": "af4df81e9bb0473492dda555269bf6637cb3a718d02073c65762c03d3bcc5914"
+  },
+  "method-and-source-audit.md": {
+    "bytes": 5176,
+    "sha256": "0026df473d24980c01b1371ec7b54b6ac3fbca1c25acf55ab9f9ffb3535a9c84"
+  },
+  "source-provenance.json": {
+    "bytes": 3792,
+    "sha256": "63215472ac3a68439eb06e13abaa0d0043e85f5e5968c20254e33144367b37c0"
+  },
+  "controlled-native-input.ron": {
+    "bytes": 2598,
+    "sha256": "807cb40730c5cafcd05e499b7489bbe97d257f9b91e2f198b1d4a4161156e681"
+  },
+  "native-export-comparison.diff": {
+    "bytes": 337,
+    "sha256": "59054e082929c93735e4cf623bc77c9d83afbe685cec236f3beaf7a6d0df42ef"
+  },
+  "job-failed.log": {
+    "bytes": 46561,
+    "sha256": "eace26a7c950664f159b18f9970c51537d5ab09870143ffac28c9f1905d4ddab"
+  },
+  "native-blur-isolation-r1-40044224132.zip": {
+    "bytes": 21194197,
+    "sha256": "a4111db1930f789c626c7443a9991ceddac6312ffcd60aba435b3a0596f00263"
+  }
+}

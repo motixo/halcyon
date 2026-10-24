@@ -6,7 +6,7 @@ sys.path.insert(0, str(SRC.parent / 'theme'))
 sys.path.insert(0, str(SRC.parent / 'lockup'))
 import theme_session as h  # Definitions-only import; exercise.py is never imported.
 from calibrated_controls import Pixels, validate_samples
-from configuration import FLAGS, fields, change_flags, verify_media
+from configuration import FLAGS, fields, change_flags, verify_media, validate_reexport
 c = h.c
 work, ev = c.work, c.ev
 context = sys.argv[4]
@@ -53,7 +53,7 @@ for p in pathlib.Path('/proc').iterdir():
  if not p.name.isdigit():continue
  try:
   exe=os.readlink(p/'exe')
-  if exe in ['/usr/bin/cosmic-comp','/usr/bin/cosmic-edit','/usr/bin/cosmic-panel','/usr/bin/halcyon','/usr/bin/cosmic-settings-daemon','/usr/libexec/xdg-desktop-portal-cosmic']:
+  if exe in ['/usr/bin/cosmic-comp','/usr/bin/cosmic-edit','/usr/bin/cosmic-panel','/usr/bin/cosmic-workspaces','/usr/bin/halcyon','/usr/bin/cosmic-settings-daemon','/usr/libexec/xdg-desktop-portal-cosmic']:
    stat=(p/'stat').read_text().rsplit(')',1)[1].split()
    rows.append({'pid':int(p.name),'starttime':int(stat[19]),'exe':exe,'sha256':hashlib.sha256((p/'exe').read_bytes()).hexdigest(),'args':(p/'cmdline').read_bytes().decode().replace('\\0',' ')})
  except OSError:pass
@@ -72,7 +72,8 @@ def journal(label):
     lines=raw.splitlines()
     panics=[x for x in lines if 'cosmic-comp[' in x and 'panicked at' in x]
     applets=[lines[i] for i,x in enumerate(lines) if 'panicked at' in x and 'iced_tiny_skia' in x and any('Create pixel map' in y for y in lines[i+1:i+4])]
-    return {'compositor_panics':panics,'files_applet_pixmap_panics':applets}
+    workspace=[x for x in lines if 'panicked at' in x and ('cosmic-workspaces-' in x or 'cosmic-workspaces[' in x)]
+    return {'compositor_panics':panics,'workspaces_panics':workspace,'files_applet_pixmap_panics':applets}
 
 def export(label):
     command(label+'-command','/usr/bin/cosmic-settings appearance export /var/tmp/blur-export.ron',True)
@@ -97,9 +98,16 @@ def treatment():
         command('native-import','/usr/bin/cosmic-settings appearance import /var/tmp/blur-treatment.ron',True)
         time.sleep(6)
     after=export('native-builder-after')
-    if after!=desired:
-        raise RuntimeError('Native re-export differs from the three-field controlled input')
     after_snapshot=h.snapshot('treatment-after')
+    raw=after_snapshot['files']
+    if change is None:
+        if after!=desired:raise RuntimeError('Untouched export changed')
+        projection={'kind':'byte-exact untouched export'}
+    else:
+        prefix='.config/cosmic/com.system76.CosmicTheme.Dark'
+        tint=bytes.fromhex(raw[prefix+'.Builder/v2/text_tint']['hex']).decode()
+        background=bytes.fromhex(raw[prefix+'/v2/background']['hex']).decode()
+        projection=validate_reexport(desired,after,tint,background)
     wanted='true' if context in ['stock-native-blur','public-frosted'] else 'false'
     if context!='stock-baseline':
         for f in FLAGS:
@@ -107,7 +115,7 @@ def treatment():
             actual=bytes.fromhex(after_snapshot['files'][path]['hex']).decode().strip()
             if actual!=wanted:raise RuntimeError('Native generated theme flag mismatch: '+f)
     result['treatment']={'exported_before':original,'exported_after':fields(after),
-                         'exact_reexport_matches_input':True,'change':change,
+                         'exact_reexport_matches_input':after==desired,'native_export_projection':projection,'change':change,
                          'before_builder_sha256':hashlib.sha256(before.encode()).hexdigest(),
                          'after_builder_sha256':hashlib.sha256(after.encode()).hexdigest(),
                          'widget_blur_requests_retained':public,
@@ -187,10 +195,11 @@ def overview(label):
     if hashlib.sha256(current.encode()).hexdigest()!=result['treatment']['after_builder_sha256']:
         raise RuntimeError('Native treatment changed before overview; comparison unqualified')
     before=identities(label+'-identity-before');initial=compositor(before)
+    workspace_before=[x for x in before if x['exe']=='/usr/bin/cosmic-workspaces']
     native_before=journal(label+'-journal-before')
-    if native_before['compositor_panics']:
+    if native_before['compositor_panics'] or native_before['workspaces_panics']:
         result['native_failure_observed']=True
-        result['triggers'].append({'label':label,'triggered':False,'native_failure':True,'reason':'Native compositor panic already present before this trigger','journal_before':native_before})
+        result['triggers'].append({'label':label,'triggered':False,'native_failure':True,'reason':'Native compositor/workspaces panic already present before this trigger','journal_before':native_before})
         save();return False
     screen(label+'-before-overview')
     started=time.time();c.key('meta_l-w');time.sleep(1);frame,_,_=screen(label+'-overview')
@@ -199,9 +208,11 @@ def overview(label):
     native_after=journal(label+'-journal-after')
     stable=len(comps)==1 and comps[0]==initial
     # Full record equality includes PID/starttime/ELF/args, never merely socket health.
-    failed=not stable or bool(native_after['compositor_panics'])
+    workspace_after=[x for x in after if x['exe']=='/usr/bin/cosmic-workspaces']
+    workspace_stable=len(workspace_before)==1 and workspace_after==workspace_before
+    failed=not stable or not workspace_stable or bool(native_after['compositor_panics'] or native_after['workspaces_panics'])
     proof={'label':label,'trigger_realtime':started,'elapsed_after_treatment_sec':started-result['treatment_applied_realtime'],
-           'frame':frame,'compositor_before':initial,'compositor_after':comps,'same_identity':stable,
+           'frame':frame,'workspaces_before':workspace_before,'workspaces_after':workspace_after,'workspaces_identity_stable':workspace_stable,'overview_visibility_requires_frame_review':True,'compositor_before':initial,'compositor_after':comps,'same_identity':stable,
            'journal_before':native_before,'journal_after':native_after,'native_failure':failed}
     result['triggers'].append(proof);result['native_failure_observed']|=failed;save()
     if failed:
@@ -260,7 +271,7 @@ finally:
     try:
         result['final_identities']=identities('final-identities')
         result['final_journal']=journal('full-native-journal')
-        if result['final_journal']['compositor_panics']:
+        if result['final_journal']['compositor_panics'] or result['final_journal']['workspaces_panics']:
             result['native_failure_observed']=True
             if result.get('preflight_passed'):
                 result['complete']=True
