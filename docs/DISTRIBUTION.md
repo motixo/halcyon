@@ -1,198 +1,105 @@
-# Distribution and updates
+# Distribution and system updates
 
-Status: manual GitHub release packages remain supported. Local signed-archive
-and explicit enrollment preparation now exists; no public APT channel or Updates
-UI is claimed. **0.2.1 publication remains on hold.**
+Halcyon 0.2.5 remains available as immutable [GitHub release downloads](https://github.com/profilaz3/halcyon/releases/tag/v0.2.5).
+The signed APT channel is `https://profilaz3.github.io/halcyon/apt`, suite `noble`,
+component `main`, architecture `amd64` (Intel and AMD x86-64 PCs).
 
-[APT operations](APT-OPERATIONS.md) is the current implementation/deployment
-contract, including exact immutable promotion inputs, scoped enrollment,
-retention, expiry and tested keyring rotation. [Updates handoff](UPDATES-HANDOFF.md)
-records actual PackageKit/Store interfaces and the remaining Rust/UI/native work.
-The earlier milestone design below supplies context; those two documents and the
-current publication hold govern execution.
+Enrollment is explicit and optional. After the deployment workflow succeeds and
+the bootstrap release is published, use the steps below. A GitHub release or this
+repository does not automatically put Halcyon in everyone's COSMIC Store.
 
-## Current releases
+## Enable system updates once
 
-Publish two separate amd64 packages for Pop!_OS 24.04 on 64-bit Intel and AMD
-PCs. `amd64` is the Debian name for x86-64, not an AMD-only package:
+Download both bootstrap packages from the separate
+[apt-bootstrap-0.2.5-1 release](https://github.com/profilaz3/halcyon/releases/tag/apt-bootstrap-0.2.5-1):
 
-- `cosmic-ext-halcyon`: the app, helpers, assets and user service. Installing it
-  does not activate the service or change the desktop.
-- `cosmic-ext-halcyon-islands`: optional panel extension. Installing it does
-  not activate or restart a panel. Runtime checks select the stock panel on
-  incompatibility. Its APT dependencies never pin COSMIC to an old version.
+```sh
+curl -fLO https://github.com/profilaz3/halcyon/releases/download/apt-bootstrap-0.2.5-1/halcyon-archive-keyring_0.2.5-1_all.deb
+curl -fLO https://github.com/profilaz3/halcyon/releases/download/apt-bootstrap-0.2.5-1/halcyon-update-source_0.2.5-1_all.deb
+printf '%s\n' \
+  '4a0b973025c98b03d4ed901bc499f1af61c001dcdd1f1d7885b4009811ac2262  halcyon-archive-keyring_0.2.5-1_all.deb' \
+  'fad29b1760e53d7bf1115829d71f2568f7c208f6176b6480aee3a0c85d2d00af  halcyon-update-source_0.2.5-1_all.deb' \
+  | sha256sum -c -
+sudo apt install ./halcyon-archive-keyring_0.2.5-1_all.deb ./halcyon-update-source_0.2.5-1_all.deb
+sudo apt update
+```
 
-People upgrade by downloading the newer package from GitHub and opening it,
-or with `sudo apt install ./package.deb`. This preserves user data. There is
-no automatic update feed in v0.1.1. For Islands, run `halcyon-islands enable`
-after upgrading, then log out and in; currently the enabled user bundle is a
-copy, so installing the new package alone does not refresh that copy.
+Public certification fingerprint: **A1EB 6576 D959 5ECA 5750 9CE1 4EB2 B42D F234 CB16**.
+Signing subkey: `610B73343D6F40603553A295A4658CCECBC306AB`.
+The independently published checksums above bind the bootstrap downloads to the
+reviewed public key. To inspect the included key without importing it:
 
-Release assets: both packages and their SHA256 files, corresponding Islands
-source and dependency notices. GitHub's generated source archive covers
-Halcyon itself, including the pinned companion patch and build instructions.
-The release notes state the supported COSMIC package combination and whether
-Google Calendar sign-in is configured. Missing OAuth configuration must never
-be described as working sign-in. Accounts and user tokens never enter a build.
+```sh
+dpkg-deb --fsys-tarfile halcyon-archive-keyring_0.2.5-1_all.deb \
+  | tar -xOf - ./usr/share/keyrings/halcyon-archive-keyring.gpg \
+  | gpg --show-keys --with-subkey-fingerprint
+```
 
-A release is gated by Rust, Python, companion-core and packaging tests,
-AppStream and desktop-file validation, and lintian errors. Test failures must
-not be hidden by `continue-on-error`. A tag identifies immutable source.
-Do not overwrite an existing version's packages: publish a newer version.
+The source uses `/usr/share/keyrings/halcyon-archive-keyring.gpg` through scoped
+`Signed-By`. It never uses `apt-key` or global trust. Selection preferences allow
+only `cosmic-ext-halcyon`, `cosmic-ext-halcyon-islands`, `halcyon-archive-keyring`
+and `halcyon-update-source` from this origin. No COSMIC version holds are added.
 
-## Planned: one system update channel
+## Install or update
 
-Use a signed APT archive on GitHub Pages, proposed URL
-`https://profilaz3.github.io/halcyon/apt`, suite `noble`, component `main`,
-architecture `amd64`. Enable Pages and validate the real URL before shipping
-an enrollment package or source entry. Pages hosting is not a store listing.
+For a first app installation:
 
-APT and PackageKit own installation, authentication and package transactions.
-Halcyon must not download and replace its executable, run a shell installer,
-or ask for an administrator password itself. Updates appear with other system
-updates after the user enrolls in our source; unattended installation depends
-on their system policy and must not be promised universally.
+```sh
+sudo apt install cosmic-ext-halcyon
+```
 
-### Archive and trust
+Existing package installations update normally through APT or **COSMIC Store →
+Updates**. The app's Updates row offers an explicit check and opens COSMIC Store;
+it does not install software or collect passwords. Unattended installation depends
+on the user's OS policy. Store search discovery is separate from system updates;
+AppStream metadata and icons are provided, but a native Store search trial has not
+been claimed by this deployment work.
 
-1. Produce `.deb` assets from a reviewed source commit. Use `apt-ftparchive`
-   to generate `Packages`, compressed indexes and `Release`, with SHA256
-   hashes, a stable Origin/Label and Suite/Codename. Sign `InRelease` and
-   `Release.gpg`. Retain prior versions for rollback.
-2. Create a dedicated archive signing key, with an offline backup and a
-   documented expiration/rotation procedure. Store the publishing subkey in
-   a restricted GitHub Actions environment. Signing jobs run only for trusted
-   release inputs, never pull requests. Do not print key material or put it in
-   source, artifacts, caches or chat.
-3. Ship the public key as `/usr/share/keyrings/halcyon-archive-keyring.gpg` in
-   an owned keyring package. Use a Deb822 `.sources` entry with `Signed-By`
-   pointing to that key. Never use `apt-key`, `trusted=yes`, or a global key.
-4. Provide an explicit one-time "Enable Halcyon updates" enrollment package
-   that owns the keyring and source configuration. Show the update source in
-   installation instructions. Existing GitHub installations can install this
-   package without reinstalling their data. Do not silently add a source from
-   the application or publish an entry pointing to an unsigned/absent archive.
-5. Restrict this source to the Halcyon package family with APT preferences:
-   unrelated packages from the new origin have negative priority, approved
-   Halcyon packages normal priority. Keep source/keyring ownership separate
-   from the app so removing an app never deletes another administrator's files.
-6. Publish a complete validated archive as one Pages deployment. Refresh the
-   signed metadata before expiration even when no binary changes. A failed
-   build/sign/deploy keeps the previous working archive intact.
+Islands remains optional. Enrollment and installing/updating the main app do not
+install it. To request it explicitly:
 
-Acceptance in a disposable Pop!_OS VM: enroll, `apt update`, install v0.1.0,
-upgrade to the candidate through PackageKit, uninstall/reinstall while retaining
-preferences, reject a corrupted index and a wrong signature, reject expired
-metadata, and rotate keys using an old-key-signed overlapping public keyring
-before switching to a single new-key signature. Also verify
-that unrelated packages cannot be selected from this repository.
+```sh
+sudo apt install cosmic-ext-halcyon-islands
+```
 
-### COSMIC Store discovery
+Installing the companion does not enable it or restart a panel. Already-installed
+Islands receives normal package updates. Existing enabled users use the guarded
+per-user refresh and next-login activation; disabled users stay disabled. There
+is no forced logout or root package script that edits user home directories.
 
-The Store has native-package and Flatpak backends. A GitHub release or a
-third-party APT URL is not automatically included on everybody's machine.
-Ship the existing `io.github.profilaz3.Halcyon` metainfo and icons, plus an
-AppStream collection in the archive's `dep11` metadata tied to
-`cosmic-ext-halcyon`. Verify search, screenshots, install, upgrade and removal
-in a clean COSMIC Store with only our source added. Treat search visibility
-as a tested deliverable, not an assumption about installed metainfo.
+Manual `.deb` downloads remain supported. Source/per-user installs remain distinct
+from `/usr` package installations; the app checks its actual running executable
+before offering package update status. Enrolling does not replace a source build.
 
-### In-app update entry
+## Stop using this channel
 
-Add one Updates row in App settings showing version and installation channel.
+```sh
+sudo apt purge halcyon-update-source halcyon-archive-keyring
+sudo apt update
+```
 
-- For APT: query PackageKit for this package's installed/candidate versions;
-  offer "Open Software Updates". Use a verified Store route or the normal
-  PackageKit transaction with its standard authentication UI. Do not guess a
-  command-line route or introduce password handling.
-- For a manual GitHub package with no source: offer "Get latest release" and
-  "Enable system updates" with clear destination descriptions.
-- For a source/per-user install: identify it, link release/build instructions,
-  and avoid upgrading a different `/usr` installation underneath it.
-- For future Flatpak: open the Store's Flatpak update flow. No host-package
-  commands from inside the sandbox.
+This leaves Halcyon, Islands and user settings installed. Source removal preserves
+its exact bytes as an ignored `halcyon.sources.removed.*` file for administrator
+recovery; it is never silently re-enabled. Administrator-disabled/deleted source
+conffiles remain disabled on ordinary package upgrades. Unrelated source files and
+keys are untouched. The saved disabled file may be removed manually if no longer
+needed.
 
-An unavailable network, missing PackageKit, no newer version, canceled
-authentication and failed installation each leave the current app intact.
-Update notices never block Settings. Start with explicit checks; any later
-background check is opt-in and documented in the privacy section.
+## Release identity, source and maintenance
 
-### Islands updates and per-user activation
+APT serves the **exact** approved 0.2.5 app/companion bytes. Its existing practical
+`cosmic-1.10-1.11-startup-v1` approval and documented limitations remain unchanged;
+APT delivery does not turn historical focused evidence into new native/hardware
+qualification. No published 0.2.5 package, source or approval is modified.
 
-The current launcher validates three exact packages: `cosmic-panel`,
-`cosmic-comp`, and `cosmic-session`. Monitor all three, not just the panel.
-A package filename's commit suffix is a hint, not a verified source identity.
+The original release supplies corresponding source, licenses, provenance and
+focused evidence. The separate bootstrap release supplies its own corresponding
+source and GPL copyright/license. The archive landing page and retained
+`release-assets.json` records link to immutable GitHub release assets and hashes,
+so large source/evidence archives do not consume the Pages site budget.
 
-A scheduled GitHub Actions job should read the official signed Pop!_OS archive,
-verify its signing chain and package-index hashes, compare the supported trio,
-and resolve the full source revision from trusted package metadata. Open a
-compatibility PR when it changes. Prepare the upstream tree with pinned
-hashes, apply our patch without fuzz, update the core/manifest/selector and
-source archive, then build and run core, packaging and native session tests.
-Use a monotonically increasing Debian add-on version, e.g. `0.1.1+islands.2`,
-so a new compatibility build upgrades without requiring a new app release.
-
-A patch applying and unit tests passing do not prove compositor compatibility.
-For changed compositor/session packages, require a disposable native COSMIC
-trial before publishing. Until this gate can be automated reliably, publish
-only after the maintainer approves the candidate; open an issue/PR on failure
-instead of publishing a guessed build. Never block the official COSMIC update.
-
-To eliminate the per-user copy gap, add a guarded user-session refresh:
-
-- Read the already-installed `/usr` package, not a network download. Verify
-  its manifest, checksum, package combination and ownership record.
-- If this user previously enabled Islands and all owned files are unchanged,
-  stage the new bundle atomically and preserve selection/layout. Do not
-  enable it for new users or change disabled state. Leave external edits alone.
-- Keep old files and a recovery journal. A failed refresh leaves stock selected.
-- Activation defaults to next login. A future "Restart panel" action must
-  use a proven session restart path preserving notification descriptors and
-  ensure exactly one host; never kill an arbitrary process from an update hook.
-- Package scripts must not edit users' homes, enable services, or restart a
-  desktop. Each logged-in user refreshes independently in their own session.
-
-Test enabled/disabled users, two users sharing one package, external edits,
-interrupted copy, downgrade, removed add-on, failed-marker retention, running
-old compositor after a package upgrade, and loss of the notification socket.
-Show the standard-panel fallback and keep the user's saved Islands layout.
-Do not promise a fixed time until a compatible build is available.
-
-## Flatpak and wider discovery
-
-A sandboxed Halcyon build needs a separate capability audit: COSMIC settings
-access, layer-shell desktop windows, session startup, helper execution,
-calendar secret storage, and local project access. Use portals where possible;
-do not turn a Flatpak into an unrestricted host installer to hide missing
-capabilities. Submit metainfo and permissions to the chosen repository review.
-
-The native Islands replacement remains a separately installed host package.
-COSMIC Store can surface native packages once its source/metadata is available;
-"Islands cannot be in the Store" would be too broad. What cannot be bundled
-as an ordinary sandboxed app is the host-panel replacement itself.
-
-## References
-
-- [COSMIC Store source and backends](https://github.com/pop-os/cosmic-store)
-- [Debian third-party repository guidance](https://wiki.debian.org/DebianRepository/UseThirdParty)
-- [APT signature verification](https://manpages.debian.org/stable/apt/apt-secure.8.en.html)
-- [APT source configuration](https://manpages.debian.org/stable/apt/sources.list.5.en.html)
-- [AppStream collection metadata](https://www.freedesktop.org/software/appstream/docs/chap-CollectionData.html)
-
-## Implemented group 3 artifact boundary
-
-The companion's final strip/package step now precedes native acceptance. Its v2
-manifest binds helper/selector/catalog/ELF bytes, and its content-addressed user
-generation preserves the existing reverse installation/Disable chain. A
-package-owned XDG autostart independently bootstraps enabled actual 0.2.0 users;
-activation is next login after successful staging, without root home edits or
-live replacement. New/disabled/manual users are not auto-enabled.
-
-[COMPATIBILITY.md](COMPATIBILITY.md) specifies signed official discovery, complete
-cohort locks, read-only status, evidence schemas and the exact native-driver
-handoff. The catalog currently admits no new native cohort. Final package native
-acceptance, complete 1.10 inputs and group 4 system-update acceptance remain gates.
-The previous tag-triggered rebuild/publish workflow is replaced with verification
-of an explicitly reviewed immutable release artifact set. Publication is still
-parent-owned; group 4 must consume the same bytes, add its acceptance and perform
-restricted signing/promotion. No current APT enrollment or hosting is implied.
+[APT operations](APT-OPERATIONS.md) documents the approved input manifest,
+protected signing environment, daily seven-day metadata renewal, expiry checks,
+retention, rotation and exact deployment commands.
+[Updates integration](UPDATES-HANDOFF.md) records the already-published app contract
+and the limited Store discovery claim.

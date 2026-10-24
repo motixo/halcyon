@@ -128,7 +128,8 @@ class Admission(unittest.TestCase):
             enrollment.build(armored, '1.0', self.root/'rejected', 1700000000)
 
     def test_bootstrap_lintian_errors(self):
-        for path in self.candidate.glob('halcyon-*.deb'):
+        revision = enrollment.build(self.keyhome/'public.gpg', '0.2.5-1', self.root/'revision', 1700000000)
+        for path in [*self.candidate.glob('halcyon-*.deb'), *revision]:
             result = execute(['lintian', '--fail-on', 'error', path])
             self.assertEqual(result.returncode, 0, result.stdout.decode())
 

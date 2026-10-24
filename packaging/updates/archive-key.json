@@ -1,0 +1,19 @@
+{
+  "format": "halcyon-archive-public-key",
+  "version": 1,
+  "sha256": "bc0db85de8d205c56526c7c5dd439e50f9558c47450f57aa47dd7bf1467b772f",
+  "keys": [
+    {
+      "kind": "pub",
+      "expires": "2031-10-23T08:50:23+00:00",
+      "expires_epoch": 1950511823,
+      "fingerprint": "A1EB6576D9595ECA57509CE14EB2B42DF234CB16"
+    },
+    {
+      "kind": "sub",
+      "expires": "2028-10-23T08:50:23+00:00",
+      "expires_epoch": 1855903823,
+      "fingerprint": "610B73343D6F40603553A295A4658CCECBC306AB"
+    }
+  ]
+}

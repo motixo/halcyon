@@ -1,72 +1,100 @@
-name: Prepare reviewed APT generation (no publication)
+name: Publish and renew signed Halcyon APT
 on:
   workflow_dispatch:
     inputs:
-      candidate_run:
-        description: Run containing independently reviewed halcyon-release-candidate
-        required: true
-      review_sha256:
-        description: Independently reviewed distribution-review.json SHA256
-        required: true
-      epoch:
-        description: Reviewed generation UTC Unix timestamp (seven-day validity)
-        required: true
-      previous_run:
-        description: Previous prepared archive run (empty for bootstrap only)
-        required: false
-      previous_sha256:
-        description: Reviewed previous archive.json digest (required with previous_run)
-        required: false
+      bootstrap:
+        description: First deployment only (must have no existing archive)
+        type: boolean
+        default: false
+  schedule:
+    - cron: '17 4 * * *'
 permissions:
   contents: read
-  actions: read
+concurrency:
+  group: halcyon-apt-pages
+  cancel-in-progress: false
 jobs:
   prepare:
+    if: github.repository == 'profilaz3/halcyon' && github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Install verification tools on disposable runner
+      - name: Install archive verification tools on disposable runner
         run: sudo apt-get update && sudo apt-get install -y apt-utils gnupg appstream python3-apt
-      - uses: actions/download-artifact@v4
-        with:
-          name: halcyon-release-candidate
-          run-id: ${{ inputs.candidate_run }}
-          github-token: ${{ github.token }}
-          path: candidate
-      - uses: actions/download-artifact@v4
-        if: inputs.previous_run != ''
-        with:
-          name: halcyon-apt-unsigned
-          run-id: ${{ inputs.previous_run }}
-          github-token: ${{ github.token }}
-          path: previous
-      - name: Verify evidence and stage exact bytes
+      - name: Download pinned releases, verify practical approval and retain previous archive
         env:
-          REVIEW_SHA: ${{ inputs.review_sha256 }}
-          EPOCH: ${{ inputs.epoch }}
-          PREVIOUS_RUN: ${{ inputs.previous_run }}
-          PREVIOUS_SHA: ${{ inputs.previous_sha256 }}
+          FIRST_DEPLOYMENT: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap }}
         shell: bash
         run: |
           set -euo pipefail
-          previous_args=()
-          if [ -n "$PREVIOUS_RUN" ]; then
-            test -n "$PREVIOUS_SHA"
-            previous_args=(--previous previous --previous-sha256 "$PREVIOUS_SHA")
-          else
-            test -z "$PREVIOUS_SHA"
-          fi
-          python3 -B scripts/apt/build_archive.py --artifacts candidate \
-            --review-sha256 "$REVIEW_SHA" --epoch "$EPOCH" \
-            "${previous_args[@]}" --out unsigned
-      - uses: actions/upload-artifact@v4
+          args=()
+          if [ "$FIRST_DEPLOYMENT" = true ]; then args+=(--bootstrap); fi
+          python3 -B scripts/apt/live.py prepare --work prepared "${args[@]}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: halcyon-apt-unsigned
-          path: unsigned
-          retention-days: 7
-# Intentionally no signing environment, write permissions, tags, schedule,
-# Pages action or deployment. Long-term archive retention and final publication
-# are parent-owned; this short-lived CI artifact is not durable hosting.
+          name: apt-verified-${{ github.run_id }}
+          path: |
+            prepared/unsigned
+            prepared/previous-proof
+          if-no-files-found: error
+          retention-days: 3
+  sign:
+    needs: prepare
+    if: github.repository == 'profilaz3/halcyon' && github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main'
+    environment: halcyon-apt
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: apt-verified-${{ github.run_id }}
+          path: prepared
+      - name: Install trusted index/signature verifier dependencies
+        run: sudo apt-get update && sudo apt-get install -y apt-utils gnupg appstream
+      - name: Revalidate independent parent approval before secret use
+        env:
+          APPROVED_INPUTS: ${{ vars.HALCYON_APT_DISTRIBUTION_SHA256 }}
+        run: python3 -B scripts/apt/live.py verify --work prepared --approved-inputs-sha256 "$APPROVED_INPUTS"
+      - name: Sign immutable bytes with signing-only subkey
+        env:
+          HALCYON_APT_SIGNING_KEY: ${{ secrets.HALCYON_APT_SIGNING_KEY }}
+          SIGNING_FINGERPRINT: ${{ vars.HALCYON_APT_SIGNING_FINGERPRINT }}
+          APPROVED_INPUTS: ${{ vars.HALCYON_APT_DISTRIBUTION_SHA256 }}
+        run: |
+          python3 -B scripts/apt/live.py sign --work prepared --out signed \
+            --approved-inputs-sha256 "$APPROVED_INPUTS" --signing-fingerprint "$SIGNING_FINGERPRINT"
+      - name: Check expiry and Pages size before replacing site
+        run: |
+          python3 -B scripts/apt/check_expiry.py --archive signed \
+            --archive-sha256 "$(sha256sum signed/archive.json | cut -d ' ' -f 1)" \
+            --public-keyring packaging/updates/halcyon-archive-keyring.gpg
+          python3 -B scripts/apt/live.py pages --work signed --out site
+      - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: site
+  deploy:
+    needs: sign
+    if: github.repository == 'profilaz3/halcyon' && github.ref == 'refs/heads/main' && github.event.repository.default_branch == 'main'
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Atomically deploy the complete signed generation
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+# No pull_request, workflow_run or tag trigger. No candidate executables are run
+# with the key. Failed preparation, signature, expiry or size checks never deploy.
+# Durable inputs are pinned GitHub release assets; CI artifacts are transport only.
