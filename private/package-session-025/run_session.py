@@ -68,7 +68,7 @@ def main():
   # Independent ordinary-user public metadata. No all-OS file inventory.
   ops(['user','identity-followup','/usr/bin/python3','-B',H+'/readonly_identity_followup.py'],'identity-followup')
   seq=0
-  while seq<20:
+  while seq<32:
    cmd=checkpoint(seq);assert cmd['seq']==seq+1 and cmd['run']==int(os.environ['ACCEPTANCE_RUN_ID']);seq+=1
    (E/f'operator-command-{seq}.json').write_text(json.dumps(cmd,indent=2))
    for i,a in enumerate(cmd['actions']):

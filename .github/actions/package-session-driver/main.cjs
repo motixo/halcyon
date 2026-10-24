@@ -3,7 +3,7 @@ const fs=require('node:fs'); const path=require('node:path');
 const work=process.env.WORK; const recipe='private/package-session-025/';
 const mode=process.env.INPUT_MODE;
 if(mode==='preflight'){
- const r=spawnSync('python3',['-u',recipe+'bridge.py','--preflight'],{stdio:'inherit',env:process.env,timeout:240000});
+ const r=spawnSync('python3',['-u',recipe+'bridge.py','--preflight'],{stdio:'inherit',env:process.env,timeout:90000});
  process.exit(r.status===0?0:1);
 }
 if(mode!=='session')throw new Error('unknown controller mode');

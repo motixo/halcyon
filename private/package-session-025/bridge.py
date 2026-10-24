@@ -11,8 +11,9 @@ if sys.argv[1:]==['--preflight']:
  folder=W/'checkpoint-preflight';folder.mkdir(exist_ok=False)
  (folder/'receipt.json').write_text(json.dumps({'purpose':'small pre-download checkpoint transport test','run':os.environ['GITHUB_RUN_ID'],'credentials_exported':False}))
  output=W/'checkpoint-action-outputs.txt'
+ output.touch(exist_ok=False) # @actions/core requires an existing GITHUB_OUTPUT file
  env=dict(os.environ,INPUT_NAME='package-session-transport-preflight-'+os.environ['GITHUB_RUN_ID'],INPUT_PATH=str(folder),INPUT_OVERWRITE='false',**{'INPUT_INCLUDE-HIDDEN-FILES':'false','INPUT_RETENTION-DAYS':'90','INPUT_IF-NO-FILES-FOUND':'error','INPUT_COMPRESSION-LEVEL':'6','GITHUB_OUTPUT':str(output)})
- subprocess.run(['node',str(action)],env=env,timeout=180,check=True)
+ subprocess.run(['node',str(action)],env=env,timeout=45,check=True)
  values={};lines=iter(output.read_text().splitlines())
  for line in lines:
   if '<<' in line:
@@ -26,7 +27,7 @@ if sys.argv[1:]==['--preflight']:
    name,value=line.split('=',1);values[name]=value
  artifact=int(values['artifact-id']);digest=values['artifact-digest']
  req=urllib.request.Request(f'https://api.github.com/repos/{repo}/actions/artifacts/{artifact}',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
- with urllib.request.urlopen(req,timeout=20) as r:metadata=json.load(r)
+ with urllib.request.urlopen(req,timeout=12) as r:metadata=json.load(r)
  assert metadata['workflow_run']['id']==int(os.environ['GITHUB_RUN_ID']) and metadata['digest']=='sha256:'+digest
  # Actual tiny ZIP retrieval and independent disk rehash, not metadata alone.
  assert metadata['id']==artifact and 0<metadata['size_in_bytes']<1024*1024 and not metadata['expired']
@@ -34,14 +35,14 @@ if sys.argv[1:]==['--preflight']:
   def redirect_request(self,*a,**kw):return None
  request=urllib.request.Request(f'https://api.github.com/repos/{repo}/actions/artifacts/{artifact}/zip',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
  try:
-  response=urllib.request.build_opener(NoRedirect).open(request,timeout=20);response.close();raise RuntimeError('expected artifact redirect missing')
+  response=urllib.request.build_opener(NoRedirect).open(request,timeout=12);response.close();raise RuntimeError('expected artifact redirect missing')
  except urllib.error.HTTPError as error:
   if error.code!=302:raise RuntimeError('artifact retrieval API failed, HTTP '+str(error.code)) from None
   location=error.headers['Location'];error.close()
  assert location.startswith('https://')
  archive=W/'checkpoint-preflight.zip';h=hashlib.sha256();count=0
  try:
-  with urllib.request.urlopen(location,timeout=30) as src,archive.open('xb') as dst:
+  with urllib.request.urlopen(location,timeout=20) as src,archive.open('xb') as dst:
    while chunk:=src.read(65536):
     count+=len(chunk)
     if count>metadata['size_in_bytes']:raise RuntimeError('artifact size bound')
@@ -56,7 +57,7 @@ if sys.argv[1:]==['--preflight']:
  archive.chmod(0o444)
  # Also verify exact controller read route, never require a guest credential.
  req=urllib.request.Request(f'https://api.github.com/repos/{repo}/git/ref/heads/{branch}',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
- with urllib.request.urlopen(req,timeout=20) as r:ref=json.load(r)
+ with urllib.request.urlopen(req,timeout=12) as r:ref=json.load(r)
  (W/'evidence/checkpoint-transport-preflight.json').write_text(json.dumps({'passed':True,'artifact':artifact,'digest':digest,'branch_head':ref['object']['sha'],'action_context_present':True,'no_credentials_recorded':True,'api_zip_retrieved':True,'downloaded_bytes':count,'independent_zip_rehash':True,'exact_member_bytes_match':True},indent=2))
  raise SystemExit(0)
 
