@@ -299,6 +299,139 @@ HEALTHY_SECONDS = 300
 READY_SECONDS = 15
 
 
+# Cleanup is separate from the unchanged startup/readiness deadlines.
+GROUP_TERM_SECONDS = .3
+GROUP_CLEANUP_SECONDS = 1.5
+
+
+class GroupCleanupError(RuntimeError):
+    """Do not launch stock or report a completed handoff with live owned actors."""
+
+
+class OwnedHost:
+    """One new session/group, anchored by its unreaped direct-child leader.
+
+    poll() uses WNOWAIT: readiness/output threads can observe exit but cannot
+    release the leader PID for reuse. Only finish() reaps, after group cleanup.
+    Outsiders cannot join this new session's process group. No name-based kills,
+    adoption of unrelated applets, persistent process tracking or subreaper role.
+    """
+    def __init__(self, binary, pass_fds, env):
+        self.process = subprocess.Popen([str(binary)], pass_fds=pass_fds,
+            start_new_session=True, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.pid = self.process.pid
+        self.stdout = self.process.stdout
+        self.lock = threading.RLock()
+        self.closed = False
+        self.code = None
+        try:
+            self.identity = self._stat(self.pid)[1:]
+            if self.identity[:2] != (self.pid, self.pid):
+                raise GroupCleanupError('host_session_not_owned')
+        except BaseException as e:
+            # Popen completed setsid/exec and no observer has received this
+            # child yet. Its unreaped identity still pins the new group even
+            # when procfs failed; stop it, but do not report successful cleanup.
+            try:
+                os.waitid(os.P_PID, self.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+                os.killpg(self.pid, signal.SIGKILL)
+            except OSError: pass
+            try: self.process.wait(timeout=GROUP_CLEANUP_SECONDS)
+            except subprocess.TimeoutExpired: pass
+            finally: self.stdout.close()
+            raise GroupCleanupError('host_ownership_setup_failed') from e
+
+    @staticmethod
+    def _stat(pid):
+        fd = os.open(f'/proc/{pid}/stat', os.O_RDONLY | os.O_CLOEXEC | os.O_NONBLOCK)
+        try: data = os.read(fd, 8193)
+        finally: os.close(fd)
+        if len(data) > 8192: raise GroupCleanupError('host_stat_limit')
+        fields = data.rsplit(b')', 1)[1].split()
+        # State, process group, session, birth ticks; comm may contain ')'.
+        return fields[0], int(fields[2]), int(fields[3]), int(fields[19])
+
+    def poll(self):
+        with self.lock:
+            if self.closed: return self.code
+            try:
+                status = os.waitid(os.P_PID, self.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            except OSError as e:
+                raise GroupCleanupError('host_leader_ownership_lost') from e
+            if status is None: return None
+            return status.si_status if status.si_code == os.CLD_EXITED else -status.si_status
+
+    def _check(self):
+        self.poll()  # Must still be our waitable child, alive or exited.
+        try: same = self._stat(self.pid)[1:] == self.identity
+        except (OSError, ValueError, IndexError) as e:
+            raise GroupCleanupError('host_leader_identity_unavailable') from e
+        if not same: raise GroupCleanupError('host_leader_identity_changed')
+
+    def signal_group(self, signum):
+        with self.lock:
+            if self.closed: return
+            self._check()
+            # The unreaped leader reserves its PID/PGID/SID through this call.
+            try: os.killpg(self.pid, signum)
+            except ProcessLookupError: pass
+            except OSError as e:
+                raise GroupCleanupError('host_group_signal_failed') from e
+
+    def live_members(self, deadline):
+        self._check()
+        live = []
+        with os.scandir('/proc') as entries:
+            for index, entry in enumerate(entries):
+                if index >= 65536 or time.monotonic() >= deadline:
+                    raise GroupCleanupError('host_group_scan_limit')
+                if not entry.name.isdigit(): continue
+                try:
+                    # Public stat only: never unrelated executable/env/maps IO.
+                    state, group, session, start = self._stat(int(entry.name))
+                except (FileNotFoundError, ProcessLookupError): continue
+                except (OSError, ValueError, IndexError) as e:
+                    raise GroupCleanupError('host_group_scan_incomplete') from e
+                if group == self.pid:
+                    if session != self.pid:
+                        raise GroupCleanupError('host_group_session_changed')
+                    if state not in (b'Z', b'X'): live.append((int(entry.name), start))
+        return live
+
+    def finish(self):
+        deadline = time.monotonic() + GROUP_CLEANUP_SECONDS
+        term_until = time.monotonic() + GROUP_TERM_SECONDS
+        try:
+            self.signal_group(signal.SIGTERM)
+            while True:
+                if not self.live_members(deadline) and self.poll() is not None:
+                    # /proc enumeration is not atomic: a last fork could be
+                    # omitted as its parent exits. Stop the still-pinned group
+                    # before the final census, even if the first looked empty.
+                    self.signal_group(signal.SIGKILL)
+                    if not self.live_members(deadline): break
+                if time.monotonic() >= term_until:
+                    self.signal_group(signal.SIGKILL)
+                if time.monotonic() >= deadline:
+                    raise GroupCleanupError('host_group_cleanup_timeout')
+                time.sleep(.01)
+        except (GroupCleanupError, OSError) as error:
+            # A census failure must not leave cooperative cleanup as the only
+            # attempt. Escalate only while the original anchor still validates;
+            # propagate the failure, never report stock handoff as completed.
+            self.signal_group(signal.SIGKILL)
+            raise GroupCleanupError(str(error) if isinstance(error, GroupCleanupError) else 'host_group_scan_failed') from error
+        finally:
+            with self.lock:
+                # Retire signal authority before reaping; late watcher calls
+                # cannot target a subsequently reused PID/group.
+                try: self.code = self.poll()
+                finally: self.closed = True
+                if self.code is not None:
+                    self.process.wait()
+        return self.code
+
+
 def watch_output(stream, child, out, wedged):
     """Pass the host's output on, collapsing floods, and stop a wedged host."""
     last, repeats, errors = None, 0, collections.deque(maxlen=WEDGED_ERRORS)
@@ -310,7 +443,7 @@ def watch_output(stream, child, out, wedged):
                 wedged.set()
                 out.write(b'cosmic-panel stopped responding to the compositor; restarting it\n')
                 try:
-                    os.killpg(child.pid, signal.SIGKILL)
+                    child.signal_group(signal.SIGKILL)
                 except ProcessLookupError:
                     pass
         if line == last:
@@ -383,7 +516,7 @@ def wait_ready(child, done, wedged, admission=None):
         wedged.set()
         sys.stderr.write('Islands startup IPC/runtime readiness failed; selecting stock\n')
         try:
-            os.killpg(child.pid, signal.SIGKILL)
+            child.signal_group(signal.SIGKILL)
         except ProcessLookupError:
             pass
     return False
@@ -394,8 +527,7 @@ def run_host(binary, pass_fds=(), env=None, readiness=False, admission=None):
 
     Returns the exit code, whether a signal asked us to stop, and whether the
     host was stopped because it wedged."""
-    child = subprocess.Popen([str(binary)], pass_fds=pass_fds, start_new_session=True, env=env,
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    child = OwnedHost(binary, pass_fds, env)
     stopping = False
     wedged = threading.Event()
     watcher = threading.Thread(target=watch_output, args=(child.stdout, child, sys.stderr.buffer, wedged), daemon=True)
@@ -410,27 +542,26 @@ def run_host(binary, pass_fds=(), env=None, readiness=False, admission=None):
         nonlocal stopping
         stopping = True
         try:
-            os.killpg(child.pid, signum)
+            child.signal_group(signum)
         except ProcessLookupError:
             pass
 
     previous = {s: signal.signal(s, terminate) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
     try:
-        code = child.wait()
+        while child.poll() is None and not stopping:
+            done.wait(.02)
     finally:
         done.set()
         try:
-            os.killpg(child.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
-        for sig, handler in previous.items():
-            signal.signal(sig, handler)
-    if readiness_thread is not None:
-        readiness_thread.join(2)
-    # Applets share the output pipe; they are stopped with the host's group.
-    watcher.join(2)
-    if not watcher.is_alive():
-        child.stdout.close()
+            code = child.finish()
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+            if readiness_thread is not None:
+                readiness_thread.join(2)
+            # Applets share the pipe; group exit releases their descriptors.
+            watcher.join(2)
+            if not watcher.is_alive(): child.stdout.close()
     return code, stopping, wedged.is_set()
 
 
