@@ -1,5 +1,22 @@
 # Planned work
 
+## Current 0.3.0 review work
+
+Updated 2026-10-25. The [0.3.0 review tracker](REVIEW-030.md) records 22 review
+items, including one optional fault-model robustness item, with evidence,
+completion checks, optional simplifications and
+remaining acceptance. Calendar recurrence resource bounds are the P1 release
+blocker; the release gate also needs to recognize the current startup policy.
+No review fixes have been implemented yet. All nine reviews across two rounds
+are complete. Follow-up reviews added Arrange draft-loss and three everyday
+Layout workflow findings, expanded credential cleanup coverage and narrowed
+several claims. The challenge review upheld the P1 and left live Sheets
+partial-write behavior unresolved; that item is optional robustness work.
+
+Use that tracker for current review status. The issue-12 implementation below
+remains local and has additional watch/restart/status defects recorded there;
+historical release holds later in this file do not undo published 0.2.5/APT.
+
 ## Current release and store distribution
 
 Updated 2026-10-24: **0.2.5 is published**. PR #11 added the signed APT channel;
