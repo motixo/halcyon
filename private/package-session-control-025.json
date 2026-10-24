@@ -1,57 +1,36 @@
 {
-  "seq": 13,
+  "seq": 14,
   "actions": [
     {
-      "op": "click",
-      "x": 671,
-      "y": 539
-    },
-    {
-      "op": "wait",
-      "seconds": 2
-    },
-    {
-      "op": "shot",
-      "name": "28-islands-unsupported-ui"
-    },
-    {
-      "op": "click",
-      "x": 598,
-      "y": 539
-    },
-    {
-      "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "29-standard-style-restored"
-    },
-    {
-      "op": "ops",
+      "op": "guest",
+      "path": "/usr/bin/python3",
       "args": [
-        "user",
-        "management-after-ui",
-        "/usr/bin/python3",
         "-c",
-        "import os,pathlib,json,subprocess,time,hashlib\nH=pathlib.Path.home()\ndef state():\n r=subprocess.run(['pgrep','-u','1000','-ax','cosmic-panel'],capture_output=True,text=True);stock=r.stdout.strip();files={}\n for rel in ['.local/bin/cosmic-panel','.local/share/cosmic-desktop-cards/companion/generation.json','.local/share/cosmic-desktop-cards/companion/selection.json']:\n  p=H/rel;files[rel]=hashlib.sha256(p.read_bytes()).hexdigest() if p.is_file() else None\n return {'stock':stock,'selection_files':files}\nbefore=state();assert before['stock'];rows=[]\nfor args,expected in [(['enable'],1),(['disable'],0),(['refresh'],0),(['status','--json'],0)]:\n t=time.monotonic();p=subprocess.run(['/usr/bin/halcyon-islands',*args],capture_output=True,text=True,timeout=6);after=state();rows.append({'command':args,'returncode':p.returncode,'expected':expected,'seconds':time.monotonic()-t,'stdout':p.stdout,'stderr':p.stderr,'after':after});assert p.returncode==expected;assert after==before\nprint(json.dumps({'before':before,'calls':rows,'stock_and_selection_unchanged':True,'qualified':False},indent=2))\n"
+        "import pathlib,json,hashlib,subprocess,os\nH=pathlib.Path('/var/lib/ps025');O=H/'results'\ndef cmd(a):return subprocess.check_output(a,text=True)\nbase=json.loads((O/'initial.json').read_text())['packages'];actual={a:b for a,b,c in (s.split('\\t') for s in cmd(['dpkg-query','-W','-f=${Package}\\t${Version}\\t${db:Status-Status}\\n']).splitlines()) if c=='installed'}\nassert len(actual)==1785 and all(actual[k]==v for k,v in base.items());assert {k:v for k,v in actual.items() if k not in base}=={'cosmic-ext-halcyon':'0.2.5~dev.integration.1','cosmic-ext-halcyon-islands':'0.2.5~dev.integration.1'};assert not cmd(['dpkg','--audit']).strip()\nassert cmd(['uname','-r']).strip()=='7.2.6-76070206-generic'\nexpected={'/usr/bin/halcyon':'0944c24dcaa2e46f9fff8e1eb71aa114f79edd5bb78ec66d3761ba7c4b9b52b2','/usr/lib/cosmic-ext-halcyon-islands/cosmic-panel-islands':'07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8','/usr/lib/cosmic-ext-halcyon-islands/catalog.json':'55a3e32c0e1c8ed6908a291afe9c27be2c63cf6bbdd3cdbb83deb761cd43e98d','/usr/lib/cosmic-ext-halcyon-islands/companion-manifest.json':'d53d079fd6da6ee9b3c966e091fdd9d93f241e4bed6bb1e0630ca6b3801de2ff'}\nfor p,h in expected.items():\n with open(p,'rb') as f:assert hashlib.file_digest(f,'sha256').hexdigest()==h\nrows=[]\nfor p in pathlib.Path('/proc').iterdir():\n if not p.name.isdigit():continue\n try:\n  if p.stat().st_uid!=1000:continue\n  exe=os.readlink(p/'exe')\n  if pathlib.Path(exe).name in ('halcyon','cosmic-panel','cosmic-panel-islands'):rows.append({'pid':int(p.name),'exe':exe})\n except OSError:pass\nassert any(x['exe']=='/usr/bin/cosmic-panel' for x in rows)\nassert not any(pathlib.Path(x['exe']).name=='cosmic-panel-islands' for x in rows)\nassert not pathlib.Path('/home/probe/.local/bin/cosmic-panel').exists()\nresult={'count':len(actual),'base_versions_unchanged':True,'dpkg_audit':'empty','kernel':cmd(['uname','-r']).strip(),'installed_hashes':expected,'processes':rows,'islands_host_never_started_in_harness':True,'selector_absent':True,'qualified':False}\n(O/'final-guest-check.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))\n"
       ]
     },
     {
-      "op": "relogin"
+      "op": "ops",
+      "args": [
+        "launch",
+        "settings-relogin",
+        "/usr/bin/halcyon",
+        "--settings",
+        "general"
+      ]
     },
     {
       "op": "wait",
-      "seconds": 3
-    },
-    {
-      "op": "shot",
-      "name": "30-after-relogin-stock-and-widget"
+      "seconds": 4
     },
     {
       "op": "click",
-      "x": 638,
-      "y": 16
+      "x": 785,
+      "y": 577
+    },
+    {
+      "op": "scroll",
+      "steps": 6
     },
     {
       "op": "wait",
@@ -59,18 +38,13 @@
     },
     {
       "op": "shot",
-      "name": "31-stock-calendar-input-after-relogin"
-    },
-    {
-      "op": "click",
-      "x": 434,
-      "y": 620
+      "name": "32-optout-after-relogin"
     },
     {
       "op": "ops",
       "args": [
         "user",
-        "after-relogin-state",
+        "final-state",
         "/usr/bin/python3",
         "-c",
         "import pathlib,json,hashlib\nH=pathlib.Path.home();out={}\nfor rel in ['.config/halcyon/config.json','.config/cosmic-desktop-cards/config.json','.local/share/halcyon/desktop-recovery/original/manifest.json','.local/share/halcyon/desktop-undo.json','.local/state/halcyon/usage.json']:\n p=H/rel\n if p.exists():\n  raw=p.read_bytes();v=json.loads(raw)\n  if rel.endswith('usage.json'):v.pop('installation',None)\n  out[rel]={'sha256':hashlib.sha256(raw).hexdigest(),'value':v}\nprint(json.dumps(out,indent=2))\n"
