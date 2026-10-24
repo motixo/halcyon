@@ -15,18 +15,24 @@ pub struct Native {
 }
 impl Native {
     pub fn new(size: Size) -> Self {
+        Self::with_backend(size, "tiny-skia")
+    }
+    pub fn with_backend(size: Size, backend: &str) -> Self {
         Self {
             renderer: cosmic::iced::futures::executor::block_on(
                 <cosmic::Renderer as Headless>::new(
                     cosmic::font::default(),
                     cosmic::iced::Pixels(14.),
-                    Some("tiny-skia"),
+                    Some(backend),
                 ),
             )
             .unwrap(),
             cache: Cache::default(),
             size,
         }
+    }
+    pub fn renderer_name(&self) -> String {
+        self.renderer.name()
     }
     pub fn bounds<M>(&mut self, view: cosmic::Element<'_, M>, id: &str) -> Rectangle {
         self.try_bounds(view, id)

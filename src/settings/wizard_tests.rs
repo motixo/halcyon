@@ -37,7 +37,7 @@ fn child(name: &str) -> bool {
         .output()
         .unwrap();
     std::fs::remove_dir_all(root).unwrap();
-    if name == "responsiveness_probe" {
+    if matches!(name, "responsiveness_probe" | "rendering_probe") {
         eprint!("{}", String::from_utf8_lossy(&result.stdout));
     }
     assert!(
@@ -223,6 +223,48 @@ fn responsiveness_probe() {
                     native.render(app.settings_view(), &theme);
                 }
             });
+        }
+    }
+}
+
+/// Offline CPU/GPU comparison on the same widget tree. Screenshot readback is
+/// included, so these timings are not compositor presentation rates.
+#[test]
+#[ignore]
+fn rendering_probe() {
+    if child("rendering_probe") {
+        return;
+    }
+    seed_desktop();
+    let (mut app, _) = open(Size::new(1280., 800.));
+    app.wizard = None;
+    let theme = controls_theme(&app.config);
+    for backend in ["tiny-skia", "wgpu"] {
+        let mut native = Native::with_backend(Size::new(1280., 800.), backend);
+        println!("RENDERER {}", native.renderer_name());
+        for page in [Page::Themes, Page::General, Page::DesktopDock] {
+            let _ = app.update(Message::Page(page));
+            native.render(app.settings_view(), &theme);
+            let start = std::time::Instant::now();
+            for n in 0..30 {
+                native.event(
+                    app.settings_view(),
+                    Event::Mouse(mouse::Event::WheelScrolled {
+                        delta: mouse::ScrollDelta::Lines {
+                            x: 0.,
+                            y: if n < 15 { -1. } else { 1. },
+                        },
+                    }),
+                    cosmic::iced::Point::new(700., 400.),
+                );
+                let pixels = native.render(app.settings_view(), &theme);
+                assert_eq!(pixels.len(), 1280 * 800 * 4);
+                assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] != 0));
+            }
+            println!(
+                "RENDER {backend} {page:?} 30 scroll/draw/readback cycles: {:.3} ms",
+                start.elapsed().as_secs_f64() * 1000.
+            );
         }
     }
 }

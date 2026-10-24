@@ -1,3 +1,57 @@
+## Settings renderer — 2026-10-24
+
+The 0.2.5 build explicitly selected libcosmic features without `wgpu`, leaving
+the application's renderer CPU-only. On a dual-display laptop (AMD integrated
+graphics and RTX 3050 Mobile; 100% external display and 150% internal display),
+the installed Settings process had no graphics-driver mappings or GPU handles.
+A user-driven 30-second scrolling/navigation sample used approximately 110% of
+one CPU core. After interaction stopped, an eight-second sample showed no CPU
+counter increase. These are process CPU samples, not frame timings.
+
+Enabled the pinned toolkit's `wgpu` feature, with its normal adapter selection.
+No new dependency versions, driver overrides or native backdrop effects were
+introduced. The navigation/preview fixes below are included in both comparison
+builds, so their results do not account for the renderer difference.
+
+Native laptop comparison, same 1100×700 fixture window and scripted sequence:
+
+| Measurement | CPU renderer | GPU renderer |
+| --- | ---: | ---: |
+| Four Dock/Panel switches, process CPU time | 0.93 s | 0.22 s |
+| Eight scroll-and-capture operations, process CPU time | 2.16 s | 0.22 s |
+| Four-second idle sample in capture mode | 0.50% of one core | 0.50% of one core |
+
+The GPU process opened `renderD128`, with `amdgpu` DRM counters showing actual
+graphics-engine work. It did not load the NVIDIA driver. Both processes exited
+normally; their Panel captures were inspected for text, icons, preview and
+scroll layout. Capture mode includes file commands, screenshot readback and a
+one-second diagnostic tick: the numbers above are not input latency, FPS or a
+battery-life estimate. The native window comparison was captured at 100% scale;
+subjective mixed-scale interaction is a separate check.
+
+An independent optimized, offscreen widget-tree probe on the development machine
+also exercised real wheel events, drawing and screenshot readback (30 cycles):
+
+| Page | CPU renderer | GPU renderer |
+| --- | ---: | ---: |
+| Colors & theme | 281.35 ms | 53.70 ms |
+| App settings | 235.96 ms | 31.35 ms |
+| Dock & panel | 281.20 ms | 45.81 ms |
+
+Run this explicit diagnostic with `cargo test --release --locked --bin halcyon
+settings::wizard_tests::rendering_probe -- --ignored --nocapture`. It requires a
+working GPU adapter; it is deliberately outside normal headless CI. Existing
+layout tests still explicitly use tiny-skia. Seven Welcome/navigation/queue tests,
+four material tests, the shared-theme widget rendering test and the GPU probe
+passed. Release build, formatting and whitespace checks passed.
+
+See [the rendering decision](adr/0004-hardware-rendering.md). The temporary laptop
+build uses isolated preferences; it does not replace the installed package.
+GPU memory, long-running widget use and broader hardware coverage are not
+established by these short Settings tests.
+
+---
+
 Desktop Cards performance audit — 2026-10-17
 
 Environment: Pop!_OS 24.04 / COSMIC Wayland, Ryzen 5700G, 32 GB RAM,

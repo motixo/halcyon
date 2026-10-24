@@ -19,6 +19,7 @@ cosmic = { package = "libcosmic", git = "https://github.com/pop-os/libcosmic", d
     "multi-window",
     "tokio",
     "wayland",
+    "wgpu",
     "winit",
     "xdg-portal",
 ] }
