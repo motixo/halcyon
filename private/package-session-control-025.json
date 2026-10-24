@@ -1,65 +1,23 @@
 {
-  "seq": 1,
+  "seq": 2,
   "actions": [
     {
-      "op": "ops",
-      "args": [
-        "install",
-        "cosmic-ext-halcyon-islands_0.2.5~dev.integration.1_amd64.deb"
-      ]
-    },
-    {
-      "op": "guest",
-      "path": "/usr/bin/python3",
-      "args": [
-        "-c",
-        "import sys,subprocess,pathlib,json,time\nsys.path.insert(0,'/var/lib/ps025')\nfrom guest_session import session_env\nO=pathlib.Path('/var/lib/ps025/results')\nargs=['/usr/sbin/runuser','-u','probe','--','/usr/bin/env','-i',*[k+'='+v for k,v in session_env().items()],'/usr/bin/python3','-B','/var/lib/ps025/capture_runtime.py']\nstart=time.monotonic()\nwith (O/'public-runtime.json').open('wb') as out,(O/'public-runtime.stderr').open('wb') as err:\n p=subprocess.run(args,stdout=out,stderr=err,timeout=240)\n(O/'public-runtime.receipt.json').write_text(json.dumps({'returncode':p.returncode,'seconds':time.monotonic()-start}))\nassert p.returncode==0\n"
-      ],
-      "timeout": 300
+      "op": "key",
+      "keys": "alt-f4"
     },
     {
       "op": "ops",
       "args": [
-        "user",
-        "status-three",
-        "/usr/bin/python3",
-        "-c",
-        "import subprocess,time,json\nrows=[]\nfor i in range(3):\n t=time.monotonic();p=subprocess.run(['/usr/bin/halcyon-islands','status','--json'],capture_output=True,text=True,timeout=6)\n rows.append({'call':i,'seconds':time.monotonic()-t,'returncode':p.returncode,'stdout':p.stdout,'stderr':p.stderr})\nprint(json.dumps(rows,indent=2))\n"
+        "launch",
+        "settings-installed",
+        "/usr/bin/halcyon",
+        "--settings",
+        "general"
       ]
-    },
-    {
-      "op": "click",
-      "x": 900,
-      "y": 150
-    },
-    {
-      "op": "text",
-      "text": "clock"
     },
     {
       "op": "wait",
-      "seconds": 1
-    },
-    {
-      "op": "shot",
-      "name": "02-settings-keyboard-search"
-    },
-    {
-      "op": "key",
-      "keys": "ctrl-a"
-    },
-    {
-      "op": "key",
-      "keys": "backspace"
-    },
-    {
-      "op": "key",
-      "keys": "esc"
-    },
-    {
-      "op": "click",
-      "x": 314,
-      "y": 617
+      "seconds": 3
     },
     {
       "op": "click",
@@ -68,7 +26,7 @@
     },
     {
       "op": "scroll",
-      "steps": 9
+      "steps": 6
     },
     {
       "op": "wait",
@@ -76,7 +34,7 @@
     },
     {
       "op": "shot",
-      "name": "03-privacy-before"
+      "name": "04-installed-general-privacy"
     }
   ],
   "run": 40056332210
