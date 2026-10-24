@@ -18,8 +18,7 @@ use std::path::{Path, PathBuf};
 /// With an alternate configuration (previews, captures, tests) the file sits
 /// beside that configuration instead, so a preview never touches the real one.
 pub fn data_path(file: &str) -> Option<PathBuf> {
-    isolated(file)
-        .or_else(|| crate::paths::data_dir().map(|dir| dir.join(file)))
+    isolated(file).or_else(|| crate::paths::data_dir().map(|dir| dir.join(file)))
 }
 
 /// Where a tool keeps runtime state (`~/.local/state/halcyon`).

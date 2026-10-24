@@ -49,7 +49,8 @@ impl Settings {
             let list = regions.list(region);
             let picking = editor.picker == Some(region);
             let start = Slot { region, index: 0 };
-            let island_selected = draft.islands().known().is_some_and(|s| s.enabled)
+            let island_selected = editor.islands.installation.installed()
+                && draft.islands().known().is_some_and(|s| s.enabled)
                 && editor.islands.selected
                     == Some(match region {
                         Region::Start => dock_islands_core::Section::Start,

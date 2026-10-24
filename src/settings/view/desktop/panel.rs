@@ -565,6 +565,9 @@ impl Settings {
                 Some(edit(Edit::PanelStyle(PanelStyle::Islands))),
             ),
         ];
+        if !self.desktop.islands.installation.installed() {
+            options.truncate(1);
+        }
         if !islands.enabled && draft.extend().known() != Some(&true) {
             options.push(("Compact · kept".into(), true, None));
         }

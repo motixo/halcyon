@@ -205,20 +205,33 @@ mod tests {
         let old = root.join("old");
         std::fs::create_dir_all(old.join("nested")).unwrap();
         std::fs::write(old.join("config.json"), "{}").unwrap();
-        std::fs::set_permissions(old.join("config.json"), std::fs::Permissions::from_mode(0o600))
-            .unwrap();
+        std::fs::set_permissions(
+            old.join("config.json"),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .unwrap();
         std::fs::write(old.join("nested/note.json"), "note").unwrap();
         std::os::unix::fs::symlink("/etc/passwd", old.join("link")).unwrap();
         let _socket = std::os::unix::net::UnixListener::bind(old.join("socket")).unwrap();
         std::fs::create_dir_all(old.join("source")).unwrap();
         copy_tree(&old, &root.join("new"), SKIP).unwrap();
         let new = root.join("new");
-        assert_eq!(std::fs::read_to_string(new.join("config.json")).unwrap(), "{}");
         assert_eq!(
-            std::fs::metadata(new.join("config.json")).unwrap().permissions().mode() & 0o777,
+            std::fs::read_to_string(new.join("config.json")).unwrap(),
+            "{}"
+        );
+        assert_eq!(
+            std::fs::metadata(new.join("config.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
             0o600
         );
-        assert_eq!(std::fs::read_to_string(new.join("nested/note.json")).unwrap(), "note");
+        assert_eq!(
+            std::fs::read_to_string(new.join("nested/note.json")).unwrap(),
+            "note"
+        );
         assert!(!new.join("link").exists() && !new.join("socket").exists());
         assert!(!new.join("source").exists());
         assert!(old.join("config.json").exists(), "the original stays");

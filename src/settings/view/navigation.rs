@@ -241,10 +241,12 @@ impl Settings {
             lines.push(
                 row::with_children(vec![
                     button::text("Keep all current values")
-                        .on_press(Message::ResolveUndo(false))
+                        .id("undo-keep-current".into())
+                        .on_press(Message::ResolveUndoShown(review.clone(), false))
                         .into(),
                     button::suggested("Undo other changes")
-                        .on_press(Message::ResolveUndo(true))
+                        .id("undo-reviewed".into())
+                        .on_press(Message::ResolveUndoShown(review.clone(), true))
                         .into(),
                 ])
                 .spacing(8)
@@ -283,19 +285,15 @@ impl Settings {
                 .into(),
         ];
         let mut empty = error.is_none();
-        if let Some((_, label, _)) = self
-            .last_desktop_change
-            .as_ref()
-            .filter(|(owner, _, id)| {
-                owns(*owner, self.page) && self.undo_baseline.as_ref() != Some(id)
-            })
-        {
+        if let Some((_, label, id)) = self.last_desktop_change.as_ref().filter(|(owner, _, id)| {
+            owns(*owner, self.page) && self.undo_baseline.as_ref() != Some(id)
+        }) {
             empty = false;
             items.push(
                 button::text(format!("Undo {}", label.to_lowercase()))
                     .id(cosmic::widget::Id::new("settings-undo"))
                     .leading_icon(icon::from_name("edit-undo-symbolic").size(14))
-                    .on_press(Message::UndoDesktop)
+                    .on_press(Message::UndoDesktopShown(Some(id.clone())))
                     .into(),
             );
         }
@@ -318,12 +316,17 @@ impl Settings {
 fn owns(owner: crate::desktop::Owner, page: Page) -> bool {
     use crate::desktop::Owner;
     match owner {
+        Owner::Recovery => false,
         Owner::DockPanel => page == Page::DesktopDock,
         Owner::Preferences => {
             page.sidebar() == Page::Widgets
                 || matches!(
                     page,
-                    Page::Glance | Page::Overview | Page::WidgetLayout | Page::Appearance | Page::Themes
+                    Page::Glance
+                        | Page::Overview
+                        | Page::WidgetLayout
+                        | Page::Appearance
+                        | Page::Themes
                 )
         }
         Owner::Appearance => matches!(page, Page::Themes | Page::DesktopAppearance),

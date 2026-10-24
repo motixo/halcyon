@@ -1,0 +1,17 @@
+(
+    version: 1,
+    enabled: true,
+    placement: Together,
+    gap: 14,
+    default_layout: (
+        together: (
+            order: (Start, Center, End),
+            position: 5000,
+        ),
+        separate: (
+            order: (Start, Center, End),
+            positions: (0, 5000, 10000),
+        ),
+    ),
+    outputs: {},
+)

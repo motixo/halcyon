@@ -156,7 +156,10 @@ mod tests {
             Message::Picker(ColorPickerUpdate::ActiveColor(blue)),
         );
         assert!(matches!(
-            update(&mut well, Message::Picker(ColorPickerUpdate::ActionFinished)),
+            update(
+                &mut well,
+                Message::Picker(ColorPickerUpdate::ActionFinished)
+            ),
             Outcome::Pending
         ));
         assert!(well.is_some(), "still open after a drag");

@@ -145,6 +145,29 @@ pub struct DesktopEditor {
 }
 
 impl DesktopEditor {
+    pub fn display_snapshot(&self) -> Self {
+        Self {
+            islands: self.islands.display_snapshot(),
+            store: self.store.clone(),
+            drafts: self.drafts.clone(),
+            selected: self.selected,
+            catalog: self.catalog.clone(),
+            outputs: self.outputs.clone(),
+            undo: self.undo.clone(),
+            elsewhere: self.elsewhere.clone(),
+            notice: self.notice.clone(),
+            advanced: self.advanced,
+            picker: self.picker,
+            applet_group: self.applet_group,
+            starter_open: self.starter_open,
+            has_battery: self.has_battery,
+            applet_query: self.applet_query.clone(),
+            overview: self.overview,
+            drag: self.drag.clone(),
+            focus: self.focus,
+            recovery: self.recovery.clone(),
+        }
+    }
     /// First visit: choose the store and read current values. Later visits
     /// refresh untouched values and keep the drafts. Reads only.
     pub fn open(&mut self) {
@@ -526,6 +549,13 @@ impl DesktopEditor {
             }
             Message::UseStarter => {}
             Message::PanelStyle(style) if self.selected == PanelKind::Panel => {
+                if style == PanelStyle::Islands
+                    && !self.store().is_some_and(|s| {
+                        crate::desktop::islands::Installation::discover(s).installed()
+                    })
+                {
+                    return None;
+                }
                 if self
                     .current()
                     .is_some_and(|d| d.islands().known().is_some())
@@ -971,6 +1001,7 @@ mod tests {
     #[test]
     fn panel_style_preserves_saved_island_layouts_and_dock_draft() {
         let fixture = Fixture::new("panel-style");
+        crate::desktop::islands::fixture_installed(&fixture.0);
         let mut editor = editor(&fixture);
         editor.update(Message::Size(PanelSize::XL));
         let dock = editor.draft(PanelKind::Dock).unwrap().clone();
@@ -980,8 +1011,8 @@ mod tests {
         assert!(s.enabled);
         assert_eq!(s.placement, dock_islands_core::Placement::Separate);
         assert!(
-            !editor.can_apply(),
-            "no compatible companion in this fixture"
+            editor.can_apply(),
+            "installed settings remain manageable without a running host"
         );
         let mut saved = s;
         saved.placement = dock_islands_core::Placement::Together;

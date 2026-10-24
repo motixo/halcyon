@@ -46,6 +46,8 @@ pub struct Config {
     pub weather: WeatherPreferences,
     pub glance: GlancePreferences,
     pub devbox: DevboxPreferences,
+    /// Local compositor connection name; None chooses a deterministic fallback.
+    pub widget_display: Option<String>,
     pub widget_positions: std::collections::BTreeMap<String, [f32; 2]>,
     /// Explicit logical-pixel dimensions; absence preserves content-sized layout.
     pub widget_sizes: std::collections::BTreeMap<String, [f32; 2]>,
@@ -92,6 +94,7 @@ impl Default for Config {
             weather: WeatherPreferences::default(),
             glance: GlancePreferences::default(),
             devbox: DevboxPreferences::default(),
+            widget_display: None,
             widget_positions: std::collections::BTreeMap::new(),
             widget_sizes: Default::default(),
             placement: PlacementPreferences::default(),
@@ -152,6 +155,13 @@ impl Config {
         }
     }
     fn validate(&self) -> Result<(), String> {
+        if self
+            .widget_display
+            .as_deref()
+            .is_some_and(|name| !crate::displays::valid_name(name))
+        {
+            return Err("Choose a valid display connection name".into());
+        }
         if !matches!(self.placement.columns, 12 | 16 | 24) {
             return Err("Choose a supported desktop grid size".into());
         }
@@ -755,6 +765,8 @@ pub enum ColorSource {
 pub struct Appearance {
     /// None preserves the pre-Themes rendering exactly.
     pub family: Option<crate::desktop_theme::Family>,
+    /// Explicit generation provenance. Legacy equal colors are not ownership.
+    pub native_mode_palettes: u8,
     /// Explicit source choice; None adopts the older release's inference once.
     pub color_policy: Option<ColorPolicy>,
     /// Explicit per-property customizations (desktop::actions owns bit names).
@@ -787,6 +799,7 @@ impl Default for Appearance {
     fn default() -> Self {
         Self {
             family: None,
+            native_mode_palettes: 0,
             color_policy: None,
             overrides: 0,
             surface: None,
@@ -1279,35 +1292,46 @@ pub struct ConfigLock {
     _file: std::fs::File,
 }
 
+thread_local! {
+    static NONBLOCKING_LOCKS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A synchronous input-owning dispatch must never wait for another settings
+/// writer. Nested scopes restore the caller's policy, including on unwind;
+/// workers and other threads retain the normal blocking transaction contract.
+pub(crate) fn with_nonblocking_locks<T>(run: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            NONBLOCKING_LOCKS.with(|slot| slot.set(self.0));
+        }
+    }
+    let _restore = Restore(NONBLOCKING_LOCKS.with(|slot| slot.replace(true)));
+    run()
+}
+
+pub(crate) fn settings_lock_operation() -> libc::c_int {
+    libc::LOCK_EX | NONBLOCKING_LOCKS.with(|slot| if slot.get() { libc::LOCK_NB } else { 0 })
+}
+
 /// Takes the shared configuration lock. The Python controller uses this exact
 /// sibling filename and flock contract for all configuration edits, and the
 /// lock inode stays stable across atomic renames of the file itself.
 pub fn lock_config(path: &std::path::Path) -> Result<ConfigLock, String> {
     use std::os::fd::AsRawFd;
-    use std::os::unix::fs::OpenOptionsExt;
-
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
     let mut lock_name = path.as_os_str().to_os_string();
     lock_name.push(".lock");
-    let lock = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .mode(0o600)
-        .open(lock_name)
+    let lock = crate::desktop::recovery::open_lock_file(std::path::Path::new(&lock_name))
         .map_err(|e| e.to_string())?;
     loop {
         // SAFETY: lock owns a valid descriptor and remains alive through rename.
-        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0 {
+        if unsafe { libc::flock(lock.as_raw_fd(), settings_lock_operation()) } == 0 {
             return Ok(ConfigLock { _file: lock });
         }
         let error = std::io::Error::last_os_error();
+        if error.kind() == std::io::ErrorKind::WouldBlock {
+            return Err("Settings are busy in another process. Try again when it finishes.".into());
+        }
         if error.kind() != std::io::ErrorKind::Interrupted {
             return Err(error.to_string());
         }
@@ -1416,8 +1440,19 @@ pub(crate) fn patch_config(
     }
     let _lock = lock_config(path)?;
     let mut value = parse_config_text(read_config_text(path)?.as_deref())?;
+    let before = value.clone();
     change(&mut value)?;
     check_config_value(&value)?;
+    if Config::path().as_deref() == Some(path)
+        && crate::desktop::recovery::app_pointers()
+            .any(|pointer| before.pointer(pointer) != value.pointer(pointer))
+    {
+        let store = crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+        // Alternate app configs without a fixture remain local-only previews.
+        if store.writable() {
+            store.capture_config_locked().map_err(|e| e.to_string())?;
+        }
+    }
     write_config_text(path, Some(&config_text(&value)?))?;
     Ok(value)
 }

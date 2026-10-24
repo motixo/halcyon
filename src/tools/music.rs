@@ -1275,7 +1275,16 @@ mod tests {
         missing.sampled += Duration::from_secs(2);
         missing.position_us = Some(0);
         missing.length_us = None;
-        for boundary in ["seek-zero", "paused", "new-track", "new-owner", "stopped", "missing-title", "missing-url", "normal"] {
+        for boundary in [
+            "seek-zero",
+            "paused",
+            "new-track",
+            "new-owner",
+            "stopped",
+            "missing-title",
+            "missing-url",
+            "normal",
+        ] {
             let mut current = missing.clone();
             match boundary {
                 "seek-zero" => current.seeked = true,
@@ -1287,10 +1296,21 @@ mod tests {
                 "missing-url" => current.media_url = None,
                 _ => {}
             }
-            reconcile_timing(std::slice::from_ref(&old), std::slice::from_mut(&mut current));
+            reconcile_timing(
+                std::slice::from_ref(&old),
+                std::slice::from_mut(&mut current),
+            );
             let recover = matches!(boundary, "normal" | "paused" | "seek-zero");
-            assert_eq!(current.length_us, if recover { Some(300_000_000) } else { None }, "{boundary}");
-            assert_eq!(current.position_us, Some(if boundary == "normal" { 152_000_000 } else { 0 }), "{boundary}");
+            assert_eq!(
+                current.length_us,
+                if recover { Some(300_000_000) } else { None },
+                "{boundary}"
+            );
+            assert_eq!(
+                current.position_us,
+                Some(if boundary == "normal" { 152_000_000 } else { 0 }),
+                "{boundary}"
+            );
         }
     }
 

@@ -1,3 +1,19 @@
+cosmic-ext-halcyon (0.2.5) UNRELEASED; urgency=medium
+
+  * Unreleased preparation. Publication remains on hold pending final validation.
+  * Keep desktop colors coherent across light and dark modes; add scoped desktop
+    backup, restore and recovery for interrupted changes.
+  * Hide Islands controls when the add-on is absent and preserve settings when
+    an installed update waits for the next login.
+  * Add manual system-update checks for verified installations, with clear
+    cancellation, failure and COSMIC Store guidance. Enrollment is not available.
+  * Add the Share usage data control and disclose its minimal opt-out status
+    message. Live collector migration remains pending.
+  * Release Arrange input capture on failed exits and reconcile monitor pins
+    during recovery. Full native and hardware validation remains pending.
+
+ -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Fri, 23 Oct 2026 22:35:03 +0000
+
 cosmic-ext-halcyon (0.2.0) unstable; urgency=medium
 
   * Add Frosted, Clear glass, Smoked glass and Liquid materials for widgets,

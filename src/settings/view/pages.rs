@@ -1251,6 +1251,8 @@ impl Settings {
                     button::standard("Run setup again")
                         .on_press_maybe((!self.busy).then_some(Message::OpenWizard)).into()),
             ]),
+            self.updates_section(),
+            self.privacy_section(),
             section(vec![
                 split(self.help("edge-menu", "Edge menu", "Hold the pointer at the far-right screen edge for one second to open widget controls."),
                     button::standard("Show menu")
@@ -1263,11 +1265,8 @@ impl Settings {
                     "Briefly reveals options when you expand a section. Reduce motion in Accessibility always takes precedence."),
                     toggler(self.config.settings_animations).on_toggle(Message::SettingsAnimations).into())),
             ]),
-            section(vec![
-                heading("Privacy", ""),
-                detail("Daily activity report", crate::usage::DISCLOSURE),
-                label("Reports are automatic. Inactive records expire after 90 days.", 12., MUTED),
-            ]),
+            self.desktop_recovery_section(),
+            self.addons_section(),
             section(vec![
                 // Recovered work waits here instead of on every page.
                 split(

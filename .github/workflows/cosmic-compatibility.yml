@@ -1,0 +1,40 @@
+name: Discover COSMIC cohorts
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: cosmic-discovery
+  cancel-in-progress: false
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/cache/restore@v4
+        with:
+          path: discovery/previous.json
+          key: cosmic-discovery-${{ github.run_id }}
+          restore-keys: cosmic-discovery-
+      - name: Verify official metadata and package/source bytes
+        run: |
+          mkdir -p discovery
+          python3 scripts/compatibility/discover.py --source-config scripts/compatibility/pop-noble.json --previous discovery/previous.json --out discovery/candidate.json || test "$?" -eq 2
+          cp discovery/candidate.json discovery/previous.json
+      - uses: actions/cache/save@v4
+        with:
+          path: discovery/previous.json
+          key: cosmic-discovery-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cosmic-discovery-${{ github.run_id }}
+          path: discovery/candidate.json
+          retention-days: 14
+# No issue creation, automatic catalog writes, signing or publishing. A blocked
+# event is retained once per identity in the rolling discovery state. This runs
+# only after reviewed integration reaches the default branch.

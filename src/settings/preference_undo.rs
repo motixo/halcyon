@@ -35,6 +35,7 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
     let mut fields = Vec::new();
     let mut add = |parts: &[&str]| fields.push(pointer(parts));
     match message {
+        Message::WidgetDisplay(_) => add(&["widget_display"]),
         Message::Widget(widget, _) if widget.is_tool() => add(&[widget.key(), "enabled"]),
         Message::Widget(Widget::Glance, visible) => {
             add(&["glance", "enabled"]);
@@ -166,7 +167,8 @@ impl Settings {
     }
 
     pub(super) fn undo_preferences(&mut self) {
-        let _ = self.undo_desktop_change();
+        let task = self.undo_desktop_change();
+        self.native_tasks.push(task);
     }
 }
 
@@ -398,7 +400,7 @@ mod tests {
         assert!(Config::load().music.player.is_none());
         assert!(app.preference_undo.is_some());
         Config::save_tool(Widget::Music, serde_json::json!({"show_artwork": false})).unwrap();
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         let restored = Config::load();
         assert!(!app.error, "{}", app.status);
         assert_eq!(restored.music.player.as_deref(), Some("firefox"));
@@ -421,7 +423,7 @@ mod tests {
             Config::load().clock.alignment,
             crate::config::ClockAlignment::Center
         );
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         assert_eq!(Config::load().clock.scale, 100);
         assert_eq!(
             Config::load().clock.alignment,
@@ -448,7 +450,7 @@ mod tests {
         assert!(app.preference_undo.is_some());
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Opacity, 83));
         assert_eq!(Config::load().appearance.opacity, before.appearance.opacity);
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         let after = Config::load();
         assert_eq!(after.appearance.opacity, before.appearance.opacity);
         assert_eq!(after.clock.show_date, !before.clock.show_date);
@@ -472,7 +474,7 @@ mod tests {
         let lock = PathBuf::from(lock);
         std::fs::remove_file(&lock).unwrap();
         std::fs::create_dir(&lock).unwrap();
-        let _ = app.update(Message::UndoPreferences);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
         let after = Config::load();
         assert_eq!(after.clock.show_date, !before.clock.show_date);
         assert_eq!(after.appearance.opacity, before.appearance.opacity);

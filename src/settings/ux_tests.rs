@@ -300,7 +300,11 @@ fn native_task_navigation_and_widget_switches_keep_layout_drafts() {
         assert_eq!(app.page, Page::DesktopWindows);
         assert!(native.try_bounds(app.view(), "settings-back").is_none());
         let _ = app.update(Message::Page(Page::DesktopWorkspaces));
-        assert_eq!(app.page, Page::DesktopWindows, "Workspaces is part of Windows");
+        assert_eq!(
+            app.page,
+            Page::DesktopWindows,
+            "Workspaces is part of Windows"
+        );
         assert_eq!(
             app.nav_model.active_data::<Page>(),
             Some(&Page::DesktopWindows)
@@ -856,8 +860,16 @@ fn windows_page_ends_with_workspaces_and_the_menu_lists_every_page() {
     let _ = app.update(Message::Resized(size));
     assert_eq!(app.page, Page::DesktopWindows, "Workspaces opens Windows");
     let mut native = Native::new(size);
-    native.capture(app.view(), &cosmic::Theme::dark(), "windows-with-workspaces");
-    assert!(native.try_bounds(app.view(), "windows-workspaces").is_some());
+    native.capture(
+        app.view(),
+        &cosmic::Theme::dark(),
+        "windows-with-workspaces",
+    );
+    assert!(
+        native
+            .try_bounds(app.view(), "windows-workspaces")
+            .is_some()
+    );
     let mut last = 0.;
     for (_, pages) in Page::SIDEBAR {
         for page in pages {
@@ -878,20 +890,36 @@ fn color_control_offers_suggestions_and_the_picker_and_applies_a_choice() {
     let _ = app.update(Message::Resized(size));
     let mut native = Native::new(size);
     assert!(
-        native.try_bounds(app.settings_view(), "color-panel").is_none(),
+        native
+            .try_bounds(app.settings_view(), "color-panel")
+            .is_none(),
         "closed until asked"
     );
     click(&mut app, &mut native, "colors-hex");
-    assert!(native.try_bounds(app.settings_view(), "color-panel").is_some());
-    native.capture(app.settings_view(), &cosmic::Theme::dark(), "color-control-open");
+    assert!(
+        native
+            .try_bounds(app.settings_view(), "color-panel")
+            .is_some()
+    );
+    native.capture(
+        app.settings_view(),
+        &cosmic::Theme::dark(),
+        "color-control-open",
+    );
     click(&mut app, &mut native, "color-quick-2");
     let chosen = crate::settings::color_well::QUICK[2];
     assert_eq!(Config::load().appearance.accent, Some(chosen));
     assert!(
-        native.try_bounds(app.settings_view(), "color-panel").is_none(),
+        native
+            .try_bounds(app.settings_view(), "color-panel")
+            .is_none(),
         "a choice closes the panel"
     );
-    native.capture(app.settings_view(), &cosmic::Theme::dark(), "color-control-chosen");
+    native.capture(
+        app.settings_view(),
+        &cosmic::Theme::dark(),
+        "color-control-chosen",
+    );
 }
 
 #[test]
@@ -905,21 +933,46 @@ fn widget_fonts_list_installed_families_and_save_a_choice() {
     let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
     let _ = app.update(Message::Resized(size));
     let mut native = Native::new(size);
-    assert!(native.try_bounds(app.settings_view(), "font-list-text").is_none());
+    assert!(
+        native
+            .try_bounds(app.settings_view(), "font-list-text")
+            .is_none()
+    );
     app.system_animations = false;
     click(&mut app, &mut native, "settings-advanced");
     click(&mut app, &mut native, "font-text");
-    assert!(native.try_bounds(app.settings_view(), "font-list-text").is_some());
-    native.capture(app.settings_view(), &cosmic::Theme::dark(), "widget-fonts-open");
+    assert!(
+        native
+            .try_bounds(app.settings_view(), "font-list-text")
+            .is_some()
+    );
+    native.capture(
+        app.settings_view(),
+        &cosmic::Theme::dark(),
+        "widget-fonts-open",
+    );
     let _ = app.update(Message::FontSearch("zzz-no-such-font".into()));
     assert!(app.widget_font_families().is_empty());
     let _ = app.update(Message::FontSearch(String::new()));
-    let _ = app.update(Message::WidgetFont(FontTarget::Text, Some("Noto Sans Mono".into())));
-    assert_eq!(Config::load().widget_font.as_deref(), Some("Noto Sans Mono"));
+    let _ = app.update(Message::WidgetFont(
+        FontTarget::Text,
+        Some("Noto Sans Mono".into()),
+    ));
+    assert_eq!(
+        Config::load().widget_font.as_deref(),
+        Some("Noto Sans Mono")
+    );
     assert!(app.font_menu.is_none(), "a choice closes the list");
-    let _ = app.update(Message::WidgetFont(FontTarget::Clock, Some("Noto Serif".into())));
+    let _ = app.update(Message::WidgetFont(
+        FontTarget::Clock,
+        Some("Noto Serif".into()),
+    ));
     assert_eq!(Config::load().clock_font.as_deref(), Some("Noto Serif"));
-    native.capture(app.settings_view(), &cosmic::Theme::dark(), "widget-fonts-chosen");
+    native.capture(
+        app.settings_view(),
+        &cosmic::Theme::dark(),
+        "widget-fonts-chosen",
+    );
     let _ = app.update(Message::WidgetFont(FontTarget::Text, None));
     assert_eq!(Config::load().widget_font, None, "back to the style's font");
 }

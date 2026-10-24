@@ -168,6 +168,17 @@ impl Settings {
                 ],
             ));
         }
+        if self.config.appearance.family.is_some()
+            && self.config.appearance.native_mode_palettes == 0
+        {
+            rows.push(banner(
+                "Native light and dark matching has not been applied. Review a repair to let the bars follow Mode.",
+                WARN,
+                vec![button::standard("Repair theme matching")
+                    .id("theme-matching-repair".into())
+                    .on_press(edit(Edit::RepairThemeMatching)).into()],
+            ));
+        }
         let look = self.look();
         rows.push(self.theme_stage(&look));
         if look.selected && look.family.is_some() {
@@ -200,7 +211,10 @@ impl Settings {
             // The one detailed editor this page opens.
             button::custom(
                 row::with_children(vec![
-                    detail("Theme details", "Fonts, icons, light and dark colors, window details"),
+                    detail(
+                        "Theme details",
+                        "Fonts, icons, light and dark colors, window details",
+                    ),
                     icon::from_name("go-next-symbolic").size(16).icon().into(),
                 ])
                 .spacing(12)
@@ -387,11 +401,9 @@ impl Settings {
                     "Style the dock and panel too",
                     "They take the style's color and shape",
                 ),
-                container(
-                    toggler(self.config.appearance.style_bars).on_toggle(Message::StyleBars),
-                )
-                .id(cosmic::widget::Id::new("theme-style-bars"))
-                .into(),
+                container(toggler(self.config.appearance.style_bars).on_toggle(Message::StyleBars))
+                    .id(cosmic::widget::Id::new("theme-style-bars"))
+                    .into(),
             )]),
         ];
         if look.selected {
@@ -548,7 +560,10 @@ impl Settings {
         };
         let block = |w: f32, h: f32, color: Color, r: f32| -> Element<'static, Message> {
             fill(
-                cosmic::iced::widget::space().width(w * s).height(h * s).into(),
+                cosmic::iced::widget::space()
+                    .width(w * s)
+                    .height(h * s)
+                    .into(),
                 color,
                 Color::TRANSPARENT,
                 0.,
@@ -619,8 +634,24 @@ impl Settings {
         let side = container(
             column::with_children(vec![
                 block(52., 4., card.accent, 2.),
-                block(38., 4., Color { a: 0.6, ..card.muted }, 2.),
-                block(46., 4., Color { a: 0.6, ..card.muted }, 2.),
+                block(
+                    38.,
+                    4.,
+                    Color {
+                        a: 0.6,
+                        ..card.muted
+                    },
+                    2.,
+                ),
+                block(
+                    46.,
+                    4.,
+                    Color {
+                        a: 0.6,
+                        ..card.muted
+                    },
+                    2.,
+                ),
             ])
             .spacing(6. * s),
         )
@@ -670,7 +701,12 @@ impl Settings {
                 // A small specimen keeps just the main card.
                 let mut cards: Vec<Element<'_, Message>> = vec![main.into()];
                 if width >= 180. {
-                    cards.push(container(side).width(Length::Fill).align_x(Alignment::End).into());
+                    cards.push(
+                        container(side)
+                            .width(Length::Fill)
+                            .align_x(Alignment::End)
+                            .into(),
+                    );
                 }
                 row::with_children(cards).align_y(Alignment::Start)
             })

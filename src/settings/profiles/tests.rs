@@ -1519,7 +1519,16 @@ fn review_r2_explicit_variants_reset_and_saved_restoration_remain_deliberate() {
         }
         for domain in [Domain::Dock, Domain::Panel] {
             editor.update(Message::ResetSurface(domain));
-            assert_eq!(editor.update(Message::Apply), Outcome::Changed);
+            // Both variants are now generated together. Dock resets the
+            // shared surface roles; Panel already uses ThemeDefault here.
+            assert_eq!(
+                editor.update(Message::Apply),
+                if domain == Domain::Dock {
+                    Outcome::Changed
+                } else {
+                    Outcome::None
+                }
+            );
         }
         assert!(editor.custom_surfaces.is_empty());
         customize();
@@ -2255,14 +2264,163 @@ fn a_style_leaves_the_dock_and_panel_alone_when_asked() {
     let kept = editor.selected_domains();
     assert!(!kept.contains(&Domain::Dock) && !kept.contains(&Domain::Panel));
     assert!(kept.contains(&Domain::WidgetStyle) && kept.contains(&Domain::Appearance));
-    assert!(editor.plan().is_some_and(|plan| plan
-        .domains
-        .iter()
-        .all(|part| !matches!(part.domain, Domain::Dock | Domain::Panel))));
+    assert!(editor.plan().is_some_and(|plan| {
+        plan.domains
+            .iter()
+            .all(|part| !matches!(part.domain, Domain::Dock | Domain::Panel))
+    }));
     // A whole setup still includes its dock: the option is about styles.
     editor.update(Message::Select(Selection::Preset("focus")));
     assert!(editor.selected_domains().contains(&Domain::Dock));
     editor.set_style_bars(true);
     editor.update(Message::Select(Selection::Preset("theme-outline")));
     assert!(editor.selected_domains().contains(&Domain::Dock));
+}
+
+#[test]
+fn theme_matching_repair_waits_for_review_and_uses_the_existing_apply_transaction() {
+    let desk = Desk::new("theme-mode-repair-review");
+    let mut raw = desk.widget_config();
+    raw["appearance"]["family"] = serde_json::json!(crate::desktop_theme::Family::Soft);
+    fs::write(&desk.config, raw.to_string()).unwrap();
+    desk.fixture
+        .user(DOCK, "background", "Color((0.1,0.2,0.3))");
+    let before = desk.desktop();
+    let mut editor = desk.editor();
+    editor.update(Message::RepairThemeMatching);
+    assert_eq!(
+        desk.desktop(),
+        before,
+        "repair selection is a read-only review"
+    );
+    assert!(editor.can_apply(), "{:?}", editor.notice);
+    editor.update(Message::Apply);
+    assert_eq!(
+        desk.fixture.read(DOCK, "background").unwrap(),
+        "ThemeDefault"
+    );
+    assert_eq!(
+        desk.widget_config()["appearance"]["native_mode_palettes"],
+        1
+    );
+    let saved = crate::desktop::recovery::load_baseline(&desk.store())
+        .unwrap()
+        .unwrap();
+    let original = saved
+        .domains
+        .iter()
+        .flat_map(|d| &d.native)
+        .find(|r| r.namespace == DOCK && r.key_name().unwrap() == "background")
+        .unwrap();
+    assert_eq!(
+        original.contents().unwrap().unwrap(),
+        b"Color((0.1,0.2,0.3))"
+    );
+}
+
+#[test]
+fn review_r1_family_selection_retains_unproven_native_roles_through_recolor() {
+    use crate::desktop::appearance::{AppearanceDraft, ColorRole, ThemeVariant};
+    use crate::desktop::wallpaper::{self, BgColor, BgEntry, BgSource, automatic};
+    for legacy in [false, true] {
+        for sync in [false, true] {
+            if !legacy && sync {
+                continue;
+            }
+            let desk = Desk::new(&format!("review-r1-provenance-{legacy}-{sync}"));
+            let mut raw = desk.widget_config();
+            raw["appearance"]["sync_colors"] = serde_json::json!(sync);
+            raw["appearance"]["color_policy"] = serde_json::json!("custom");
+            raw["appearance"]["match_wallpaper"] = serde_json::json!(false);
+            if legacy {
+                raw["appearance"]["family"] = serde_json::json!("soft");
+                desk.fixture
+                    .user(DOCK, "background", "Color((0.1,0.2,0.3))");
+                let path = desk
+                    .fixture
+                    .0
+                    .join("config/cosmic/com.system76.CosmicTheme.Light.Builder/v2/bg_color");
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, "Some(\"#EEEEEEFF\")").unwrap();
+            }
+            fs::write(&desk.config, raw.to_string()).unwrap();
+            let mut editor = desk.editor();
+            editor.update(Message::Select(Selection::Preset("theme-paper")));
+            finish_theme(&mut editor);
+            assert!(editor.can_apply(), "{:?}", editor.notice);
+            assert_eq!(editor.update(Message::Apply), Outcome::Changed);
+            let (_, cfg) = automatic::read_config(&desk.store()).unwrap();
+            assert_eq!(
+                cfg.appearance.native_mode_palettes, 0,
+                "legacy={legacy}, sync={sync}"
+            );
+            assert!(
+                cfg.appearance.family.is_some(),
+                "repair must remain available"
+            );
+            if legacy {
+                assert_eq!(
+                    desk.fixture.read(DOCK, "background").unwrap(),
+                    "Color((0.1,0.2,0.3))"
+                );
+            }
+            if legacy {
+                assert_eq!(
+                    fs::read_to_string(
+                        desk.fixture.0.join(
+                            "config/cosmic/com.system76.CosmicTheme.Light.Builder/v2/bg_color"
+                        )
+                    )
+                    .unwrap(),
+                    "Some(\"#EEEEEEFF\")"
+                );
+            }
+            let before = AppearanceDraft::load(&desk.store()).unwrap();
+            // Re-enable native synchronization and automatic tint, as a later
+            // user action. Neither action grants ownership of missing roles.
+            let mut raw = desk.widget_config();
+            raw["appearance"]["sync_colors"] = serde_json::json!(true);
+            raw["appearance"]["color_policy"] = serde_json::json!("wallpaper");
+            raw["appearance"]["wallpaper_colors"] = serde_json::json!(true);
+            raw["appearance"]["match_wallpaper"] = serde_json::json!(true);
+            fs::write(&desk.config, raw.to_string()).unwrap();
+            desk.fixture.user(
+                wallpaper::NAMESPACE,
+                "all",
+                &ron::to_string(&BgEntry::new(
+                    "all",
+                    BgSource::Color(BgColor::Single([0.8, 0.3, 0.2])),
+                ))
+                .unwrap(),
+            );
+            automatic::commit(
+                &desk.store(),
+                automatic::prepare(&desk.store()).unwrap().unwrap(),
+            )
+            .unwrap();
+            let after = AppearanceDraft::load(&desk.store()).unwrap();
+            for variant in ThemeVariant::ALL {
+                for role in [ColorRole::Background, ColorRole::Primary] {
+                    let key = crate::desktop::appearance::theme::builder_key(
+                        variant,
+                        match role {
+                            ColorRole::Background => "bg_color",
+                            _ => "primary_container_bg",
+                        },
+                    );
+                    assert_eq!(
+                        after.snapshot().user(&key),
+                        before.snapshot().user(&key),
+                        "unproven {variant:?} {role:?}"
+                    );
+                }
+            }
+            if legacy {
+                assert_eq!(
+                    desk.fixture.read(DOCK, "background").unwrap(),
+                    "Color((0.1,0.2,0.3))"
+                );
+            }
+        }
+    }
 }

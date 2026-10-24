@@ -1,4 +1,5 @@
 use super::*;
+use crate::desktop::Owner;
 use crate::desktop::store::tests::Fixture;
 use crate::desktop::wallpaper::{BgEntry, NAMESPACE};
 use cosmic::cosmic_theme::palette::Srgba;
@@ -420,4 +421,229 @@ fn explicit_policy_and_override_intent_invalidate_inflight_colors() {
         commit(&store, plan).is_err(),
         "an equal-valued manual override is still newer intent"
     );
+}
+
+#[test]
+fn task2_restore_invalidates_prepared_palette_even_when_all_values_match() {
+    let (f, store) = fixture("epoch-prepared");
+    let prepared = prepare(&store).unwrap().unwrap();
+    crate::desktop::recovery::ensure_baseline(
+        &store,
+        crate::desktop::recovery::BaselineKind::CurrentDesktop,
+    )
+    .unwrap();
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    crate::desktop::recovery::apply_restore(&store, &plan).unwrap();
+    let before = fs::read(store.app_config().unwrap()).unwrap();
+    assert!(
+        commit(&store, prepared).is_err(),
+        "matching values do not grant stale ownership"
+    );
+    assert_eq!(fs::read(store.app_config().unwrap()).unwrap(), before);
+    assert!(
+        prepare(&store).unwrap().is_none(),
+        "manual restore owns this wallpaper"
+    );
+    set_color(&f, [0.8, 0.3, 0.2]);
+    assert!(
+        prepare(&store).unwrap().is_some(),
+        "the next wallpaper must still update"
+    );
+}
+
+#[test]
+fn task2_noop_ack_cannot_cross_restore_or_its_undo() {
+    let (f, store) = fixture("epoch-noop");
+    commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+    // Delete only observation evidence to prepare a genuine no-op result.
+    let mut history: serde_json::Value =
+        serde_json::from_slice(&fs::read(store.state_dir().join("desktop-undo.json")).unwrap())
+            .unwrap();
+    history.as_object_mut().unwrap().remove("palette_ack");
+    fs::write(
+        store.state_dir().join("desktop-undo.json"),
+        serde_json::to_vec(&history).unwrap(),
+    )
+    .unwrap();
+    let _ = fs::remove_file(store.state_dir().join(ACK));
+    let prepared = prepare(&store).unwrap().unwrap();
+    assert!(prepared.patch.is_empty() && prepared.widgets.is_empty());
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    let restored = crate::desktop::recovery::apply_restore(&store, &plan).unwrap();
+    assert!(commit(&store, prepared.clone()).is_err());
+    store.undo_latest(&restored.id).unwrap();
+    assert!(commit(&store, prepared).is_err());
+    let restarted = f.store().with_app_config(f.0.join("config.json"));
+    assert!(prepare(&restarted).unwrap().is_none());
+    set_color(&f, [0.4, 0.7, 0.2]);
+    assert!(prepare(&restarted).unwrap().is_some());
+}
+
+#[test]
+fn task2_interrupted_palette_never_acknowledges_before_its_transaction() {
+    for fault in [
+        crate::desktop::store::Fault::InterruptBeforeRecord,
+        crate::desktop::store::Fault::InterruptAfterRecord,
+    ] {
+        let (f, store) = fixture("palette-killed");
+        let prepared = prepare(&store).unwrap().unwrap();
+        store.inject(Some(fault));
+        assert!(commit(&store, prepared).is_err());
+        let restarted = f.store().with_app_config(f.0.join("config.json"));
+        assert!(restarted.pending_recovery().unwrap().is_some());
+        restarted.recover().unwrap();
+        assert!(
+            prepare(&restarted).unwrap().is_some(),
+            "recovery must restore both colors and observation"
+        );
+    }
+}
+
+#[test]
+fn task2_manual_undo_preserves_latest_palette_observation() {
+    let (f, store) = fixture("manual-undo-observation");
+    commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+    let mut widgets = WidgetPatch::new();
+    widgets
+        .set("/appearance/opacity", None, Some(serde_json::json!(90)))
+        .unwrap();
+    let manual = store
+        .apply_action(
+            &DesktopPatch::new(),
+            Some(&widgets),
+            Owner::Preferences,
+            "Opacity",
+            crate::desktop::store::Source::Manual,
+        )
+        .unwrap();
+    set_color(&f, [0.8, 0.3, 0.2]);
+    commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+    store.undo_latest(&manual.id).unwrap();
+    assert!(
+        prepare(&store).unwrap().is_none(),
+        "Undo must retain the latest source observation"
+    );
+}
+
+#[test]
+fn task2_interrupted_restore_recovery_keeps_manual_colors_and_invalidates_worker() {
+    let (f, store) = fixture("restore-crash-observation");
+    let stale = prepare(&store).unwrap().unwrap();
+    crate::desktop::recovery::ensure_baseline(
+        &store,
+        crate::desktop::recovery::BaselineKind::CurrentDesktop,
+    )
+    .unwrap();
+    let plan = crate::desktop::recovery::plan_restore(
+        &store,
+        &[crate::desktop::recovery::RecoveryDomain::DockPanel],
+    )
+    .unwrap();
+    store.inject(Some(crate::desktop::store::Fault::InterruptBeforeRecord));
+    assert!(crate::desktop::recovery::apply_restore(&store, &plan).is_err());
+    let restarted = f.store().with_app_config(f.0.join("config.json"));
+    restarted.recover().unwrap();
+    assert!(commit(&restarted, stale).is_err());
+    assert!(
+        prepare(&restarted).unwrap().is_none(),
+        "recovery is still a manual choice"
+    );
+    set_color(&f, [0.8, 0.3, 0.2]);
+    assert!(prepare(&restarted).unwrap().is_some());
+}
+
+#[test]
+fn task2r1_preparation_between_epoch_and_ack_cannot_override_restore() {
+    use crate::desktop::recovery::{
+        BaselineKind, RecoveryDomain, apply_restore, ensure_baseline, plan_restore,
+    };
+    use std::sync::{Arc, Barrier};
+    for noop in [false, true] {
+        let (f, store) = fixture("during-restore");
+        if noop {
+            commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+        }
+        ensure_baseline(&store, BaselineKind::CurrentDesktop).unwrap();
+        let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+        let published = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        let root = f.0.clone();
+        let (a, b) = (published.clone(), resume.clone());
+        let restore = std::thread::spawn(move || {
+            let store = DesktopStore::fixture(&root)
+                .unwrap()
+                .with_app_config(root.join("config.json"));
+            store.inject(Some(crate::desktop::store::Fault::PauseAfterEpoch(a, b)));
+            apply_restore(&store, &plan).unwrap();
+        });
+        published.wait();
+        let prepared = prepare(&store);
+        resume.wait();
+        restore.join().unwrap();
+        let prepared = prepared.unwrap().unwrap();
+        assert_eq!(
+            prepared.patch.is_empty() && prepared.widgets.is_empty(),
+            noop
+        );
+        let before = fs::read(store.app_config().unwrap()).unwrap();
+        let history = fs::read(store.state_dir().join("desktop-undo.json")).unwrap();
+        assert!(
+            commit(&store, prepared).unwrap().is_none(),
+            "restore already acknowledged this source"
+        );
+        assert_eq!(fs::read(store.app_config().unwrap()).unwrap(), before);
+        assert_eq!(
+            fs::read(store.state_dir().join("desktop-undo.json")).unwrap(),
+            history,
+            "no-op work must not replace restore history"
+        );
+        set_color(&f, [0.8, 0.2, 0.1]);
+        assert!(prepare(&store).unwrap().is_some());
+    }
+}
+
+#[test]
+fn task2r1_journal_before_epoch_crash_invalidates_old_palette_jobs() {
+    use crate::desktop::recovery::*;
+    for noop in [false, true] {
+        let (f, store) = fixture("journal-before-epoch");
+        if noop {
+            commit(&store, prepare(&store).unwrap().unwrap()).unwrap();
+            let p = store.state_dir().join("desktop-undo.json");
+            let mut history: serde_json::Value =
+                serde_json::from_slice(&fs::read(&p).unwrap()).unwrap();
+            history.as_object_mut().unwrap().remove("palette_ack");
+            fs::write(p, history.to_string()).unwrap();
+        }
+        let prepared = prepare(&store).unwrap().unwrap();
+        assert_eq!(
+            prepared.patch.is_empty() && prepared.widgets.is_empty(),
+            noop
+        );
+        ensure_baseline(&store, BaselineKind::CurrentDesktop).unwrap();
+        let epoch = store.restore_epoch().unwrap();
+        let plan = plan_restore(&store, &[RecoveryDomain::DockPanel]).unwrap();
+        store.inject(Some(crate::desktop::store::Fault::InterruptBeforeEpoch));
+        assert!(apply_restore(&store, &plan).is_err());
+        assert_eq!(store.restore_epoch().unwrap(), epoch);
+        let reopened = f.store().with_app_config(f.0.join("config.json"));
+        reopened.recover().unwrap();
+        assert!(
+            reopened.restore_epoch().unwrap() > epoch,
+            "recorded restore must acquire durable ownership on recovery"
+        );
+        assert!(reopened.manual_at().is_some());
+        assert!(commit(&reopened, prepared).is_err());
+        reopened.recover().unwrap();
+        set_color(&f, [0.9, 0.1, 0.5]);
+        assert!(prepare(&reopened).unwrap().is_some());
+    }
 }

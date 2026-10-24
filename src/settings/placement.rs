@@ -1118,8 +1118,37 @@ impl Settings {
         Task::none()
     }
 
-    /// The widget placement canvas on Layout. `height`
-    /// follows the window so larger windows get a larger, more precise screen.
+    /// Local connection choice; ordinary buttons remain keyboard accessible.
+    pub(super) fn display_selector(&self) -> Element<'_, super::Message> {
+        let options: Vec<Element<'_, super::Message>> = self
+            .displays
+            .choices(self.config.widget_display.as_deref())
+            .into_iter()
+            .map(|(title, value)| {
+                let selected = value == self.config.widget_display;
+                let enabled = value
+                    .as_deref()
+                    .is_none_or(|name| self.displays.unique(name).is_some());
+                let id = format!("widget-display-{}", value.as_deref().unwrap_or("auto"));
+                let button = if selected {
+                    button::suggested(title)
+                } else {
+                    button::standard(title)
+                };
+                button
+                    .id(cosmic::widget::Id::new(id))
+                    .on_press_maybe(enabled.then_some(super::Message::WidgetDisplay(value)))
+                    .into()
+            })
+            .collect();
+        column::with_children(vec![
+            label("Widget display", 14., FOREGROUND).into(),
+            row::with_children(options).spacing(6).wrap().into(),
+            label(self.displays.status(self.config.widget_display.as_deref()), 12., MUTED).into(),
+            label("The pin stays with this connection when monitors change. Fallback uses the built-in screen, then the alphabetically first connection. Dock & panel have separate choices.", 11., MUTED).into(),
+        ]).spacing(6).into()
+    }
+    /// The widget placement canvas on Layout. `height` follows the window.
     pub(super) fn placement_editor(&self, height: f32) -> Element<'_, super::Message> {
         let editor = &self.placement;
         let palette = self.config.palette();
@@ -1325,6 +1354,9 @@ impl Settings {
             .height(40)
             .align_y(Alignment::Center);
         let mut parts = vec![actions.into(), preview.into(), caption.into()];
+        if matches!(self.page, super::Page::Overview | super::Page::WidgetLayout) {
+            parts.insert(0, self.display_selector());
+        }
         if self.page != super::Page::Overview {
             parts.push(self.placement_inspector());
         }
@@ -1569,6 +1601,7 @@ mod tests {
 
     fn weather_geometry() -> Geometry {
         let snapshot = Snapshot {
+            display: None,
             screen: [1920., 1080.],
             widgets: vec![WidgetGeometry {
                 natural_size: None,
@@ -1989,7 +2022,8 @@ mod tests {
             settings.undo_review.is_some(),
             "the externally moved pinned neighbor is reviewed locally"
         );
-        let _ = settings.update(super::super::Message::ResolveUndo(true));
+        let review = settings.undo_review.clone().unwrap();
+        let _ = settings.update(super::super::Message::ResolveUndoShown(review, true));
         let undone = Config::try_load().unwrap();
         assert!(undone.widget_sizes.is_empty());
         assert_eq!(

@@ -5,9 +5,11 @@ mod config;
 mod data;
 mod desktop;
 mod desktop_theme;
+mod displays;
 mod drawer;
 mod layout;
 mod layout_state;
+mod materials;
 #[cfg(test)]
 mod native_test;
 mod paths;
@@ -18,13 +20,30 @@ mod tools;
 mod usage;
 mod watch;
 mod widget_style;
-mod materials;
 
 fn main() -> cosmic::iced::Result {
     // Settings from before the rename move to the new folders, once.
     paths::migrate();
     let mut args = std::env::args().skip(1);
     let command = args.next();
+    if matches!(
+        command.as_deref(),
+        Some("--select-palette" | "--set-cosmic-colors")
+    ) {
+        let value = args.next().unwrap_or_default();
+        let request = match (command.as_deref(), value.as_str()) {
+            (Some("--select-palette"), name) => Ok(system_theme::ControllerRequest::Palette(name)),
+            (_, "on") => Ok(system_theme::ControllerRequest::CosmicColors(true)),
+            (_, "off") => Ok(system_theme::ControllerRequest::CosmicColors(false)),
+            _ => Err("Choose on or off".to_string()),
+        };
+        let result = request.and_then(system_theme::controller);
+        if let Err(error) = result {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if command.as_deref() == Some("--apply-cosmic-colors") {
         let result = args
             .next()

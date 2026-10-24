@@ -140,8 +140,7 @@ fn record(look: &Look) -> Value {
     // color, like the windows; the panel shows Islands kept together (a
     // plain bar where the Islands component can't run). Where they sit,
     // their applets and the islands' arrangement stay the person's.
-    let tint = look.family.surface(look.seed).map(|v| f32::from(v) / 255.);
-    let bar = json!({"background": crate::desktop::panels::Background::Color(tint),
+    let bar = json!({"background": crate::desktop::panels::Background::ThemeDefault,
         "floating": true, "margin": 6, "border_radius": PILL});
     let islands = dock_islands_core::Settings {
         enabled: true,
@@ -220,30 +219,28 @@ pub fn preset(id: &str) -> Option<Preset> {
 
 /// The bundled wallpaper a look shows, by palette name.
 fn bundled(preset: &Preset) -> Option<&str> {
-    match preset.profile.wallpaper.as_ref()?.background.as_ref()?.source.as_ref()? {
+    match preset
+        .profile
+        .wallpaper
+        .as_ref()?
+        .background
+        .as_ref()?
+        .source
+        .as_ref()?
+    {
         super::desktop_look::SourceLook::Bundled(name) => Some(name),
         _ => None,
     }
 }
 
 fn installed(preset: &Preset, bundled_dir: &std::path::Path) -> bool {
-    bundled(preset).is_none_or(|name| {
-        crate::desktop::wallpaper::bundled_path(bundled_dir, name).is_file()
-    })
+    bundled(preset)
+        .is_none_or(|name| crate::desktop::wallpaper::bundled_path(bundled_dir, name).is_file())
 }
 
-/// Whether this desktop runs a compatible Islands panel component.
+/// Whether Islands is installed, independently of enablement or runtime health.
 pub fn islands_available(store: &crate::desktop::DesktopStore) -> bool {
-    crate::desktop::islands::Client::connect(store)
-        .and_then(|mut client| client.capabilities())
-        .is_ok()
-}
-
-fn wants_islands(preset: &Preset) -> bool {
-    [&preset.profile.dock, &preset.profile.panel]
-        .into_iter()
-        .flatten()
-        .any(|look| look.islands.as_ref().is_some_and(|islands| islands.enabled))
+    crate::desktop::islands::Installation::discover(store).installed()
 }
 
 /// A starter look adds the widgets it places and never takes away what
@@ -307,6 +304,7 @@ pub fn fitted(
             .flatten()
         {
             look.islands = None;
+            look.island_gap = None;
         }
     }
     preset
@@ -316,12 +314,12 @@ pub fn fitted(
 pub fn missing(
     preset: &Preset,
     bundled_dir: &std::path::Path,
-    islands: bool,
+    _islands: bool,
 ) -> Option<&'static str> {
     if !installed(preset, bundled_dir) {
-        Some("The built-in wallpapers aren’t installed, so your wallpaper stays. Reinstall Halcyon to restore them.")
-    } else if !islands && wants_islands(preset) {
-        Some("The Islands panel isn’t running, so the panel stays one bar.")
+        Some(
+            "The built-in wallpapers aren’t installed, so your wallpaper stays. Reinstall Halcyon to restore them.",
+        )
     } else {
         None
     }
@@ -388,7 +386,9 @@ mod tests {
         let ids: Vec<_> = all.iter().map(|preset| preset.id).collect();
         assert_eq!(
             ids,
-            ["halcyon", "calm", "evening", "focus", "paper", "rose", CLEAN]
+            [
+                "halcyon", "calm", "evening", "focus", "paper", "rose", CLEAN
+            ]
         );
         let installed = Installed::discover(&store);
         let dir = crate::desktop::wallpaper::bundled_dir(&store);
@@ -419,22 +419,33 @@ mod tests {
                 }
                 assert!(super::themes::family(profile).is_some(), "{}", preset.id);
                 let wallpaper = serde_json::to_value(&profile.wallpaper).unwrap();
-                let name = wallpaper["background"]["source"]["bundled"].as_str().unwrap();
+                let name = wallpaper["background"]["source"]["bundled"]
+                    .as_str()
+                    .unwrap();
                 assert!(
                     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                         .join(format!("assets/wallpapers/{name}.jpg"))
                         .exists(),
                     "{name}"
                 );
-                assert!(crate::desktop::wallpaper::bundled_name(name).is_some(), "{name}");
+                assert!(
+                    crate::desktop::wallpaper::bundled_name(name).is_some(),
+                    "{name}"
+                );
                 let style = profile.widget_style.as_ref().unwrap();
                 assert!(
-                    crate::config::Palette::CHOICES.iter().any(|(key, _)| style["theme"] == *key),
+                    crate::config::Palette::CHOICES
+                        .iter()
+                        .any(|(key, _)| style["theme"] == *key),
                     "{}",
                     preset.id
                 );
                 // Colors keep following the wallpaper after the look is applied.
-                assert_eq!(style["appearance"]["wallpaper_colors"], true, "{}", preset.id);
+                assert_eq!(
+                    style["appearance"]["wallpaper_colors"], true,
+                    "{}",
+                    preset.id
+                );
                 // One layout for every look: pill dock, pill Islands panel on
                 // top kept together, see-through At a glance without the
                 // calendar, and only the system monitor.
@@ -442,7 +453,10 @@ mod tests {
                 let islands = panel.islands.as_ref().unwrap();
                 assert!(islands.enabled, "{}", preset.id);
                 assert_eq!(islands.placement, Placement::Together, "{}", preset.id);
-                assert!(panel.anchor.is_none(), "where the panel sits stays the person's");
+                assert!(
+                    panel.anchor.is_none(),
+                    "where the panel sits stays the person's"
+                );
                 assert!(profile.dock.as_ref().unwrap().islands.is_none());
                 for bar in [panel, profile.dock.as_ref().unwrap()] {
                     assert_eq!(bar.floating, Some(true), "{}", preset.id);
@@ -450,11 +464,15 @@ mod tests {
                     assert!(bar.autohide.is_none(), "{}", preset.id);
                     assert!(matches!(
                         bar.background,
-                        Some(crate::desktop::panels::Background::Color(_))
+                        Some(crate::desktop::panels::Background::ThemeDefault)
                     ));
                 }
                 // See-through, except on a panel over the light wallpaper.
-                let glance = if preset.id == "paper" { "panel" } else { "transparent" };
+                let glance = if preset.id == "paper" {
+                    "panel"
+                } else {
+                    "transparent"
+                };
                 assert_eq!(style["glance"]["style"], glance, "{}", preset.id);
                 assert_eq!(style["glance"]["own_background"], true);
                 assert_eq!(style["devbox"]["services"], false);
@@ -476,7 +494,10 @@ mod tests {
             let profile = &fitted(preset.clone(), &config, &dir, false).profile;
             if preset.id != CLEAN {
                 assert!(profile.panel.as_ref().unwrap().islands.is_none());
-                assert!(missing(preset, &dir, false).is_some());
+                assert!(
+                    missing(preset, &dir, false).is_none(),
+                    "absent add-ons have one link in App settings"
+                );
             }
             let selected: BTreeSet<Domain> = profile.domains().into_iter().collect();
             let plan = plan(&store, &installed, profile, &selected);
@@ -516,7 +537,7 @@ mod tests {
         let config = crate::config::Config::default();
         let workbench = preset("calm").unwrap();
         assert!(missing(&workbench, &dir, true).is_none());
-        assert!(missing(&workbench, &dir, false).unwrap().contains("Islands"));
+        assert!(missing(&workbench, &dir, false).is_none());
         let with = fitted(workbench.clone(), &config, &dir, true);
         assert!(with.profile.wallpaper.is_some());
         assert!(with.profile.panel.as_ref().unwrap().islands.is_some());
@@ -527,7 +548,11 @@ mod tests {
         assert_eq!(panel.border_radius, Some(PILL));
         // Without the bundled wallpapers the rest of the look still applies.
         std::fs::remove_dir_all(fixture.0.join("pictures")).unwrap();
-        assert!(missing(&workbench, &dir, true).unwrap().contains("Reinstall Halcyon"));
+        assert!(
+            missing(&workbench, &dir, true)
+                .unwrap()
+                .contains("Reinstall Halcyon")
+        );
         let without = fitted(workbench, &config, &dir, true);
         assert!(without.profile.wallpaper.is_none());
         assert!(without.profile.widget_style.is_some());
@@ -583,7 +608,9 @@ mod tests {
         assert_eq!(fixture.read(DOCK, "output"), None);
         assert_eq!(fixture.read(DOCK, "plugins_center"), None);
         let background = std::fs::read_to_string(
-            fixture.0.join("config/cosmic/com.system76.CosmicBackground/v1/all"),
+            fixture
+                .0
+                .join("config/cosmic/com.system76.CosmicBackground/v1/all"),
         )
         .unwrap_or_default();
         assert!(background.contains("halcyon-calm"), "{background}");
@@ -598,7 +625,15 @@ mod tests {
         let fresh = fitted(calm(), &crate::config::Config::default(), dir, false);
         assert_eq!(layout(&fresh)["enabled_widgets"], json!(["devbox"]));
         assert_eq!(layout(&fresh)["glance"]["show_calendar"], false);
-        assert!(fresh.profile.widget_style.as_ref().unwrap().get("devbox").is_some());
+        assert!(
+            fresh
+                .profile
+                .widget_style
+                .as_ref()
+                .unwrap()
+                .get("devbox")
+                .is_some()
+        );
         // Someone with their own setup keeps it.
         let own = crate::config::Config::from_bytes(
             br#"{"enabled_widgets":["calendar","weather"],"glance":{"enabled":false},"devbox":{"swap":false}}"#,
@@ -611,25 +646,137 @@ mod tests {
         );
         // At a glance they turned off stays off.
         assert!(layout(&kept).get("glance").is_none());
-        assert!(kept.profile.widget_style.as_ref().unwrap().get("devbox").is_none());
+        assert!(
+            kept.profile
+                .widget_style
+                .as_ref()
+                .unwrap()
+                .get("devbox")
+                .is_none()
+        );
         // The look's style still applies.
-        assert_eq!(kept.profile.widget_style.as_ref().unwrap()["glance"]["style"], "transparent");
+        assert_eq!(
+            kept.profile.widget_style.as_ref().unwrap()["glance"]["style"],
+            "transparent"
+        );
         // Choices equal to the defaults are still theirs once saved.
         let defaults_saved = crate::config::Config::from_bytes(
-            serde_json::to_vec(&json!({"enabled_widgets": crate::config::Config::default().enabled_widgets}))
-                .unwrap()
-                .as_slice(),
+            serde_json::to_vec(
+                &json!({"enabled_widgets": crate::config::Config::default().enabled_widgets}),
+            )
+            .unwrap()
+            .as_slice(),
         )
         .unwrap();
         let kept = fitted(calm(), &defaults_saved, dir, false);
         for widget in &crate::config::Config::default().enabled_widgets {
             assert!(
-                layout(&kept)["enabled_widgets"].as_array().unwrap().contains(&json!(widget)),
+                layout(&kept)["enabled_widgets"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!(widget)),
                 "{widget} kept"
             );
         }
         // Clean desktop still hides everything.
         let clean = fitted(preset(CLEAN).unwrap(), &own, dir, false);
         assert_eq!(layout(&clean)["enabled_widgets"], json!([]));
+    }
+    #[test]
+    fn task2_imported_islands_fields_adapt_without_sidecars_or_activation() {
+        let (fixture, store) = desk("imported-islands-adaptation");
+        let mut profile = preset("halcyon").unwrap().profile;
+        profile.panel.as_mut().unwrap().island_gap = Some(42);
+        let installed = Installed::discover(&store);
+        let selected = [Domain::Panel].into_iter().collect();
+        let proposal = plan(&store, &installed, &profile, &selected);
+        assert!(
+            !proposal
+                .patch()
+                .keys()
+                .any(|k| k.namespace() == dock_islands_core::NAMESPACE)
+        );
+        assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
+        crate::desktop::profiles::apply(&store, &proposal).unwrap();
+        assert!(
+            !store
+                .user_path(&crate::desktop::islands::key(
+                    crate::desktop::panels::PanelKind::Panel
+                ))
+                .exists()
+        );
+        crate::desktop::islands::fixture_installed(&fixture.0);
+        let proposal = plan(&store, &installed, &profile, &selected);
+        for (_, entry) in proposal
+            .patch()
+            .iter()
+            .filter(|(k, _)| k.namespace() == dock_islands_core::NAMESPACE)
+        {
+            assert!(
+                !entry
+                    .desired
+                    .as_ref()
+                    .unwrap()
+                    .decode::<dock_islands_core::Settings>()
+                    .unwrap()
+                    .enabled
+            );
+        }
+    }
+    #[test]
+    fn task2_installed_disabled_gap_can_be_managed_without_runtime() {
+        let (fixture, store) = desk("offline-gap");
+        crate::desktop::islands::fixture_installed(&fixture.0);
+        let mut profile = super::super::Profile::new("Spacing").unwrap();
+        profile.panel = Some(super::super::PanelLook {
+            island_gap: Some(42),
+            ..Default::default()
+        });
+        let proposal = plan(
+            &store,
+            &Installed::discover(&store),
+            &profile,
+            &[Domain::Panel].into_iter().collect(),
+        );
+        let key = crate::desktop::islands::key(crate::desktop::panels::PanelKind::Panel);
+        let setting = proposal
+            .patch()
+            .get(&key)
+            .expect("installed spacing is manageable")
+            .desired
+            .as_ref()
+            .unwrap()
+            .decode::<dock_islands_core::Settings>()
+            .unwrap();
+        assert_eq!(setting.gap, 42);
+        assert!(!setting.enabled);
+    }
+
+    #[test]
+    fn task2_explicit_islands_choice_retains_the_plans_original_guard() {
+        let (fixture, store) = desk("wizard-islands-guard");
+        crate::desktop::islands::fixture_installed(&fixture.0);
+        let profile = preset("halcyon").unwrap().profile;
+        let mut proposal = plan(
+            &store,
+            &Installed::discover(&store),
+            &profile,
+            &[Domain::Panel].into_iter().collect(),
+        );
+        let key = crate::desktop::islands::key(crate::desktop::panels::PanelKind::Panel);
+        let mut changed = dock_islands_core::Settings::default();
+        changed.gap = 17;
+        fixture.user(
+            key.namespace(),
+            key.key(),
+            &ron::to_string(&changed).unwrap(),
+        );
+        proposal
+            .choose_islands(&store, crate::desktop::panels::PanelKind::Panel, true)
+            .unwrap();
+        assert!(
+            crate::desktop::profiles::apply(&store, &proposal).is_err(),
+            "explicit enable must not erase a concurrent settings edit"
+        );
     }
 }

@@ -1,8 +1,15 @@
 # Distribution and updates
 
-Status: v0.1.1 ships as GitHub release packages. The signed APT repository,
-update UI, and automatic Islands rebuilds below are the next milestone, not
-services that are already running.
+Status: manual GitHub release packages remain supported. Local signed-archive
+and explicit enrollment preparation now exists; no public APT channel or Updates
+UI is claimed. **0.2.1 publication remains on hold.**
+
+[APT operations](APT-OPERATIONS.md) is the current implementation/deployment
+contract, including exact immutable promotion inputs, scoped enrollment,
+retention, expiry and tested keyring rotation. [Updates handoff](UPDATES-HANDOFF.md)
+records actual PackageKit/Store interfaces and the remaining Rust/UI/native work.
+The earlier milestone design below supplies context; those two documents and the
+current publication hold govern execution.
 
 ## Current releases
 
@@ -76,7 +83,8 @@ on their system policy and must not be promised universally.
 Acceptance in a disposable Pop!_OS VM: enroll, `apt update`, install v0.1.0,
 upgrade to the candidate through PackageKit, uninstall/reinstall while retaining
 preferences, reject a corrupted index and a wrong signature, reject expired
-metadata, and rotate keys using overlapping old/new signatures. Also verify
+metadata, and rotate keys using an old-key-signed overlapping public keyring
+before switching to a single new-key signature. Also verify
 that unrelated packages cannot be selected from this repository.
 
 ### COSMIC Store discovery
@@ -170,3 +178,21 @@ as an ordinary sandboxed app is the host-panel replacement itself.
 - [APT signature verification](https://manpages.debian.org/stable/apt/apt-secure.8.en.html)
 - [APT source configuration](https://manpages.debian.org/stable/apt/sources.list.5.en.html)
 - [AppStream collection metadata](https://www.freedesktop.org/software/appstream/docs/chap-CollectionData.html)
+
+## Implemented group 3 artifact boundary
+
+The companion's final strip/package step now precedes native acceptance. Its v2
+manifest binds helper/selector/catalog/ELF bytes, and its content-addressed user
+generation preserves the existing reverse installation/Disable chain. A
+package-owned XDG autostart independently bootstraps enabled actual 0.2.0 users;
+activation is next login after successful staging, without root home edits or
+live replacement. New/disabled/manual users are not auto-enabled.
+
+[COMPATIBILITY.md](COMPATIBILITY.md) specifies signed official discovery, complete
+cohort locks, read-only status, evidence schemas and the exact native-driver
+handoff. The catalog currently admits no new native cohort. Final package native
+acceptance, complete 1.10 inputs and group 4 system-update acceptance remain gates.
+The previous tag-triggered rebuild/publish workflow is replaced with verification
+of an explicitly reviewed immutable release artifact set. Publication is still
+parent-owned; group 4 must consume the same bytes, add its acceptance and perform
+restricted signing/promotion. No current APT enrollment or hosting is implied.

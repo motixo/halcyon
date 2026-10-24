@@ -58,6 +58,7 @@ fn bar_priority(draft: &PanelDraft) -> u32 {
 /// One bar drawn to scale on the miniature screen, `offset` pixels in from
 /// its edge when another bar shares that edge.
 fn preview_bar<'a>(
+    installed_islands: bool,
     draft: &PanelDraft,
     catalog: &AppletCatalog,
     selected: bool,
@@ -67,7 +68,7 @@ fn preview_bar<'a>(
     accent: Color,
     on_press: Option<Message>,
 ) -> Element<'a, Message> {
-    if draft.islands().known().is_some_and(|s| s.enabled) {
+    if installed_islands && draft.islands().known().is_some_and(|s| s.enabled) {
         return preview_islands(
             draft, catalog, screen, scale, offset, accent, on_press, None, None, "",
         );
@@ -369,6 +370,7 @@ fn preview_islands<'a>(
 /// stack outward by priority, like cosmic-panel; `selected` is drawn last,
 /// above the other, and outlined. With `on_press`, each bar is a link.
 pub(in crate::settings::view) fn bars<'a>(
+    installed_islands: bool,
     drafts: Vec<&PanelDraft>,
     catalog: &AppletCatalog,
     selected: Option<PanelKind>,
@@ -395,6 +397,7 @@ pub(in crate::settings::view) fn bars<'a>(
         .into_iter()
         .map(|(draft, offset)| {
             preview_bar(
+                installed_islands,
                 draft,
                 catalog,
                 Some(draft.kind()) == selected,
@@ -458,10 +461,13 @@ impl Settings {
                 .into_iter()
                 .filter_map(|kind| editor.draft(kind))
                 .filter(|d| {
-                    d.kind() != editor.selected || !d.islands().known().is_some_and(|s| s.enabled)
+                    !editor.islands.installation.installed()
+                        || d.kind() != editor.selected
+                        || !d.islands().known().is_some_and(|s| s.enabled)
                 })
                 .collect();
             layers.extend(bars(
+                editor.islands.installation.installed(),
                 drafts,
                 &editor.catalog,
                 Some(editor.selected),
@@ -470,10 +476,11 @@ impl Settings {
                 accent,
                 None,
             ));
-            if let Some(draft) = editor
-                .current()
-                .filter(|d| d.listed() && d.islands().known().is_some_and(|s| s.enabled))
-            {
+            if let Some(draft) = editor.current().filter(|d| {
+                editor.islands.installation.installed()
+                    && d.listed()
+                    && d.islands().known().is_some_and(|s| s.enabled)
+            }) {
                 layers.push(preview_islands(
                     draft,
                     &editor.catalog,

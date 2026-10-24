@@ -1,0 +1,38 @@
+{
+  "https://apt.pop-os.org/release/dists/noble/InRelease": {
+    "path": "0-InRelease",
+    "sha256": "c963dd7e26c21a15e2816c525fe8df90e5ddb1bbd42b4c99d2340f7f22d3a920"
+  },
+  "https://apt.pop-os.org/release/dists/noble/main/binary-amd64/Packages.gz": {
+    "path": "1-Packages.gz",
+    "sha256": "625dd4858ed0c1dcd3dcc97a054803ef8d74ecd5deaa20f18322c5a65b933364"
+  },
+  "https://apt.pop-os.org/release/dists/noble/main/source/Sources.gz": {
+    "path": "2-Sources.gz",
+    "sha256": "2bbbe4bf55987824c34f358e61513a5029fe51e253cbe96911c87ecbcf099d48"
+  },
+  "https://apt.pop-os.org/ubuntu/dists/noble-updates/InRelease": {
+    "path": "3-InRelease",
+    "sha256": "2eb1a5feb58dbb241b9ae4cf537c6ce13838ded04c12419ef6b476093b3b7231"
+  },
+  "https://apt.pop-os.org/ubuntu/dists/noble-updates/multiverse/binary-amd64/Packages.gz": {
+    "path": "4-Packages.gz",
+    "sha256": "91c4037617da232162abc8fa5709fdaa985d30082949dcf042d9ca452d4aa18b"
+  },
+  "https://apt.pop-os.org/ubuntu/dists/noble-updates/multiverse/source/Sources.gz": {
+    "path": "5-Sources.gz",
+    "sha256": "8435b7fe0588fd447a66d43734641e9bb27e6569278c04d5071f6dcec510c6c9"
+  },
+  "https://apt.pop-os.org/ubuntu/dists/noble-security/InRelease": {
+    "path": "6-InRelease",
+    "sha256": "e56daa3c9903f06da8161b4f0e61a747aab215647f4bfabbecd5655631200f09"
+  },
+  "https://apt.pop-os.org/ubuntu/dists/noble-security/multiverse/binary-amd64/Packages.gz": {
+    "path": "7-Packages.gz",
+    "sha256": "50c91ece48e4857940d508af311a5c270beec339828282853ce3412952e7d797"
+  },
+  "https://apt.pop-os.org/ubuntu/dists/noble-security/multiverse/source/Sources.gz": {
+    "path": "8-Sources.gz",
+    "sha256": "6896574b72fba13172728256420ad5bdb2d21192fd5198e9c6ed634cc6801e4b"
+  }
+}

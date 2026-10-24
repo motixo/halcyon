@@ -61,6 +61,7 @@ pub(super) struct LayoutEditor {
     resize_mode: bool,
     pub(super) selected: Option<Widget>,
     error: Option<String>,
+    exit_failed: bool,
 }
 
 impl LayoutEditor {
@@ -91,9 +92,10 @@ impl LayoutEditor {
 }
 
 impl Cards {
-    pub(super) fn layout_probe(id: window::Id, editing: bool) -> Task<Message> {
+    pub(super) fn layout_probe(&self, id: window::Id, editing: bool) -> Task<Message> {
         get_layer_surface(SctkLayerSurfaceSettings {
             id,
+            output: self.layer_output(),
             layer: if editing {
                 Layer::Overlay
             } else {
@@ -114,6 +116,10 @@ impl Cards {
     }
     pub(super) fn custom_layout(&self) -> bool {
         self.config.has_custom_positions()
+            // The legacy columns have fixed widths. Small logical outputs use
+            // the same bounded individual geometry as arranged widgets.
+            || self.screen_size[0] < 800.
+            || self.screen_size[1] < 500.
     }
     pub(super) fn widget_id(&self, widget: Widget) -> window::Id {
         self.ids[match widget {
@@ -294,27 +300,11 @@ impl Cards {
             .map(|p| crate::layout::decode(*p, self.widget_size(widget), self.screen_size))
             .unwrap_or_else(|| self.default_position(widget))
     }
-    /// Compositor blur behind each visible card of a frosted style: the
-    /// card's rounded rectangle inside the surface (not the shadow margin);
-    /// off for every other surface.
+    /// Decorative materials never activate native backdrop blur. Clear any
+    /// pending effect without changing card geometry, shadows or input regions.
     pub(super) fn blur_surfaces(&self) -> Task<Message> {
         use cosmic::iced::platform_specific::shell::commands::blur::blur;
-        let frosted = self.config.materials.widgets().is_some()
-            || self.config.theme_roles().is_some_and(|roles| roles.frosted);
-        let m = crate::widget_style::shadow_margin(&self.config);
-        let radius = crate::widget_style::corner_radius(&self.config);
-        Task::batch(Widget::ALL.map(|widget| {
-            let filled = match widget {
-                Widget::Clock => false,
-                Widget::Glance => self.config.glance_panel(),
-                _ => !self.config.transparent_widgets(),
-            };
-            let rects = (frosted && filled && self.config.widget_visible(widget)).then(|| {
-                let [width, height] = self.widget_size(widget);
-                crate::widget_style::rounded_rects(m, m, width, height, radius)
-            });
-            blur(self.widget_id(widget), rects).discard()
-        }))
+        Task::batch(Widget::ALL.map(|widget| blur(self.widget_id(widget), None).discard()))
     }
     /// The style's shadow margin around every widget surface, in pixels:
     /// (each side, both sides).
@@ -369,7 +359,12 @@ impl Cards {
                 let slack = 24.;
                 let top = ((height - total) / 2. - slack).max(0.);
                 let bottom = ((height + total) / 2. + slack).min(height);
-                vec![[0, top.floor() as u32, 360 + mu, (bottom - top).ceil() as u32]]
+                vec![[
+                    0,
+                    top.floor() as u32,
+                    360 + mu,
+                    (bottom - top).ceil() as u32,
+                ]]
             }
             _ => Vec::new(),
         }
@@ -386,7 +381,8 @@ impl Cards {
             custom: self.custom_layout(),
             sizes: Widget::BASE.map(|widget| {
                 if self.custom_layout() || widget == Widget::Glance {
-                    self.widget_size(widget).map(|value| value.ceil() as u32 + mu)
+                    self.widget_size(widget)
+                        .map(|value| value.ceil() as u32 + mu)
                 } else {
                     match widget {
                         Widget::Clock => [490 + mu, 250 + mu],
@@ -399,10 +395,21 @@ impl Cards {
         }
     }
     pub(super) fn sync_widget_surfaces(&mut self) -> Task<Message> {
+        if !self.output_known || self.selected_output.is_none() {
+            return Task::none();
+        }
         if let Some(config) = self.seed_glance_position() {
             return self.apply_config(config);
         }
         let snapshot = crate::layout_state::Snapshot {
+            display: Some(crate::layout_state::DisplayState {
+                output: self
+                    .selected_output
+                    .as_ref()
+                    .and_then(|output| output.name().map(str::to_owned)),
+                ready: true,
+                epoch: self.display_generation,
+            }),
             screen: self.screen_size,
             widgets: Widget::ALL
                 .into_iter()
@@ -512,6 +519,26 @@ impl Cards {
         Task::batch(tasks)
     }
     pub(super) fn arrange(&mut self) -> Task<Message> {
+        crate::config::with_nonblocking_locks(|| self.arrange_now())
+    }
+    fn arrange_now(&mut self) -> Task<Message> {
+        if !self.output_known {
+            return Task::none();
+        }
+        if self
+            .paused_layout
+            .as_ref()
+            .is_some_and(|draft| draft.exit_failed)
+        {
+            self.sidebar.show(Instant::now());
+            return Task::none();
+        }
+        if let Some(mut draft) = self.paused_layout.take() {
+            draft.active = true;
+            self.layout_editor = draft;
+            self.pause_note();
+            return self.replace_arrange_surface();
+        }
         if self.layout_editor.active {
             return Task::none();
         }
@@ -565,10 +592,13 @@ impl Cards {
             // A draft that couldn't be saved waits, without the keyboard.
             note.chain(self.note_surface_mode()),
             self.sync_widget_surfaces(),
-            destroy_layer_surface(self.ids[5]).chain(Self::layout_probe(self.ids[5], true)),
+            self.replace_arrange_surface(),
         ])
     }
     pub(super) fn commit_arrange(&mut self) -> bool {
+        crate::config::with_nonblocking_locks(|| self.commit_arrange_now())
+    }
+    fn commit_arrange_now(&mut self) -> bool {
         if !self.layout_editor.active {
             return true;
         }
@@ -579,11 +609,6 @@ impl Cards {
         {
             return true;
         }
-        let previous = crate::desktop::actions::history_store()
-            .ok()
-            .and_then(|s| s.latest_change().ok())
-            .flatten()
-            .map(|a| a.id);
         let mut baseline = self.layout_editor.baseline.clone();
         if self.layout_editor.reset {
             for widget in Widget::ALL {
@@ -609,20 +634,25 @@ impl Cards {
                 }
             }
         }
-        match crate::desktop::actions::in_action("Widget arrangement", || {
-            crate::desktop::actions::guarded(self.layout_editor.guard.as_ref(), || {
-                Config::save_layout_draft(
-                    &self.layout_editor.draft,
-                    &baseline,
-                    &self.layout_editor.sizes,
-                    &size_baseline,
-                    &self.layout_editor.implicit_positions,
-                    self.layout_editor.grid,
-                    self.layout_editor.saved_grid,
-                )
+        let (result, receipts) = crate::desktop::actions::with_receipts(|| {
+            crate::desktop::actions::in_action("Widget arrangement", || {
+                crate::desktop::actions::guarded(self.layout_editor.guard.as_ref(), || {
+                    Config::save_layout_draft(
+                        &self.layout_editor.draft,
+                        &baseline,
+                        &self.layout_editor.sizes,
+                        &size_baseline,
+                        &self.layout_editor.implicit_positions,
+                        self.layout_editor.grid,
+                        self.layout_editor.saved_grid,
+                    )
+                })
             })
-        }) {
+        });
+        self.layout_editor.session_actions.extend(receipts);
+        match result {
             Ok(config) => {
+                self.layout_editor.error = None;
                 self.config = config;
                 self.layout_editor.baseline = self.layout_editor.draft.clone();
                 self.layout_editor.baseline_sizes = self.layout_editor.sizes.clone();
@@ -631,13 +661,6 @@ impl Cards {
                 self.layout_editor.guard = Config::path()
                     .and_then(|p| crate::config::read_config_text(&p).ok())
                     .and_then(|t| crate::config::parse_config_text(t.as_deref()).ok());
-                if let Ok(store) = crate::desktop::actions::history_store() {
-                    if let Ok(Some(action)) = store.latest_change() {
-                        if previous.as_ref() != Some(&action.id) {
-                            self.layout_editor.session_actions.push(action);
-                        }
-                    }
-                }
             }
             Err(error) => {
                 self.layout_editor.error = Some(format!("Could not save: {error}"));
@@ -646,35 +669,140 @@ impl Cards {
         }
         true
     }
+    /// Retire the input identity on every entry/exit. Deferred creation is
+    /// checked against the same epoch as hotplug, so an old task cannot reopen
+    /// an exclusive layer over a newer session or a different output.
+    fn replace_arrange_surface(&mut self) -> Task<Message> {
+        let old = std::mem::replace(&mut self.ids[5], window::Id::unique());
+        self.display_generation += 1;
+        destroy_layer_surface(old).chain(Task::done(cosmic::Action::App(Message::ArrangeSurface(
+            self.display_generation,
+        ))))
+    }
+
     pub(super) fn finish_arrange(&mut self, save: bool) -> Task<Message> {
+        crate::config::with_nonblocking_locks(|| self.finish_arrange_now(save))
+    }
+    fn finish_arrange_now(&mut self, save: bool) -> Task<Message> {
         if !self.layout_editor.active {
             return Task::none();
         }
-        if save {
-            if !self.commit_arrange() {
-                return Task::none();
+        let result = if save {
+            if self.commit_arrange() {
+                Ok(())
+            } else {
+                Err(self
+                    .layout_editor
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "Could not save arrangement".into()))
             }
         } else {
-            if let Err(error) =
-                crate::desktop::actions::cancel_arrangement(&self.layout_editor.session_actions)
-            {
-                self.layout_editor.error = Some(error);
+            crate::desktop::actions::cancel_arrangement(&self.layout_editor.session_actions)
+        };
+        // Input release never depends on rollback success. Preserve the exact
+        // session receipt and draft for explicit recovery outside the overlay.
+        let mut editor = std::mem::take(&mut self.layout_editor);
+        let reload = !editor.session_actions.is_empty() || result.is_err();
+        editor.active = false;
+        editor.drag = None;
+        if let Err(error) = result {
+            editor.error = Some(error);
+            editor.exit_failed = true;
+            self.paused_layout = Some(editor);
+            self.sidebar.show(Instant::now());
+        }
+        // Retire the captured probe before applying config. A changed display
+        // pin then advances the epoch again, invalidating this Arrange
+        // continuation while keeping migration's fresh probe/IDs intact.
+        let release = self.replace_arrange_surface();
+        // A no-op exit preserves the current in-memory configuration, as
+        // before; only a transaction or failure needs a storage refresh.
+        if reload && let Ok(config) = Config::try_load() {
+            release.chain(self.apply_config(config))
+        } else {
+            release
+        }
+    }
+
+    pub(super) fn retry_arrange_cancel(&mut self) -> Task<Message> {
+        crate::config::with_nonblocking_locks(|| {
+            let Some(editor) = self.paused_layout.as_mut().filter(|e| e.exit_failed) else {
                 return Task::none();
-            }
-            if !self.layout_editor.session_actions.is_empty() {
-                if let Ok(config) = Config::try_load() {
-                    self.config = config;
+            };
+            match crate::desktop::actions::cancel_arrangement(&editor.session_actions) {
+                Ok(()) => {
+                    self.paused_layout = None;
+                    if let Ok(config) = Config::try_load() {
+                        return self.apply_config(config);
+                    }
+                    self.sync_widget_surfaces()
+                }
+                Err(error) => {
+                    editor.error = Some(error);
+                    Task::none()
                 }
             }
+        })
+    }
+    pub(super) fn resume_arrange(&mut self) -> Task<Message> {
+        let Some(editor) = self.paused_layout.as_mut() else {
+            // A queued recovery click after Keep/Retry cannot start a new session.
+            return Task::none();
+        };
+        editor.exit_failed = false;
+        self.arrange()
+    }
+    pub(super) fn keep_arrange_saved(&mut self) -> Task<Message> {
+        if self.paused_layout.as_ref().is_some_and(|e| e.exit_failed) {
+            self.paused_layout = None;
+            if let Ok(config) = Config::try_load() {
+                return self.apply_config(config);
+            }
+            return self.sync_widget_surfaces();
         }
-        self.layout_editor = LayoutEditor::default();
-        // Recreate the passive measuring surface before raising the individual cards.
-        let tools = Task::batch(self.sync_tool_surfaces());
-        destroy_layer_surface(self.ids[5])
-            .chain(Self::layout_probe(self.ids[5], false))
-            .chain(self.recreate_widget_surfaces())
-            .chain(tools)
-            .chain(self.note_surface_mode())
+        Task::none()
+    }
+
+    pub(super) fn arrange_recovery_view(&self) -> Option<Element<'_, Message>> {
+        let editor = self.paused_layout.as_ref().filter(|e| e.exit_failed)?;
+        let content = column::with_children(vec![
+            text::heading("Arrange paused").into(),
+            text::body("The desktop is available. Your draft is kept in this session.").into(),
+            cosmic::widget::scrollable(text::body(
+                editor
+                    .error
+                    .as_deref()
+                    .unwrap_or("Could not finish arrangement"),
+            ))
+            .height(Length::Fill)
+            .into(),
+            cosmic::widget::button::text("Retry cancel")
+                .id("arrange-retry".into())
+                .on_press(Message::LayoutRetryCancel)
+                .into(),
+            cosmic::widget::button::text("Resume editing")
+                .id("arrange-resume".into())
+                .on_press(Message::LayoutResume)
+                .into(),
+            cosmic::widget::button::text("Keep saved layout")
+                .id("arrange-keep".into())
+                .on_press(Message::LayoutKeepSaved)
+                .into(),
+            text::caption(
+                "Keep saved layout discards the unsaved draft. Completed changes stay in history.",
+            )
+            .into(),
+        ])
+        .spacing(10);
+        Some(
+            container(content)
+                .padding(12)
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .class(cosmic::theme::Container::Card)
+                .into(),
+        )
     }
     pub(super) fn reset_layout(&mut self) -> Task<Message> {
         match crate::desktop::actions::in_action("Reset widget arrangement", || {
@@ -793,7 +921,9 @@ impl Cards {
             .into_iter()
             .filter(|widget| self.config.widget_visible(*widget))
             .collect();
-        let place = |widget: Widget, others: &[[f32; 4]], positions: &mut BTreeMap<String, [f32; 2]>| {
+        let place = |widget: Widget,
+                     others: &[[f32; 4]],
+                     positions: &mut BTreeMap<String, [f32; 2]>| {
             let size = self.widget_size(widget);
             let at = self.position_from(widget, positions);
             // No room: it stays where it was put; the desktop keeps it off
@@ -817,9 +947,12 @@ impl Cards {
             }
             None => {
                 let mut placed = Vec::new();
-                let order = first
-                    .into_iter()
-                    .chain(visible.iter().copied().filter(|widget| Some(*widget) != first));
+                let order = first.into_iter().chain(
+                    visible
+                        .iter()
+                        .copied()
+                        .filter(|widget| Some(*widget) != first),
+                );
                 for widget in order {
                     if Some(widget) != first {
                         place(widget, &placed, positions);
@@ -917,6 +1050,9 @@ impl Cards {
         rebuild.chain(tools)
     }
     fn recreate_widget_surfaces(&mut self) -> Task<Message> {
+        if !self.output_known || self.selected_output.is_none() {
+            return Task::none();
+        }
         self.surface_geometry = Some(self.surface_geometry());
         self.surface_inputs = Some(Widget::BASE.map(|widget| self.card_input_rects(widget)));
         let mut create = Vec::new();
@@ -935,6 +1071,7 @@ impl Cards {
             let (mi, mu) = self.shadow_px();
             let mut surface = SctkLayerSurfaceSettings {
                 id,
+                output: self.layer_output(),
                 layer: Layer::Bottom,
                 keyboard_interactivity: KeyboardInteractivity::None,
                 anchor: Anchor::TOP | Anchor::LEFT,
@@ -1369,6 +1506,47 @@ mod tests {
     use super::*;
     use cosmic::Application;
     #[test]
+    fn decorative_finishes_only_clear_native_blur_without_changing_geometry() {
+        use cosmic::iced::futures::StreamExt;
+        use cosmic::iced::runtime::{Action, platform_specific, task};
+        for finish in std::iter::once(None).chain(
+            crate::materials::Kind::ALL.map(|kind| Some(crate::materials::Finish::new(kind))),
+        ) {
+            let mut config = Config::default();
+            config.appearance.family = Some(crate::desktop_theme::Family::Frosted);
+            config.materials.shared = finish;
+            config.glance.enabled = true;
+            config.glance.own_background = true;
+            config.glance.style = crate::config::GlanceStyle::Transparent;
+            let (cards, _) = Cards::init(Core::default(), config);
+            let before: Vec<_> = Widget::ALL.map(|w| cards.card_input_rects(w)).into();
+            let mut cleared = Vec::new();
+            if let Some(mut stream) = task::into_stream(cards.blur_surfaces()) {
+                cosmic::iced::futures::executor::block_on(async {
+                    while let Some(action) = stream.next().await {
+                        match action {
+                            Action::PlatformSpecific(platform_specific::Action::Wayland(
+                                platform_specific::wayland::Action::BlurSurface(id, region),
+                            )) => {
+                                assert!(region.is_none(), "{finish:?}");
+                                cleared.push(id);
+                            }
+                            _ => panic!("clearing blur must not move or recreate a surface"),
+                        }
+                    }
+                });
+            }
+            assert_eq!(cleared.len(), Widget::ALL.len());
+            for (widget, input) in Widget::ALL.into_iter().zip(before) {
+                assert!(cleared.contains(&cards.widget_id(widget)));
+                assert_eq!(cards.card_input_rects(widget), input);
+            }
+            assert!(!cards.config.glance_panel());
+            assert!(cards.core.auto_blur().is_empty());
+        }
+    }
+
+    #[test]
     fn sized_native_cards_fill_their_surface_and_keep_busy_agendas_scrollable() {
         use crate::native_test::Native;
         use cosmic::iced::{Event, Size};
@@ -1380,6 +1558,7 @@ mod tests {
         config.glance.style = crate::config::GlanceStyle::Panel;
         config.glance.initialized = true;
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         let today = Local::now().date_naive();
         let calendar = CalendarData {
@@ -1501,6 +1680,7 @@ mod tests {
         }
         let initial = std::fs::read(Config::path().unwrap()).unwrap();
         let (mut cards, _) = Cards::init(Core::default(), Config::load());
+        let _output = cards.test_output_ready();
         cards.screen_size = [1280., 800.];
         let mut native = Native::new(Size::new(1280., 800.));
         let theme = cosmic::Theme::dark();
@@ -1558,29 +1738,6 @@ mod tests {
     }
 
     #[test]
-    fn a_display_change_rebuilds_every_surface_once_settled() {
-        let mut config = Config::default();
-        config.notes.enabled = true;
-        let (mut cards, _) = Cards::init(Core::default(), config);
-        cards.screen_size = [1920., 1080.];
-        let _ = cards.sync_widget_surfaces();
-        assert!(cards.surface_geometry.is_some());
-        // Display events right after startup are the startup burst.
-        let _ = cards.update(Message::DisplaysChanged);
-        assert_eq!(cards.display_generation, 0);
-        cards.started = std::time::Instant::now() - std::time::Duration::from_secs(10);
-        let _ = cards.update(Message::DisplaysChanged);
-        let _ = cards.update(Message::DisplaysChanged);
-        assert_eq!(cards.display_generation, 2);
-        // Only the latest change rebuilds; it starts from nothing cached.
-        let _ = cards.update(Message::RebuildSurfaces(1));
-        assert!(cards.surface_geometry.is_some());
-        let _ = cards.update(Message::RebuildSurfaces(2));
-        assert!(cards.surface_geometry.is_some() && cards.surface_inputs.is_some());
-        assert!(cards.tool_geometry_known(Widget::Notes));
-    }
-
-    #[test]
     fn widgets_on_the_desktop_never_stack() {
         // The reported layout: Focus saved almost exactly on top of Notes,
         // Projects across the system monitor.
@@ -1597,9 +1754,15 @@ mod tests {
             config.widget_positions.insert(key.into(), at);
         }
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1039.];
         assert!(cards.custom_layout());
-        let shown = [Widget::Devbox, Widget::Projects, Widget::Focus, Widget::Notes];
+        let shown = [
+            Widget::Devbox,
+            Widget::Projects,
+            Widget::Focus,
+            Widget::Notes,
+        ];
         let rects: Vec<[f32; 4]> = shown
             .iter()
             .map(|widget| {
@@ -1631,6 +1794,7 @@ mod tests {
         let mut config = Config::default();
         config.widget_sizes.insert("weather".into(), [480., 320.]);
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         assert!(cards.custom_layout());
         let (mi, mu) = cards.shadow_px();
@@ -1641,6 +1805,7 @@ mod tests {
         // The default right column: only the band its cards fill, so the
         // rest of the full-height surface passes clicks to the tools.
         let (mut cards, _) = Cards::init(Core::default(), Config::default());
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         assert!(!cards.custom_layout());
         let column = cards.card_input_rects(Widget::Weather);
@@ -1663,6 +1828,7 @@ mod tests {
         config.widget_sizes.insert("music".into(), [480., 320.]);
         config.widget_sizes.insert("focus".into(), [480., 320.]);
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         cards.screen_size = [1920., 1080.];
         assert!(cards.custom_layout());
         for widget in [Widget::Weather, Widget::Music, Widget::Focus] {
@@ -1693,6 +1859,7 @@ mod tests {
         config.widget_positions.insert("clock".into(), [0.7, 0.7]);
         config.widget_positions.insert("glance".into(), [0.3, 0.4]);
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         let _ = cards.arrange();
         cards.layout_defaults();
         assert_eq!(cards.layout_editor.draft["clock"], [0.7, 0.7]);
@@ -1718,6 +1885,7 @@ mod tests {
             return;
         }
         let (mut app, _) = Cards::init(Core::default(), Config::load());
+        let _output = app.test_output_ready();
         let _ = app.arrange();
         app.put_layout_point(Widget::Weather, [600., 300.]);
         let moved = app.layout_editor.draft["weather"];
@@ -1772,6 +1940,7 @@ mod tests {
         let path = Config::path().unwrap();
         let before = std::fs::read(&path).unwrap();
         let (mut app, _) = Cards::init(Core::default(), Config::load());
+        let _output = app.test_output_ready();
         for save in [false, true] {
             let _ = app.update(Message::Arrange);
             let start = app.position_from(Widget::Weather, &app.layout_editor.draft);
@@ -1853,3 +2022,6 @@ pub(super) fn set_input_zone<M>(id: window::Id, rects: &[[u32; 4]]) -> Task<M> {
         )),
     ))
 }
+
+#[cfg(test)]
+mod input_safety_tests;

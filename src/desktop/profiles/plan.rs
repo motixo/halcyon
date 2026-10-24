@@ -3,7 +3,7 @@
 //! `plan` reads the current desktop and builds one checked patch through
 //! the domain drafts (a fresh `PanelDraft` per panel, one `AppearanceDraft`
 //! for every Appearance edit) plus one widget patch against the current raw
-//! configuration. It writes nothing and runs no helper. `apply` commits the
+//! configuration. It writes nothing and never starts the add-on. `apply` commits the
 //! plan as a single owned transaction of the store, which re-reads every
 //! original under lock, so a plan that went stale conflicts instead of
 //! overwriting newer changes.
@@ -228,6 +228,40 @@ pub struct ProfilePlan {
 }
 
 impl ProfilePlan {
+    /// The setup wizard's explicit choice may enable or disable Islands.
+    /// Profiles and automatic switches preserve the existing enabled state.
+    pub(crate) fn choose_islands(
+        &mut self,
+        store: &DesktopStore,
+        kind: PanelKind,
+        enabled: bool,
+    ) -> Result<(), DesktopError> {
+        if !crate::desktop::islands::Installation::discover(store).installed() {
+            return Err(DesktopError::Io("Islands is no longer installed".into()));
+        }
+        let key = crate::desktop::islands::key(kind);
+        let original = if let Some(entry) = self.patch.get(&key) {
+            entry.original.clone()
+        } else if let Some((_, original)) = self.patch.guards().find(|(guard, _)| **guard == key) {
+            original.clone()
+        } else {
+            store.read_user(&key)?
+        };
+        let raw = self
+            .patch
+            .get(&key)
+            .and_then(|entry| entry.desired.as_ref())
+            .or(original.as_ref());
+        let mut settings = raw
+            .map(RawValue::decode::<dock_islands_core::Settings>)
+            .transpose()
+            .map_err(|e| DesktopError::Io(e.to_string()))?
+            .unwrap_or_default();
+        settings.enabled = enabled;
+        self.patch
+            .set(key, original, Some(RawValue::encode(&settings)?));
+        Ok(())
+    }
     /// Whether nothing would be written.
     pub fn is_empty(&self) -> bool {
         self.patch.is_empty() && self.widget.is_empty()
@@ -280,7 +314,7 @@ impl ProfilePlan {
 }
 
 /// Plans applying exactly the `selected` domains of `profile` to the
-/// current desktop. Reads only; never creates files or runs helpers.
+/// current desktop. Reads only; installation discovery never starts the add-on.
 pub fn plan(
     store: &DesktopStore,
     installed: &Installed,
@@ -328,6 +362,7 @@ pub fn plan(
             ));
     }
     let mut config_value = None;
+    let mut unavailable_bars = BTreeSet::new();
     for domain in Domain::ALL
         .into_iter()
         .filter(|domain| selected.contains(domain))
@@ -346,8 +381,16 @@ pub fn plan(
                     _ => (PanelKind::Panel, profile.panel.as_ref()),
                 };
                 if profile.appearance_only
-                    && PanelDraft::load(store, kind).is_ok_and(|draft| !draft.installed())
+                    && let Ok(draft) = PanelDraft::load(store, kind)
+                    && !draft.installed()
                 {
+                    // Absence is part of the reviewed native scope. If this
+                    // bar appears before Apply, generation must be reviewed again.
+                    let snapshot = draft.into_snapshot();
+                    for key in snapshot.keys() {
+                        result.patch.guard(key.clone(), snapshot.user(key).cloned());
+                    }
+                    unavailable_bars.insert(domain);
                     part.warnings.push(format!(
                         "{} is unavailable; its appearance is kept for another desktop",
                         kind.title()
@@ -365,6 +408,16 @@ pub fn plan(
                 let relink = super::themes::resets_windows(profile);
                 if let Some(patch) = profile
                     .appearance
+                    .as_ref()
+                    .map(|look| {
+                        if profile.appearance_only {
+                            // Read compatibility preserves old effect fields;
+                            // color application must write neither On nor Off.
+                            super::themes::visual_appearance(look)
+                        } else {
+                            look.clone()
+                        }
+                    })
                     .as_ref()
                     .and_then(|look| plan_appearance(store, installed, look, relink, &mut part))
                 {
@@ -520,6 +573,15 @@ pub fn plan(
             Err(error) => result.blocking.push(error.to_string()),
         }
     }
+    if selected.contains(&Domain::WidgetStyle)
+        && let Some(Ok(current)) = &config_value
+    {
+        if let Err(reason) =
+            native_palette_provenance(profile, selected, &unavailable_bars, current, &mut result)
+        {
+            result.blocking.push(reason);
+        }
+    }
     // The combined widget result must pass the same validation as every
     // configuration write.
     if let Some((current, _)) = config_value.as_ref().and_then(|value| value.as_ref().ok())
@@ -534,6 +596,7 @@ pub fn plan(
             })
             .and_then(|()| config::check_config_value(&value).map(drop));
         if outcome.is_ok()
+            && crate::desktop::islands::Installation::discover(store).installed()
             && result
                 .widget
                 .changes()
@@ -647,33 +710,24 @@ fn plan_panel(
             kind.title()
         ));
     }
-    if let Some(gap) = look.island_gap {
-        if let Some(mut islands) = draft.islands().known().cloned().filter(|s| s.enabled) {
-            if crate::desktop::islands::Client::connect(store)
-                .and_then(|mut c| c.capabilities())
-                .is_ok()
-            {
-                islands.gap = gap;
-                draft.set_islands(islands);
-            } else {
-                part.warnings
-                    .push("Islands spacing is kept because its component is unavailable".into());
-            }
+    let installed_islands = crate::desktop::islands::Installation::discover(store).installed();
+    if let Some(gap) = look.island_gap.filter(|_| installed_islands) {
+        if let Some(mut islands) = draft.islands().known().cloned() {
+            islands.gap = gap;
+            draft.set_islands(islands);
         }
     }
-    if let Some(islands) = &look.islands {
-        if islands.enabled
-            && crate::desktop::islands::Client::connect(store)
-                .and_then(|mut c| c.capabilities())
-                .is_err()
-        {
-            part.blocked
-                .push("A compatible Islands panel component is required".into());
-        } else if let Some(current) = draft.islands().known().cloned() {
-            draft.set_islands(keep_arrangement(islands.clone(), current));
-        } else {
-            part.blocked
-                .push("Unsupported island settings are kept".into());
+    if installed_islands {
+        if let Some(islands) = &look.islands {
+            if let Some(current) = draft.islands().known().cloned() {
+                // Applying a look does not activate an installed but disabled add-on.
+                let mut desired = keep_arrangement(islands.clone(), current.clone());
+                desired.enabled = current.enabled;
+                draft.set_islands(desired);
+            } else {
+                part.blocked
+                    .push("Unsupported island settings are kept".into());
+            }
         }
     }
     let values = match look.values() {
@@ -735,7 +789,12 @@ fn plan_panel(
             )),
         }
     }
-    let patch = draft.patch();
+    let mut patch = draft.patch();
+    if look.background.is_some() {
+        let key = ConfigKey::new(kind.namespace(), 1, "background").expect("panel key");
+        let snapshot = draft.into_snapshot();
+        patch.guard(key.clone(), snapshot.user(&key).cloned());
+    }
     for key in patch.keys() {
         let label = format!("{} {}", kind.title(), panels::key_label(key.key()));
         if !part.changes.contains(&label) {
@@ -875,7 +934,23 @@ fn plan_appearance(
             }
         }
     }
-    let plan = draft.plan();
+    let mut plan = draft.plan();
+    // A reviewed generation can accept already-equal roles. They still need
+    // guards before its provenance is committed; a no-op draft has no edits.
+    for variant in ThemeVariant::ALL {
+        if let Some(look) = look.variant(variant) {
+            for (name, color) in [
+                ("bg_color", &look.background),
+                ("primary_container_bg", &look.primary),
+            ] {
+                if color.is_some() {
+                    let key = appearance::theme::builder_key(variant, name);
+                    plan.patch
+                        .guard(key.clone(), draft.snapshot().user(&key).cloned());
+                }
+            }
+        }
+    }
     for blocked in &plan.blocked {
         part.blocked.push(format!(
             "{} has a value this version doesn’t recognize ({}).",
@@ -1321,6 +1396,126 @@ fn capitalize(text: &str) -> String {
     }
 }
 
+/// A profile marker is a generation request, not proof. Only accepted native
+/// roles in the same transaction can establish it. Partial applications retain
+/// existing proof only when its family, tint and explicit ownership are unchanged.
+fn native_palette_provenance(
+    profile: &Profile,
+    selected: &BTreeSet<Domain>,
+    unavailable_bars: &BTreeSet<Domain>,
+    (current, effective): &Loaded,
+    result: &mut ProfilePlan,
+) -> Result<(), String> {
+    const MARKER: &str = "/appearance/native_mode_palettes";
+    let original = widget::get(current, MARKER);
+    let requested = result
+        .widget
+        .iter()
+        .find(|(p, _)| *p == MARKER)
+        .map(|(_, e)| e.desired.clone());
+    let mut next = current.clone();
+    for (pointer, entry) in result.widget.changes() {
+        widget::put(&mut next, pointer, entry.desired.clone())?;
+    }
+    let before = config::check_config_value(effective)?.appearance;
+    let after = config::check_config_value(&next)?.appearance;
+    let same_owner = before.family == after.family
+        && before.accent == after.accent
+        && before.overrides == after.overrides;
+    let touched = |key: &ConfigKey| {
+        result.patch.get(key).is_some() || result.patch.guards().any(|(guard, _)| guard == key)
+    };
+    let native_selected = [Domain::Appearance, Domain::Dock, Domain::Panel]
+        .into_iter()
+        .all(|domain| {
+            selected.contains(&domain)
+                && result
+                    .domains
+                    .iter()
+                    .any(|part| part.domain == domain && part.blocked.is_empty())
+        });
+    let complete_roles = ThemeVariant::ALL.into_iter().all(|variant| {
+        profile
+            .appearance
+            .as_ref()
+            .and_then(|look| look.variant(variant))
+            .is_some_and(|look| {
+                [
+                    ("bg_color", &look.background),
+                    ("primary_container_bg", &look.primary),
+                ]
+                .into_iter()
+                .all(|(name, color)| {
+                    let key = appearance::theme::builder_key(variant, name);
+                    touched(&key)
+                        && color.as_ref().is_some_and(|color| {
+                            !matches!(color, super::format::ColorChoice::Auto)
+                                || after.overrides
+                                    & crate::desktop::actions::override_for_native(&key)
+                                    != 0
+                        })
+                })
+            })
+    });
+    let complete_bars = [
+        (Domain::Dock, PanelKind::Dock, &profile.dock),
+        (Domain::Panel, PanelKind::Panel, &profile.panel),
+    ]
+    .into_iter()
+    .all(|(domain, kind, look)| {
+        look.as_ref().is_some_and(|look| look.background.is_some())
+            && (unavailable_bars.contains(&domain)
+                || touched(&ConfigKey::new(kind.namespace(), 1, "background").expect("panel key")))
+    });
+    let generated = requested
+        .as_ref()
+        .and_then(|v| v.as_ref())
+        .and_then(|v| v.as_u64())
+        == Some(1)
+        && after.family.is_some()
+        && native_selected
+        && complete_roles
+        && complete_bars;
+    let explicitly_unproven = requested
+        .as_ref()
+        .is_some_and(|value| value.as_ref().and_then(|v| v.as_u64()) != Some(1));
+    let proven =
+        generated || (before.native_mode_palettes == 1 && same_owner && !explicitly_unproven);
+    let desired = if proven {
+        Some(serde_json::json!(1))
+    } else if original.is_none() {
+        None
+    } else {
+        Some(serde_json::json!(0))
+    };
+    // Guard identity even when a repair only carries the generation request.
+    for pointer in [
+        "/appearance/family",
+        "/appearance/accent",
+        "/appearance/overrides",
+    ] {
+        if !result.widget.iter().any(|(p, _)| p == pointer) {
+            let value = widget::get(current, pointer);
+            result.widget.set(pointer, value.clone(), value)?;
+        }
+    }
+    result
+        .widget
+        .set(MARKER, original.clone(), desired.clone())?;
+    if let Some(part) = result
+        .domains
+        .iter_mut()
+        .find(|part| part.domain == Domain::WidgetStyle)
+    {
+        let label = widget::label(MARKER);
+        part.changes.retain(|change| change != &label);
+        if original != desired {
+            part.changes.push(label);
+        }
+    }
+    Ok(())
+}
+
 fn plan_widgets(
     (current, effective): &Loaded,
     section: &serde_json::Value,
@@ -1430,11 +1625,7 @@ fn apply_with_source(
             )
         })
         .collect();
-    let mut component = if islands.iter().any(|(_, s)| s.enabled) {
-        let mut c = crate::desktop::islands::Client::connect(store).map_err(DesktopError::Io)?;
-        c.capabilities().map_err(DesktopError::Io)?;
-        Some(c)
-    } else if !islands.is_empty() {
+    let mut component = if !islands.is_empty() {
         crate::desktop::islands::Client::connect(store).ok()
     } else {
         None

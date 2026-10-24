@@ -1,0 +1,503 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "halcyon-islands-catalog-v2",
+  "type": "object",
+  "required": [
+    "format",
+    "version",
+    "cohorts"
+  ],
+  "properties": {
+    "format": {
+      "const": "halcyon-islands-catalog"
+    },
+    "version": {
+      "const": 2
+    },
+    "cohorts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "distribution",
+          "suite",
+          "architecture",
+          "packages",
+          "processes",
+          "payload_sha256",
+          "qualification",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "distribution": {
+            "type": "string"
+          },
+          "suite": {
+            "type": "string"
+          },
+          "architecture": {
+            "type": "string"
+          },
+          "packages": {
+            "type": "object",
+            "minProperties": 4
+          },
+          "processes": {
+            "type": "object",
+            "minProperties": 3
+          },
+          "payload_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "qualification": {
+            "enum": [
+              "native-session",
+              "development",
+              "source-only"
+            ]
+          },
+          "evidence": {
+            "type": "object",
+            "required": [
+              "id",
+              "image_sha256",
+              "scope"
+            ]
+          },
+          "runtime": {
+            "type": "object",
+            "required": [
+              "version",
+              "processes",
+              "constraints",
+              "unmeasured",
+              "configuration",
+              "host_mapped"
+            ],
+            "properties": {
+              "version": {
+                "const": 4
+              },
+              "processes": {
+                "type": "object",
+                "minProperties": 3,
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "executable",
+                    "sha256",
+                    "mapped",
+                    "count",
+                    "lifecycle"
+                  ],
+                  "properties": {
+                    "lifecycle": {
+                      "enum": [
+                        "session",
+                        "panel-child"
+                      ]
+                    },
+                    "count": {
+                      "oneOf": [
+                        {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 64
+                        },
+                        {
+                          "const": "configured"
+                        }
+                      ]
+                    },
+                    "executable": {
+                      "type": "string"
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{64}$"
+                    },
+                    "mapped": {
+                      "type": "object"
+                    }
+                  },
+                  "allOf": [
+                    {
+                      "if": {
+                        "properties": {
+                          "lifecycle": {
+                            "const": "panel-child"
+                          }
+                        }
+                      },
+                      "then": {
+                        "properties": {
+                          "count": {
+                            "const": "configured"
+                          }
+                        }
+                      },
+                      "else": {
+                        "properties": {
+                          "count": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 64
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              },
+              "constraints": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "kernel_release": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "kernel_version_sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "module_versions": {
+                    "type": "object",
+                    "propertyNames": {
+                      "pattern": "^[A-Za-z0-9_]+$"
+                    },
+                    "additionalProperties": {
+                      "type": "object",
+                      "minProperties": 1,
+                      "additionalProperties": false,
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "srcversion": {
+                          "type": "string",
+                          "minLength": 1
+                        }
+                      }
+                    }
+                  },
+                  "drm_devices": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "vendor",
+                        "device",
+                        "subsystem_vendor",
+                        "subsystem_device",
+                        "pci_class",
+                        "drivers",
+                        "virtio_features",
+                        "primary_nodes",
+                        "render_nodes"
+                      ],
+                      "properties": {
+                        "vendor": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "device": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "subsystem_vendor": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "subsystem_device": {
+                          "type": "string",
+                          "pattern": "^0x[0-9a-f]{4}$"
+                        },
+                        "pci_class": {
+                          "type": "string",
+                          "pattern": "^0x03[0-9a-f]{4}$"
+                        },
+                        "drivers": {
+                          "type": "array",
+                          "minItems": 1,
+                          "maxItems": 8,
+                          "items": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          }
+                        },
+                        "virtio_features": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "pattern": "^[01]{64}(?:[01]{64})?$"
+                        },
+                        "primary_nodes": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 8
+                        },
+                        "render_nodes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 8
+                        }
+                      },
+                      "allOf": [
+                        {
+                          "if": {
+                            "anyOf": [
+                              {
+                                "properties": {
+                                  "drivers": {
+                                    "contains": {
+                                      "const": "virtio-pci"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "properties": {
+                                  "vendor": {
+                                    "const": "0x1af4"
+                                  },
+                                  "device": {
+                                    "const": "0x1050"
+                                  }
+                                }
+                              }
+                            ]
+                          },
+                          "then": {
+                            "properties": {
+                              "virtio_features": {
+                                "type": "string"
+                              },
+                              "drivers": {
+                                "minItems": 2,
+                                "maxItems": 2,
+                                "prefixItems": [
+                                  {},
+                                  {
+                                    "const": "virtio-pci"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "unmeasured": {
+                "const": [
+                  "previously-read-resources",
+                  "kernel-bytes",
+                  "driver-firmware",
+                  "anonymous-code"
+                ]
+              },
+              "configuration": {
+                "type": "object",
+                "required": [
+                  "resolver",
+                  "max_outputs",
+                  "applets",
+                  "native_source"
+                ],
+                "properties": {
+                  "resolver": {
+                    "const": "cosmic-panel-ca20ce3-islands-v2"
+                  },
+                  "max_outputs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 32
+                  },
+                  "applets": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": [
+                        "process",
+                        "args"
+                      ],
+                      "properties": {
+                        "process": {
+                          "type": "string"
+                        },
+                        "args": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "native_source": {
+                    "const": {
+                      "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
+                      "patch_sha256": "56a7ae6237cf37f99ed5884eb0c976d2d711581b928e28a5d14822ef5e162845",
+                      "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
+                      "islands_sha256": "28ae30ded1bc2060b1db72f28978408661691b2916fb65d6358462cafec25985"
+                    }
+                  }
+                }
+              },
+              "host_mapped": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            }
+          },
+          "runtime_compatibility": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "evidence_id",
+                "reason"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "evidence_id": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "runtime_target": {
+            "type": "object",
+            "required": [
+              "version",
+              "scope",
+              "id",
+              "qualification_cohort_id",
+              "payload_sha256",
+              "evidence_id",
+              "profile_id",
+              "equivalence_id",
+              "system",
+              "packages",
+              "installed_files",
+              "dependency_review",
+              "native_scope",
+              "work"
+            ],
+            "properties": {
+              "version": {
+                "const": 1
+              },
+              "scope": {
+                "const": "islands-runtime"
+              },
+              "installed_files": {
+                "type": "object",
+                "minProperties": 1,
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "sha256",
+                    "size",
+                    "kind",
+                    "resolution",
+                    "package",
+                    "archive_path",
+                    "source_identity",
+                    "reason"
+                  ],
+                  "properties": {
+                    "size": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 536870912
+                    },
+                    "kind": {
+                      "enum": [
+                        "executable",
+                        "library",
+                        "loader",
+                        "resource"
+                      ]
+                    },
+                    "resolution": {
+                      "const": "root-contained"
+                    }
+                  }
+                }
+              }
+            },
+            "$comment": "Semantic provenance, graph/profile identities and exact declared work are checked by runtime_target.valid_target, never inferred from package names."
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "qualification": {
+                  "const": "native-session"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "runtime",
+                "runtime_compatibility",
+                "runtime_target"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "startup_policy": {
+      "const": {
+        "version": 1,
+        "id": "cosmic-1.10-1.11-startup-v1",
+        "families": [
+          "1.10",
+          "1.11"
+        ],
+        "assurance": "supported-family-probed-startup-not-hardware-qualification",
+        "native_source": {
+          "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
+          "patch_sha256": "56a7ae6237cf37f99ed5884eb0c976d2d711581b928e28a5d14822ef5e162845",
+          "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
+          "islands_sha256": "28ae30ded1bc2060b1db72f28978408661691b2916fb65d6358462cafec25985"
+        },
+        "binary_sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+        "protocol": 1,
+        "runtime_probe": 1,
+        "max_outputs": 32
+      }
+    }
+  },
+  "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v4 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness. Panel-child counts are configured at launch from qualified desktop Exec bindings and effective COSMIC config; session counts remain fixed. Configuration absence is not a generic missing-process exemption. Encoded catalog bytes are bounded by bundle_contract.CATALOG_BYTES in the shared opened-file reader. Ordinary records use RECORD_BYTES. Catalog policy v2 separates the runtime target from the unchanged full cohort identity; capacity is not native qualification."
+}

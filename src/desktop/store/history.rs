@@ -77,6 +77,51 @@ impl DesktopStore {
         latest: &LatestChange,
         mut conflicts: Option<&mut Vec<String>>,
     ) -> Result<(DesktopPatch, Option<WidgetPatch>), DesktopError> {
+        if latest.owner == Owner::Recovery {
+            let mut patch = DesktopPatch::exact();
+            for entry in latest.change.entries() {
+                let current = self.read_user(&entry.key)?;
+                if !exact_equal(&current, &entry.after) {
+                    if let Some(conflicts) = conflicts.as_deref_mut() {
+                        conflicts.push(entry.key.to_string());
+                        patch.guard(entry.key.clone(), current);
+                        continue;
+                    }
+                    return Err(DesktopError::Conflict(vec![entry.key.clone()]));
+                }
+                patch.set(entry.key.clone(), current, entry.before.clone());
+            }
+            let mut widgets = latest
+                .widget
+                .as_ref()
+                .map(WidgetChange::reverse)
+                .transpose()
+                .map_err(DesktopError::Io)?;
+            if let Some(widgets) = &mut widgets {
+                let (raw, _) = automatic::read_config(self).map_err(DesktopError::Io)?;
+                let entries = widgets
+                    .iter()
+                    .map(|(p, e)| (p, e.clone()))
+                    .collect::<Vec<_>>();
+                for (pointer, entry) in entries {
+                    let current = widget::get(&raw, pointer);
+                    if current != entry.original {
+                        let Some(conflicts) = conflicts.as_deref_mut() else {
+                            return Err(DesktopError::FieldConflict {
+                                keys: vec![],
+                                fields: vec![widget::label(pointer)],
+                            });
+                        };
+                        conflicts.push(widget::label(pointer));
+                        widgets
+                            .set(pointer, current.clone(), current)
+                            .map_err(DesktopError::Io)?;
+                        widgets.forget_exact();
+                    }
+                }
+            }
+            return Ok((patch, widgets));
+        }
         let history = self.history_file()?;
         let file = history.as_ref().and_then(undo::UndoFile::manual);
         let mut patch = DesktopPatch::new();

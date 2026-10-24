@@ -8,6 +8,8 @@ use crate::drawer::{self, DragResult, ReorderDrag, Sidebar, Widget};
 mod autoswitch;
 mod clock;
 mod devbox;
+#[cfg(test)]
+mod display_tests;
 mod glance;
 
 pub(crate) fn settings_clock_preview(
@@ -40,7 +42,7 @@ use cosmic::Application as _;
 use cosmic::Element;
 use cosmic::app::{Core, Task};
 use cosmic::iced::platform_specific::runtime::wayland::layer_surface::{
-    IcedMargin, SctkLayerSurfaceSettings,
+    IcedMargin, IcedOutput, SctkLayerSurfaceSettings,
 };
 use cosmic::iced::platform_specific::shell::commands::layer_surface::{
     Anchor, KeyboardInteractivity, Layer, get_layer_surface, set_margin,
@@ -79,6 +81,10 @@ pub enum Message {
     LayoutAutomatic,
     LayoutUndo,
     LayoutFinish(bool),
+    LayoutRetryCancel,
+    LayoutResume,
+    LayoutKeepSaved,
+    ArrangeSurface(u64),
     LayoutDefaults,
     LayoutSnap(bool),
     LayoutCancelDrag,
@@ -120,12 +126,17 @@ pub enum Message {
     /// A note save finished: the text it saved, and the result. (Tests
     /// save inline.)
     #[cfg_attr(test, allow(dead_code))]
-    NoteSaved(String, Result<crate::tools::notes::Note, crate::tools::notes::SaveError>),
+    NoteSaved(
+        String,
+        Result<crate::tools::notes::Note, crate::tools::notes::SaveError>,
+    ),
     /// `desktop-cards focus start|pause|toggle|reset|skip`.
     FocusCommand(String),
-    /// The compositor added or removed a display.
-    DisplaysChanged,
-    /// Displays settled after a change: build every surface again.
+    /// Full compositor metadata, including startup and removal events.
+    OutputChanged(crate::displays::OutputEvent, crate::displays::WlOutput),
+    SurfaceMessage(u64, Box<Message>),
+    SurfaceInput(window::Id, Box<Message>),
+    /// Old surfaces are gone: measure the selected output for this epoch.
     RebuildSurfaces(u64),
     /// Automatic profile switches finished.
     Switched(Vec<(crate::automation::Due, crate::automation::run::Ran)>),
@@ -135,8 +146,9 @@ pub struct Cards {
     ids: [window::Id; 12],
     layout_editor: layout::LayoutEditor,
     surface_geometry: Option<layout::SurfaceGeometry>,
-    /// When the cards started (display events at startup aren't changes).
-    started: Instant,
+    displays: crate::displays::Registry,
+    selected_output: Option<crate::displays::Output>,
+    paused_layout: Option<layout::LayoutEditor>,
     /// Display changes seen; only the latest one rebuilds the surfaces.
     display_generation: u64,
     /// Where each card surface takes clicks (`Widget::BASE` order).
@@ -217,84 +229,7 @@ impl cosmic::Application for Cards {
         core.set_auto_blur(Default::default());
         let ids = std::array::from_fn(|_| window::Id::unique());
         let sidebar = Sidebar::new();
-        let mut tasks = vec![
-            get_layer_surface(SctkLayerSurfaceSettings {
-                id: ids[0],
-                layer: Layer::Bottom,
-                keyboard_interactivity: KeyboardInteractivity::None,
-                anchor: Anchor::TOP | Anchor::LEFT,
-                margin: IcedMargin {
-                    top: 88,
-                    left: config.clock_margin(),
-                    ..Default::default()
-                },
-                size: Some((Some(490), Some(250))),
-                // The clock is decorative. Its transparent area must never
-                // intercept clicks intended for Calendar or the desktop.
-                input_zone: Some(Vec::new()),
-                exclusive_zone: 0,
-                namespace: "halcyon-clock".into(),
-                ..Default::default()
-            }),
-            get_layer_surface(SctkLayerSurfaceSettings {
-                id: ids[1],
-                layer: Layer::Bottom,
-                keyboard_interactivity: KeyboardInteractivity::None,
-                anchor: Anchor::RIGHT | Anchor::TOP | Anchor::BOTTOM,
-                margin: IcedMargin {
-                    top: 48,
-                    right: 42,
-                    bottom: 48,
-                    left: 0,
-                },
-                size: Some((Some(360), Some(0))),
-                exclusive_zone: 0,
-                namespace: "halcyon-widgets".into(),
-                ..Default::default()
-            }),
-            Self::controls_surface(ids[2], sidebar.margin()),
-            Self::edge_surface(ids[3]),
-            get_layer_surface(SctkLayerSurfaceSettings {
-                id: ids[4],
-                layer: Layer::Bottom,
-                keyboard_interactivity: KeyboardInteractivity::None,
-                anchor: Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT,
-                margin: IcedMargin {
-                    top: 48,
-                    left: config.calendar_margin(),
-                    bottom: 48,
-                    right: 0,
-                },
-                size: Some((Some(360), Some(0))),
-                exclusive_zone: 0,
-                namespace: "halcyon-calendar".into(),
-                ..Default::default()
-            }),
-        ];
-        // A passive, click-through surface reports the active output dimensions.
-        // It is created before the visible widgets so its backdrop stays behind them.
-        let probe = Self::layout_probe(ids[5], false);
-        for index in [6, 7, 8, 9, 10, 11] {
-            tasks.push(get_layer_surface(SctkLayerSurfaceSettings {
-                id: ids[index],
-                layer: Layer::Bottom,
-                keyboard_interactivity: KeyboardInteractivity::None,
-                anchor: Anchor::TOP | Anchor::LEFT,
-                margin: IcedMargin {
-                    left: -10000,
-                    ..Default::default()
-                },
-                size: Some((Some(16), Some(16))),
-                exclusive_zone: 0,
-                namespace: format!("halcyon-extra-{index}"),
-                ..Default::default()
-            }));
-        }
-        // COSMIC's backdrop for the full-height Calendar surface can obscure
-        // an earlier Clock, including the empty space above the agenda. Create
-        // the decorative, click-through clock last within the same bottom layer.
-        let clock = tasks.remove(0);
-        let mut tasks = vec![probe.chain(Task::batch(tasks)).chain(clock)];
+        let mut tasks = Vec::new();
         let today = Local::now().date_naive();
         let month = today.with_day(1).unwrap();
         let calendar = CalendarData::cached(&month.format("%Y-%m").to_string());
@@ -305,7 +240,9 @@ impl cosmic::Application for Cards {
             ids,
             layout_editor: layout::LayoutEditor::default(),
             surface_geometry: None,
-            started: Instant::now(),
+            displays: Default::default(),
+            selected_output: None,
+            paused_layout: None,
             display_generation: 0,
             surface_inputs: None,
             updating: false,
@@ -358,10 +295,10 @@ impl cosmic::Application for Cards {
             wake_generation: 0,
             wallpaper_color_generation: Default::default(),
         };
-        let creation = tasks.remove(0);
-        tasks.insert(0, creation.chain(app.sync_widget_surfaces()));
+        // Output discovery creates the first probe, including on late startup.
         tasks.extend(app.refresh_visible_data());
         tasks.push(app.wallpaper_colors_changed());
+        tasks.push(app.publish_display_state());
         (app, Task::batch(tasks))
     }
     fn subscription(&self) -> Subscription<Message> {
@@ -408,21 +345,21 @@ impl cosmic::Application for Cards {
                     key,
                     modifiers,
                     ..
-                }) if status == cosmic::iced::event::Status::Ignored => {
-                    Some(Message::LayoutKey(key, modifiers.shift()))
-                }
-                cosmic::iced::Event::Window(window::Event::Unfocused) => {
-                    Some(Message::LayoutCancelDrag)
-                }
+                }) if status == cosmic::iced::event::Status::Ignored => Some(
+                    Message::SurfaceInput(id, Box::new(Message::LayoutKey(key, modifiers.shift()))),
+                ),
+                cosmic::iced::Event::Window(window::Event::Unfocused) => Some(
+                    Message::SurfaceInput(id, Box::new(Message::LayoutCancelDrag)),
+                ),
                 cosmic::iced::Event::Window(window::Event::Opened { size, .. })
                 | cosmic::iced::Event::Window(window::Event::Resized(size)) => {
                     Some(Message::SurfaceResized(id, size))
                 }
                 cosmic::iced::Event::PlatformSpecific(
                     cosmic::iced::event::PlatformSpecific::Wayland(
-                        cosmic::iced::event::wayland::Event::Output(..),
+                        cosmic::iced::event::wayland::Event::Output(event, output),
                     ),
-                ) => Some(Message::DisplaysChanged),
+                ) => Some(Message::OutputChanged(event, output)),
                 _ => None,
             })
             .with((
@@ -475,6 +412,54 @@ impl cosmic::Application for Cards {
         text::body("").into()
     }
     fn view_window(&self, id: window::Id) -> Element<'_, Message> {
+        if !self.ids.contains(&id) {
+            return empty_surface();
+        }
+        let epoch = self.display_generation;
+        self.surface_view(id)
+            .map(move |message| Message::SurfaceMessage(epoch, Box::new(message)))
+    }
+
+    fn update(&mut self, msg: Message) -> Task<Message> {
+        // Card surfaces are rebuilt at most once per update, for its final
+        // geometry: two rebuilds at once race, and the second creation is
+        // refused, leaving a surface with a stale size and input region.
+        // Surface work runs beside the update's other work (an artwork or
+        // weather download), never queued behind it.
+        let outer = !self.updating;
+        self.updating = true;
+        // Include watcher/timer/command dispatches: any synchronous writer
+        // reached while Arrange owns input must refuse contended locks.
+        let task = if self.layout_editor.active || self.paused_layout.is_some() {
+            crate::config::with_nonblocking_locks(|| self.handle_update(msg))
+        } else {
+            self.handle_update(msg)
+        };
+        if !outer {
+            return task;
+        }
+        self.updating = false;
+        let pending = std::mem::take(&mut self.rebuild_pending);
+        let surfaces = if !self.output_known || self.selected_output.is_none() {
+            Task::none()
+        } else if pending && self.surface_geometry.as_ref() != Some(&self.surface_geometry()) {
+            self.rebuild_cards()
+        } else {
+            self.sync_music_shown()
+        };
+        Task::batch([task, surfaces])
+    }
+    fn style(&self) -> Option<cosmic::iced::theme::Style> {
+        Some(cosmic::iced::theme::Style {
+            background_color: Color::TRANSPARENT,
+            text_color: self.config.palette().foreground,
+            icon_color: self.config.palette().foreground,
+        })
+    }
+}
+
+impl Cards {
+    fn surface_view(&self, id: window::Id) -> Element<'_, Message> {
         if id == self.ids[5] {
             return self.layout_view();
         }
@@ -520,42 +505,11 @@ impl cosmic::Application for Cards {
         }
     }
 
-    fn update(&mut self, msg: Message) -> Task<Message> {
-        // Card surfaces are rebuilt at most once per update, for its final
-        // geometry: two rebuilds at once race, and the second creation is
-        // refused, leaving a surface with a stale size and input region.
-        // Surface work runs beside the update's other work (an artwork or
-        // weather download), never queued behind it.
-        let outer = !self.updating;
-        self.updating = true;
-        let task = self.handle_update(msg);
-        if !outer {
-            return task;
-        }
-        self.updating = false;
-        let surfaces = if std::mem::take(&mut self.rebuild_pending)
-            && self.surface_geometry.as_ref() != Some(&self.surface_geometry())
-        {
-            self.rebuild_cards()
-        } else {
-            self.sync_music_shown()
-        };
-        Task::batch([task, surfaces])
-    }
-    fn style(&self) -> Option<cosmic::iced::theme::Style> {
-        Some(cosmic::iced::theme::Style {
-            background_color: Color::TRANSPARENT,
-            text_color: self.config.palette().foreground,
-            icon_color: self.config.palette().foreground,
-        })
-    }
-}
-
-impl Cards {
     /// The edge menu's surface.
-    fn controls_surface(id: window::Id, margin: i32) -> Task<Message> {
+    fn controls_surface(&self, id: window::Id, margin: i32) -> Task<Message> {
         get_layer_surface(SctkLayerSurfaceSettings {
             id,
+            output: self.layer_output(),
             layer: Layer::Overlay,
             keyboard_interactivity: KeyboardInteractivity::None,
             anchor: Anchor::RIGHT,
@@ -570,9 +524,10 @@ impl Cards {
         })
     }
     /// The thin screen-edge strip that opens the edge menu.
-    fn edge_surface(id: window::Id) -> Task<Message> {
+    fn edge_surface(&self, id: window::Id) -> Task<Message> {
         get_layer_surface(SctkLayerSurfaceSettings {
             id,
+            output: self.layer_output(),
             layer: Layer::Overlay,
             keyboard_interactivity: KeyboardInteractivity::None,
             anchor: Anchor::RIGHT | Anchor::TOP | Anchor::BOTTOM,
@@ -582,27 +537,88 @@ impl Cards {
             ..Default::default()
         })
     }
-    /// Every surface again, as at startup: the output probe first (behind
-    /// the cards), the edge menu, then the cards and tools.
-    fn rebuild_all_surfaces(&mut self) -> Task<Message> {
-        let destroy = Task::batch(self.ids.map(
-            cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface,
-        ));
+    fn layer_output(&self) -> IcedOutput {
+        IcedOutput::Output(
+            self.selected_output
+                .as_ref()
+                .expect("selected output before surface creation")
+                .handle
+                .clone(),
+        )
+    }
+    /// Each transition waits for a fresh probe. Old callbacks cannot create a new set.
+    fn reconcile_output(&mut self) -> Task<Message> {
+        let selected = self
+            .displays
+            .selected(self.config.widget_display.as_deref())
+            .cloned();
+        if match (&selected, &self.selected_output) {
+            (Some(a), Some(b)) => a.same_geometry(b),
+            (None, None) => true,
+            _ => false,
+        } {
+            self.selected_output = selected;
+            return Task::none();
+        }
+        self.cancel_layout_drag();
+        if self.layout_editor.active {
+            self.paused_layout = Some(std::mem::take(&mut self.layout_editor));
+        }
+        self.pause_note();
+        // Sidebar reordering only previews in config until release. Retiring its
+        // surface cancels that preview before replacement geometry is computed.
+        if let Some(drag) = self.sidebar.drag.take() {
+            self.config.widget_order = drag.original_order.iter().map(|w| w.key().into()).collect();
+        }
+        self.sidebar.hide();
+        self.display_generation += 1;
+        self.selected_output = selected;
+        self.output_known = false;
         self.surface_geometry = None;
         self.surface_inputs = None;
+        self.rebuild_pending = false;
         self.forget_tool_surfaces();
-        let probe = Self::layout_probe(self.ids[5], self.layout_editor.active);
-        let controls = Task::batch([
-            Self::controls_surface(self.ids[2], self.sidebar.margin()),
-            Self::edge_surface(self.ids[3]),
-        ]);
-        // Right after the old surfaces go, never deferred: a later rebuild
-        // would race this one's destroy.
-        let cards = self.rebuild_cards();
-        destroy.chain(probe).chain(controls).chain(cards)
+        let old_ids =
+            std::mem::replace(&mut self.ids, std::array::from_fn(|_| window::Id::unique()));
+        let destroy = Task::batch(old_ids.map(
+            cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface,
+        ));
+        destroy
+            .chain(self.publish_display_state())
+            .chain(Task::done(cosmic::Action::App(Message::RebuildSurfaces(
+                self.display_generation,
+            ))))
+    }
+    fn publish_display_state(&self) -> Task<Message> {
+        let mut snapshot = crate::layout_state::read(&self.config);
+        snapshot.display = Some(crate::layout_state::DisplayState {
+            output: self
+                .selected_output
+                .as_ref()
+                .and_then(|output| output.name().map(str::to_owned)),
+            ready: self.output_known,
+            epoch: self.display_generation,
+        });
+        let generation = crate::layout_state::next_generation();
+        cosmic::iced::Task::future(async move {
+            crate::layout_state::publish(&snapshot, generation);
+        })
+        .discard()
     }
     fn handle_update(&mut self, msg: Message) -> Task<Message> {
         match msg {
+            Message::SurfaceMessage(epoch, message) => {
+                if epoch != self.display_generation || !self.output_known {
+                    return Task::none();
+                }
+                self.handle_update(*message)
+            }
+            Message::SurfaceInput(id, message) => {
+                if !self.ids.contains(&id) || !self.output_known {
+                    return Task::none();
+                }
+                self.handle_update(*message)
+            }
             Message::Woke(deadline, early) => {
                 self.resumed(early, Instant::now(), SystemTime::now());
                 let task = self.update(Message::Tick);
@@ -700,17 +716,39 @@ impl Cards {
                 Task::none()
             }
             Message::SurfaceResized(id, size) => {
+                // A previously queued Create can finish after migration's
+                // Destroy. Its fresh ID cannot impersonate the new epoch;
+                // close that late surface as well as ignoring its geometry.
+                if !self.ids.contains(&id) && id != window::Id::NONE {
+                    return cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface(id);
+                }
                 // libcosmic's layer Size action emits a synthetic square resize
                 // using width twice. The output probe is compositor-sized, so
                 // only its dimensions are authoritative for the desktop budget.
-                if id == self.ids[5] && size.width > 0. && size.height > 0. {
+                if id == self.ids[5]
+                    && self.selected_output.is_some()
+                    && size.width.is_finite()
+                    && size.height.is_finite()
+                    && size.width > 0.
+                    && size.height > 0.
+                {
                     let screen = [size.width, size.height];
                     self.desktop_height = (size.height - 96.).max(1.);
                     self.calendar_height = self.desktop_height;
                     if self.screen_size != screen || !self.output_known {
+                        let first = !self.output_known;
                         self.output_known = true;
                         self.screen_size = screen;
-                        return self.sync_widget_surfaces();
+                        let widgets = self.sync_widget_surfaces();
+                        return if first {
+                            Task::batch([
+                                self.controls_surface(self.ids[2], self.sidebar.margin()),
+                                self.edge_surface(self.ids[3]),
+                                widgets,
+                            ])
+                        } else {
+                            widgets
+                        };
                     }
                 }
                 Task::none()
@@ -725,6 +763,9 @@ impl Cards {
                 Task::none()
             }
             Message::Pointer(id, event) => {
+                if !self.ids.contains(&id) || !self.output_known {
+                    return Task::none();
+                }
                 if self.layout_editor.active
                     && (id == self.ids[5]
                         || matches!(
@@ -773,6 +814,22 @@ impl Cards {
                 Task::none()
             }
             Message::LayoutFinish(save) => self.finish_arrange(save),
+            Message::LayoutRetryCancel => self.retry_arrange_cancel(),
+            Message::LayoutResume => self.resume_arrange(),
+            Message::LayoutKeepSaved => self.keep_arrange_saved(),
+            Message::ArrangeSurface(epoch) => {
+                if epoch != self.display_generation
+                    || !self.output_known
+                    || self.selected_output.is_none()
+                {
+                    return Task::none();
+                }
+                Task::batch([
+                    self.layout_probe(self.ids[5], self.layout_editor.active),
+                    self.sync_widget_surfaces(),
+                    self.note_surface_mode(),
+                ])
+            }
             Message::LayoutDefaults => {
                 self.layout_defaults();
                 self.commit_arrange();
@@ -1016,29 +1073,19 @@ impl Cards {
                 Task::batch([task, self.capture_if_changed()])
             }
             Message::FocusCommand(command) => self.focus_command(&command),
-            Message::DisplaysChanged => {
-                // A removed display takes its surfaces with it, and a new one
-                // needs them: once the burst of display events settles,
-                // every surface is built again. The startup burst is skipped.
-                let automation = self.automation_displays();
-                if self.started.elapsed() < Duration::from_secs(5) {
-                    return automation;
-                }
-                self.display_generation += 1;
-                let generation = self.display_generation;
-                Task::batch([
-                    automation,
-                    cosmic::task::future(async move {
-                        tokio::time::sleep(Duration::from_millis(1500)).await;
-                        Message::RebuildSurfaces(generation)
-                    }),
-                ])
+            Message::OutputChanged(event, output) => {
+                self.displays.update(event, output);
+                let migration = self.reconcile_output();
+                Task::batch([migration, self.automation_displays()])
             }
-            Message::RebuildSurfaces(generation) => {
-                if generation != self.display_generation {
+            Message::RebuildSurfaces(epoch) => {
+                if epoch != self.display_generation
+                    || self.selected_output.is_none()
+                    || self.output_known
+                {
                     return Task::none();
                 }
-                self.rebuild_all_surfaces()
+                self.layout_probe(self.ids[5], false)
             }
             Message::Switched(results) => self.automation_done(results),
             Message::MusicControlDone(result) => match result {
@@ -2061,6 +2108,7 @@ mod tests {
     fn output_probe_owns_desktop_budget_despite_synthetic_widget_resizes() {
         use cosmic::Application;
         let (mut cards, _) = Cards::init(Core::default(), Config::default());
+        let _output = cards.test_output_ready();
         let _ = cards.update(Message::SurfaceResized(
             cards.ids[5],
             cosmic::iced::Size::new(1920., 1080.),

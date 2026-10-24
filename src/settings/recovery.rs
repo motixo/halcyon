@@ -15,6 +15,7 @@ const SHORT: usize = 3;
 #[cfg(test)]
 pub fn owner_page(owner: Owner) -> super::Page {
     match owner {
+        Owner::Recovery => super::Page::General,
         Owner::Preferences => super::Page::Widgets,
         Owner::DockPanel => super::Page::DesktopDock,
         Owner::Appearance => super::Page::DesktopAppearance,
@@ -136,5 +137,135 @@ mod tests {
             kept_undo: false,
         };
         assert_eq!(summary(&quiet), "Interrupted change undone");
+    }
+}
+
+#[derive(Default)]
+pub(super) struct DesktopRecovery {
+    pub info: Option<crate::desktop::recovery::BaselineInfo>,
+    pub problem: Option<String>,
+    pub plan: Option<crate::desktop::recovery::RestorePlan>,
+    pub busy: bool,
+}
+impl DesktopRecovery {
+    pub fn refresh(&mut self) {
+        match crate::desktop::DesktopStore::from_env()
+            .and_then(|s| crate::desktop::recovery::load_baseline(&s))
+        {
+            Ok(info) => {
+                self.info = info;
+                self.problem = None;
+            }
+            Err(error) => {
+                self.info = None;
+                self.problem = Some(error.to_string());
+            }
+        }
+    }
+    pub fn summary(&self) -> String {
+        self.info.as_ref().map_or_else(
+            || "Saved before the first desktop change".into(),
+            |info| {
+                let kind = match info.kind {
+                    crate::desktop::recovery::BaselineKind::OriginalDesktop => "Original desktop",
+                    crate::desktop::recovery::BaselineKind::CurrentDesktop => "Desktop snapshot",
+                };
+                format!(
+                    "{kind} · {} · {} scopes",
+                    info.captured_at
+                        .split('T')
+                        .next()
+                        .unwrap_or(&info.captured_at),
+                    info.domains.len()
+                )
+            },
+        )
+    }
+}
+
+pub(super) fn export_task() -> cosmic::app::Task<super::Message> {
+    cosmic::task::future(async {
+        let result = async {
+            let store = crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+            let bytes =
+                crate::desktop::recovery::export_baseline(&store).map_err(|e| e.to_string())?;
+            let response = cosmic::dialog::file_chooser::save::Dialog::new()
+                .title("Export desktop recovery".to_string())
+                .file_name("halcyon-desktop-recovery.json".to_string())
+                .save_file()
+                .await;
+            match response {
+                Ok(response) => {
+                    let Some(url) = response.url() else {
+                        return Ok(None);
+                    };
+                    let path = url
+                        .to_file_path()
+                        .map_err(|_| "Choose a local file".to_string())?;
+                    write_export(&path, bytes.as_bytes(), store.fixture_root())?;
+                    Ok(Some(path))
+                }
+                Err(cosmic::dialog::file_chooser::Error::Cancelled) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        .await;
+        super::Message::RecoveryExported(result)
+    })
+}
+
+fn write_export(
+    path: &std::path::Path,
+    bytes: &[u8],
+    confine: Option<&std::path::Path>,
+) -> Result<(), String> {
+    crate::desktop::recovery::write_export(path, bytes, confine).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    #[test]
+    fn task2r1_export_is_private_on_create_and_replace_under_normal_umask() {
+        let f = crate::desktop::store::tests::Fixture::new("private-recovery-export");
+        struct Umask(libc::mode_t);
+        impl Drop for Umask {
+            fn drop(&mut self) {
+                unsafe {
+                    libc::umask(self.0);
+                }
+            }
+        }
+        let _mask = Umask(unsafe { libc::umask(0o022) });
+        let path = f.0.join("recovery.json");
+        for contents in [b"first".as_slice(), b"replacement".as_slice()] {
+            write_export(&path, contents, Some(&f.0)).unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), contents);
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+    }
+    #[test]
+    fn task2r1_export_refuses_links_and_fixture_escape_without_mutation() {
+        let f = crate::desktop::store::tests::Fixture::new("confined-recovery-export");
+        let outside = f.0.join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let target = outside.join("keep.json");
+        std::fs::write(&target, b"keep").unwrap();
+        let link = f.0.join("linked");
+        symlink(&outside, &link).unwrap();
+        assert!(write_export(&link.join("new.json"), b"private", None).is_err());
+        let leaf = f.0.join("leaf.json");
+        symlink(&target, &leaf).unwrap();
+        assert!(write_export(&leaf, b"private", None).is_err());
+        let confined = f.0.join("confined");
+        std::fs::create_dir(&confined).unwrap();
+        assert!(write_export(&target, b"private", Some(&confined)).is_err());
+        assert_eq!(std::fs::read(target).unwrap(), b"keep");
+        assert!(!outside.join("new.json").exists());
     }
 }

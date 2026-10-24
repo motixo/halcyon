@@ -83,48 +83,6 @@ def edit_config(change):
         atomic(CONFIG_FILE, json.dumps(data, indent=2, allow_nan=False) + '\n')
         return data
 
-@contextmanager
-def rollback_files_on_error(paths):
-    originals = {}
-    for path in paths:
-        try:
-            originals[path] = (path.read_bytes(), path.stat().st_mode & 0o777)
-        except FileNotFoundError:
-            originals[path] = (None, None)
-    try:
-        yield
-    except Exception as error:
-        failed = []
-        for path, (original, mode) in reversed(list(originals.items())):
-            try:
-                try:
-                    current = path.read_bytes()
-                except FileNotFoundError:
-                    current = None
-                # A failure before the replace leaves the file untouched. Avoid
-                # rewriting it, especially if it was the file that refused writes.
-                if current == original:
-                    if original is not None and path.stat().st_mode & 0o777 != mode:
-                        path.chmod(mode)
-                    continue
-                if original is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    atomic(path, original)
-                    path.chmod(mode)
-            except OSError:
-                failed.append(str(path))
-        if failed:
-            raise RuntimeError('The change failed and these files could not be restored: '
-                               + ', '.join(failed)) from error
-        raise
-
-def backup():
-    for path, name in [(BACKGROUND, 'original-background.ron'), (CUSTOM, 'original-custom-images.ron')]:
-        target = CONFIG / name
-        if path.exists() and not target.exists():
-            shutil.copy2(path, target)
-
 def wallpaper_file(name):
     """A built-in wallpaper's file: `<name>.jpg`, or the old `<name>-4k.png`."""
     if WALLPAPERS == INSTALLED_WALLPAPERS:
@@ -143,19 +101,6 @@ def install_bundled_wallpapers():
     if missing:
         raise RuntimeError('The built-in wallpapers are missing. Reinstall Halcyon to restore them.')
     print(f'The built-in wallpapers are installed in {WALLPAPERS}')
-
-def register_custom_images():
-    """Lists the bundled wallpapers in COSMIC Settings' own collection."""
-    if not CUSTOM.exists():
-        return
-    custom = CUSTOM.read_text().rstrip()
-    if not custom.endswith(']'):
-        raise RuntimeError('The wallpaper collection is not a list. Original settings preserved.')
-    for key in THEMES:
-        path = str(wallpaper_file(key))
-        if json.dumps(path) not in custom:
-            custom = custom[:-1].rstrip() + '\n    ' + json.dumps(path) + ',\n]'
-    atomic(CUSTOM, custom + '\n')
 
 def helper(*args, failure):
     result = subprocess.run([str(BINARY), *args],
@@ -176,37 +121,24 @@ def apply_palette_links(name, *, wallpaper, colors):
 def apply_theme(name):
     if name not in THEMES:
         raise RuntimeError('Unknown Halcyon palette.')
-    with config_lock():
-        data = config()
-        appearance = data.get('appearance', {})
-        if not isinstance(appearance, dict):
-            raise RuntimeError('Appearance settings must be a JSON object.')
-        match_wallpaper = appearance.get('match_wallpaper', True)
-        if not isinstance(match_wallpaper, bool):
-            raise RuntimeError('The matching wallpaper setting must be true or false.')
-        match_colors = appearance.get('match_cosmic_colors', False)
-        if not isinstance(match_colors, bool):
-            raise RuntimeError('The COSMIC color matching setting must be true or false.')
-        isolated = 'DESKTOP_CARDS_CONFIG' in os.environ
-        match_wallpaper = match_wallpaper and not isolated
-        match_colors = match_colors and not isolated
-        with rollback_files_on_error([CONFIG_FILE, CUSTOM]):
-            if match_wallpaper:
-                bundled_wallpaper(name)
-                backup()
-                register_custom_images()
+    if 'DESKTOP_CARDS_CONFIG' not in os.environ:
+        # Rust captures the pre-change desktop and commits preferences and
+        # native settings together. Never hold config_lock across this call.
+        helper('--select-palette', name, failure='Could not apply the palette.')
+    else:
+        # An explicitly isolated preview edits only its alternate app file.
+        def change(data):
+            appearance = data.setdefault('appearance', {})
+            if not isinstance(appearance, dict):
+                raise RuntimeError('Appearance settings must be a JSON object.')
+            for key in ('match_wallpaper', 'match_cosmic_colors'):
+                if key in appearance and not isinstance(appearance[key], bool):
+                    raise RuntimeError('Color matching settings must be true or false.')
             data['theme'] = name
-            # An explicit CLI palette request still selects that palette
-            # when the new graphical widget settings follow desktop colors.
             if appearance.get('color_source') == 'desktop':
                 appearance['color_source'] = 'custom'
             appearance.pop('accent', None)
-            atomic(CONFIG_FILE, json.dumps(data, indent=2, allow_nan=False) + '\n')
-            # One store change for the background and the accents. The helper
-            # rolls back its own COSMIC writes; keep it last so no later
-            # operation can fail after the desktop was changed.
-            if match_wallpaper or match_colors:
-                apply_palette_links(name, wallpaper=match_wallpaper, colors=match_colors)
+        edit_config(change)
     print(THEMES[name])
 
 def apply_cosmic_colors(name):
@@ -219,16 +151,15 @@ def apply_cosmic_colors(name):
 def set_cosmic_colors(enabled):
     if not isinstance(enabled, bool):
         raise RuntimeError('COSMIC color matching must be on or off.')
-    with config_lock():
-        data = config()
-        appearance = data.setdefault('appearance', {})
-        if not isinstance(appearance, dict):
-            raise RuntimeError('Appearance settings must be a JSON object.')
-        with rollback_files_on_error([CONFIG_FILE]):
+    if 'DESKTOP_CARDS_CONFIG' not in os.environ:
+        helper('--set-cosmic-colors', 'on' if enabled else 'off', failure='Could not change COSMIC color matching.')
+    else:
+        def change(data):
+            appearance = data.setdefault('appearance', {})
+            if not isinstance(appearance, dict):
+                raise RuntimeError('Appearance settings must be a JSON object.')
             appearance['match_cosmic_colors'] = enabled
-            atomic(CONFIG_FILE, json.dumps(data, indent=2, allow_nan=False) + '\n')
-            if enabled and 'DESKTOP_CARDS_CONFIG' not in os.environ:
-                apply_cosmic_colors(data.get('theme', 'lavender'))
+        edit_config(change)
     print('COSMIC accent matching ' + ('on' if enabled else 'off'))
 
 def service(action):

@@ -1,0 +1,686 @@
+use super::*;
+use cosmic::iced::futures::StreamExt;
+use cosmic::iced::platform_specific::runtime::wayland::layer_surface::Action as LayerAction;
+use cosmic::iced::runtime::{Action as RuntimeAction, platform_specific, task};
+use std::io::{BufRead, BufReader};
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+// Every test executes in a disposable child, bounded even when flock blocks the UI.
+fn isolated(name: &str) -> bool {
+    if std::env::var("HALCYON_ARRANGE_TEST").as_deref() == Ok(name) {
+        return false;
+    }
+    let root = std::env::temp_dir().join(format!("halcyon-arrange-{}-{name}", std::process::id()));
+    for part in ["config", "data", "cache", "state", "system/cosmic"] {
+        std::fs::create_dir_all(root.join(part)).unwrap();
+    }
+    std::fs::write(root.join("config.json"), r#"{"enabled_widgets":["weather"],"placement":{"snap":false},"widget_positions":{"weather":[0.2,0.2]},"future_option":42}"#).unwrap();
+    let mut child = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            &format!("app::layout::input_safety_tests::{name}"),
+            "--nocapture",
+        ])
+        .env("HALCYON_ARRANGE_TEST", name)
+        .env("DESKTOP_CARDS_CONFIG", root.join("config.json"))
+        .env("DESKTOP_CARDS_DESKTOP_ROOT", &root)
+        .env("XDG_CONFIG_HOME", root.join("config"))
+        .env("XDG_DATA_HOME", root.join("data"))
+        .env("XDG_CACHE_HOME", root.join("cache"))
+        .env("XDG_STATE_HOME", root.join("state"))
+        .env_remove("WAYLAND_DISPLAY")
+        .env_remove("DISPLAY")
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            assert!(status.success(), "fixture failed: {}", root.display());
+            return true;
+        }
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!(
+                "20s watchdog: Arrange blocked before Escape could release input; fixture {}",
+                root.display()
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn emitted(
+    cards: &mut Cards,
+    task: Task<Message>,
+) -> (Vec<window::Id>, Vec<SctkLayerSurfaceSettings>) {
+    let mut pending = vec![task];
+    let mut destroyed = Vec::new();
+    let mut created = Vec::new();
+    while let Some(task) = pending.pop() {
+        if let Some(mut stream) = task::into_stream(task) {
+            cosmic::iced::futures::executor::block_on(async {
+                while let Some(action) = stream.next().await {
+                    match action {
+                        RuntimeAction::Output(cosmic::Action::App(message)) => {
+                            pending.push(cards.update(message))
+                        }
+                        RuntimeAction::PlatformSpecific(platform_specific::Action::Wayland(
+                            platform_specific::wayland::Action::LayerSurface(action),
+                        )) => match action {
+                            LayerAction::Destroy(id) => destroyed.push(id),
+                            LayerAction::LayerSurface { builder } => created.push(builder),
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+            });
+        }
+    }
+    (destroyed, created)
+}
+fn escape(cards: &mut Cards) -> Task<Message> {
+    cards.update(Message::SurfaceInput(
+        cards.ids[5],
+        Box::new(Message::LayoutKey(
+            keyboard::Key::Named(keyboard::key::Named::Escape),
+            false,
+        )),
+    ))
+}
+fn moved() -> (Cards, crate::displays::test_support::Wire) {
+    let (mut cards, _) = Cards::init(Core::default(), Config::load());
+    let wire = cards.test_output_ready();
+    let task = cards.update(Message::Arrange);
+    let (_, created) = emitted(&mut cards, task);
+    assert!(
+        created
+            .iter()
+            .any(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+    );
+    cards.put_layout_point(Widget::Weather, [600., 300.]);
+    assert!(cards.commit_arrange());
+    assert!(!cards.layout_editor.session_actions.is_empty());
+    (cards, wire)
+}
+fn released(cards: &mut Cards, old: window::Id, task: Task<Message>) {
+    let (destroyed, created) = emitted(cards, task);
+    assert!(
+        destroyed.contains(&old),
+        "must emit Destroy for captured layer"
+    );
+    assert!(
+        created
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None),
+        "no exclusive replacement"
+    );
+    assert!(
+        created
+            .iter()
+            .filter(|s| s.namespace == "halcyon-arrange")
+            .all(|s| s.input_zone.as_ref().is_some_and(Vec::is_empty))
+    );
+    assert!(!cards.layout_editor.active);
+    assert!(cards.paused_layout.is_some(), "retain recovery state");
+}
+
+#[test]
+fn arrange_cancel_error_releases_input() {
+    if isolated("arrange_cancel_error_releases_input") {
+        return;
+    }
+    let (mut cards, _wire) = moved();
+    Config::save_changes(
+        serde_json::json!({"widget_positions":{"weather":[0.9,0.9]},"theme":"ocean"}),
+    )
+    .unwrap();
+    let old = cards.ids[5];
+    let task = escape(&mut cards);
+    released(&mut cards, old, task);
+    assert_eq!(Config::load().widget_positions["weather"], [0.9, 0.9]);
+    assert_eq!(Config::load().theme, "ocean");
+    let paused = cards.paused_layout.as_ref().unwrap();
+    assert!(!paused.active && paused.error.is_some());
+    assert_eq!(paused.session_actions.len(), 1);
+    let draft = paused.draft.clone();
+    let task = cards.update(Message::Arrange);
+    assert!(
+        emitted(&mut cards, task).1.is_empty(),
+        "Arrange shows recovery without recapturing"
+    );
+    let mut native = recovery_native();
+    native.capture(
+        cards.view_window(cards.ids[2]),
+        &cosmic::Theme::dark(),
+        "arrange-conflict-recovery",
+    );
+    assert!(click(&mut cards, &mut native, "arrange-retry").is_empty());
+    assert_eq!(cards.paused_layout.as_ref().unwrap().draft, draft);
+    assert!(
+        click(&mut cards, &mut native, "arrange-keep")
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+    );
+    assert!(cards.paused_layout.is_none());
+    let task = cards.update(Message::SurfaceMessage(
+        cards.display_generation,
+        Box::new(Message::LayoutResume),
+    ));
+    assert!(
+        emitted(&mut cards, task).1.is_empty(),
+        "a stale recovery click cannot start another session"
+    );
+    assert!(!cards.layout_editor.active);
+    assert_eq!(Config::load().widget_positions["weather"], [0.9, 0.9]);
+    assert_eq!(Config::load().theme, "ocean");
+}
+
+struct Holder(std::process::Child);
+impl Holder {
+    fn new(path: &std::path::Path) -> Self {
+        let mut child = Command::new("python3").args(["-c", "import fcntl,sys; f=open(sys.argv[1],'a'); fcntl.flock(f,fcntl.LOCK_EX); print('held',flush=True); sys.stdin.read()"])
+            .arg(path).stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .unwrap();
+        assert_eq!(line.trim(), "held");
+        Self(child)
+    }
+}
+impl Drop for Holder {
+    fn drop(&mut self) {
+        self.0.stdin.take();
+        self.0.wait().unwrap();
+    }
+}
+fn contention(desktop: bool) {
+    let (mut cards, _wire) = moved();
+    let path = Config::path().unwrap();
+    let lock_path = if desktop {
+        path.parent().unwrap().join("state/desktop.lock")
+    } else {
+        path.with_extension("json.lock")
+    };
+    let holder = Holder::new(&lock_path);
+    let saved = std::fs::read(&path).unwrap();
+    let start = Instant::now();
+    // A different UI writer cannot block delivery of Escape either.
+    let task = cards.update(Message::ToggleWidget(Widget::Calendar));
+    emitted(&mut cards, task);
+    cards.layout_editor.selected = Some(Widget::Weather);
+    let task = cards.update(Message::LayoutKey(
+        keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+        false,
+    ));
+    emitted(&mut cards, task);
+    assert!(
+        cards.layout_editor.error.is_some(),
+        "failed gesture stays recoverable"
+    );
+    let old = cards.ids[5];
+    let task = escape(&mut cards);
+    released(&mut cards, old, task);
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "contention must return promptly"
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), saved);
+    assert_eq!(
+        cards.paused_layout.as_ref().unwrap().session_actions.len(),
+        1
+    );
+    let mut native = recovery_native();
+    native.capture(
+        cards.view_window(cards.ids[2]),
+        &cosmic::Theme::dark(),
+        if desktop {
+            "arrange-desktop-busy"
+        } else {
+            "arrange-config-busy"
+        },
+    );
+    assert!(click(&mut cards, &mut native, "arrange-retry").is_empty());
+    assert!(cards.paused_layout.is_some());
+    drop(holder);
+    Config::save_changes(serde_json::json!({"theme":"ocean", "devbox":{"network":false}})).unwrap();
+    assert!(
+        click(&mut cards, &mut native, "arrange-retry")
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+    );
+    assert!(cards.paused_layout.is_none());
+    let config = Config::load();
+    assert_eq!(config.widget_positions["weather"], [0.2, 0.2]);
+    assert_eq!(config.theme, "ocean");
+    assert!(!config.devbox.network);
+    let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    assert_eq!(raw["future_option"], 42);
+    assert_eq!(
+        crate::desktop::actions::history_store()
+            .unwrap()
+            .latest_change()
+            .unwrap()
+            .unwrap()
+            .label,
+        "Cancel arrangement"
+    );
+}
+#[test]
+fn arrange_config_lock_does_not_block_escape() {
+    if !isolated("arrange_config_lock_does_not_block_escape") {
+        contention(false);
+    }
+}
+#[test]
+fn arrange_desktop_lock_does_not_block_escape() {
+    if !isolated("arrange_desktop_lock_does_not_block_escape") {
+        contention(true);
+    }
+}
+
+fn recovery_native() -> crate::native_test::Native {
+    crate::native_test::Native::new(cosmic::iced::Size::new(
+        drawer::SIDEBAR_WIDTH as f32,
+        drawer::SIDEBAR_HEIGHT as f32,
+    ))
+}
+fn click(
+    cards: &mut Cards,
+    native: &mut crate::native_test::Native,
+    id: &str,
+) -> Vec<SctkLayerSurfaceSettings> {
+    let point = native.bounds(cards.view_window(cards.ids[2]), id).center();
+    assert!(
+        point.y > 0. && point.y < drawer::SIDEBAR_HEIGHT as f32,
+        "visible recovery control"
+    );
+    let mut count = 0;
+    let mut created = Vec::new();
+    for event in [
+        mouse::Event::CursorMoved { position: point },
+        mouse::Event::ButtonPressed(mouse::Button::Left),
+        mouse::Event::ButtonReleased(mouse::Button::Left),
+    ] {
+        let (messages, _) = native.event(
+            cards.view_window(cards.ids[2]),
+            cosmic::iced::Event::Mouse(event),
+            point,
+        );
+        count += messages.len();
+        for message in messages {
+            let task = cards.update(message);
+            created.extend(emitted(cards, task).1);
+        }
+    }
+    assert!(count > 0, "real widget input emitted the recovery action");
+    created
+}
+
+#[test]
+fn arrange_save_error_can_resume_draft_without_losing_history() {
+    if isolated("arrange_save_error_can_resume_draft_without_losing_history") {
+        return;
+    }
+    let (mut cards, _wire) = moved();
+    cards.put_layout_point(Widget::Weather, [800., 400.]);
+    let draft = cards.layout_editor.draft.clone();
+    let path = Config::path().unwrap();
+    let saved = std::fs::read(&path).unwrap();
+    std::fs::write(&path, "{broken").unwrap();
+    let old = cards.ids[5];
+    let task = cards.update(Message::LayoutFinish(true));
+    released(&mut cards, old, task);
+    assert_eq!(cards.paused_layout.as_ref().unwrap().draft, draft);
+    assert_eq!(std::fs::read(&path).unwrap(), b"{broken");
+    std::fs::write(&path, &saved).unwrap();
+    let mut native = recovery_native();
+    let created = click(&mut cards, &mut native, "arrange-resume");
+    assert!(
+        created
+            .iter()
+            .any(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+    );
+    assert_eq!(cards.layout_editor.draft, draft);
+    assert_eq!(cards.layout_editor.session_actions.len(), 1);
+    let task = cards.update(Message::LayoutFinish(true));
+    let (_, created) = emitted(&mut cards, task);
+    assert!(
+        created
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+    );
+    assert!(!cards.layout_editor.active && cards.paused_layout.is_none());
+    assert_eq!(Config::load().widget_positions["weather"], draft["weather"]);
+}
+
+#[test]
+fn arrange_stale_surface_tasks_and_inputs_cannot_reopen_or_edit() {
+    if isolated("arrange_stale_surface_tasks_and_inputs_cannot_reopen_or_edit") {
+        return;
+    }
+    let (mut cards, _) = Cards::init(Core::default(), Config::load());
+    let wire = cards.test_output_ready();
+    let entry = cards.update(Message::Arrange);
+    let old_id = cards.ids[5];
+    let old_epoch = cards.display_generation;
+    let exit = escape(&mut cards);
+    assert!(
+        emitted(&mut cards, entry).1.is_empty(),
+        "late entry must not recreate capture"
+    );
+    // Start another session before the old exit's surface continuation runs.
+    let entry = cards.update(Message::Arrange);
+    assert!(
+        emitted(&mut cards, exit).1.is_empty(),
+        "old exit cannot replace the new probe"
+    );
+    assert!(
+        emitted(&mut cards, entry)
+            .1
+            .iter()
+            .any(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+    );
+    cards.put_layout_point(Widget::Weather, [700., 350.]);
+    let draft = cards.layout_editor.draft.clone();
+    for message in [
+        Message::SurfaceMessage(old_epoch, Box::new(Message::LayoutFinish(false))),
+        Message::SurfaceInput(
+            old_id,
+            Box::new(Message::LayoutKey(
+                keyboard::Key::Named(keyboard::key::Named::Escape),
+                false,
+            )),
+        ),
+        Message::ArrangeSurface(old_epoch),
+    ] {
+        let task = cards.update(message);
+        assert!(emitted(&mut cards, task).1.is_empty());
+        assert!(cards.layout_editor.active);
+        assert_eq!(cards.layout_editor.draft, draft);
+    }
+    let output = cards.selected_output.as_ref().unwrap().handle.clone();
+    let retired = cards.ids[5];
+    let pending_epoch = cards.display_generation;
+    let task = cards.update(Message::OutputChanged(
+        crate::displays::OutputEvent::Removed,
+        output,
+    ));
+    assert!(emitted(&mut cards, task).0.contains(&retired));
+    assert!(!cards.layout_editor.active);
+    assert_eq!(cards.paused_layout.as_ref().unwrap().draft, draft);
+    let task = cards.update(Message::ArrangeSurface(pending_epoch));
+    assert!(emitted(&mut cards, task).1.is_empty());
+    let task = cards.update(Message::SurfaceResized(
+        retired,
+        cosmic::iced::Size::new(800., 600.),
+    ));
+    assert!(emitted(&mut cards, task).0.contains(&retired));
+    let replacement = wire.output(2);
+    let task = cards.update(Message::OutputChanged(
+        crate::displays::OutputEvent::Created(Some(crate::displays::test_support::info(
+            Some("DP-2"),
+            (1280, 720),
+        ))),
+        replacement,
+    ));
+    assert!(
+        emitted(&mut cards, task)
+            .1
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+    );
+    let task = cards.update(Message::SurfaceResized(
+        cards.ids[5],
+        cosmic::iced::Size::new(1280., 720.),
+    ));
+    assert!(
+        emitted(&mut cards, task)
+            .1
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+    );
+    assert!(!cards.layout_editor.active);
+    let task = cards.update(Message::Arrange);
+    assert!(
+        emitted(&mut cards, task)
+            .1
+            .iter()
+            .any(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+    );
+    assert_eq!(cards.layout_editor.draft, draft);
+}
+
+#[test]
+fn arrange_receipts_exclude_another_writers_newer_history() {
+    if isolated("arrange_receipts_exclude_another_writers_newer_history") {
+        return;
+    }
+    let (result, receipts) = crate::desktop::actions::with_receipts(|| {
+        crate::desktop::actions::in_action("Owned arrangement", || {
+            Config::save_changes(serde_json::json!({"widget_positions":{"weather":[0.5,0.4]}}))
+        })
+        .unwrap();
+        std::thread::spawn(|| {
+            crate::desktop::actions::in_action("Other writer", || {
+                Config::save_changes(serde_json::json!({"theme":"ocean"}))
+            })
+        })
+        .join()
+        .unwrap()
+        .unwrap();
+        Err::<(), _>("later read failed")
+    });
+    assert!(result.is_err());
+    assert_eq!(receipts.len(), 1);
+    assert_eq!(receipts[0].label, "Owned arrangement");
+    assert_eq!(
+        crate::desktop::actions::history_store()
+            .unwrap()
+            .latest_change()
+            .unwrap()
+            .unwrap()
+            .label,
+        "Other writer"
+    );
+    crate::desktop::actions::cancel_arrangement(&receipts).unwrap();
+    assert_eq!(Config::load().widget_positions["weather"], [0.2, 0.2]);
+    assert_eq!(Config::load().theme, "ocean");
+}
+
+// Reproduce the recovery-before-watcher ordering with two real client proxies.
+// 0: failed exit reads the new pin; 1: Keep reads it; 2: successful Retry reads it.
+fn recovery_pin_before_watcher(path: u8) {
+    use crate::displays::{OutputEvent, test_support::info};
+    Config::save_changes(serde_json::json!({"widget_display":"test-output"})).unwrap();
+    let (mut cards, wire) = moved();
+    let output_b = wire.output(2);
+    let task = cards.update(Message::OutputChanged(
+        OutputEvent::Created(Some(info(Some("DP-B"), (1280, 720)))),
+        output_b.clone(),
+    ));
+    assert!(emitted(&mut cards, task).1.is_empty());
+    let draft = cards.layout_editor.draft.clone();
+    let receipts = cards.layout_editor.session_actions.clone();
+    let guard = cards.layout_editor.guard.clone();
+    let history_len = cards.layout_editor.history.len();
+    let config_path = Config::path().unwrap();
+    let publish_pin = || {
+        Config::save_changes(serde_json::json!({
+            "widget_display":"DP-B", "theme":"ocean", "devbox":{"network":false}
+        }))
+        .unwrap();
+    };
+    if path != 0 {
+        // Keep has a real field conflict. Retry first fails on a held lock.
+        let holder = if path == 2 {
+            Some(Holder::new(&config_path.with_extension("json.lock")))
+        } else {
+            Config::save_changes(serde_json::json!({"widget_positions":{"weather":[0.9,0.9]}}))
+                .unwrap();
+            None
+        };
+        let captured = cards.ids[5];
+        let task = escape(&mut cards);
+        released(&mut cards, captured, task);
+        assert_eq!(
+            cards.selected_output.as_ref().unwrap().name(),
+            Some("test-output")
+        );
+        drop(holder);
+    }
+    let old_ids = cards.ids;
+    let old_epoch = cards.display_generation;
+    publish_pin(); // Deliberately no FilesChanged before the recovery action.
+    let holder = (path == 0).then(|| Holder::new(&config_path.with_extension("json.lock")));
+    let start = Instant::now();
+    let task = match path {
+        0 => escape(&mut cards),
+        1 => cards.update(Message::LayoutKeepSaved),
+        2 => cards.update(Message::LayoutRetryCancel),
+        _ => unreachable!(),
+    };
+    assert!(start.elapsed() < Duration::from_secs(2));
+    let (mut destroyed, mut created) = emitted(&mut cards, task);
+    drop(holder);
+    let task = cards.update(Message::FilesChanged);
+    let (watch_destroyed, watch_created) = emitted(&mut cards, task);
+    destroyed.extend(watch_destroyed);
+    created.extend(watch_created);
+    eprintln!(
+        "recovery path {path}: config pin {:?}, selected {:?}, epoch {} -> {}, created {} surfaces",
+        cards.config.widget_display,
+        cards.selected_output.as_ref().unwrap().name(),
+        old_epoch,
+        cards.display_generation,
+        created.len()
+    );
+    assert_eq!(cards.config.widget_display.as_deref(), Some("DP-B"));
+    assert_eq!(
+        cards.selected_output.as_ref().unwrap().handle,
+        output_b,
+        "recovery must migrate the externally saved pin before the watcher consumes B == B"
+    );
+    assert!(
+        old_ids.iter().all(|id| destroyed.contains(id)),
+        "retire every A surface, including the captured probe"
+    );
+    assert!(cards.ids.iter().all(|id| !old_ids.contains(id)));
+    assert!(
+        !cards.output_known,
+        "B must get its own measurement before widgets appear"
+    );
+    assert_eq!(
+        created.len(),
+        1,
+        "one fresh migration probe, no stale Arrange replacement"
+    );
+    assert_eq!(created[0].id, cards.ids[5]);
+    assert_eq!(created[0].namespace, "halcyon-arrange");
+    assert!(created[0].input_zone.as_ref().is_some_and(Vec::is_empty));
+    let current_ids = cards.ids;
+    let task = cards.update(Message::SurfaceResized(
+        cards.ids[5],
+        cosmic::iced::Size::new(1280., 720.),
+    ));
+    created.extend(emitted(&mut cards, task).1);
+    assert!(
+        created.len() > 1,
+        "ready B gets actual widget/controls surfaces"
+    );
+    for surface in &created {
+        assert!(
+            matches!(&surface.output, IcedOutput::Output(output) if output == &output_b),
+            "{} bound to B",
+            surface.namespace
+        );
+        assert!(cards.ids.contains(&surface.id));
+        assert_eq!(surface.keyboard_interactivity, KeyboardInteractivity::None);
+    }
+    // Deliver late continuations after B is ready, when output_known cannot
+    // mask an epoch-order bug. Failed exit also scheduled an intermediate epoch.
+    let mut stale_epochs = vec![old_epoch];
+    if path == 0 {
+        stale_epochs.push(old_epoch + 1);
+    }
+    for epoch in stale_epochs {
+        let task = cards.update(Message::ArrangeSurface(epoch));
+        let (destroyed, created) = emitted(&mut cards, task);
+        assert!(destroyed.is_empty() && created.is_empty());
+    }
+    let task = cards.update(Message::SurfaceMessage(
+        old_epoch,
+        Box::new(Message::LayoutResume),
+    ));
+    assert!(emitted(&mut cards, task).1.is_empty());
+    let task = cards.update(Message::SurfaceResized(
+        old_ids[5],
+        cosmic::iced::Size::new(1920., 1080.),
+    ));
+    let (destroyed, created) = emitted(&mut cards, task);
+    assert_eq!(destroyed, vec![old_ids[5]]);
+    assert!(created.is_empty());
+    assert_eq!(cards.ids, current_ids);
+    assert!(cards.output_known && !cards.layout_editor.active);
+    if path == 0 {
+        let paused = cards.paused_layout.as_ref().unwrap();
+        assert!(!paused.active && paused.exit_failed && paused.error.is_some());
+        assert_eq!(paused.draft, draft);
+        assert_eq!(paused.session_actions, receipts);
+        assert_eq!(paused.guard, guard);
+        assert_eq!(paused.history.len(), history_len);
+    } else {
+        assert!(cards.paused_layout.is_none());
+    }
+    let saved = Config::load();
+    assert_eq!(saved.widget_display.as_deref(), Some("DP-B"));
+    assert_eq!(saved.theme, "ocean");
+    assert!(!saved.devbox.network);
+    assert_eq!(cards.config.theme, saved.theme);
+    assert_eq!(
+        saved.widget_positions["weather"],
+        match path {
+            0 => draft["weather"],
+            1 => [0.9, 0.9],
+            _ => [0.2, 0.2],
+        }
+    );
+    let raw: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config_path).unwrap()).unwrap();
+    assert_eq!(raw["future_option"], 42);
+    let latest = crate::desktop::actions::history_store()
+        .unwrap()
+        .latest_change()
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        latest.label,
+        if path == 2 {
+            "Cancel arrangement"
+        } else {
+            "Widget arrangement"
+        }
+    );
+}
+
+#[test]
+fn arrange_recovery_pin_failed_exit_before_watcher() {
+    if !isolated("arrange_recovery_pin_failed_exit_before_watcher") {
+        recovery_pin_before_watcher(0);
+    }
+}
+#[test]
+fn arrange_recovery_pin_keep_before_watcher() {
+    if !isolated("arrange_recovery_pin_keep_before_watcher") {
+        recovery_pin_before_watcher(1);
+    }
+}
+#[test]
+fn arrange_recovery_pin_retry_before_watcher() {
+    if !isolated("arrange_recovery_pin_retry_before_watcher") {
+        recovery_pin_before_watcher(2);
+    }
+}

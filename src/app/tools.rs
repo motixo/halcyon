@@ -135,11 +135,16 @@ impl Cards {
     /// a track loaded (to see it and resume). Stopped or empty players don't
     /// count.
     fn music_present(&self) -> bool {
-        self.tools.players().iter().any(|player| match player.status {
-            music::Playback::Playing => true,
-            music::Playback::Paused => !player.title.trim().is_empty() || player.art_url.is_some(),
-            music::Playback::Stopped => false,
-        })
+        self.tools
+            .players()
+            .iter()
+            .any(|player| match player.status {
+                music::Playback::Playing => true,
+                music::Playback::Paused => {
+                    !player.title.trim().is_empty() || player.art_url.is_some()
+                }
+                music::Playback::Stopped => false,
+            })
     }
 
     /// Brings the Music card onto the desktop or takes it off when that
@@ -356,7 +361,11 @@ impl Cards {
             let saved = text.clone();
             let result = tokio::task::spawn_blocking(move || notes::save(&base, &text))
                 .await
-                .unwrap_or_else(|_| Err(notes::SaveError::Failed("saving stopped unexpectedly".into())));
+                .unwrap_or_else(|_| {
+                    Err(notes::SaveError::Failed(
+                        "saving stopped unexpectedly".into(),
+                    ))
+                });
             Message::NoteSaved(saved, result)
         })
     }
@@ -364,7 +373,12 @@ impl Cards {
     /// The draft as an implicit save would keep it (arranging, hiding): never
     /// over a newer note saved elsewhere.
     pub(super) fn save_note_quietly(&mut self) -> Task<Message> {
-        if self.tools.draft.as_ref().is_some_and(|draft| draft.conflicted) {
+        if self
+            .tools
+            .draft
+            .as_ref()
+            .is_some_and(|draft| draft.conflicted)
+        {
             return Task::none();
         }
         self.save_note()
@@ -600,7 +614,8 @@ impl Cards {
     fn tool_surface_size(&self, widget: Widget) -> [u32; 2] {
         if self.tool_shown(widget) {
             let (_, mu) = self.shadow_px();
-            self.widget_size(widget).map(|value| value.ceil() as u32 + mu)
+            self.widget_size(widget)
+                .map(|value| value.ceil() as u32 + mu)
         } else {
             [16, 16]
         }
@@ -630,6 +645,7 @@ impl Cards {
         let editing = widget == Widget::Notes && self.note_lifted();
         get_layer_surface(SctkLayerSurfaceSettings {
             id: self.widget_id(widget),
+            output: self.layer_output(),
             layer: if editing { Layer::Top } else { Layer::Bottom },
             keyboard_interactivity: if editing {
                 KeyboardInteractivity::Exclusive
@@ -664,6 +680,9 @@ impl Cards {
 
     /// Positions each tool, recreating only a surface whose size changed.
     pub(super) fn sync_tool_surfaces(&mut self) -> Vec<Task<Message>> {
+        if !self.output_known || self.selected_output.is_none() {
+            return Vec::new();
+        }
         // Every sync places Music as it should be now.
         self.tools.music_shown = self.tool_shown(Widget::Music);
         let mut tasks = Vec::new();
@@ -777,6 +796,7 @@ mod tests {
     fn toggling_a_tool_writes_only_its_section() {
         isolated("toggling_a_tool_writes_only_its_section", || {
             let (mut cards, _) = Cards::init(Core::default(), Config::load());
+            let _output = cards.test_output_ready();
             let _ = cards.update(Message::ToggleWidget(Widget::Focus));
             let raw: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(Config::path().unwrap()).unwrap()).unwrap();
@@ -797,6 +817,7 @@ mod tests {
                 let mut config = Config::load();
                 config.focus.enabled = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 let before = std::fs::read(Config::path().unwrap()).unwrap();
                 let _ = cards.update(Message::Tool(Action::FocusToggle));
                 assert!(cards.tools.focus.running());
@@ -834,6 +855,7 @@ mod tests {
                 let mut config = Config::load();
                 config.notes.enabled = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 assert_eq!(cards.tools.note, Ok(notes::Note::default()));
                 let _ = cards.update(Message::Tool(Action::NoteEdit));
                 assert!(cards.tools.draft.is_some());
@@ -904,6 +926,7 @@ mod tests {
                 config.focus.enabled = true;
                 config.focus.auto_start_breaks = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 let _ = cards.update(Message::Tool(Action::FocusToggle));
                 let focus::Status::Running { ends_at } = cards.tools.focus.status else {
                     panic!("the round should run");
@@ -980,6 +1003,7 @@ mod tests {
                 let mut config = Config::load();
                 config.notes.enabled = true;
                 let (mut cards, _) = Cards::init(Core::default(), config);
+                let _output = cards.test_output_ready();
                 let type_char = |cards: &mut Cards, c| {
                     let _ = cards.update(Message::Tool(Action::NoteAction(
                         text_editor::Action::Edit(text_editor::Edit::Insert(c)),
@@ -1055,6 +1079,7 @@ mod tests {
         let mut config = Config::default();
         config.music.enabled = true;
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         let player = |status| music::Player {
             bus: format!("{}spotify", music::PREFIX),
             key: "spotify".into(),
@@ -1111,6 +1136,7 @@ mod tests {
         let mut config = Config::default();
         config.music.enabled = true;
         let (mut cards, _) = Cards::init(Core::default(), config);
+        let _output = cards.test_output_ready();
         assert!(cards.current_player().is_none());
         let player = |key: &str, status| music::Player {
             bus: format!("{}{key}", music::PREFIX),
@@ -1203,30 +1229,44 @@ mod tests {
             "app::tools::tests::music_control_refresh_keeps_progress_on_desktop",
             || {
                 use std::sync::atomic::Ordering;
-                tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(async {
-                    let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap();
-                    let state = music::fixture::State::new();
-                    state.playing.store(true, Ordering::SeqCst);
-                    let _service = music::fixture::serve(&address, "org.mpris.MediaPlayer2.firefox", state.clone()).await;
-                    let client = music::connection().await.unwrap();
-                    let mut config = Config::default();
-                    config.music.enabled = true;
-                    let (mut cards, _) = Cards::init(Core::default(), config.clone());
-                    let players = music::snapshot(&client).await.unwrap();
-                    let _ = cards.music_feed(music::Feed::Players(players.clone()));
-                    state.broken_timing.store(true, Ordering::SeqCst);
-                    let players = music::snapshot(&client).await.unwrap();
-                    let _ = cards.update(Message::MusicControlDone(Ok(players.clone())));
-                    {
-                        let player = cards.current_player().unwrap();
-                        assert_eq!(player.length_us, Some(300_000_000));
-                        assert!(player.position_us.unwrap() >= 60_000_000);
-                        assert_eq!(player.seek_request(0.5).unwrap().position_us, 150_000_000);
-                    }
-                    let messages = click_music_control(&cards, "music-progress");
-                    assert!(messages.iter().any(|m| matches!(m, Message::Tool(Action::MusicSeek(_)))),
-                        "Progress must stay interactive after a broken control refresh");
-                });
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        let address = std::env::var("DBUS_SESSION_BUS_ADDRESS").unwrap();
+                        let state = music::fixture::State::new();
+                        state.playing.store(true, Ordering::SeqCst);
+                        let _service = music::fixture::serve(
+                            &address,
+                            "org.mpris.MediaPlayer2.firefox",
+                            state.clone(),
+                        )
+                        .await;
+                        let client = music::connection().await.unwrap();
+                        let mut config = Config::default();
+                        config.music.enabled = true;
+                        let (mut cards, _) = Cards::init(Core::default(), config.clone());
+                        let _output = cards.test_output_ready();
+                        let players = music::snapshot(&client).await.unwrap();
+                        let _ = cards.music_feed(music::Feed::Players(players.clone()));
+                        state.broken_timing.store(true, Ordering::SeqCst);
+                        let players = music::snapshot(&client).await.unwrap();
+                        let _ = cards.update(Message::MusicControlDone(Ok(players.clone())));
+                        {
+                            let player = cards.current_player().unwrap();
+                            assert_eq!(player.length_us, Some(300_000_000));
+                            assert!(player.position_us.unwrap() >= 60_000_000);
+                            assert_eq!(player.seek_request(0.5).unwrap().position_us, 150_000_000);
+                        }
+                        let messages = click_music_control(&cards, "music-progress");
+                        assert!(
+                            messages
+                                .iter()
+                                .any(|m| matches!(m, Message::Tool(Action::MusicSeek(_)))),
+                            "Progress must stay interactive after a broken control refresh"
+                        );
+                    });
             },
         );
     }
@@ -1261,6 +1301,7 @@ mod tests {
                         let mut config = Config::default();
                         config.music.enabled = true;
                         let (mut cards, _) = Cards::init(Core::default(), config);
+                        let _output = cards.test_output_ready();
                         let _ = cards.music_feed(music::Feed::Players(
                             music::snapshot(&client).await.unwrap(),
                         ));
@@ -1308,6 +1349,7 @@ mod tests {
                         let mut config = Config::default();
                         config.music.enabled = true;
                         let (mut cards, _) = Cards::init(Core::default(), config);
+                        let _output = cards.test_output_ready();
                         let _ = cards.music_feed(music::Feed::Players(
                             music::snapshot(&client).await.unwrap(),
                         ));
@@ -1346,6 +1388,7 @@ mod tests {
                         let mut config = Config::default();
                         config.music.enabled = true;
                         let (mut cards, _) = Cards::init(Core::default(), config);
+                        let _output = cards.test_output_ready();
                         let _ = cards.music_feed(music::Feed::Players(
                             music::snapshot(&client).await.unwrap(),
                         ));

@@ -7,9 +7,9 @@
 //! normal desktop change; Cancel undoes the wizard's own changes, newest
 //! first. Choosing a city is a preference and stays.
 use crate::desktop::DesktopStore;
-use crate::desktop::store::LatestChange;
 use crate::desktop::panels::MAX_RADIUS;
 use crate::desktop::profiles::{self, Profile};
+use crate::desktop::store::LatestChange;
 use dock_islands_core::Placement;
 use serde_json::json;
 
@@ -137,8 +137,15 @@ impl Bars {
                     .as_ref()
                     .and_then(|panel| panel.islands().known().map(|islands| islands.enabled))
                     .unwrap_or(false),
-            panel_shape: shape(panel.as_ref().and_then(|panel| panel.radius().known().copied())),
-            dock_shape: shape(dock.as_ref().and_then(|dock| dock.radius().known().copied())),
+            panel_shape: shape(
+                panel
+                    .as_ref()
+                    .and_then(|panel| panel.radius().known().copied()),
+            ),
+            dock_shape: shape(
+                dock.as_ref()
+                    .and_then(|dock| dock.radius().known().copied()),
+            ),
             floating: dock
                 .as_ref()
                 .and_then(|dock| dock.floating().known().copied())
@@ -254,9 +261,13 @@ pub enum Outcome {
     Changed,
     /// The wizard is over. `finish` starts the cards (and at sign-in when
     /// `startup`); otherwise nothing more happens.
-    Done { finish: bool, startup: bool },
+    Done {
+        finish: bool,
+        startup: bool,
+    },
 }
 
+#[derive(Clone)]
 pub struct Wizard {
     pub step: Step,
     /// The starter look on the desktop, chosen here.
@@ -315,7 +326,10 @@ impl Wizard {
             return None;
         }
         let mut wizard = Self::new(islands_available, bars, startup);
-        wizard.step = saved["step"].as_str().and_then(Step::parse).unwrap_or(Step::Look);
+        wizard.step = saved["step"]
+            .as_str()
+            .and_then(Step::parse)
+            .unwrap_or(Step::Look);
         wizard.look = saved["look"]
             .as_str()
             .and_then(profiles::preset)
@@ -384,7 +398,12 @@ impl Wizard {
     ) -> Outcome {
         match message {
             Message::Start => self.step = Step::Look,
-            Message::Leave => return Outcome::Done { finish: false, startup: false },
+            Message::Leave => {
+                return Outcome::Done {
+                    finish: false,
+                    startup: false,
+                };
+            }
             Message::Back => {
                 if let Some(step) = self.step.back() {
                     self.step = step;
@@ -440,7 +459,10 @@ impl Wizard {
                 if self.error.is_some() {
                     return changed;
                 }
-                return Outcome::Done { finish: false, startup: false };
+                return Outcome::Done {
+                    finish: false,
+                    startup: false,
+                };
             }
             Message::Finish => {
                 return Outcome::Done {
@@ -504,7 +526,11 @@ impl Wizard {
         let applied = self
             .bars
             .profile(self.touched, self.islands_available, gap)
-            .and_then(|profile| profile.map(|profile| apply(store, &profile, false)).transpose());
+            .and_then(|profile| {
+                profile
+                    .map(|profile| apply(store, &profile, false))
+                    .transpose()
+            });
         match applied {
             Ok(change) => {
                 self.changes.extend(change);
@@ -551,9 +577,21 @@ fn apply(
     profile: &Profile,
     keep_colors: bool,
 ) -> Result<LatestChange, String> {
+    use crate::desktop::panels::PanelKind;
     let installed = profiles::Installed::discover(store);
     let selected = profile.domains().into_iter().collect();
-    let plan = profiles::plan(store, &installed, profile, &selected);
+    let mut plan = profiles::plan(store, &installed, profile, &selected);
+    if !keep_colors {
+        for (kind, look) in [
+            (PanelKind::Panel, &profile.panel),
+            (PanelKind::Dock, &profile.dock),
+        ] {
+            if let Some(islands) = look.as_ref().and_then(|look| look.islands.as_ref()) {
+                plan.choose_islands(store, kind, islands.enabled)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    }
     if !plan.can_apply() {
         return Err(plan.blocking_reasons().join(" "));
     }
@@ -579,7 +617,13 @@ mod tests {
                     for dock_shape in Shape::ALL {
                         for floating in [true, false] {
                             for hides in [true, false] {
-                                let bars = Bars { islands, panel_shape, dock_shape, floating, hides };
+                                let bars = Bars {
+                                    islands,
+                                    panel_shape,
+                                    dock_shape,
+                                    floating,
+                                    hides,
+                                };
                                 let all = Touched {
                                     islands: true,
                                     panel_shape: true,
@@ -600,12 +644,53 @@ mod tests {
     #[test]
     fn only_the_choices_made_are_written() {
         let bars = Bars::starter(true);
-        assert!(bars.profile(Touched::default(), true, 12).unwrap().is_none());
-        let only_hiding = Touched { hides: true, ..Default::default() };
+        assert!(
+            bars.profile(Touched::default(), true, 12)
+                .unwrap()
+                .is_none()
+        );
+        let only_hiding = Touched {
+            hides: true,
+            ..Default::default()
+        };
         let profile = bars.profile(only_hiding, true, 12).unwrap().unwrap();
         assert!(profile.panel.is_none(), "the panel stays as it is");
         let dock = profile.dock.unwrap();
         assert!(dock.autohide.is_some());
         assert!(dock.border_radius.is_none() && dock.floating.is_none() && dock.margin.is_none());
+    }
+}
+
+#[cfg(test)]
+mod task2_tests {
+    use super::*;
+    #[test]
+    fn task2_explicit_wizard_islands_choice_is_saved_for_disabled_installation() {
+        let f = crate::desktop::store::tests::Fixture::new("wizard-disabled-installation");
+        crate::desktop::islands::fixture_installed(&f.0);
+        f.system("com.system76.CosmicPanel", "entries", "[\"Panel\"]");
+        f.system("com.system76.CosmicPanel.Panel", "anchor", "Top");
+        let path = f.0.join("config.json");
+        std::fs::write(&path, "{}").unwrap();
+        let store = f.store().with_app_config(path);
+        let profile = Bars::starter(true)
+            .profile(
+                Touched {
+                    islands: true,
+                    ..Default::default()
+                },
+                true,
+                12,
+            )
+            .unwrap()
+            .unwrap();
+        apply(&store, &profile, false).unwrap();
+        let raw = store
+            .read_user(&crate::desktop::islands::key(
+                crate::desktop::panels::PanelKind::Panel,
+            ))
+            .unwrap()
+            .unwrap();
+        assert!(raw.decode::<dock_islands_core::Settings>().unwrap().enabled);
     }
 }

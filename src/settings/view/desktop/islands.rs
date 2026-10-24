@@ -31,7 +31,7 @@ impl Settings {
             return section(items);
         }
         let state = &self.desktop.islands;
-        if let Some(status) = &state.status {
+        if let Some(status) = state.availability_message() {
             items.push(banner(
                 status,
                 WARN,

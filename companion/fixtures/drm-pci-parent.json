@@ -1,0 +1,39 @@
+{
+  "provenance": {
+    "source": "runtime-input-export-r1/guest-evidence/results/before-metadata.json",
+    "sha256": "99780237d3794d80519300e7c60202856c608b07d680f7a39a5fded9ec10bea6",
+    "pointer": "/graphics/nodes/card1",
+    "note": "Actual public fields only. Child driver/subsystem links were NOT captured; tests add synthetic links explicitly, never native evidence."
+  },
+  "node": {
+    "sysfs_resolved": "/sys/devices/pci0000:00/0000:00:02.0/drm/card1",
+    "device_resolved": "/sys/devices/pci0000:00/0000:00:02.0",
+    "driver": "/sys/bus/pci/drivers/virtio-pci",
+    "module": "/sys/module/virtio_pci",
+    "attrs": {
+      "vendor": "0x1af4\n",
+      "device": "0x1050\n",
+      "subsystem_vendor": "0x1af4\n",
+      "subsystem_device": "0x1100\n",
+      "uevent": "DRIVER=virtio-pci\nPCI_CLASS=30000\nPCI_ID=1AF4:1050\nPCI_SUBSYS_ID=1AF4:1100\nPCI_SLOT_NAME=0000:00:02.0\nMODALIAS=pci:v00001AF4d00001050sv00001AF4sd00001100bc03sc00i00\n",
+      "features": {
+        "error": "FileNotFoundError"
+      },
+      "revision": "0x01\n",
+      "class": "0x030000\n",
+      "module_version": "1\n",
+      "module_srcversion": {
+        "error": "FileNotFoundError"
+      }
+    },
+    "virtio_children": {
+      "virtio0": {
+        "resolved": "/sys/devices/pci0000:00/0000:00:02.0/virtio0",
+        "features": "01000000000000000000000000001100100000001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\n",
+        "device": "0x0010\n",
+        "vendor": "0x1af4\n",
+        "status": "0x0000000f\n"
+      }
+    }
+  }
+}

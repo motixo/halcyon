@@ -333,8 +333,8 @@ mod tests {
         assert!(rgb[2] > rgb[0]);
         // The reported amber case: every offered accent is a visible color,
         // never one of the picture's dark browns.
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("assets/wallpapers/amber.jpg");
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/amber.jpg");
         let Preview::Ready(pixels) = media::thumbnail(&path) else {
             panic!("amber");
         };

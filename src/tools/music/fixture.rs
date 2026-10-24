@@ -131,8 +131,8 @@ impl Transport {
         if self.0.broken_timing.load(Ordering::SeqCst) {
             0
         } else {
-        self.0.position.load(Ordering::SeqCst)
-    }
+            self.0.position.load(Ordering::SeqCst)
+        }
     }
     #[zbus(property)]
     fn rate(&self) -> f64 {

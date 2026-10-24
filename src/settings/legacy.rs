@@ -28,6 +28,7 @@ struct Record {
     kind: String,
     draft: String,
 }
+#[derive(Clone)]
 pub(super) struct Proposal {
     pub kind: Kind,
     pub selected: bool,
@@ -37,7 +38,7 @@ pub(super) struct Proposal {
     pub text: String,
     original: Vec<u8>,
 }
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(super) struct Recovery {
     pub rows: Vec<Proposal>,
 }

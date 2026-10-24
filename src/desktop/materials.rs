@@ -35,6 +35,10 @@ pub fn apply_from(
     finish: Option<Finish>,
     expected: Option<crate::materials::Materials>,
 ) -> Result<(), String> {
+    let installed = super::islands::Installation::discover(store).installed();
+    if matches!(target, Target::Dock | Target::Panel) && !installed {
+        return Err("Islands is not installed".into());
+    }
     if let Some(f) = finish {
         f.validate()?;
     }
@@ -63,6 +67,9 @@ pub fn apply_from(
     }
     let mut patch = DesktopPatch::new();
     for (bar, name) in [(Target::Dock, "Dock"), (Target::Panel, "Panel")] {
+        if !installed {
+            continue;
+        }
         if target != Target::Shared && target != bar {
             continue;
         }
@@ -122,6 +129,7 @@ mod tests {
             std::env::temp_dir().join(format!("material-transaction-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
+        crate::desktop::islands::fixture_installed(&root);
         let path = root.join("widgets.json");
         std::fs::write(&path, r#"{"appearance":{"accent":[21,100,150],"family":"paper","opacity":89},"glance":{"style":"transparent"},"widget_font":"Open Sans","future":{"keep":true}}"#).unwrap();
         let store = DesktopStore::fixture(&root)
@@ -129,7 +137,15 @@ mod tests {
             .with_app_config(path.clone());
         let stale = crate::materials::Materials::default();
         apply(&store, Target::Shared, Some(Finish::new(Kind::Frosted))).unwrap();
-        assert!(apply_from(&store, Target::Shared, Some(Finish::new(Kind::Clear)), Some(stale)).is_err());
+        assert!(
+            apply_from(
+                &store,
+                Target::Shared,
+                Some(Finish::new(Kind::Clear)),
+                Some(stale)
+            )
+            .is_err()
+        );
         apply(&store, Target::Shared, None).unwrap();
         apply(&store, Target::Dock, Some(Finish::new(Kind::Smoked))).unwrap();
         apply(&store, Target::Shared, Some(Finish::new(Kind::Liquid))).unwrap();
@@ -180,6 +196,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("material-future-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
+        crate::desktop::islands::fixture_installed(&root);
         let path = root.join("widgets.json");
         std::fs::write(&path, "{}").unwrap();
         let store = DesktopStore::fixture(&root)

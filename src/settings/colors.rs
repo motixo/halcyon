@@ -6,7 +6,7 @@ use crate::desktop::store::{DesktopStore, WidgetPatch, widget};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-const KEYS: [&str; 9] = [
+const KEYS: [&str; 10] = [
     "/theme",
     "/appearance/accent",
     "/appearance/color_source",
@@ -16,6 +16,7 @@ const KEYS: [&str; 9] = [
     "/appearance/family",
     "/appearance/color_policy",
     "/appearance/overrides",
+    "/appearance/native_mode_palettes",
 ];
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -60,6 +61,12 @@ impl Colors {
             family: self.family,
             color_policy: self.policy,
             overrides: self.overrides,
+            native_mode_palettes: self
+                .original
+                .get("/appearance/native_mode_palettes")
+                .and_then(Option::as_ref)
+                .and_then(|value| serde_json::from_str(value).ok())
+                .unwrap_or(0),
             accent: self
                 .original
                 .get("/appearance/accent")
@@ -99,7 +106,7 @@ impl Colors {
     }
     pub fn validate(&self) -> Result<(), String> {
         if !Palette::CHOICES.iter().any(|(key, _)| *key == self.theme)
-            || ![4, 6, 7, KEYS.len()].contains(&self.original.len())
+            || ![4, 6, 7, 9, KEYS.len()].contains(&self.original.len())
             || !KEYS[..4].iter().all(|key| self.original.contains_key(*key))
             || self
                 .original
@@ -179,14 +186,16 @@ impl Colors {
             };
             patch.set(key, original, desired)?;
         }
-        if let Some(original) = self.original.get("/appearance/family") {
-            let original = original
-                .as_ref()
-                .map(|value| serde_json::from_str(value).map_err(|error| error.to_string()))
-                .transpose()?;
-            // Generated surfaces also depend on the original family. This is
-            // a guard only, never a family write from Wallpaper & colors.
-            patch.set("/appearance/family", original.clone(), original)?;
+        for key in ["/appearance/family", "/appearance/native_mode_palettes"] {
+            if let Some(original) = self.original.get(key) {
+                let original = original
+                    .as_ref()
+                    .map(|value| serde_json::from_str(value).map_err(|error| error.to_string()))
+                    .transpose()?;
+                // Generated surfaces also depend on the original family. This is
+                // a guard only, never a family write from Wallpaper & colors.
+                patch.set(key, original.clone(), original)?;
+            }
         }
         Ok(patch)
     }

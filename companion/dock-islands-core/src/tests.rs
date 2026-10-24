@@ -164,3 +164,24 @@ fn rounded_regions_keep_gaps_clear_and_coalesce_straight_edges() {
         assert!(w > 0 && h > 0);
     }
 }
+
+#[test]
+fn monitor_pinning_fallback_order_and_layouts() {
+    for names in [["DP-2", "DP-1", "eDP-1"], ["eDP-1", "DP-2", "DP-1"]] {
+        assert_eq!(
+            names
+                .into_iter()
+                .min_by_key(|name| super::output_order(name)),
+            Some("eDP-1")
+        );
+    }
+    for name in ["LVDS-1", "DSI-1"] {
+        assert!(super::output_order(name) < super::output_order("DP-1"));
+    }
+    let mut settings = super::Settings::default();
+    settings.layout_mut("DP-2");
+    let before = serde_json::to_vec(&settings).unwrap();
+    let _ = settings.layout("eDP-1");
+    let _ = settings.layout("DP-2");
+    assert_eq!(serde_json::to_vec(&settings).unwrap(), before);
+}

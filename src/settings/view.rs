@@ -11,7 +11,9 @@ mod motion;
 mod navigation;
 mod pages;
 mod preview;
+mod privacy;
 pub(super) mod profiles;
+mod recovery;
 mod reveal;
 mod setup;
 mod shortcuts;
@@ -20,6 +22,7 @@ mod slider_completion;
 mod system_appearance;
 mod themes;
 mod tools;
+mod updates;
 mod wallpaper;
 mod widget_text;
 mod window_rules;
@@ -224,7 +227,19 @@ pub(super) fn segmented<'a>(
     let buttons: Vec<Element<'a, Message>> = options
         .into_iter()
         .map(|(title, selected, message)| {
+            let id = match &message {
+                Some(Message::DesktopEditor(
+                    crate::settings::desktop::Message::Islands(
+                        crate::settings::desktop::islands::Edit::Enabled(true),
+                    )
+                    | crate::settings::desktop::Message::PanelStyle(
+                        crate::settings::desktop::PanelStyle::Islands,
+                    ),
+                )) => cosmic::widget::Id::new("native-islands-style"),
+                _ => cosmic::widget::Id::unique(),
+            };
             button::custom(label(title, 12., if selected { FG } else { MUTED }))
+                .id(id)
                 .class(nav_style(selected, accent))
                 .selected(selected)
                 .padding([6, 12])

@@ -18,12 +18,18 @@ mod colors;
 mod desktop;
 mod desktop_icons;
 mod direct;
+#[cfg(test)]
+mod display_tests;
 mod drafts;
 mod legacy;
 mod motion;
+mod native_jobs;
 mod navigation;
 mod placement;
 mod preference_undo;
+mod privacy;
+#[cfg(test)]
+mod privacy_tests;
 mod profiles;
 mod recovery;
 mod reorder;
@@ -31,6 +37,7 @@ pub(crate) mod session_drafts;
 mod shortcuts;
 mod system_appearance;
 mod tools;
+mod updates;
 mod view;
 mod wallpaper;
 mod window_rules;
@@ -420,6 +427,12 @@ pub enum FontTarget {
 }
 #[derive(Debug, Clone)]
 pub enum Message {
+    Updates(updates::Message),
+    ShareUsage(bool),
+    UsageSaved(Result<bool, String>),
+    OpenPrivacy,
+    WidgetDisplay(Option<String>),
+    DisplayOutput(crate::displays::OutputEvent, crate::displays::WlOutput),
     Wizard(wizard::Message),
     /// Starts first-run setup again (App settings).
     OpenWizard,
@@ -457,7 +470,8 @@ pub enum Message {
     ToggleAdvanced(Page),
     ToggleHelp(&'static str),
     UndoDesktop,
-    ResolveUndo(bool),
+    UndoDesktopShown(Option<String>),
+    ResolveUndoShown(crate::desktop::store::UndoReview, bool),
     RecoverySelect(usize, bool),
     RecoveryUseProposed(usize),
     RecoveryOpen(usize),
@@ -565,7 +579,25 @@ pub enum Message {
     SetupDismissed(bool),
     SetupOpen(bool),
     OpenWeatherSource,
+    UndoDesktopRestore(String),
+    DesktopRestorePreview,
+    DesktopRestorePlanned(Result<crate::desktop::recovery::RestorePlan, String>),
+    DesktopRestoreConfirm(bool),
+    DesktopRestoreDone(Result<(), String>),
+    ExportRecovery,
+    RecoveryExported(Result<Option<PathBuf>, String>),
     OpenIslandsGuide,
+    CopyIslandsDiagnostics,
+    NativeDone(native_jobs::Delivery),
+    InstallationChecked(
+        u64,
+        crate::desktop::islands::Installation,
+        desktop::islands::RuntimeStatus,
+    ),
+    RefreshInstallation,
+    RecheckInstallation,
+    InstallationPresence(u64, crate::desktop::islands::Installation),
+    InstallationReady(u64, crate::desktop::islands::Installation),
     ShowControls,
     Restore(bool),
     Capture,
@@ -576,6 +608,11 @@ pub enum Message {
 }
 
 pub struct Settings {
+    updates: updates::Updates,
+    usage_enabled: bool,
+    usage_busy: bool,
+    usage_error: Option<String>,
+    displays: crate::displays::Registry,
     core: Core,
     page: Page,
     /// First-run setup, shown instead of the pages while it runs.
@@ -606,6 +643,14 @@ pub struct Settings {
     native_property: u64,
     session_drafts: session_drafts::SessionDrafts,
     recovery_sheet: legacy::Recovery,
+    desktop_recovery: recovery::DesktopRecovery,
+    installation_generation: u64,
+    installation_busy: bool,
+    installation_retry: bool,
+    installation_deadline: Option<std::time::Instant>,
+    native_busy: bool,
+    native_deferred: std::collections::VecDeque<Message>,
+    native_tasks: Vec<Task<Message>>,
     config: Config,
     samples: crate::app::SettingsSamples,
     notice: u16,
@@ -769,6 +814,7 @@ impl cosmic::Application for Settings {
         &mut self.core
     }
     fn init(core: Core, page: Page) -> (Self, Task<Message>) {
+        let _native = crate::desktop::islands::Installation::native_view(Default::default());
         // Styles name their fonts; learn which are installed before drawing.
         crate::desktop_theme::load_installed_fonts();
         let page = page.canonical();
@@ -776,7 +822,14 @@ impl cosmic::Application for Settings {
         let wizard = OPEN_WIZARD
             .swap(false, std::sync::atomic::Ordering::Relaxed)
             .then(open_wizard);
+        crate::usage::start_status();
+        let usage = crate::usage::preference();
         let mut app = Self {
+            updates: updates::Updates::default(),
+            usage_enabled: usage.as_ref().copied().unwrap_or(false),
+            usage_error: usage.err(),
+            usage_busy: false,
+            displays: Default::default(),
             core,
             page,
             wizard,
@@ -801,6 +854,14 @@ impl cosmic::Application for Settings {
             native_property: 0,
             session_drafts: session_drafts::SessionDrafts::default(),
             recovery_sheet: legacy::Recovery::load(),
+            desktop_recovery: recovery::DesktopRecovery::default(),
+            installation_generation: 0,
+            installation_busy: false,
+            installation_retry: false,
+            installation_deadline: None,
+            native_busy: false,
+            native_deferred: Default::default(),
+            native_tasks: Vec::new(),
             notice: config.meeting_notice_minutes.clamp(1, 60) as u16,
             material_target: Default::default(),
             material_adjust: false,
@@ -859,7 +920,8 @@ impl cosmic::Application for Settings {
         app.core.window.show_headerbar = false;
         app.core.window.content_container = false;
         app.core
-            .set_auto_blur(cosmic::core::Auto::Popup | cosmic::core::Auto::System);
+            // Settings and its popups do not request native backdrop effects.
+            .set_auto_blur(Default::default());
         let title = app
             .core
             .main_window_id()
@@ -873,7 +935,7 @@ impl cosmic::Application for Settings {
         if page == Page::DesktopDock {
             app.desktop.open();
         }
-        if page == Page::Appearance {
+        if page == Page::Appearance && !app.native_worker_needed() {
             app.material_native = crate::desktop::actions::history_store()
                 .is_ok_and(|s| crate::desktop::materials::native_support(&s));
         }
@@ -913,15 +975,18 @@ impl cosmic::Application for Settings {
             Task::none()
         };
         let motion = app.handle(Message::ReadSystemMotion);
+        app.desktop_recovery.refresh();
+        let installation = app.handle(Message::RefreshInstallation);
         (
             app,
-            Task::batch([title, service, media, tools, calendar, motion]),
+            Task::batch([title, service, media, tools, calendar, motion, installation]),
         )
     }
     fn subscription(&self) -> Subscription<Message> {
         let paths = Config::path()
             .into_iter()
             .chain(settings_command_path())
+            .chain(crate::usage::path())
             .chain(crate::layout_state::path())
             .chain(crate::tools::notes::path())
             .chain(crate::calendar::account_path())
@@ -929,6 +994,14 @@ impl cosmic::Application for Settings {
             .chain(crate::tools::focus::Session::path())
             .collect();
         let mut subscriptions = vec![
+            cosmic::iced::event::listen_with(|event, _, _| match event {
+                cosmic::iced::Event::PlatformSpecific(
+                    cosmic::iced::event::PlatformSpecific::Wayland(
+                        cosmic::iced::event::wayland::Event::Output(event, handle),
+                    ),
+                ) => Some(Message::DisplayOutput(event, handle)),
+                _ => None,
+            }),
             crate::watch::files(paths).map(|_| Message::Tick),
             window::resize_events().map(|(_, size)| Message::Resized(size)),
             self.config
@@ -948,6 +1021,7 @@ impl cosmic::Application for Settings {
             subscriptions.push(cosmic::iced::event::listen_with(|event, status, _| {
                 use cosmic::iced::{Event, keyboard};
                 match event {
+                    Event::Window(window::Event::Focused) => Some(Message::RefreshInstallation),
                     Event::Keyboard(keyboard::Event::KeyPressed {
                         key: keyboard::Key::Character(ref key),
                         modifiers,
@@ -1222,33 +1296,45 @@ impl cosmic::Application for Settings {
             .apply(cosmic::widget::container)
             .width(Length::Fill)
             .height(Length::Fill)
-            .class(cosmic::theme::Container::custom(move |theme: &cosmic::Theme| {
-                let cosmic = theme.cosmic();
-                let base: cosmic::iced::Color = cosmic.background(theme.transparent).base.into();
-                // Inside libcosmic's 1px window border, with its corners.
-                let radius = if maximized {
-                    0.
-                } else {
-                    let r = cosmic.radius_s()[0];
-                    (if r < 4. { r } else { r + 4. } - 1.).max(0.)
-                };
-                cosmic::iced::widget::container::Style {
-                    background: Some(cosmic::iced::Background::Color(cosmic::iced::Color {
-                        a: 1.,
-                        ..base
-                    })),
-                    text_color: Some(cosmic.background(theme.transparent).on.into()),
-                    border: cosmic::iced::Border {
-                        radius: radius.into(),
+            .class(cosmic::theme::Container::custom(
+                move |theme: &cosmic::Theme| {
+                    let cosmic = theme.cosmic();
+                    let base: cosmic::iced::Color =
+                        cosmic.background(theme.transparent).base.into();
+                    // Inside libcosmic's 1px window border, with its corners.
+                    let radius = if maximized {
+                        0.
+                    } else {
+                        let r = cosmic.radius_s()[0];
+                        (if r < 4. { r } else { r + 4. } - 1.).max(0.)
+                    };
+                    cosmic::iced::widget::container::Style {
+                        background: Some(cosmic::iced::Background::Color(cosmic::iced::Color {
+                            a: 1.,
+                            ..base
+                        })),
+                        text_color: Some(cosmic.background(theme.transparent).on.into()),
+                        border: cosmic::iced::Border {
+                            radius: radius.into(),
+                            ..Default::default()
+                        },
                         ..Default::default()
-                    },
-                    ..Default::default()
-                }
-            }))
+                    }
+                },
+            ))
             .into()
     }
     fn on_app_exit(&mut self) -> Option<Message> {
+        self.updates.cancel();
+        if self.native_busy {
+            return Some(Message::Window(WindowControl::Close));
+        }
         self.flush_edits();
+        if self.native_busy {
+            // libcosmic dispatches this message instead of closing. The worker
+            // drains queued Close only after its durable write completes.
+            return Some(Message::Window(WindowControl::Close));
+        }
         self.checkpoint_session_drafts();
         self.automation.release_hold();
         None
@@ -1257,6 +1343,20 @@ impl cosmic::Application for Settings {
         Some(Message::FlushEdits)
     }
     fn update(&mut self, message: Message) -> Task<Message> {
+        if matches!(message, Message::Window(WindowControl::Close)) {
+            self.updates.cancel();
+        }
+        if let Message::Updates(message) = message {
+            return self.update_updates(message);
+        }
+        let _native = crate::desktop::islands::Installation::native_view(
+            self.desktop.islands.installation.clone(),
+        );
+        if let Some(task) = self.dispatch_native(&message) {
+            return Task::batch(
+                std::iter::once(task).chain(std::mem::take(&mut self.native_tasks)),
+            );
+        }
         let revision = crate::desktop::store::revision();
         let checkpoint = checkpoint_message(&message);
         let scopes = self.preference_scope(&message);
@@ -1413,14 +1513,63 @@ impl cosmic::Application for Settings {
             };
             self.automation.sync_hold(parts);
         }
-        task
+        Task::batch(std::iter::once(task).chain(std::mem::take(&mut self.native_tasks)))
     }
 }
 
 impl Settings {
     fn handle(&mut self, message: Message) -> Task<Message> {
+        if let Some(task) = self.dispatch_native(&message) {
+            return task;
+        }
         match message {
+            Message::Updates(message) => return self.update_updates(message),
+            Message::ShareUsage(enabled) => return self.change_usage(enabled),
+            Message::UsageSaved(result) => {
+                self.usage_busy = false;
+                self.usage_error = result.err();
+                self.refresh_usage();
+            }
+            Message::OpenPrivacy => {
+                return run_command(
+                    "/usr/bin/xdg-open".into(),
+                    vec!["https://github.com/profilaz3/halcyon/blob/main/docs/PRIVACY.md".into()],
+                    "Privacy details opened",
+                );
+            }
+            Message::DisplayOutput(event, handle) => {
+                self.displays.update(event, handle);
+            }
+            Message::WidgetDisplay(name) => {
+                if name != self.config.widget_display
+                    && name
+                        .as_deref()
+                        .is_some_and(|name| self.displays.unique(name).is_none())
+                {
+                    self.failed(
+                        "That display is no longer available with a unique connection name.".into(),
+                    );
+                } else {
+                    self.save(serde_json::json!({"widget_display": name}));
+                }
+            }
             Message::Preview => return Task::none(),
+            Message::NativeDone(done) => return self.finish_native(done),
+            Message::InstallationChecked(generation, mut state, runtime) => {
+                if generation != self.installation_generation {
+                    return Task::none();
+                }
+                if matches!(state, crate::desktop::islands::Installation::Pending)
+                    && self.desktop.islands.installation.installed()
+                {
+                    state = self.desktop.islands.installation.checking();
+                }
+                self.installation_busy = false;
+                self.installation_retry = state.needs_recheck();
+                let _ = self.handle(Message::InstallationReady(generation, state));
+                self.material_native = runtime.material;
+                self.desktop.accept_runtime(runtime);
+            }
             Message::Calendar(message) => return self.update_calendar(message),
             Message::Wizard(message) => return self.update_wizard(message),
             Message::OpenWizard => {
@@ -1534,26 +1683,32 @@ impl Settings {
                 }
             }
             Message::UndoDesktop => return self.undo_desktop_change(),
-            Message::ResolveUndo(restore) => {
-                if let Some(review) = self.undo_review.as_ref() {
-                    let result = crate::desktop::actions::history_store().and_then(|store| {
-                        if restore {
-                            store.accept_undo_review(review)
-                        } else {
-                            store.keep_undo_current(review)
-                        }
-                    });
-                    match result {
-                        Ok(_) => {
-                            self.undo_review = None;
-                            self.error = false;
-                            self.status.clear();
-                        }
-                        Err(error) => self.failed(error.to_string()),
-                    }
-                    self.last_desktop_change = navigation::latest_desktop_change();
-                    return self.after_desktop_change();
+            Message::UndoDesktopShown(shown) => {
+                // A rendered historical action must not skip an unfinished
+                // gesture or flush it and silently retarget its captured ID.
+                if !self.appearance_pending.is_empty() || self.notice_editing {
+                    self.failed("Finish the current edit before undoing a previous change.".into());
+                    return Task::none();
                 }
+                if self.last_desktop_change.as_ref().map(|(_, _, id)| id) != shown.as_ref() {
+                    self.failed("The last settings action changed. Review Undo again.".into());
+                    return Task::none();
+                }
+                return self.undo_shown_change(shown);
+            }
+            Message::UndoDesktopRestore(expected) => {
+                if self
+                    .last_desktop_change
+                    .as_ref()
+                    .is_none_or(|(_, _, id)| *id != expected)
+                {
+                    self.failed("The last settings action changed. Review Undo again.".into());
+                    return Task::none();
+                }
+                return self.undo_shown_change(Some(expected));
+            }
+            Message::ResolveUndoShown(review, restore) => {
+                return self.resolve_undo_review(review, restore);
             }
             Message::RecoveryText(index, field, text) => {
                 if let Some(row) = self.recovery_sheet.rows.get_mut(index) {
@@ -1676,7 +1831,11 @@ impl Settings {
             Message::Wallpaper(message) => return self.update_wallpaper(message),
             Message::ColorWell(message) => return self.update_color_well(message),
             Message::FontMenu(target) => {
-                self.font_menu = if self.font_menu == target { None } else { target };
+                self.font_menu = if self.font_menu == target {
+                    None
+                } else {
+                    target
+                };
                 self.font_search.clear();
                 if self.font_menu.is_some() && self.font_catalog.is_none() {
                     self.font_catalog =
@@ -1684,17 +1843,7 @@ impl Settings {
                 }
             }
             Message::FontSearch(text) => self.font_search = text,
-            Message::Window(control) => {
-                use cosmic::app::Action;
-                let action = match control {
-                    WindowControl::Drag => Action::Drag,
-                    WindowControl::Menu => Action::ShowWindowMenu,
-                    WindowControl::Maximize => Action::Maximize,
-                    WindowControl::Minimize => Action::Minimize,
-                    WindowControl::Close => Action::Close,
-                };
-                return Task::done(cosmic::Action::Cosmic(action));
-            }
+            Message::Window(control) => return native_jobs::window_action(control),
             Message::WidgetFont(target, family) => {
                 self.font_menu = None;
                 self.font_search.clear();
@@ -1728,6 +1877,7 @@ impl Settings {
             Message::Automation(message) => return self.update_automation(message),
             Message::Resized(size) => self.window = size,
             Message::Tick => {
+                self.refresh_usage();
                 self.calendar.refresh();
                 if let Ok(config) = Config::try_load() {
                     self.config = config;
@@ -2317,7 +2467,8 @@ impl Settings {
             Message::StyleFilter(filter) => self.style_filter = filter,
             Message::StyleBars(on) => {
                 self.save(json!({"appearance": {"style_bars": on}}));
-                self.profiles.set_style_bars(self.config.appearance.style_bars);
+                self.profiles
+                    .set_style_bars(self.config.appearance.style_bars);
             }
             Message::GlanceDensity(value) => self.save_glance(json!({"density": value})),
             Message::GlanceOpacity(value) => self.save_glance(json!({"opacity": value})),
@@ -2393,14 +2544,28 @@ impl Settings {
             Message::CommitEdits(_) => {}
             Message::MaterialTarget(target) => {
                 self.save_material_draft();
+                if self.native_busy {
+                    self.native_deferred
+                        .push_back(Message::MaterialTarget(target));
+                    return Task::none();
+                }
                 self.material_target = target;
             }
             Message::MaterialChoose(kind) => {
                 self.flush_edits();
+                if self.native_busy {
+                    self.native_deferred
+                        .push_back(Message::MaterialChoose(kind));
+                    return Task::none();
+                }
                 self.material_draft = None;
                 self.material_baseline = None;
                 let current = self.config.materials.effective(self.material_target);
-                self.apply_material(kind.map(|kind| current.filter(|f| f.kind == kind).unwrap_or_else(|| crate::materials::Finish::new(kind))));
+                self.apply_material(kind.map(|kind| {
+                    current
+                        .filter(|f| f.kind == kind)
+                        .unwrap_or_else(|| crate::materials::Finish::new(kind))
+                }));
             }
             Message::MaterialAdjust(open) => self.material_adjust = open,
             Message::MaterialValue(opacity, value) => {
@@ -2688,6 +2853,167 @@ impl Settings {
                     "Calendar opened",
                 );
             }
+            Message::DesktopRestorePreview => {
+                if self.desktop_recovery.busy {
+                    return Task::none();
+                }
+                self.desktop_recovery.busy = true;
+                return cosmic::task::future(async {
+                    let result = tokio::task::spawn_blocking(|| {
+                        let store =
+                            crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+                        let mut domains = crate::desktop::recovery::RecoveryDomain::ALL.to_vec();
+                        domains.push(crate::desktop::recovery::RecoveryDomain::AppAnimations);
+                        crate::desktop::recovery::plan_restore(&store, &domains)
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|v| v);
+                    Message::DesktopRestorePlanned(result)
+                });
+            }
+            Message::DesktopRestorePlanned(result) => {
+                self.desktop_recovery.busy = false;
+                match result {
+                    Ok(plan) => self.desktop_recovery.plan = Some(plan),
+                    Err(error) => self.failed(error),
+                }
+            }
+            Message::DesktopRestoreConfirm(confirmed) => {
+                let Some(plan) = self.desktop_recovery.plan.take() else {
+                    return Task::none();
+                };
+                if !confirmed {
+                    return Task::none();
+                }
+                self.desktop_recovery.busy = true;
+                return cosmic::task::future(async move {
+                    let result = tokio::task::spawn_blocking(move || {
+                        let store =
+                            crate::desktop::DesktopStore::from_env().map_err(|e| e.to_string())?;
+                        crate::desktop::recovery::apply_restore(&store, &plan)
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    })
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|v| v);
+                    Message::DesktopRestoreDone(result)
+                });
+            }
+            Message::DesktopRestoreDone(result) => {
+                self.desktop_recovery.busy = false;
+                self.desktop_recovery.refresh();
+                match result {
+                    Ok(()) => {
+                        self.config = Config::load();
+                        self.saved();
+                        self.status = "Desktop restored · Undo is available".into();
+                        return self.after_desktop_change();
+                    }
+                    Err(error) => self.failed(error),
+                }
+            }
+            Message::ExportRecovery => return recovery::export_task(),
+            Message::RecoveryExported(result) => match result {
+                Ok(Some(_)) => {
+                    self.status = "Desktop recovery exported".into();
+                    self.error = false;
+                }
+                Ok(None) => {}
+                Err(error) => self.failed(error),
+            },
+            Message::RecheckInstallation => {
+                self.installation_retry = false;
+                return self.handle(Message::RefreshInstallation);
+            }
+            Message::RefreshInstallation => {
+                let updates = self.update_updates(updates::Message::Inspect);
+                if self.installation_busy || self.installation_retry {
+                    return updates;
+                }
+                self.desktop_recovery.refresh();
+                self.installation_busy = true;
+                self.installation_generation += 1;
+                let generation = self.installation_generation;
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(6);
+                self.installation_deadline = Some(deadline);
+                self.desktop.islands.installation = self.desktop.islands.installation.checking();
+                return Task::batch([
+                    updates,
+                    cosmic::task::future(async move {
+                        let state = tokio::task::spawn_blocking(move || {
+                            crate::desktop::DesktopStore::from_env()
+                                .map(|store| {
+                                    crate::desktop::islands::Installation::discover_presence_until(
+                                        &store, deadline,
+                                    )
+                                })
+                                .unwrap_or_default()
+                        })
+                        .await
+                        .unwrap_or_default();
+                        Message::InstallationPresence(generation, state)
+                    }),
+                ]);
+            }
+            Message::InstallationPresence(generation, state) => {
+                if generation != self.installation_generation {
+                    return Task::none();
+                }
+                if !matches!(state, crate::desktop::islands::Installation::Pending) {
+                    let _ = self.handle(Message::InstallationReady(generation, state));
+                }
+                let panel = self.desktop.selected;
+                let output = self.desktop.island_output();
+                let deadline = self
+                    .installation_deadline
+                    .unwrap_or_else(std::time::Instant::now);
+                return cosmic::task::future(async move {
+                    let (state, runtime) = tokio::task::spawn_blocking(move || {
+                        let Ok(store) = crate::desktop::DesktopStore::from_env() else {
+                            return (Default::default(), Default::default());
+                        };
+                        let state =
+                            crate::desktop::islands::Installation::discover_until(&store, deadline);
+                        let runtime = desktop::islands::RuntimeStatus::read(
+                            &store, &state, panel, output, deadline,
+                        );
+                        (state, runtime)
+                    })
+                    .await
+                    .unwrap_or_default();
+                    Message::InstallationChecked(generation, state, runtime)
+                });
+            }
+            Message::InstallationReady(generation, state) => {
+                if generation != self.installation_generation {
+                    return Task::none();
+                }
+                let _native = crate::desktop::islands::Installation::native_view(state.clone());
+                self.desktop.islands.installation = state;
+                self.desktop.check_islands();
+                self.profiles.refresh();
+                if !self.desktop.islands.installation.installed()
+                    && matches!(
+                        self.material_target,
+                        crate::materials::Target::Dock | crate::materials::Target::Panel
+                    )
+                {
+                    self.material_target = crate::materials::Target::Widgets;
+                    self.material_draft = None;
+                    self.material_adjust = false;
+                }
+                if let Some(wizard) = &mut self.wizard {
+                    wizard.islands_available = self.desktop.islands.installation.installed();
+                }
+            }
+            Message::CopyIslandsDiagnostics => {
+                if let Some(diagnostics) = self.desktop.islands.installation.diagnostics() {
+                    return cosmic::iced::clipboard::write(diagnostics.to_owned());
+                }
+            }
             Message::OpenIslandsGuide => {
                 return run_command(
                     "/usr/bin/xdg-open".into(),
@@ -2771,7 +3097,12 @@ fn desktop_write_message(message: &Message) -> bool {
         Message::DesktopIcons(message) => message.writes(),
         Message::WindowRules(message) => message.writes(),
         Message::Shortcuts(message) => message.writes(),
-        Message::CommandDone(..) | Message::UndoDesktop => true,
+        Message::CommandDone(..)
+        | Message::UndoDesktop
+        | Message::UndoDesktopShown(..)
+        | Message::ResolveUndoShown(..)
+        | Message::UndoDesktopRestore(..)
+        | Message::DesktopRestoreDone(..) => true,
         _ => false,
     }
 }
@@ -2855,7 +3186,7 @@ impl Settings {
         Task::none()
     }
     fn update_profiles(&mut self, message: profiles::Message) -> Task<Message> {
-        use profiles::{Message as Edit, Outcome};
+        use profiles::Message as Edit;
         // A dialog result returns to the request that started it, whatever
         // page is showing; everything else belongs to the page.
         let result = matches!(
@@ -2884,7 +3215,12 @@ impl Settings {
                 return Task::none();
             }
         }
-        let media = match self.profiles.update(message) {
+        let outcome = self.profiles.update(message);
+        self.profile_outcome(outcome)
+    }
+    fn profile_outcome(&mut self, outcome: profiles::Outcome) -> Task<Message> {
+        use profiles::Outcome;
+        let media = match outcome {
             Outcome::None => self.media_tasks(),
             Outcome::Changed => self.after_desktop_change(),
             Outcome::FocusName => {
@@ -2904,7 +3240,12 @@ impl Settings {
             return Task::none();
         };
         let store = crate::desktop::DesktopStore::from_env().ok();
-        match wizard.update(message, store.as_ref(), &self.config) {
+        let outcome = wizard.update(message, store.as_ref(), &self.config);
+        self.wizard_outcome(outcome)
+    }
+    fn wizard_outcome(&mut self, outcome: wizard::Outcome) -> Task<Message> {
+        let store = crate::desktop::DesktopStore::from_env().ok();
+        match outcome {
             wizard::Outcome::None => Task::none(),
             wizard::Outcome::Changed => self.after_desktop_change(),
             wizard::Outcome::Done { finish, startup } => {
@@ -2975,8 +3316,7 @@ impl Settings {
     /// A chosen color reaches its editor as the text its field received.
     fn update_color_well(&mut self, message: color_well::Message) -> Task<Message> {
         use color_well::{Outcome, Target};
-        let Outcome::Chosen(target, rgb) = color_well::update(&mut self.color_well, message)
-        else {
+        let Outcome::Chosen(target, rgb) = color_well::update(&mut self.color_well, message) else {
             return Task::none();
         };
         let text = color_well::text(target, rgb);
@@ -3002,7 +3342,7 @@ impl Settings {
         )
     }
     fn open_page_editor(&mut self, page: Page) {
-        if page == Page::Appearance {
+        if page == Page::Appearance && !self.native_worker_needed() {
             self.material_native = crate::desktop::actions::history_store()
                 .is_ok_and(|s| crate::desktop::materials::native_support(&s));
         }
@@ -4280,9 +4620,7 @@ fn desktop_command(action: &'static str, status: &'static str) -> Task<Message> 
                     .output()
                     .map_err(|error| format!("Could not show desktop widgets: {error}"))?;
                 if !output.status.success() {
-                    return Err(
-                        "Could not show desktop widgets. Check the Halcyon service.".into(),
-                    );
+                    return Err("Could not show desktop widgets. Check the Halcyon service.".into());
                 }
             }
             let path = path.ok_or_else(|| "Desktop session unavailable".to_string())?;
@@ -4406,11 +4744,11 @@ fn service_task() -> Task<Message> {
 #[cfg(test)]
 mod onboarding_tests;
 #[cfg(test)]
-mod wizard_tests;
-#[cfg(test)]
 mod theme_journey_tests;
 #[cfg(test)]
 mod ux_tests;
+#[cfg(test)]
+mod wizard_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4640,7 +4978,8 @@ mod tests {
     /// Opens the editor and checks that its store reads and writes only
     /// below the test root before anything else happens.
     fn open_isolated_editor(root: &std::path::Path) -> Settings {
-        let (app, _) = Settings::init(Core::default(), Page::DesktopDock);
+        let (mut app, task) = Settings::init(Core::default(), Page::DesktopDock);
+        settle_settings(&mut app, task);
         let store = app.desktop.store().expect("desktop store");
         assert!(store.user_path(&dock_key("anchor")).starts_with(root));
         app
@@ -5222,7 +5561,7 @@ mod tests {
             );
             drop(ui);
             assert_eq!(messages.len(), 1);
-            assert!(matches!(messages[0], Message::UndoDesktop));
+            assert!(matches!(messages[0], Message::UndoDesktopShown(Some(_))));
             let _ = app.update(messages.pop().unwrap());
             assert_eq!(app.page, Page::Overview);
             assert_eq!(Config::load().data_visible(Widget::Clock), original);
@@ -5503,9 +5842,7 @@ mod tests {
         )));
         assert!(!app.desktop.dirty());
         let _ = app.update(Message::Page(Page::DesktopProfiles));
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
-            "focus",
-        ))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("focus"))));
         let _ = app.update(Message::Profiles(Look::Include(
             crate::desktop::profiles::Domain::Dock,
             false,
@@ -5555,7 +5892,9 @@ mod tests {
         assert!(app.error);
         let _ = app.update(Message::Page(Page::DesktopProfiles));
         assert!(app.error, "the Projects error is still showing");
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("evening"))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
+            "evening",
+        ))));
         let _ = app.update(Message::Profiles(Look::Apply));
         assert!(app.profiles.can_undo(), "{:?}", app.profiles.notice);
         assert_eq!(Config::load().theme, "lavender");
@@ -5572,7 +5911,9 @@ mod tests {
         // A pending card edit that can't be saved stops the profile, and
         // nothing is written for it.
         let _ = app.update(Message::Profiles(Look::Select(Selection::Current)));
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("evening"))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
+            "evening",
+        ))));
         let _ = app.update(Message::Profiles(Look::Include(Domain::WidgetStyle, false)));
         assert!(!app.profiles.apply_domains().is_empty());
         let _ = app.update(Message::AppearanceValue(AppearanceControl::Opacity, 90));
@@ -5604,7 +5945,9 @@ mod tests {
         }
         use profiles::{Message as Look, Selection};
         let (mut app, _) = Settings::init(Core::default(), Page::DesktopProfiles);
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("evening"))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
+            "evening",
+        ))));
         let _ = app.update(Message::Profiles(Look::Apply));
         let _ = app.update(Message::Page(Page::DesktopDock));
         let _ = app.update(Message::DesktopEditor(desktop::Message::Anchor(
@@ -5613,9 +5956,7 @@ mod tests {
         assert!(!app.desktop.dirty());
         assert_eq!(app.last_desktop_change.as_ref().unwrap().1, "Dock position");
         let _ = app.update(Message::Page(Page::DesktopProfiles));
-        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset(
-            "focus",
-        ))));
+        let _ = app.update(Message::Profiles(Look::Select(Selection::Preset("focus"))));
         assert!(app.profile_waits().is_empty());
         let _ = app.update(Message::UndoDesktop);
         assert!(!app.error, "{}", app.status);
@@ -5682,7 +6023,7 @@ mod tests {
             serde_json::to_vec(&command).unwrap(),
         )
         .unwrap();
-        let _ = app.update(Message::Tick);
+        send_settings(app, Message::Tick);
     }
 
     #[test]
@@ -5753,18 +6094,25 @@ mod tests {
         let dock = app.desktop.current().expect("the seeded Dock resolves");
         assert_eq!(dock.anchor(), Setting::Known(Anchor::Right));
         assert_eq!(dock.size(), Setting::Known(PanelSize::L));
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Opacity(37)));
+        send_settings(
+            &mut app,
+            Message::DesktopEditor(desktop::Message::Opacity(37)),
+        );
         assert!(!app.desktop.can_apply());
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Apply));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Apply));
         assert!(app.desktop.dirty(), "a refused Apply keeps the draft");
         assert!(matches!(
             &app.desktop.notice,
             Some(desktop::Notice::Error(text)) if text.starts_with("Preview mode")
         ));
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Recover));
-        let _ = app.update(Message::DesktopEditor(desktop::Message::KeepRecovery));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Recover));
+        send_settings(
+            &mut app,
+            Message::DesktopEditor(desktop::Message::KeepRecovery),
+        );
         let mut tree = Tree::new(app.settings_view().as_widget());
         tree.diff(app.settings_view().as_widget_mut());
+        assert!(!app.native_busy && app.native_deferred.is_empty());
         // Byte-identical, and no lock or journal appeared.
         assert_eq!(live_tree(&root), live);
         assert!(!root.join("home/.local/share/cosmic-desktop-cards").exists());
@@ -6368,6 +6716,7 @@ mod tests {
         // Ignored before reaching the store: no read-only refusal either.
         assert_eq!(app.desktop.notice, None);
         assert_eq!(app.system_appearance.notice, None);
+        assert!(!app.native_busy && app.native_deferred.is_empty());
         assert_eq!(live_tree(&root), live);
         assert!(!root.join("home/.local/share/cosmic-desktop-cards").exists());
     }
@@ -6638,8 +6987,14 @@ mod tests {
         let _ = app.update(Message::GlanceStyle(GlanceStyle::Transparent));
         assert!(app.config.glance.own_background, "{}", app.status);
         assert_eq!(app.config.glance.style, GlanceStyle::Transparent);
-        let _ = app.update(Message::WidgetFont(FontTarget::GlanceText, Some("Hack".into())));
-        let _ = app.update(Message::WidgetFont(FontTarget::GlanceClock, Some("Lora".into())));
+        let _ = app.update(Message::WidgetFont(
+            FontTarget::GlanceText,
+            Some("Hack".into()),
+        ));
+        let _ = app.update(Message::WidgetFont(
+            FontTarget::GlanceClock,
+            Some("Lora".into()),
+        ));
         let saved = Config::try_load().unwrap();
         assert!(saved.glance.own_background);
         assert_eq!(saved.glance.font.as_deref(), Some("Hack"));
@@ -7885,8 +8240,40 @@ mod tests {
             let applied = fixture_files(&fixture);
             assert_ne!(applied, before, "the wallpaper applies on its own");
             // Its Undo is offered right here, on the page that made the change.
+            let baseline = fixture.join("state/desktop-recovery/original/manifest.json");
+            let captured = std::fs::read(&baseline).unwrap();
             click(&mut app, &mut native, "settings-undo");
-            assert_eq!(fixture_files(&fixture), before, "Undo restores the wallpaper");
+            assert_eq!(
+                std::fs::read(&baseline).unwrap(),
+                captured,
+                "Undo never rotates the immutable baseline"
+            );
+            let ledger = fixture.join("state/desktop-recovery/created-native-keys.json");
+            let created: Vec<crate::desktop::ConfigKey> =
+                serde_json::from_slice(&std::fs::read(&ledger).unwrap()).unwrap();
+            assert_eq!(
+                created,
+                vec![
+                    crate::desktop::ConfigKey::new(crate::desktop::wallpaper::NAMESPACE, 1, "all")
+                        .unwrap()
+                ]
+            );
+            assert_eq!(
+                std::fs::read(&ledger).unwrap(),
+                applied[&ledger],
+                "Undo retains exact creation evidence"
+            );
+            let mut restored = fixture_files(&fixture);
+            if !before.contains_key(&ledger) {
+                restored.remove(&ledger);
+            }
+            if !before.contains_key(&baseline) {
+                restored.remove(&baseline);
+            }
+            assert_eq!(
+                restored, before,
+                "Undo restores the wallpaper and retains first-write evidence"
+            );
             // Colors are chosen on Colors & theme; that flow is covered by
             // unified_colors_native_links_apply_undo_and_recovered_wallpaper.
         }
@@ -8630,7 +9017,11 @@ mod tests {
             if size.width >= 1024. {
                 assert!(preview.width >= 420., "large preview at {size:?}");
             }
-            for id in ["wallpaper-choose-picture", "wallpaper-preview", "nav-general"] {
+            for id in [
+                "wallpaper-choose-picture",
+                "wallpaper-preview",
+                "nav-general",
+            ] {
                 visible(native.bounds(app.settings_view(), id), size, id);
             }
             for (name, theme) in &themes {
@@ -8710,7 +9101,7 @@ mod tests {
             }
         });
     }
-    fn send_settings(app: &mut Settings, message: Message) {
+    pub(super) fn send_settings(app: &mut Settings, message: Message) {
         let task = app.update(message);
         settle_settings(app, task);
     }
@@ -9706,6 +10097,42 @@ mod tests {
         }
     }
     #[test]
+    fn review_r1_repair_action_visibility_tracks_persisted_provenance() {
+        if desktop_test_child(
+            "review_r1_repair_action_visibility_tracks_persisted_provenance",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let (mut app, initial) = Settings::init(Core::default(), Page::Themes);
+        settle_settings(&mut app, initial);
+        let mut native = crate::native_test::Native::new(cosmic::iced::Size::new(1024., 1400.));
+        for (family, marker, visible) in [
+            (Some(crate::desktop_theme::Family::Paper), 0, true),
+            (Some(crate::desktop_theme::Family::Paper), 1, false),
+            (None, 0, false),
+        ] {
+            let path = Config::path().unwrap();
+            let mut raw: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            raw["appearance"]["family"] = serde_json::json!(family);
+            raw["appearance"]["native_mode_palettes"] = serde_json::json!(marker);
+            std::fs::write(path, raw.to_string()).unwrap();
+            app.config = Config::load();
+            assert_eq!(
+                native
+                    .try_bounds(app.settings_view(), "theme-matching-repair")
+                    .is_some(),
+                visible
+            );
+        }
+    }
+
+    #[test]
     fn independent_r2_native_retained_text_uses_current_scope_and_preserves_outside_fields() {
         if desktop_test_child(
             "independent_r2_native_retained_text_uses_current_scope_and_preserves_outside_fields",
@@ -9821,11 +10248,619 @@ mod tests {
             "one actual click creates one Undo"
         );
     }
+    #[test]
+    fn task2n1_legacy_repair_has_clickable_confirmation_at_supported_sizes() {
+        if desktop_test_child(
+            "task2n1_legacy_repair_has_clickable_confirmation_at_supported_sizes",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        use cosmic::iced::{Event, mouse};
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let key = crate::desktop::ConfigKey::new("com.system76.CosmicPanel.Dock", 1, "background")
+            .unwrap();
+        let path = store.user_path(&key);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        for (size, maximized) in [
+            (Size::new(1280., 800.), false),
+            (Size::new(1280., 800.), true),
+            (Size::new(1280., 720.), true),
+            (Size::new(820., 600.), false),
+        ] {
+            std::fs::write(Config::path().unwrap(),r#"{"appearance":{"family":"frosted","native_mode_palettes":0,"sync_colors":true},"setup_dismissed":true}"#).unwrap();
+            std::fs::write(&path, "Color((0.1,0.2,0.3))").unwrap();
+            let (mut app, initial) = Settings::init(Core::default(), Page::Themes);
+            settle_settings(&mut app, initial);
+            app.core.window.is_maximized = maximized;
+            send_settings(&mut app, Message::Resized(size));
+            let mut native = crate::native_test::Native::new(size);
+            // Use the full window view, including its real header and pinned
+            // footer. Only pointer-generated messages may select or apply Repair.
+            let click = |app: &mut Settings, native: &mut crate::native_test::Native, id: &str| {
+                let rect = native.bounds(app.view(), id);
+                assert!(
+                    rect.x >= 0.
+                        && rect.y >= 0.
+                        && rect.x + rect.width <= size.width
+                        && rect.y + rect.height <= size.height,
+                    "{id}: {rect:?} in {size:?}"
+                );
+                let mut emitted = false;
+                for event in [
+                    mouse::Event::CursorMoved {
+                        position: rect.center(),
+                    },
+                    mouse::Event::ButtonPressed(mouse::Button::Left),
+                    mouse::Event::ButtonReleased(mouse::Button::Left),
+                ] {
+                    for message in native
+                        .event(app.view(), Event::Mouse(event), rect.center())
+                        .0
+                    {
+                        emitted = true;
+                        send_settings(app, message);
+                    }
+                }
+                assert!(emitted, "rendered {id} must emit a real pointer action");
+            };
+            click(&mut app, &mut native, "theme-matching-repair");
+            assert_eq!(app.page, Page::Themes);
+            assert_eq!(
+                app.profiles.profile().unwrap().name,
+                "Repair theme matching"
+            );
+            assert!(app.profiles.can_apply(), "{:?}", app.profiles.notice);
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                "Color((0.1,0.2,0.3))",
+                "Repair opens a read-only review"
+            );
+            native.capture(
+                app.view(),
+                &controls_theme(&app.config),
+                &format!(
+                    "n1-repair-preview-{}x{}-max{}",
+                    size.width, size.height, maximized
+                ),
+            );
+            click(&mut app, &mut native, "profiles-confirm");
+            assert_eq!(
+                Config::load().appearance.native_mode_palettes,
+                1,
+                "the pointer confirmation must commit Repair"
+            );
+            assert_eq!(std::fs::read_to_string(&path).unwrap(), "ThemeDefault");
+            native.capture(
+                app.view(),
+                &controls_theme(&app.config),
+                &format!(
+                    "n1-repair-applied-{}x{}-max{}",
+                    size.width, size.height, maximized
+                ),
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_boundary_worker_one_observation_and_whole_refresh_deadline() {
+        if desktop_test_child(
+            "runtime_boundary_worker_one_observation_and_whole_refresh_deadline",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let root = store.fixture_root().unwrap();
+        crate::desktop::islands::fixture_installed(root);
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        let helper = root.join("status-islands-probe.py");
+        std::fs::write(
+            &helper,
+            r#"import json,sys,time
+from pathlib import Path
+root=Path(__file__).parent
+presence='--presence' in sys.argv
+with (root/'status-calls').open('a') as log: log.write('presence\n' if presence else 'compat\n')
+record=json.loads((root/'islands-installation.json').read_text())
+record.update(status_version=1,status='Checking',compatible=None)
+print(json.dumps(record),flush=True)
+if not presence:
+    time.sleep(float((root/'status-delay').read_text()))
+    record.update(status='Ready',compatible=True)
+    print(json.dumps(record),flush=True)
+"#,
+        )
+        .unwrap();
+        // Reproduce the reviewed call chain independently: connect remains fresh
+        // for write authority. It must not be used for the read-only UI refresh.
+        std::fs::write(root.join("status-delay"), "0").unwrap();
+        let observed = crate::desktop::islands::Installation::discover(&store);
+        assert!(observed.installed());
+        let _ = crate::desktop::islands::Client::connect(&store);
+        assert_eq!(
+            std::fs::read_to_string(root.join("status-calls")).unwrap(),
+            "compat\ncompat\n"
+        );
+        eprintln!("reviewed discover + Client::connect chain: two compatibility invocations");
+        for (delay, timeout) in [("0.15", false), ("30", true)] {
+            std::fs::write(root.join("status-delay"), delay).unwrap();
+            std::fs::write(root.join("status-calls"), "").unwrap();
+            let start = std::time::Instant::now();
+            let task = app.handle(Message::RecheckInstallation);
+            assert!(start.elapsed() < std::time::Duration::from_millis(150));
+            assert!(app.installation_busy);
+            assert!(app.desktop.islands.installation.installed());
+            assert_eq!(
+                app.desktop.islands.installation.status_label(),
+                "Checking compatibility"
+            );
+            let generation = app.installation_generation;
+            let duplicate = app.handle(Message::RefreshInstallation);
+            settle_settings(&mut app, duplicate);
+            settle_settings(&mut app, task);
+            let elapsed = start.elapsed();
+            eprintln!(
+                "actual Settings worker: delay={delay}s elapsed={elapsed:?} timeout={timeout}"
+            );
+            let calls = std::fs::read_to_string(root.join("status-calls")).unwrap();
+            assert_eq!(
+                calls, "presence\ncompat\n",
+                "one full verification per refresh"
+            );
+            assert!(elapsed < std::time::Duration::from_secs(7), "{elapsed:?}");
+            if timeout {
+                assert!(elapsed > std::time::Duration::from_secs(5));
+            }
+            assert!(!app.installation_busy);
+            assert_eq!(app.installation_retry, timeout);
+            assert!(app.desktop.islands.installation.installed());
+            send_settings(
+                &mut app,
+                Message::InstallationChecked(
+                    generation - 1,
+                    crate::desktop::islands::Installation::Absent,
+                    Default::default(),
+                ),
+            );
+            assert!(app.desktop.islands.installation.installed());
+            if timeout {
+                send_settings(&mut app, Message::RefreshInstallation);
+                assert_eq!(app.installation_generation, generation);
+                assert_eq!(
+                    std::fs::read_to_string(root.join("status-calls")).unwrap(),
+                    calls
+                );
+                assert_eq!(
+                    app.desktop.islands.installation.status_label(),
+                    "Checking compatibility"
+                );
+            }
+            assert!(app.native_deferred.is_empty());
+            assert!(app.native_tasks.is_empty());
+        }
+        // A deliberate retry after the timeout is the only new full check.
+        std::fs::write(root.join("status-delay"), "0").unwrap();
+        send_settings(&mut app, Message::RecheckInstallation);
+        assert!(!app.installation_retry);
+        assert_eq!(
+            std::fs::read_to_string(root.join("status-calls")).unwrap(),
+            "presence\ncompat\npresence\ncompat\n"
+        );
+    }
+
+    #[test]
+    fn runtime_boundary_installed_pending_coalesces_and_requires_explicit_retry() {
+        if desktop_test_child(
+            "runtime_boundary_installed_pending_coalesces_and_requires_explicit_retry",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        let task = app.handle(Message::RefreshInstallation);
+        let generation = app.installation_generation;
+        assert!(app.installation_busy);
+        assert!(app.desktop.islands.installation.installed());
+        assert_eq!(
+            app.desktop.islands.installation.status_label(),
+            "Checking compatibility"
+        );
+        let duplicate = app.handle(Message::RefreshInstallation);
+        assert_eq!(app.installation_generation, generation);
+        settle_settings(&mut app, duplicate);
+        settle_settings(&mut app, task);
+        assert!(!app.installation_busy);
+        let checking = app.desktop.islands.installation.checking();
+        send_settings(
+            &mut app,
+            Message::InstallationChecked(generation, checking, Default::default()),
+        );
+        assert!(app.installation_retry);
+        send_settings(&mut app, Message::RefreshInstallation);
+        assert_eq!(app.installation_generation, generation);
+        assert!(app.desktop.islands.installation.installed());
+        send_settings(
+            &mut app,
+            Message::InstallationChecked(
+                generation - 1,
+                crate::desktop::islands::Installation::Absent,
+                Default::default(),
+            ),
+        );
+        assert!(app.desktop.islands.installation.installed());
+        send_settings(&mut app, Message::RecheckInstallation);
+        assert_eq!(app.installation_generation, generation + 1);
+        assert!(!app.installation_busy);
+        assert!(!app.installation_retry);
+        assert!(app.native_deferred.is_empty());
+        assert!(app.native_tasks.is_empty());
+    }
+
+    #[test]
+    fn task2_native_recovery_confirmation_and_installed_only_addons() {
+        if desktop_test_child(
+            "task2_native_recovery_confirmation_and_installed_only_addons",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let key =
+            crate::desktop::ConfigKey::new("com.system76.CosmicPanel.Dock", 1, "opacity").unwrap();
+        let before = store.read_user(&key).unwrap();
+        let mut patch = crate::desktop::DesktopPatch::new();
+        patch.set(
+            key.clone(),
+            before.clone(),
+            Some(crate::desktop::RawValue::parse("0.71").unwrap()),
+        );
+        store.apply(&patch).unwrap();
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        let size = Size::new(1024., 1800.);
+        send_settings(&mut app, Message::Resized(size));
+        let mut native = crate::native_test::Native::new(size);
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_some()
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            "task2-addons-absent",
+        );
+        app.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_none()
+        );
+        crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
+        send_settings(&mut app, Message::RefreshInstallation);
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_none()
+        );
+        native_click(&mut app, &mut native, "restore-desktop");
+        assert_eq!(
+            store.read_user(&key).unwrap().unwrap().as_str(),
+            "0.71",
+            "preview is read-only"
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            "task2-recovery-confirm",
+        );
+        native_click(&mut app, &mut native, "restore-desktop-confirm");
+        assert_eq!(
+            store.read_user(&key).unwrap().as_ref().map(|v| v.as_str()),
+            before.as_ref().map(|v| v.as_str())
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            "task2-recovery-after",
+        );
+        native_click(&mut app, &mut native, "undo-desktop-restore");
+        assert_eq!(store.read_user(&key).unwrap().unwrap().as_str(), "0.71");
+        native_click(&mut app, &mut native, "restore-desktop");
+        native_click(&mut app, &mut native, "restore-desktop-confirm");
+        let (mut reopened, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut reopened, initial);
+        send_settings(&mut reopened, Message::Resized(size));
+        native_click(&mut reopened, &mut native, "undo-desktop-restore");
+        app = reopened;
+        assert_eq!(store.read_user(&key).unwrap().unwrap().as_str(), "0.71");
+        std::fs::remove_file(
+            store
+                .fixture_root()
+                .unwrap()
+                .join("islands-installation.json"),
+        )
+        .unwrap();
+        send_settings(&mut app, Message::RefreshInstallation);
+        assert!(
+            native
+                .try_bounds(app.settings_view(), "get-islands")
+                .is_some()
+        );
+    }
+    #[test]
+    fn task2r1_native_starter_thumbnail_adapts_absent_and_pending_islands() {
+        if desktop_test_child(
+            "task2r1_native_starter_thumbnail_adapts_absent_and_pending_islands",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        let (mut app, initial) = Settings::init(Core::default(), Page::DesktopProfiles);
+        settle_settings(&mut app, initial);
+        let preset = crate::desktop::profiles::preset("halcyon").unwrap();
+        let mut native = crate::native_test::Native::new(Size::new(320., 180.));
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
+        let installed = crate::desktop::islands::Installation::discover(&store);
+        app.desktop.islands.installation = installed;
+        let original = native.render(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+        );
+        app.desktop.islands.installation = crate::desktop::islands::Installation::Absent;
+        let absent = native.render(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+        );
+        assert!(
+            absent != original,
+            "absent starter must not reuse the compiled Islands desktop"
+        );
+        native.bounds(
+            app.preset_thumbnail(&preset, 180.),
+            "starter-standard-panel",
+        );
+        app.desktop.islands.installation = crate::desktop::islands::Installation::Pending;
+        let pending = native.render(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+        );
+        assert_eq!(pending, absent);
+        native.capture(
+            app.preset_thumbnail(&preset, 180.),
+            &controls_theme(&app.config),
+            "task2r1-standard-thumbnail",
+        );
+    }
+
+    include!("settings/native_queue_tests.rs");
+
+    #[test]
+    fn task2r1_slow_probe_never_runs_in_native_pointer_or_focus_completion() {
+        if desktop_test_child(
+            "task2r1_slow_probe_never_runs_in_native_pointer_or_focus_completion",
+            DesktopEnv {
+                app_config: true,
+                fixture: true,
+                ..Default::default()
+            },
+        ) {
+            return;
+        }
+        use cosmic::iced::futures::StreamExt;
+        use cosmic::iced::{Event, mouse};
+        let store = crate::desktop::DesktopStore::from_env().unwrap();
+        let root = store.fixture_root().unwrap();
+        crate::desktop::islands::fixture_installed(root);
+        let (mut app, initial) = Settings::init(Core::default(), Page::General);
+        settle_settings(&mut app, initial);
+        send_settings(&mut app, Message::Resized(Size::new(1024., 1800.)));
+        std::fs::write(
+            root.join("slow-islands-probe.py"),
+            format!(
+                "import time,pathlib\ntime.sleep(0.6)\nprint(pathlib.Path({:?}).read_text())\n",
+                root.join("islands-installation.json").to_str().unwrap()
+            ),
+        )
+        .unwrap();
+        let mut native = crate::native_test::Native::new(Size::new(1024., 1800.));
+        let rect = native.bounds(app.settings_view(), "manage-islands");
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            rect.center(),
+        );
+        let messages = native
+            .event(
+                app.settings_view(),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                rect.center(),
+            )
+            .0;
+        assert!(!messages.is_empty());
+        let mut pending = Vec::new();
+        for message in messages {
+            let start = Instant::now();
+            pending.push(app.update(message));
+            assert!(
+                start.elapsed() < Duration::from_millis(250),
+                "native navigation waited for the helper"
+            );
+        }
+        for task in pending {
+            settle_settings(&mut app, task);
+        }
+        assert_eq!(app.page, Page::DesktopDock);
+        let rect = native.bounds(app.settings_view(), "native-islands-style");
+        assert!(rect.y + rect.height <= native.size.height);
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            rect.center(),
+        );
+        let messages = native
+            .event(
+                app.settings_view(),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                rect.center(),
+            )
+            .0;
+        assert!(!messages.is_empty());
+        for message in messages {
+            let start = Instant::now();
+            let task = app.update(message);
+            assert!(
+                start.elapsed() < Duration::from_millis(250),
+                "native style action waited for pre-write discovery"
+            );
+            // Another ordinary control must not enter the config lock while
+            // this window's worker can be checking installation under it.
+            let before = Config::load().clock.show_date;
+            let start = Instant::now();
+            let preference = app.update(Message::ClockDate(!before));
+            assert!(start.elapsed() < Duration::from_millis(250));
+            assert_eq!(
+                Config::load().clock.show_date,
+                before,
+                "preference waits behind the active native transaction"
+            );
+            settle_settings(&mut app, Task::batch([task, preference]));
+            assert_eq!(Config::load().clock.show_date, !before);
+        }
+        let key = crate::desktop::ConfigKey::new(
+            dock_islands_core::NAMESPACE,
+            1,
+            app.desktop.selected.entry(),
+        )
+        .unwrap();
+        assert!(
+            store.read_user(&key).unwrap().is_some(),
+            "rendered Islands choice must complete its Apply transaction"
+        );
+        // Installation disappears after the worker has accepted the displayed
+        // choice, before its guarded commit. Cached UI capability is no authority.
+        std::fs::remove_file(store.user_path(&key)).unwrap();
+        app.desktop.refresh();
+        let prior = store.latest_change().unwrap().map(|v| v.id);
+        std::fs::write(root.join("slow-islands-probe.py"),format!("import time,pathlib\ntime.sleep(0.6)\nc=pathlib.Path({:?})\nn=int(c.read_text())+1 if c.exists() else 1\nc.write_text(str(n))\np=pathlib.Path({:?})\nif n==3: p.write_text('{{\"format\":\"halcyon-islands-installation\",\"version\":1,\"installation\":\"absent\",\"enabled\":false}}')\nprint(p.read_text())\n",root.join("probe-count").to_str().unwrap(),root.join("islands-installation.json").to_str().unwrap())).unwrap();
+        let rect = native.bounds(app.settings_view(), "native-islands-style");
+        let _ = native.event(
+            app.settings_view(),
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            rect.center(),
+        );
+        let messages = native
+            .event(
+                app.settings_view(),
+                Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+                rect.center(),
+            )
+            .0;
+        assert!(!messages.is_empty());
+        for message in messages {
+            let start = Instant::now();
+            let task = app.update(message);
+            assert!(start.elapsed() < Duration::from_millis(250));
+            settle_settings(&mut app, task);
+        }
+        assert!(
+            std::fs::read_to_string(root.join("probe-count"))
+                .unwrap()
+                .parse::<u32>()
+                .unwrap()
+                >= 3
+        );
+        assert!(
+            store.read_user(&key).unwrap().is_none(),
+            "removal before commit must refuse the sidecar"
+        );
+        assert_eq!(store.latest_change().unwrap().map(|v| v.id), prior);
+        assert!(matches!(
+            app.desktop.notice,
+            Some(desktop::Notice::Error(_))
+        ));
+        let start = Instant::now();
+        let task = app.update(Message::RefreshInstallation);
+        assert!(start.elapsed() < Duration::from_millis(250));
+        // Collect the real background response, then dispatch it as the native
+        // event loop does. Result handling itself must not launch another probe.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        let messages = runtime.block_on(async {
+            let mut output = Vec::new();
+            if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                while let Some(action) = stream.next().await {
+                    if let cosmic::iced::runtime::Action::Output(cosmic::Action::App(message)) =
+                        action
+                    {
+                        output.push(message);
+                    }
+                }
+            }
+            output
+        });
+        for message in messages {
+            let start = Instant::now();
+            let task = app.update(message);
+            assert!(
+                start.elapsed() < Duration::from_millis(250),
+                "focus completion repeated discovery on the native thread"
+            );
+            settle_settings(&mut app, task);
+        }
+        // Closing waits for the asynchronous material completion rather than
+        // dropping the final adjustment when the app exits.
+        app.material_target = crate::materials::Target::Widgets;
+        let finish = crate::materials::Finish::new(crate::materials::Kind::Frosted);
+        app.material_draft = Some(finish);
+        let start = Instant::now();
+        let exit = app.on_app_exit();
+        assert!(start.elapsed() < Duration::from_millis(250));
+        assert!(
+            exit.is_some(),
+            "exit must wait for its pending native write"
+        );
+        send_settings(&mut app, exit.unwrap());
+        assert_eq!(Config::load().materials.widgets, Some(finish));
+        assert!(app.on_app_exit().is_none());
+    }
 }
 
 impl Settings {
     fn apply_material(&mut self, finish: Option<crate::materials::Finish>) {
         let baseline = self.material_baseline.take();
+        if self.native_worker_needed() {
+            self.background_material(self.material_target, finish, baseline);
+            return;
+        }
         let result = crate::desktop::actions::history_store()
             .map_err(|e| e.to_string())
             .and_then(|store| {

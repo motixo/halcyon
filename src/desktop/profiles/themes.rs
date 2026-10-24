@@ -16,6 +16,7 @@ pub const BEFORE_THEMES: &str = "before-themes";
 pub const STYLE: &[&str] = &[
     "/theme",
     "/appearance/family",
+    "/appearance/native_mode_palettes",
     "/appearance/color_policy",
     "/appearance/overrides",
     "/appearance/surface",
@@ -223,20 +224,10 @@ pub fn appearance(family: Family, accent: Option<[u8; 3]>) -> AppearanceLook {
             outline: Some(ColorChoice::Auto),
             ..Default::default()
         };
-        // A frosted style frosts COSMIC too, but never the panel: the
-        // installed cosmic-panel crash-loops with a frosted background.
-        if family.spec().frosted {
-            look.frosted = Some(FrostedLook {
-                panel: Some(false),
-                applets: Some(true),
-                system_interface: Some(true),
-                windows: Some(true),
-            });
-        }
-        if family.light() != dark {
-            look.background = Some(hex(family.surface(seed)));
-            look.primary = Some(hex(family.container(seed)));
-        }
+        // Color synchronization does not own native backdrop effects. Leave
+        // existing system preferences untouched, including on legacy Frosted.
+        look.background = Some(hex(family.surface_for(seed, dark)));
+        look.primary = Some(hex(family.container_for(seed, dark)));
         look
     };
     AppearanceLook {
@@ -251,7 +242,7 @@ pub fn record(family: Family) -> Profile {
     p.version = super::format::VERSION_7;
     let (opacity, radius, border) = family.geometry();
     p.widget_style = Some(
-        json!({"appearance":{"family":family,"surface":null,"opacity":opacity,"corner_radius":radius,"border_opacity":border,"accent":null,"color_source":"custom","sync_colors":true,"wallpaper_colors":false,"contrast_assist":false}}),
+        json!({"appearance":{"family":family,"native_mode_palettes":1,"surface":null,"opacity":opacity,"corner_radius":radius,"border_opacity":border,"accent":null,"color_source":"custom","sync_colors":true,"wallpaper_colors":false,"contrast_assist":false}}),
     );
     let (opacity, radius, padding, spacing) = family.bar();
     let bar = PanelLook {
@@ -260,12 +251,8 @@ pub fn record(family: Family) -> Profile {
         border_radius: Some(radius),
         padding: Some(padding),
         spacing: Some(spacing),
-        // The dock and panel take the style's own card color, so they read
-        // as one look with the widgets.
-        background: Some({
-            let [r, g, b] = family.surface(family.accent());
-            Background::Color([r, g, b].map(|v| f32::from(v) / 255.))
-        }),
+        // COSMIC owns mode switching, including while Halcyon is stopped.
+        background: Some(Background::ThemeDefault),
         floating: Some(family.spec().bar.floating),
         margin: family.spec().bar.floating.then_some(6),
         ..Default::default()
@@ -274,6 +261,38 @@ pub fn record(family: Family) -> Profile {
     p.panel = Some(bar);
     p.appearance = Some(appearance(family, None));
     p
+}
+
+/// Explicit repair is a normal reviewable profile, with no applets, placement,
+/// geometry, widget mode, or wallpaper edits. Legacy installations have no
+/// reliable fixed-color provenance, so opening Settings never applies it.
+pub fn repair_matching(store: &DesktopStore) -> Result<Profile, ProfileError> {
+    let (_, config) =
+        crate::desktop::wallpaper::automatic::read_config(store).map_err(ProfileError::Storage)?;
+    let family = config
+        .appearance
+        .family
+        .ok_or_else(|| ProfileError::Invalid("Choose a theme first".into()))?;
+    let mut profile = Profile::new("Repair theme matching").expect("fixed valid name");
+    profile.appearance_only = true;
+    profile.version = super::format::VERSION_7;
+    let mut look = appearance(family, config.appearance.accent);
+    for variant in [&mut look.light, &mut look.dark].into_iter().flatten() {
+        variant.accent = None;
+        variant.outline = None;
+        variant.frosted = None;
+    }
+    profile.appearance = Some(look);
+    let bar = PanelLook {
+        background: Some(Background::ThemeDefault),
+        ..Default::default()
+    };
+    profile.dock = Some(bar.clone());
+    profile.panel = Some(bar);
+    profile.widget_style = Some(json!({"appearance":{"native_mode_palettes":1}}));
+    let current = capture(store, "Current surfaces")?.profile;
+    preserve_explicit(config.appearance, &current, &mut profile)?;
+    Ok(profile)
 }
 
 /// Built-in family selection preserves each customized property.
@@ -304,6 +323,15 @@ pub fn preserve_custom(
         LookColor::applied(&config.appearance).set(next);
         return preserve_explicit(config.appearance, &captured, next);
     };
+    // Preserving unproven legacy roles is not a native palette migration.
+    // The planner separately verifies that a generation request includes
+    // accepted native work; this adapter must not request it for kept roles.
+    if config.appearance.native_mode_palettes != 1
+        && let Some(style) = &mut next.widget_style
+    {
+        widget::put(style, "/appearance/native_mode_palettes", Some(json!(0)))
+            .map_err(ProfileError::Invalid)?;
+    }
     let mut expected = record(previous);
     expected.appearance = Some(appearance(previous, config.appearance.accent));
     let comparison = plan(
@@ -598,16 +626,29 @@ fn visual_variant(v: &VariantLook) -> VariantLook {
         primary: v.primary.clone(),
         secondary: v.secondary.clone(),
         outline: v.outline.clone(),
-        // A frosted style may frost windows, applets and system UI, never
-        // the panel (the installed cosmic-panel crash-loops with it).
-        frosted: v.frosted.clone().filter(|frosted| frosted.panel != Some(true)),
+        // Imported/previously saved color themes cannot opt into global blur.
+        // Explicit system settings and guarded Undo remain separate actions.
         ..Default::default()
     }
 }
-fn visual_appearance(a: &AppearanceLook) -> AppearanceLook {
+pub(super) fn visual_appearance(a: &AppearanceLook) -> AppearanceLook {
     AppearanceLook {
         light: a.light.as_ref().map(visual_variant),
         dark: a.dark.as_ref().map(visual_variant),
+        ..Default::default()
+    }
+}
+/// Historical theme records may carry frosting flags. Keep the old file
+/// allowlist distinct from the effective color-only projection: loading must
+/// preserve the record, while applying must ignore both legacy On and Off.
+fn compatible_appearance(a: &AppearanceLook) -> AppearanceLook {
+    let variant = |v: &VariantLook| VariantLook {
+        frosted: v.frosted.clone().filter(|f| f.panel != Some(true)),
+        ..visual_variant(v)
+    };
+    AppearanceLook {
+        light: a.light.as_ref().map(variant),
+        dark: a.dark.as_ref().map(variant),
         ..Default::default()
     }
 }
@@ -628,7 +669,7 @@ pub fn validate(p: &Profile) -> Result<(), String> {
     }
     if p.appearance
         .as_ref()
-        .is_some_and(|a| visual_appearance(a) != *a)
+        .is_some_and(|a| compatible_appearance(a) != *a)
     {
         return Err(
             "Themes cannot change application fonts, mode, density or window layout".into(),
@@ -718,6 +759,9 @@ pub fn linked_surface(
     variant: ThemeVariant,
     role: ColorRole,
 ) -> bool {
+    if original.native_mode_palettes != 1 {
+        return false;
+    }
     let key = appearance::theme::builder_key(
         variant,
         match role {
@@ -734,13 +778,10 @@ pub fn linked_surface(
     let Some(family) = original.family else {
         return false;
     };
-    if family.light() != (variant == ThemeVariant::Light) {
-        return false;
-    }
     let seed = original.accent.unwrap_or_else(|| family.accent());
     let expected = match role {
-        ColorRole::Background => family.surface(seed),
-        ColorRole::Primary => family.container(seed),
+        ColorRole::Background => family.surface_for(seed, variant == ThemeVariant::Dark),
+        ColorRole::Primary => family.container_for(seed, variant == ThemeVariant::Dark),
         _ => return false,
     };
     let previous = desktop_theme::previous_native(family, original.accent).1;
@@ -751,7 +792,8 @@ pub fn linked_surface(
         return true;
     }
     let current = current.flatten();
-    same(current, expected) || same(current, previous)
+    same(current, expected)
+        || (family.light() == (variant == ThemeVariant::Light) && same(current, previous))
 }
 /// Whether a variant's native accent is what the shared color gives it,
 /// in this release or the previous one.
@@ -782,18 +824,15 @@ pub struct NativeCustom {
     pub windows: bool,
 }
 pub fn native_custom(draft: &AppearanceDraft, original: Appearance) -> NativeCustom {
-    let Some(family) = original.family else {
+    if original.family.is_none() {
         return NativeCustom::default();
-    };
-    let owned = if family.light() {
-        ThemeVariant::Light
-    } else {
-        ThemeVariant::Dark
-    };
+    }
     NativeCustom {
-        surfaces: [ColorRole::Background, ColorRole::Primary]
-            .into_iter()
-            .any(|role| !linked_surface(draft, original, owned, role)),
+        surfaces: ThemeVariant::ALL.into_iter().any(|variant| {
+            [ColorRole::Background, ColorRole::Primary]
+                .into_iter()
+                .any(|role| !linked_surface(draft, original, variant, role))
+        }),
         windows: ThemeVariant::ALL.into_iter().any(|variant| {
             !linked_accent(draft, original, variant)
                 || base_color(draft, variant, ColorRole::Outline) != Some(None)
@@ -876,21 +915,26 @@ pub fn recolor(p: &mut Profile, accent: Option<[u8; 3]>) {
 mod frosted_tests {
     use super::*;
     #[test]
-    fn no_style_frosts_the_panel() {
-        // The installed cosmic-panel crash-loops with a frosted background.
+    fn color_themes_never_write_native_frosting() {
         for family in Family::ALL {
             let look = appearance(family, None);
-            for variant in [look.light.as_ref(), look.dark.as_ref()].into_iter().flatten() {
-                if let Some(frosted) = &variant.frosted {
-                    assert_ne!(frosted.panel, Some(true), "{family:?}");
-                }
-                assert_eq!(
-                    variant.frosted.is_some(),
-                    family.spec().frosted,
-                    "{family:?} frosts COSMIC exactly when it is a frosted style"
-                );
+            for variant in [look.light.as_ref(), look.dark.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                assert!(variant.frosted.is_none(), "{family:?}");
+                assert!(variant.accent.is_some());
+                assert!(variant.background.is_some());
             }
         }
+        let legacy: VariantLook = serde_json::from_value(json!({
+            "accent": "#247a91",
+            "frosted": {"windows": true, "applets": true, "system_interface": true}
+        }))
+        .unwrap();
+        let colors = visual_variant(&legacy);
+        assert!(colors.frosted.is_none());
+        assert_eq!(colors.accent, legacy.accent);
     }
 }
 

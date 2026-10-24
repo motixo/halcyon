@@ -139,6 +139,7 @@ pub(super) fn completion(message: &Message) -> Option<Message> {
 }
 pub(super) fn label(message: &Message) -> String {
     match message {
+        Message::WidgetDisplay(_) => "Widget display",
         Message::DesktopEditor(edit) => match edit {
             desktop::Message::Opacity(_) => "Dock opacity",
             desktop::Message::Anchor(_) => "Dock position",

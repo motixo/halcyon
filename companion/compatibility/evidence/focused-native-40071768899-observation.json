@@ -1,0 +1,902 @@
+{
+  "format": "halcyon-focused-native-acceptance",
+  "version": 1,
+  "state": "PASSED-FOCUSED-OBSERVATIONS",
+  "scope": "ordinary native startup/input/owned cleanup/stock recovery on prepared COSMIC1.11 guest",
+  "qualified_shipping_catalog": false,
+  "publication": "ON HOLD",
+  "run_id": 40071768899,
+  "job_id": 120806547013,
+  "infra_commit": "aa569f3c29b3f405f984d5b6c77615e6b74b8492",
+  "source_commit": "97ff0b794776790418848353c863a4b844ffa503",
+  "input_lock": {
+    "package_receipt_sha256": "5799460790291b134d6c6fee39315a244cf742315ef8b76347e08ca2a5123fc5",
+    "source": "97ff0b794776790418848353c863a4b844ffa503",
+    "packages": {
+      "cosmic-ext-halcyon_0.2.5~dev.integration.5_amd64.deb": {
+        "size": 20093654,
+        "sha256": "c2a2d82bc7c1051564da719f3b5f27ada24d003a1f049c0bd73f2bca11557ec3"
+      },
+      "cosmic-ext-halcyon-islands_0.2.5~dev.integration.5_amd64.deb": {
+        "size": 6015204,
+        "sha256": "7abf19d8fbbaefc96ec10547669d02a182d3f207a7c9c3a15ef08fa39277f570"
+      }
+    },
+    "identity": {
+      "format": "halcyon-development-integration-receipt",
+      "version": 1,
+      "development_only": true,
+      "review_status": "Parent accepted scoped corrections for native trial; development only; native acceptance pending",
+      "packaging_source_commit": "97ff0b794776790418848353c863a4b844ffa503",
+      "package_version": "0.2.5~dev.integration.5",
+      "source_archive_sha256": "4e762931940d40b48bb4de90562ebe1ab08db3ac5fd487c9ee8a9afd01904660",
+      "native_reuse_binding_sha256": "1f1fa349203941865e3d006721c3bb8d8b5754d5d03fb1c8829b32f088a154c2",
+      "license_binding_sha256": "2657a381e2f5c8e25c7b57d0b29d66fca3ba6b3dc93ad50a59f8b954ca646641",
+      "packages": {
+        "main": {
+          "package": "cosmic-ext-halcyon",
+          "version": "0.2.5~dev.integration.5",
+          "sha256": "c2a2d82bc7c1051564da719f3b5f27ada24d003a1f049c0bd73f2bca11557ec3",
+          "bytes": 20093654,
+          "elf_sha256": "8a3d9b2db6518d57e697b1ec562969781b07b496bce9c253b7f4b6ffca359dab",
+          "native_build_source_commit": "2fb427434770f14135f25c209c48bc58a67a9f66"
+        },
+        "islands": {
+          "package": "cosmic-ext-halcyon-islands",
+          "version": "0.2.5~dev.integration.5",
+          "sha256": "7abf19d8fbbaefc96ec10547669d02a182d3f207a7c9c3a15ef08fa39277f570",
+          "bytes": 6015204,
+          "elf_sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+          "native_build_source_commit": "21d5d83eed4c4e9e9808e3018dfdd04ef787c5cb"
+        }
+      },
+      "companion_unstripped_sha256": "cff2d995e5da5c81bad4f1d7c4c6a6b65671fd6e9bcc4df3fa81040d39682163",
+      "payload_sha256": "f3bb6c779355b9fb4180a18c84dd7453e8d00b51720edc7376d8535bceb15635",
+      "manifest_sha256": "6c5abbd1acdda3d1e43440d0754b4f114d9d3c05711478b0ddab793016feffe3",
+      "catalog_sha256": "55a3e32c0e1c8ed6908a291afe9c27be2c63cf6bbdd3cdbb83deb761cd43e98d",
+      "cohort_count": 0,
+      "runtime_targets": [],
+      "helper_hashes": {
+        "panel_launcher.py": "2445c851cbd274a5de841e11119904f0532044af15a9e9fc34e300e60a0a926e",
+        "bundle_contract.py": "232e6e5f4b0c7a801e7f9093926b0ecfb16bba0cdb270f1cb498599b9deb1662",
+        "runtime_identity.py": "962599de58e0be3c1cfbb92e4a39f9335e4869a51a088fd6e957c328434e8844",
+        "install_status.py": "8f6ca3e694fdc9edce67e5bb800ccc6b7892d8bc07013e8fb15612edae765688",
+        "install.py": "46e3e98cdaf11f0fd4416b5cb37ccafc2cd8d07e594647e6b48032bc8b488d74",
+        "refresh.py": "f29d50b9a06f2d47d4d09d630964d470498414446b8892a6282b6fbfc75fc591",
+        "selector.py": "ac1c56d1ed3b83b5f0f4a2afbb277defb6b4491d9154c04176bfad3ba50e5be5",
+        "panel_configuration.py": "6be28029f5d1e6725a21e91ded03d0c882ab3206469f7facc1f272695b49c97f",
+        "runtime_target.py": "38e3252a3aba45c18c29c88cfbdc8beebcc1073468e67c4c73d28ac84debf931",
+        "verification.py": "0a258bca4b4c76d60da608c093c5bb2ed005ee8efe958f102452a5ea38ac2582"
+      },
+      "changed_helpers_since_integration4": [
+        "panel_launcher.py"
+      ],
+      "audits_passed": true,
+      "packaging_tests_passed": 17,
+      "lintian_errors": 0,
+      "lintian_main_warnings": 3,
+      "native_qualification": "NOT PERFORMED; empty catalog grants no admission"
+    },
+    "structural_pins": {
+      "catalog_sha256": "57b08cacfb9018ecbf14fa07fe3e38e6034cc5bca761eef57dff743d042bc35c",
+      "records": {
+        "structural-catalog.json.gz": "c2478b06d0c0f10e61f90f38f5c1af95f2beb9d737227cbde49cccb250be28a1",
+        "structural-runtime-profile.json": "17d90fbb61f6b839b2c2fa31b0b162db2179c3bb1315cd48267d834cfecfff6e",
+        "structural-dependency-review.json": "a45db420ea3719a3831aa363bd1609c79147c3537ca5e89d833df040b22ea0fc",
+        "structural-native-scope-review.json": "648e9f431800c1a31563229f0501d6d50facc5a14c67833aebebb18d1a36784a",
+        "structural-structural-evidence.json": "904f9cecd23f71d93bf64ef4b2dba3ac58809a8a687faf6ee0d5d0b927b53a57",
+        "structural-identity-receipt.json": "da67445493e223910c9cbc5b17b21e6975d7da6c1ece3bfe84e59dbecedbf07d"
+      },
+      "image_sha256": "4b26c9e9f3430a070d0c48d781f127837b3ce300c62384179aa5a9eeb51a1cc6",
+      "package_receipt_sha256": "5799460790291b134d6c6fee39315a244cf742315ef8b76347e08ca2a5123fc5"
+    },
+    "authorization": "ONE standard GitHub KVM; target25min/hard40min; parent-authorized isolated pending test designation; no publishing result/release",
+    "qualified": false,
+    "publication": "ON HOLD"
+  },
+  "test_authorization": {
+    "evidence_id": "pending-native-test-40071768899",
+    "format": "halcyon-isolated-native-test-authorization",
+    "image_sha256": "4b26c9e9f3430a070d0c48d781f127837b3ce300c62384179aa5a9eeb51a1cc6",
+    "payload_sha256": "f3bb6c779355b9fb4180a18c84dd7453e8d00b51720edc7376d8535bceb15635",
+    "prior_structural": {
+      "evidence": {
+        "id": "structural-df103882e8b631db4bc497051d264571db00023792de0025f4f1a693dee376ec",
+        "qualified": false,
+        "record_sha256": "904f9cecd23f71d93bf64ef4b2dba3ac58809a8a687faf6ee0d5d0b927b53a57",
+        "scope": "offline-structural"
+      },
+      "payload": "28fe3c64cb213d2612776dae1f730c2f90348836bde093d256f4993606f73508",
+      "target_id": "2e65fa035dbeaaad8fc2e3610c6d0ca5b9648575dd7b8670f262aae4c9e5a8e5"
+    },
+    "qualified": false,
+    "record_pins": {
+      "catalog_sha256": "57b08cacfb9018ecbf14fa07fe3e38e6034cc5bca761eef57dff743d042bc35c",
+      "image_sha256": "4b26c9e9f3430a070d0c48d781f127837b3ce300c62384179aa5a9eeb51a1cc6",
+      "package_receipt_sha256": "5799460790291b134d6c6fee39315a244cf742315ef8b76347e08ca2a5123fc5",
+      "records": {
+        "structural-catalog.json.gz": "c2478b06d0c0f10e61f90f38f5c1af95f2beb9d737227cbde49cccb250be28a1",
+        "structural-dependency-review.json": "a45db420ea3719a3831aa363bd1609c79147c3537ca5e89d833df040b22ea0fc",
+        "structural-identity-receipt.json": "da67445493e223910c9cbc5b17b21e6975d7da6c1ece3bfe84e59dbecedbf07d",
+        "structural-native-scope-review.json": "648e9f431800c1a31563229f0501d6d50facc5a14c67833aebebb18d1a36784a",
+        "structural-runtime-profile.json": "17d90fbb61f6b839b2c2fa31b0b162db2179c3bb1315cd48267d834cfecfff6e",
+        "structural-structural-evidence.json": "904f9cecd23f71d93bf64ef4b2dba3ac58809a8a687faf6ee0d5d0b927b53a57"
+      }
+    },
+    "run_id": "40071768899",
+    "schema_scope_note": "complete-session/native-session are existing test predesignation fields, not assertions of passed observations",
+    "scope": "focused ordinary acceptance; no full complete-session qualification result",
+    "shipping_catalog_sha256": "55a3e32c0e1c8ed6908a291afe9c27be2c63cf6bbdd3cdbb83deb761cd43e98d",
+    "shipping_manifest_sha256": "6c5abbd1acdda3d1e43440d0754b4f114d9d3c05711478b0ddab793016feffe3",
+    "source": "97ff0b794776790418848353c863a4b844ffa503",
+    "state": "PENDING-OBSERVATION",
+    "target_id": "f6ded65aca4bac558b86a830fdddec595007d6628fa490d0271560b374914659",
+    "test_catalog_sha256": "252c0e2ddf31def1bf7677ebae5d339394e7c1cc31da6a64930465945c960627",
+    "test_manifest_sha256": "447f43f182471327794639a91f80d9232a8894fb471f8669ff64328998316146",
+    "version": 1
+  },
+  "timings": {
+    "prelaunch_seconds": 2.399425273999995,
+    "production_running_acceptance_seconds_from_prelaunch_start": 4.344139810999998,
+    "production_running_seconds_after_trial_start": 1.9280877389999986,
+    "ipc_observed_seconds_after_trial_start": 2.0604086499999994,
+    "normal_disabled_status_controller_seconds": 0.5737410369999907,
+    "first_stock_observation_seconds_after_adapter_stock_event": 1.380744457244873
+  },
+  "host": {
+    "pid": 3580,
+    "sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+    "start": "5061",
+    "parent": 3079,
+    "group": 3580,
+    "sid": 3580
+  },
+  "children": {
+    "3597": {
+      "pid": 3597,
+      "state": "S",
+      "start": "5064",
+      "threads": 9,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3598": {
+      "pid": 3598,
+      "state": "S",
+      "start": "5064",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3599": {
+      "pid": 3599,
+      "state": "S",
+      "start": "5065",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3600": {
+      "pid": 3600,
+      "state": "S",
+      "start": "5065",
+      "threads": 9,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3601": {
+      "pid": 3601,
+      "state": "S",
+      "start": "5065",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3602": {
+      "pid": 3602,
+      "state": "S",
+      "start": "5066",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3603": {
+      "pid": 3603,
+      "state": "S",
+      "start": "5066",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3604": {
+      "pid": 3604,
+      "state": "S",
+      "start": "5066",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3605": {
+      "pid": 3605,
+      "state": "S",
+      "start": "5066",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3606": {
+      "pid": 3606,
+      "state": "S",
+      "start": "5067",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3607": {
+      "pid": 3607,
+      "state": "S",
+      "start": "5067",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3608": {
+      "pid": 3608,
+      "state": "S",
+      "start": "5067",
+      "threads": 7,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3609": {
+      "pid": 3609,
+      "state": "S",
+      "start": "5068",
+      "threads": 7,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3610": {
+      "pid": 3610,
+      "state": "S",
+      "start": "5068",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3611": {
+      "pid": 3611,
+      "state": "S",
+      "start": "5069",
+      "threads": 8,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3612": {
+      "pid": 3612,
+      "state": "S",
+      "start": "5070",
+      "threads": 7,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3613": {
+      "pid": 3613,
+      "state": "S",
+      "start": "5071",
+      "threads": 7,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    },
+    "3614": {
+      "pid": 3614,
+      "state": "S",
+      "start": "5073",
+      "threads": 7,
+      "parent": 3580,
+      "group": 3580,
+      "sid": 3580,
+      "exe": "/usr/bin/cosmic-applets"
+    }
+  },
+  "owned_cleanup": {
+    "recorded_actors": 19,
+    "absent": 19,
+    "live_survivors": 0,
+    "dead_zombies_observed": 0,
+    "before_threads_reported_by_children": 141,
+    "after": {
+      "format": "halcyon-trial-lifecycle",
+      "version": 2,
+      "phase": "after",
+      "qualified": false,
+      "time": 1792825001.4873507,
+      "complete": true,
+      "actors": {
+        "4096": {
+          "stat": {
+            "pid": 4096,
+            "state": "S",
+            "start": "7007",
+            "threads": 22,
+            "parent": 4086,
+            "group": 4096,
+            "sid": 4096
+          },
+          "verified": true,
+          "exe": "/usr/bin/cosmic-panel",
+          "notification_fd_link": "socket:[24436]"
+        }
+      },
+      "errors": [],
+      "bounds": {
+        "pids": 4096,
+        "actors": 128,
+        "ancestry": 64,
+        "stat_bytes": 4096,
+        "output_bytes": 1048576,
+        "seconds": 5,
+        "tasks_per_actor": 512
+      },
+      "old_actors": {
+        "3580": {
+          "before": {
+            "pid": 3580,
+            "sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+            "start": "5061",
+            "parent": 3079,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3597": {
+          "before": {
+            "pid": 3597,
+            "state": "S",
+            "start": "5064",
+            "threads": 9,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3598": {
+          "before": {
+            "pid": 3598,
+            "state": "S",
+            "start": "5064",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3599": {
+          "before": {
+            "pid": 3599,
+            "state": "S",
+            "start": "5065",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3600": {
+          "before": {
+            "pid": 3600,
+            "state": "S",
+            "start": "5065",
+            "threads": 9,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3601": {
+          "before": {
+            "pid": 3601,
+            "state": "S",
+            "start": "5065",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3602": {
+          "before": {
+            "pid": 3602,
+            "state": "S",
+            "start": "5066",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3603": {
+          "before": {
+            "pid": 3603,
+            "state": "S",
+            "start": "5066",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3604": {
+          "before": {
+            "pid": 3604,
+            "state": "S",
+            "start": "5066",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3605": {
+          "before": {
+            "pid": 3605,
+            "state": "S",
+            "start": "5066",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3606": {
+          "before": {
+            "pid": 3606,
+            "state": "S",
+            "start": "5067",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3607": {
+          "before": {
+            "pid": 3607,
+            "state": "S",
+            "start": "5067",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3608": {
+          "before": {
+            "pid": 3608,
+            "state": "S",
+            "start": "5067",
+            "threads": 7,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3609": {
+          "before": {
+            "pid": 3609,
+            "state": "S",
+            "start": "5068",
+            "threads": 7,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3610": {
+          "before": {
+            "pid": 3610,
+            "state": "S",
+            "start": "5068",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3611": {
+          "before": {
+            "pid": 3611,
+            "state": "S",
+            "start": "5069",
+            "threads": 8,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3612": {
+          "before": {
+            "pid": 3612,
+            "state": "S",
+            "start": "5070",
+            "threads": 7,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3613": {
+          "before": {
+            "pid": 3613,
+            "state": "S",
+            "start": "5071",
+            "threads": 7,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        },
+        "3614": {
+          "before": {
+            "pid": 3614,
+            "state": "S",
+            "start": "5073",
+            "threads": 7,
+            "parent": 3580,
+            "group": 3580,
+            "sid": 3580
+          },
+          "absent": true
+        }
+      },
+      "entry_events": [
+        {
+          "event": "production-prelaunch",
+          "time": 1792824980.631122,
+          "monotonic": 50.598767299,
+          "pid": 3079,
+          "qualified": false,
+          "seconds": 2.399425273999995,
+          "eligible": true,
+          "test_manifest_sha256": "447f43f182471327794639a91f80d9232a8894fb471f8669ff64328998316146"
+        },
+        {
+          "event": "trial-start",
+          "time": 1792824980.6477458,
+          "monotonic": 50.615391142,
+          "pid": 3079,
+          "qualified": false,
+          "binary_sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+          "descriptors": {
+            "PANEL_NOTIFICATIONS_FD": {
+              "fd": 21,
+              "device": 10,
+              "inode": 21818
+            }
+          },
+          "admission": "PRODUCTION-CHECKS-ISOLATED-PENDING-TEST"
+        },
+        {
+          "event": "production-running-accepted",
+          "time": 1792824982.5758338,
+          "monotonic": 52.543478881,
+          "pid": 3079,
+          "qualified": false,
+          "seconds_from_prelaunch_start": 4.344139810999998
+        },
+        {
+          "event": "trial-failed-stock-requested",
+          "time": 1792825000.0350595,
+          "monotonic": 70.002704602,
+          "pid": 3079,
+          "qualified": false
+        },
+        {
+          "event": "trial-supervisor-exit",
+          "time": 1792825000.0351682,
+          "monotonic": 70.002813315,
+          "pid": 3079,
+          "qualified": false,
+          "returncode": 75
+        },
+        {
+          "event": "stock-no-ticket",
+          "time": 1792825000.1066062,
+          "monotonic": 70.074251935,
+          "pid": 4086,
+          "qualified": false,
+          "descriptors": {
+            "PANEL_NOTIFICATIONS_FD": {
+              "fd": 23,
+              "device": 10,
+              "inode": 24436
+            }
+          }
+        }
+      ],
+      "notification_descriptor_before": {
+        "fd": 21,
+        "device": 10,
+        "inode": 21818
+      },
+      "notification_descriptor_after": {
+        "fd": 23,
+        "device": 10,
+        "inode": 24436
+      },
+      "stock_processes": [
+        {
+          "exe": "/usr/bin/cosmic-panel",
+          "pid": 4096,
+          "state": "S",
+          "start": "7007",
+          "threads": 22,
+          "parent": 4086,
+          "group": 4096,
+          "sid": 4096,
+          "notification_fd_link": "socket:[24436]"
+        }
+      ],
+      "elapsed_seconds": 0.0939909420000049
+    }
+  },
+  "normal_shipping_status": {
+    "format": "halcyon-islands-installation",
+    "version": 1,
+    "installation": "installed",
+    "provenance": "package",
+    "enabled": false,
+    "compatible": false,
+    "running": null,
+    "healthy": null,
+    "package_versions": {},
+    "status_version": 2,
+    "status": "Islands disabled",
+    "reason": "disabled",
+    "installed_generation": "6c5abbd1acdda3d1e43440d0754b4f114d9d3c05711478b0ddab793016feffe3",
+    "active_generation": null,
+    "installed_cohort": null,
+    "qualification_cohort": null,
+    "runtime_targets": [],
+    "running_profiles": [],
+    "compatibility": {
+      "version": 1,
+      "state": "unsupported",
+      "reason": "installed_runtime_unqualified",
+      "cohort": null
+    },
+    "diagnostics": {
+      "version": 1,
+      "installation": "installed",
+      "provenance": "package",
+      "enabled": false,
+      "status": "Islands disabled",
+      "reason": "disabled",
+      "installed_generation": "6c5abbd1acdda3d1e43440d0754b4f114d9d3c05711478b0ddab793016feffe3",
+      "active_generation": null,
+      "installed_cohort": null,
+      "qualification_cohort": null,
+      "runtime_targets": [],
+      "running_profiles": []
+    }
+  },
+  "test_stage_manifest_separate": true,
+  "retention": {
+    "artifact_id": 12551374288,
+    "run": 40071768899,
+    "zip_sha256": "f6770df74d7475d4bd22522792a6193f82a495a735bf385cb7a1ae91bf8e0c2f",
+    "bytes": 11288273,
+    "independent_rehash": true,
+    "local_archive": "evidence-12551374288.zip",
+    "small_extracted_bytes": 11237473,
+    "large_members_retained_inside_verified_zip": true,
+    "local_new_bytes": 56645218,
+    "free_bytes": 25535422464,
+    "expires_at": "2027-01-22T06:50:14Z"
+  },
+  "screenshots": [
+    "01-stock-desktop.png",
+    "02-stock-popup-300ms.png",
+    "03-trial-desktop.png",
+    "04-trial-popup-300ms.png",
+    "05-trial-editor-after.png",
+    "05-trial-editor-before.png",
+    "06-recovered-popup-300ms.png",
+    "07-stock-notification.png",
+    "08-recovered-editor-after.png",
+    "08-recovered-editor-before.png",
+    "09-final-stock-desktop.png"
+  ],
+  "normal_use_blockers_observed": [],
+  "next_step": "Parent/runtime owner may consume these actual scoped observations for final target/package promotion decisions; no additional run or publication performed. Keep original shipping manifest distinct from the tested catalog manifest.",
+  "evidence_sha256": {
+    "evidence/test-stage-authorization.json-hash.receipt.json": "6e9607b215da7f0b8937c24de83364d5af7aab8752f3ca60bc43ffa19d96ded8",
+    "evidence/result-list.receipt.json": "d13d4338de9087e3bdaa861624995e484191bb07c81f39d000fc07653c9d8892",
+    "evidence/device-preflight.json": "f631f0b7d6e4ab6b2ade2b7f1953409a36767ef153650b8fe58e944aa8556d4b",
+    "evidence/observation.owned-children-before.json-hash.receipt.json": "46b5447405db749ee9cecbf7c68fb779ca1196f80152d13ae7beed1f52643c88",
+    "evidence/install-main.receipt.json": "6aa07ded82ddf28337f4e968fa8006bc711234b5b89e95fe1411bae709e06cc1",
+    "evidence/readiness.json-hash.receipt.json": "08d39e73c827c01301b5f2b189cb5f175f3d03e8be6ce87bd0e1774c6e80ae6d",
+    "evidence/initial.receipt.json": "832734e34ca1d429cff82254d9c81784739d6e8b841ec46211984b426fae77a5",
+    "evidence/08-recovered-editor-after.png": "a634b3bf31ba2e5c31680231a40b998a8936e845e751f3fe7ebcce65bc985866",
+    "evidence/05-trial-editor-before.png": "0da9fbbd20ddb0719fc17dabd70b54a74f8868a2afb2dad3756f29894b5df3fa",
+    "evidence/08-recovered-typed.receipt.json": "bc09370d98dc8a02b014d1fb632bbec6dcc0c60d9c7d26fd4a9a19b1bba2a76c",
+    "evidence/trial-metadata.json-hash.receipt.json": "a646e73f6abb7adb33d24391f80cd4606795b88e4ec23ef2dcd8de11ef7f166c",
+    "evidence/qemu-version.txt": "8f79ffd97970d85d6833a0ccc87f5d6e7182f8f52101c741dfa2fb6374670b18",
+    "evidence/08-recovered-editor.stdout-hash.receipt.json": "8fb1b0f91a38d954a5dfe0e96281754e7c421206a32cf1d366b9c943791e444e",
+    "evidence/command.capture-trial.1792824998374568233.0.receipt.json-hash.receipt.json": "b1530fcc643619511300f66b360da1e131eef862b5c6243cab9ba166503075fc",
+    "evidence/command.owned-children-after.1792825001591125405.0.receipt.json-hash.receipt.json": "110dcbb51e6e90248fd66eca6798a1e7f6b405cb8c03e86e016875c5e9e22841",
+    "evidence/command.05-trial-seed.1792824988176304346.0.receipt.json-hash.receipt.json": "7c3f3e89d1c3418cc350abace8dc69859d5d05ecbc72a83deb3237c9f91fa3eb",
+    "evidence/05-trial-typed.txt-hash.receipt.json": "2f8e9395ea0e42cda4d711efdd46781d316bdac5ac3866f266328636cdae5850",
+    "evidence/command.clear-session-logging.1792825018810831787.0.receipt.json-hash.receipt.json": "68342e6225cb871bbc508d2f420e4f4f769b0f0e515395a41a70f290638f975d",
+    "evidence/ordinary-final-logout.receipt.json": "230c7f064323ff09af857c9dd02bee443fe1eba1dae5604eea182a7e4af35e72",
+    "evidence/remove-owned-shims.receipt.json": "fde873dbf8fb514344c55a31aa20d67e135e92eaec69eac57716179df9112204",
+    "evidence/test-stage-manifest.json-hash.receipt.json": "86dd907753f3696cd5f1c4b7f18c2cfca45d63f500ccda31e5a2cc5b0b1a794b",
+    "evidence/cosmic-ext-halcyon_0.2.5~dev.integration.5_amd64.deb.installed.json-hash.receipt.json": "c5f058879d744cdbca66d16eaf093bad87479a7d51490cc9738aba80c82e99ce",
+    "evidence/host-dpkg-unchanged.txt": "84745eb8eb0f9a6e910a57c468c2f0da3768734d234f40a70b458d3d65483550",
+    "evidence/command.ordinary-logout-for-trial.1792824966202589497.0.receipt.json-hash.receipt.json": "f7de19b7665d54e7a0eeff53d09b4e63f2a9ae335144b8afb1f91fa312067b51",
+    "evidence/cosmic-ext-halcyon-islands_0.2.5~dev.integration.5_amd64.deb.install.json-hash.receipt.json": "f7d6b5b5fe03a3546f0aadaab44fb6eaaeb9f19d41d782b288faac4c2d110753",
+    "evidence/results.receipt.json": "d7f9ae14939152dc1ccf8895a0294059bb8c1b8cb7b42496e627bc4f875777f9",
+    "evidence/09-final-stock-desktop.png": "9699db05384c4e4c7f7aa8cf33a4e62ec5a58aa6d59770632fb83b9c3d3c4283",
+    "evidence/mkdir.receipt.json": "b2ecc4ff2c61da36e2f88d1d5a2042ebc4c0498b9bed63653149458304da71ed",
+    "evidence/stock-notification.receipt.json": "f45311e81698af0cda672b3b1673d72f7a3073f4b0611b03dfb3d9768b649a51",
+    "evidence/08-recovered-editor.launch.json-hash.receipt.json": "32bb80e029a5360ff45822176bf4b152f72187a8863b5d41b87e5d246cb49aaa",
+    "evidence/command.08-recovered-seed.1792825008072261667.0.receipt.json-hash.receipt.json": "6830b8c6e27ad602ee59d8895f88d02528c69534638396421af6df12ec90ad33",
+    "evidence/ui-timeline.jsonl": "27fe46927d84a726bdc1b787d2d2451c78d76e7663f0c6f061884cb52e8122cc",
+    "evidence/disposable-state-owner.receipt.json": "cc33a77eba7e21aa06a29a76c9874aeaede254323398bf5b0413c87f2a0838f7",
+    "evidence/trial-readiness.receipt.json": "9d333155552d47491f3884a4c94e95e382fa41955439412ff9674095a6b2ec76",
+    "evidence/tiny-roundtrip.json": "a61436a45e9442aa673fa1f8d0937d0cbed25ce726be78a73aede2830a4a63cb",
+    "evidence/05-trial-editor.stdout-hash.receipt.json": "3018f9ebe854173f52ebb1cc3f6e82b7bd62f239788271ea60fe2c7fce4bd91d",
+    "evidence/command.ordinary-final-logout.1792825019418811815.0.receipt.json-hash.receipt.json": "0c587ebb094cd245e3d4d184a6f7d16aafc42b35729a61ea18799285f9fe989b",
+    "evidence/01-stock-desktop.png": "fe46ed1aeb9845d66e0cdfa3c42f148d9e6ca7a833381c8ba4bb61d790eb1629",
+    "evidence/shipping-unchanged.receipt.json": "5535cd9a6be232f35a44f351dc7f15e51d6271455f07e8f5b5a600879b2d870f",
+    "evidence/prepared-input-verification.json": "9b3a103a62e6f109bd55cd6476c2e181dfcb5041c69c19b46e1878d21af4a2df",
+    "evidence/device-preflight-args.json": "8f96edffc329b8b1a8307b85743452ad5a21d7c471261e6fdf686cee1ef0bc92",
+    "evidence/command.session-check.1792824957812836383.0.receipt.json-hash.receipt.json": "912d05cd9d59877b13c0dd2e68e65635fdc6a88445c6dffea389df0278740e96",
+    "evidence/clear-session-logging.receipt.json": "4af16e6ab1e56fe120756ae5f463754fd9d8954cacd7d8ea3483f0c23c975eff",
+    "evidence/install-companion.receipt.json": "8353c569dc7bee61d0dfa71f4c59ebb6aaf7cf92b96e77b09fb84a3b7999556c",
+    "evidence/infra-commit.txt": "4244f42bcfff343ac56fc28b52844bacdecedaab5ddca6fa8205f252f7cb7fe1",
+    "evidence/input-transport-hash.receipt.json": "5e122251c8c431afe11b765fd8eca19dd3c1122a222506bcfd3a524bd7078607",
+    "evidence/05-trial-editor-after.png": "1c2e25a1fc1fcd49397efc0510791c337458c7749c4add511b7b5d1ef6a46be3",
+    "evidence/disposable-log-selector.receipt.json": "b440e07ad9ebc97398261de46a4e020e299c0953f7ffab12356c87136e99ee2d",
+    "evidence/cosmic-ext-halcyon-islands_0.2.5~dev.integration.5_amd64.deb.installed.json-hash.receipt.json": "b90cd62a2208ed39f780a867e8a55dd705f9c6c4d8746635ec78636c5f3797a9",
+    "evidence/03-trial-desktop.png": "fe46ed1aeb9845d66e0cdfa3c42f148d9e6ca7a833381c8ba4bb61d790eb1629",
+    "evidence/recipe-hashes.txt": "3d9a510e808fcedfb76fd61a6f092a92fe250d257c697065045735e39380b9e2",
+    "evidence/test-stage-target.json-hash.receipt.json": "ef167c89dce88b39f411b92332de3bb7ca9dbd00ff346170d76fec8159929c71",
+    "evidence/08-recovered-typed.txt-hash.receipt.json": "da0fdf68fc1cdf70345176620d5e6e6ce23a9910a78b8a350578654aac131fe8",
+    "evidence/owned-children-after.receipt.json": "54d9a70fd8eefba7c416366a5c61bb4117425a57eb2b6ba0624f617cd64b25f7",
+    "evidence/08-recovered-editor-before.png": "5a3580195dec7b14b5d1551b7f675d71e6da55ea1347964da4cdf62738b7565b",
+    "evidence/05-trial-typed.receipt.json": "e3054297e5aed8e5f0b130a6db6a6a105fea56d38c9431b35ae8bee19c482238",
+    "evidence/qemu-img-version.txt": "adc35487cdd0e45466cf8dd71d4cfe4720e4079976aa0e5c279032de25c90129",
+    "evidence/job-start.txt": "7a29881a5d8707e94a4b9e91ab6e50ea6648ccc9a09e591a3b0ac03e9639ec71",
+    "evidence/device-preflight-help.txt": "f492a32b37f12ec46f1971ff7fb59b2f5f98f5712c1266e7aeb2a832867ba1a3",
+    "evidence/command.trial-readiness.1792824982715239650.0.receipt.json-hash.receipt.json": "7a2604927ed0add2690f3659110027237d3b891f6ed758abea4ee868c265cc9d",
+    "evidence/stage-isolated-test-bundle.receipt.json": "bc6dc3ac99f42ae841c1011ea7dd2342856d2ac378eb39a725addb00c677385d",
+    "evidence/close-welcome.receipt.json": "50f648f9b4389c6cfac2b3f13b61a00daef1294ad2d0e6de9184d583661e6abb",
+    "evidence/prepared-artifact-api.json": "9c5c7d91d64105e20c6429960ee009f552c8445c7c2776f2c6948664f6a3d8e2",
+    "evidence/session-receipt.json": "a522d8c05a8d909e2af2345cbb93f1ef45faba07f8f0d4ebd5b184d277094531",
+    "evidence/readable.receipt.json": "8bf3e616e3d41d1e1505fb7d2e052034f8b179cdefd685f64bc555bbbdc0ca63",
+    "evidence/observation.owned-children-after.json-hash.receipt.json": "173879850e5d9f8a5553ae5ffd5dafae0db048ef2cc1295fd2787e344d4e1789",
+    "evidence/05-trial-editor.launch.json-hash.receipt.json": "47795c4f5121a55ae5e261b5547596cbff016dcc9e51aba8f29294f586f7e160",
+    "evidence/capture-trial.receipt.json": "a2d9a6e3294f37adc13e4efee2393ce379e8e5f9db7e311a34fbb4c194cdc2e0",
+    "evidence/command.normal-status.1792824964585663650.0.receipt.json-hash.receipt.json": "c2ef9f91c18adfe99007e66b98a282248515571daffd67bbef965f87191bf92e",
+    "evidence/02-stock-popup-300ms.png": "539c94c96005602e90a0267f0a507d6b6779b78dd68e7c889d25ce1284831f78",
+    "evidence/ordinary-logout-for-trial.receipt.json": "de4b6d977d77b0bfe969d9819644f20c88c17eff0ee24fdbdee76bd56d41cd95",
+    "evidence/owned-children-before.receipt.json": "c69ce51acb5a74029bb34eae972852ecbf5c5a16100f4396af66c72cd70d0fb2",
+    "evidence/08-recovered-editor.stderr-hash.receipt.json": "e840d0b67381d193537d89d028719562cbb42737b543052cff038432f165ec2e",
+    "evidence/controlled-host-term.receipt.json": "81700096b89c6f4d1c8551d20fb25ba4654c4af3970ea296daa1de8f41741d38",
+    "evidence/setup-marker.receipt.json": "e76ceebdfd776c5b644ab9531874b818558e58c35d5f7b1a2cd1414dea77d4e2",
+    "evidence/runner-tool-bytes.txt": "09307bc474ebf98d731682cfd6fc046cf4d89c8aa9ad3d055ebd91d55eb0ba48",
+    "evidence/stage-one-shot.receipt.json": "78fd13e52a2b83eb6e9f5964702431aee66f6e64b1e9536a57b484bea8149757",
+    "evidence/05-trial-seed.receipt.json": "8a243bc5240a5c2c72b18db19c76978399776bdf80b8f6675c42c3d672a834df",
+    "evidence/normal-status.receipt.json": "f6bf8bd75248f7b3b963b9518e813b8a92eda5d7b5be5a4c175ecd2c6d7c8509",
+    "evidence/trial-entry.jsonl-hash.receipt.json": "9ffbb4dbfffc8b78a3194a2168d3220e1ad5c461210003b6eb9edecfdc256ab0",
+    "evidence/command.stock-notification.1792825006473081256.0.receipt.json-hash.receipt.json": "f33061e0c1b2cedcd25bf989ec3e6e972ab314c5356883086e192c57f55e41a2",
+    "evidence/tiny-receipt.json": "3cdb30a6e04b1395b4ec7791851b10d553df044b64850e47029923c5561b9e81",
+    "evidence/08-recovered-editor-launch.receipt.json": "f936ca81d58de1f994fc72ee517b4941dd18ff3dc215dbbff3d6ae2099187444",
+    "evidence/command.set-owned-session-path.1792824965604095416.0.receipt.json-hash.receipt.json": "c2a95b9972b5611739fb661988a553f0dcb1f665d6ffdde46fa87a8c7b5546bb",
+    "evidence/cosmic-ext-halcyon_0.2.5~dev.integration.5_amd64.deb.install.json-hash.receipt.json": "f5e06e666ddb6b2fa7fd9a13037511618f5be69036b39258a74768be85d1fe87",
+    "evidence/command.session-check.1792824978585211679.0.receipt.json-hash.receipt.json": "e476272d52595f9c76f619b7b2589b4b00ba634415b5abfa09af431ec0cd99dc",
+    "evidence/command.owned-children-before.1792824999153345472.0.receipt.json-hash.receipt.json": "cebef7b00b316738c588220e7e284891b53812a69ee1b4f589119df37e4e4943",
+    "evidence/job-end.txt": "8950b35c22a8d863426d355eb03cc4d566da94f1ddb998c174b5bf8705517b28",
+    "evidence/runner-prerequisites.json": "6a0dac243eaa349bddbab6470ef661a154692af43d5520c7240785b25cacfabc",
+    "evidence/05-trial-editor-launch.receipt.json": "3252303aacfd301da2f5962a87ab4cb382c302ca8842c3787f00733f8976a5db",
+    "evidence/07-stock-notification.png": "5f67d680afc563d89cff555cc33020781e7cb0ba1c66f940acc845fd4319ab1c",
+    "evidence/final-disk.txt": "b1f838668f23e5a47ea38c37e1659fbc6d0b743d9403f4e682b9d2e66c10448d",
+    "evidence/command.session-check.1792825031831175637.0.receipt.json-hash.receipt.json": "748463d305f87945ad635d31e1f4f92d5cb24bda2f863d79c0068ea725152ab1",
+    "evidence/04-trial-popup-300ms.png": "539c94c96005602e90a0267f0a507d6b6779b78dd68e7c889d25ce1284831f78",
+    "evidence/restore-guest-environment.receipt.json": "7b6e23eb84049378a4e8743806b4d802844af03233a44dee089fdab33694cea0",
+    "evidence/set-owned-session-path.receipt.json": "d20c9c208a7fc6c407588e45a9045d14c88a93bbfcad19742f24e477ed387d10",
+    "evidence/06-recovered-popup-300ms.png": "539c94c96005602e90a0267f0a507d6b6779b78dd68e7c889d25ce1284831f78",
+    "evidence/unpack.receipt.json": "77462cbab5c30d086731298be1ee1b29612cc7fd3260fd97b374a0820457006c",
+    "evidence/initial.json-hash.receipt.json": "20d8c3541c5675a92b6aec0ae12a86c208100e347ab75575e2658f023ad1fbee",
+    "evidence/05-trial-editor.stderr-hash.receipt.json": "82f049ff1e31eabe47e346de9843f92d7dcfbca78978ef6ef396d000b8449573",
+    "evidence/08-recovered-seed.receipt.json": "7e9748ef1394261e8b2a16ce84abe381faa71d379e8effb5516580332420f7f3",
+    "evidence/final-memory.txt": "ef37a315366498608a6e245ba2127fd1c1e8c5c2ca78214e545f4651b865e1c9",
+    "evidence/guest-results/command.owned-children-before.1792824999153345472.0.receipt.json": "2cfac62c663cf37569cc6d7bf8023f1ac496534d048f1cf22b7f80a5582e174d",
+    "evidence/guest-results/cosmic-ext-halcyon_0.2.5~dev.integration.5_amd64.deb.installed.json": "d3f6b0d03007b6646f9b327ef85b090b63909fde7ee2ceeb4bbc24a1a5978c9a",
+    "evidence/guest-results/cosmic-ext-halcyon-islands_0.2.5~dev.integration.5_amd64.deb.installed.json": "55df9c1e4d68e6a9e0c462891e0473703524e63f29f86379b2088252e296f327",
+    "evidence/guest-results/command.ordinary-final-logout.1792825019418811815.0.receipt.json": "b296a11cbeb23cb4bf5296250f9394c03ec2e7a8b5e6306e455b15b396c5651c",
+    "evidence/guest-results/command.ordinary-logout-for-trial.1792824966202589497.0.receipt.json": "686a36bf702a3ef83018e7f43b96b4c0243dd9f061c2e15e1c8e42f97fe6bbf0",
+    "evidence/guest-results/observation.owned-children-after.json": "5b38a009801b85e0e42d953a110b9cbddb8286821f13abfac594c603e269c97a",
+    "evidence/guest-results/command.05-trial-seed.1792824988176304346.0.receipt.json": "8ff1f51a8f00d9043924501a75aea199e93123e38593ac12a86247c834dfa8da",
+    "evidence/guest-results/command.trial-readiness.1792824982715239650.0.receipt.json": "b97072af3d5f218e378abc71c9a8fbd22eeff2b61facd8be288f97121663ac27",
+    "evidence/guest-results/observation.owned-children-before.json": "37cdcaa8ba68c4891ac486f41aecefb2fe33b168babe437b2dfc3f7f31c34c94",
+    "evidence/guest-results/05-trial-editor.launch.json": "719a767790fb80c6cb3288c1a61c9f4b6851e3f60aac60514a002213617c87b6",
+    "evidence/guest-results/test-stage-manifest.json": "447f43f182471327794639a91f80d9232a8894fb471f8669ff64328998316146",
+    "evidence/guest-results/05-trial-typed.txt": "6fcd3de6d472e969c47cc0e1b66d7a8a64c67f17bc38163515bf5d4ee2cbf27c",
+    "evidence/guest-results/command.session-check.1792824978585211679.0.receipt.json": "79b85b17c5c13e67677b7e26390d743f290da0cd3251dc3318116ad18679d96d",
+    "evidence/guest-results/command.owned-children-after.1792825001591125405.0.receipt.json": "c9542fe31cff3d5f6e185a6f02ddf281047e2af9c66f1798e4f4b136602bfd79",
+    "evidence/guest-results/initial.json": "03033433e7279de0f4466ab4699be165d912dd7cbb7b1c6e2a0986f4ca8c931b",
+    "evidence/guest-results/command.normal-status.1792824964585663650.0.receipt.json": "50efd6622d679690183d758edcc664ccdda279791355953d6e7c95e67e0b603e",
+    "evidence/guest-results/command.set-owned-session-path.1792824965604095416.0.receipt.json": "3b9a0be8b5a78a6a622ef9c618898f77b56b881a7e8fc2f6689601089045cb12",
+    "evidence/guest-results/08-recovered-typed.txt": "6fcd3de6d472e969c47cc0e1b66d7a8a64c67f17bc38163515bf5d4ee2cbf27c",
+    "evidence/guest-results/command.capture-trial.1792824998374568233.0.receipt.json": "b086f83a551bef8ba891c0f5e2be97743fff10c995d2e88e2dfcfd717a43ecc5",
+    "evidence/guest-results/command.08-recovered-seed.1792825008072261667.0.receipt.json": "ac15914be6d3ea6e47a1ad398b176f4b6ab17f81a9e3908b7d3fdd899348a799",
+    "evidence/guest-results/cosmic-ext-halcyon-islands_0.2.5~dev.integration.5_amd64.deb.install.json": "a762344edfbefbb7d330ec7b4ade6af40a48c4b99d7c0a928c197ba6d6d151b7",
+    "evidence/guest-results/trial-entry.jsonl": "160b499e05c357ec5f5b4e650e46ffb9a3cfc305e0bbdcf5e73d4766f091716a",
+    "evidence/guest-results/command.session-check.1792824957812836383.0.receipt.json": "145eb2949a7869f5155afbf48569eb3e9ff6fa254fa3851c71b4a78b8be55276",
+    "evidence/guest-results/command.clear-session-logging.1792825018810831787.0.receipt.json": "102546c9fbd3430bf3483abeb1a811c2a55ec7f51eb37a5f06a9b5ac6cbba25c",
+    "evidence/guest-results/cosmic-ext-halcyon_0.2.5~dev.integration.5_amd64.deb.install.json": "8835b4f8b5f7048b13138aa602f28fd2ef50671fec5bd27edc08bfc071c303a6",
+    "evidence/guest-results/test-stage-target.json": "018427dee21e1f565f3b292b4fc4d4e698fd2ad8079eb5e9d34ed570ee224433",
+    "evidence/guest-results/command.stock-notification.1792825006473081256.0.receipt.json": "d8ea8d08414db3bb2ead843a8870e20c6c1bd0e22124843cac2e9995e9ed5c7c",
+    "evidence/guest-results/08-recovered-editor.launch.json": "6882630e91ed7adf6be7301d9830e9b2a6e733145cb60aa1b20160b43d7b56aa",
+    "evidence/guest-results/test-stage-authorization.json": "e7ce562fef4018187c86108fd8d624fb84e65a0bd61dbb1c056afdb22ee7c959",
+    "evidence/guest-results/command.session-check.1792825031831175637.0.receipt.json": "fe82bd811584a91d2ca36b17ba482561b5621a98dda35cd67c2fc4f4141ed1b0",
+    "evidence/guest-results/readiness.json": "fe3f2e8ded8867ed313619c6446b1b14812d0b2e9829103691b7b37d04d45ce1",
+    "evidence/guest-results/trial-metadata.json": "54ecbd94f4c1df909b894bfd09c21adad6ed7eb57e9a4d91e530e3c42996ef9a",
+    "evidence/startup-vm/qemu-args.json": "68e13498bb753e7ae4e8a895db58d43acdc6c1557b1783702a564e734d1f9825",
+    "evidence/vm/qemu-args.json": "68e13498bb753e7ae4e8a895db58d43acdc6c1557b1783702a564e734d1f9825"
+  }
+}

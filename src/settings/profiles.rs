@@ -67,6 +67,7 @@ pub enum Message {
     ThemeCustom(Option<String>),
     ThemeWallpaper(bool),
     ResetSurface(Domain),
+    RepairThemeMatching,
     ThemeReady(
         u64,
         Result<crate::desktop::wallpaper::palette::Suggestion, String>,
@@ -306,7 +307,7 @@ pub(super) struct SavedSelection {
     pub(super) theme: Option<String>,
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ProfilesEditor {
     store: Option<Result<DesktopStore, String>>,
     /// The Islands panel component answered when the looks were fitted.
@@ -1388,6 +1389,19 @@ impl ProfilesEditor {
                 }
             }
             Message::ResetSurface(domain) => self.reset_surface(domain),
+            Message::RepairThemeMatching => {
+                if let Some(store) = self.store() {
+                    match profiles::themes::repair_matching(store) {
+                        Ok(profile) => {
+                            self.select(Selection::Current);
+                            self.theme_override = Some(profile);
+                            self.session_review = false;
+                            self.replan();
+                        }
+                        Err(error) => self.notice = Some(Notice::Error(error.to_string())),
+                    }
+                }
+            }
             Message::ThemeReady(id, result) => self.theme_ready(id, result),
             Message::Include(domain, on) => {
                 if on {

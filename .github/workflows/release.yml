@@ -1,145 +1,40 @@
-name: Release
-
+name: Promote reviewed release artifacts
 on:
-  push:
-    tags: ['v*']
-
+  workflow_dispatch:
+    inputs:
+      candidate_run:
+        description: Reviewed immutable candidate artifact run ID
+        required: true
+      manifest_sha256:
+        description: SHA256 of the independently reviewed release-manifest.json
+        required: true
 permissions:
-  contents: write
-
+  contents: read
+  actions: read
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - name: Verify activity collector deployment
-        run: python3 scripts/usage/release-check.py --check-live
-      - name: Install build and packaging dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config pkgconf cmake just \
-            libxkbcommon-dev libwayland-dev libexpat1-dev libfontconfig-dev \
-            fonts-open-sans fonts-noto-mono \
-            libfreetype-dev libinput-dev libudev-dev libdbus-1-dev libseat-dev \
-            libegl1-mesa-dev libvulkan-dev libssl-dev libclang-dev \
-            dpkg-dev appstream desktop-file-utils lintian python3
-      - name: Install Rust 1.93
-        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: '1.93.0'
-      - uses: Swatinem/rust-cache@v2
-      - name: Validate desktop metadata
-        run: |
-          appstreamcli validate --no-net packaging/io.github.profilaz3.Halcyon.metainfo.xml
-          desktop-file-validate packaging/io.github.profilaz3.Halcyon.desktop
-      - name: Build release binary
-        run: cargo build --release --locked
-      - name: Test activity collector
-        run: |
-          node --test scripts/usage/collector.test.cjs
-          python3 -m unittest discover -s scripts/usage -p 'test_*.py'
-      - name: Test Python helpers and packaging
-        run: |
-          for test in scripts/test_*.py; do
-            python3 "$test"
-          done
-          python3 -m unittest scripts/test_controller.py
-          python3 -m unittest discover -s packaging -p 'test_*.py'
-          python3 packaging/islands/test_islands.py
-          python3 -m unittest companion.test_compatibility
-      - name: Test Rust
-        run: cargo test --locked -- --test-threads=1
-      - name: Test Islands core
-        run: cargo test --locked --manifest-path companion/dock-islands-core/Cargo.toml
-      - name: Install license report generator
-        run: cargo install cargo-about --locked --version 0.9.2 --features cli
-      - name: Collect dependency licenses
-        run: |
-          cargo metadata --locked --format-version 1 \
-            --filter-platform x86_64-unknown-linux-gnu > "$RUNNER_TEMP/cargo-metadata.json"
-          python3 packaging/collect-licenses.py \
-            --metadata "$RUNNER_TEMP/cargo-metadata.json" \
-            --cargo-home "${CARGO_HOME:-$HOME/.cargo}" --allow-missing \
-            --out "$RUNNER_TEMP/source-license-notices.txt"
-          mkdir -p packaging/licenses
-          cargo about generate --locked --fail \
-            --config packaging/licenses/about.toml packaging/licenses/about.hbs \
-            --output-file packaging/licenses/THIRD_PARTY_LICENSES.txt
-          cat "$RUNNER_TEMP/source-license-notices.txt" >> packaging/licenses/THIRD_PARTY_LICENSES.txt
-      - name: Build Debian package
-        id: package
-        env:
-          GOOGLE_CALENDAR_CLIENT_JSON: ${{ secrets.GOOGLE_CALENDAR_CLIENT_JSON }}
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          client_file="$(mktemp "$RUNNER_TEMP/halcyon-google-client.XXXXXX")"
-          trap 'rm -f "$client_file"' EXIT
-          export HALCYON_CLIENT_FILE="$client_file"
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          value = os.environ.get("GOOGLE_CALENDAR_CLIENT_JSON", "")
-          if value:
-              try:
-                  parsed = json.loads(value)
-              except ValueError:
-                  raise SystemExit("GOOGLE_CALENDAR_CLIENT_JSON must contain valid JSON") from None
-              if not isinstance(parsed, dict):
-                  raise SystemExit("GOOGLE_CALENDAR_CLIENT_JSON must contain a JSON object")
-              Path(os.environ["HALCYON_CLIENT_FILE"]).write_text(value)
-          PY
-          args=()
-          if [[ -s "$client_file" ]]; then
-            args+=(--google-client "$client_file")
-            echo "calendar=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "calendar=false" >> "$GITHUB_OUTPUT"
-          fi
-          unset GOOGLE_CALENDAR_CLIENT_JSON
-          python3 packaging/build-deb.py --binary target/release/halcyon \
-            --version "$version" --out dist "${args[@]}"
-      - name: Inspect Debian package
-        run: |
-          dpkg-deb --info dist/*.deb
-          dpkg-deb --contents dist/*.deb
-      - name: Lint Debian package
-        # Warnings are reported but do not prevent a release. Errors still fail.
-        run: lintian --allow-root --fail-on error dist/*.deb
-      - name: Prepare release notes
-        env:
-          CALENDAR_CONFIGURED: ${{ steps.package.outputs.calendar }}
-        run: |
-          dpkg-parsechangelog --file packaging/debian/changelog --count 1 \
-            --show-field Changes > "$RUNNER_TEMP/halcyon-release-notes.txt"
-          python3 - <<'PYTHON'
-          import os
-          from pathlib import Path
-          from string import Template
-          import textwrap
-
-          notes = Path(os.environ["RUNNER_TEMP"]) / "halcyon-release-notes.txt"
-          # dpkg's Changes field starts with the package/version and a blank line.
-          changes = textwrap.dedent("\n".join(notes.read_text().splitlines()[2:])).strip()
-          calendar = (
-              "Sign-in is included; availability also depends on the publisher's Google consent configuration."
-              if os.environ["CALENDAR_CONFIGURED"] == "true"
-              else "Sign-in is not configured in this build. Other widgets work without a Google account."
-          )
-          notes.write_text(Template(Path(".github/RELEASE_TEMPLATE.md").read_text()).substitute(
-              REPOSITORY=os.environ["GITHUB_REPOSITORY"],
-              TAG=os.environ["GITHUB_REF_NAME"],
-              VERSION=os.environ["GITHUB_REF_NAME"].removeprefix("v"),
-              CHANGES=changes,
-              CALENDAR=calendar,
-          ))
-          PYTHON
-      - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
         with:
-          body_path: ${{ runner.temp }}/halcyon-release-notes.txt
-          fail_on_unmatched_files: true
-          files: |
-            dist/*.deb
-            dist/*.sha256
+          name: halcyon-release-candidate
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify exact reviewed bytes and explicit release policy approval
+        env:
+          MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
+        run: python3 scripts/compatibility/release_gate.py --artifacts candidate --manifest-sha256 "$MANIFEST_SHA256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release-${{ github.run_id }}
+          path: candidate
+          retention-days: 7
+# Group 4's restricted promotion job consumes these exact verified bytes. No tag
+# push auto-builds or publishes a fresh unqualified main/companion package. No
+# credentials reach candidate code or native guests. Actual publication remains
+# explicitly parent-owned until combined APT/UI acceptance is implemented.

@@ -18,10 +18,14 @@
       <li>Reversible changes that preserve your applets, their order, panel
       position and the widgets you set up.</li>
     </ul>
-    <p>No account is needed. Halcyon automatically sends a daily activity report
-    to Google while the desktop widgets run: a random installation ID, app version,
-    approximate first country and report format version. Country.is provides the
-    country from the public IP; Halcyon does not store the IP. Reporting is always on; no widget content is sent.</p>
+    <p>No account is needed. Share usage data is on by default and can be turned
+    off in setup or App settings. While enabled, Halcyon sends Google a daily
+    activity report with a random installation ID, app version and approximate
+    first country. Country.is supplies the country from the public IP; Halcyon
+    does not store the IP or send widget content. Turning reporting off stops
+    activity and country requests and sends a minimal preference-status update.
+    Failed status delivery can retry for up to seven days; identifiable opted-out
+    records are retained for at most 90 days.</p>
     <p>Connecting Google Calendar is optional. Weather uses Open-Meteo and sign-in
     tokens stay in your system keyring.</p>
   </description>
@@ -37,6 +41,7 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
+    <!-- 0.2.5 is unreleased; draft notes: docs/releases/0.2.5.md. -->
     <release version="0.2.0" date="2026-10-23">
       <description><ul>
         <li>Add four shared glass materials, surface overrides and saved Liquid widget motion.</li>

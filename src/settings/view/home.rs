@@ -51,7 +51,7 @@ impl Settings {
         }
         // Leave room for the selected widget's inspector and keyboard hint,
         // including native window decoration, without resizing mid-gesture.
-        let height = (self.window.height - 310.).clamp(220., 560.);
+        let height = (self.window.height - 440.).clamp(120., 420.);
         let mut parts = vec![heading("Layout", "")];
         if self.needs_setup() {
             parts.push(self.setup_prompt());

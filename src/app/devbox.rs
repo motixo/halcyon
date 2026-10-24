@@ -348,7 +348,12 @@ fn memory_header(
             values.push(reading(swap.clone(), 10. * scale, p.muted, "swap-summary"));
         }
         if let Some(cache) = &cache {
-            values.push(reading(cache.clone(), 10. * scale, p.muted, "cache-summary"));
+            values.push(reading(
+                cache.clone(),
+                10. * scale,
+                p.muted,
+                "cache-summary",
+            ));
         }
         values.push(reading(
             memory.clone(),
@@ -530,9 +535,15 @@ mod tests {
         assert!(natural > 204., "{natural}");
         assert_eq!(cards.widget_size(Widget::Devbox), [360., natural]);
         // A larger saved size is kept, and a tiny screen caps the growth.
-        cards.config.widget_sizes.insert("devbox".into(), [360., 400.]);
+        cards
+            .config
+            .widget_sizes
+            .insert("devbox".into(), [360., 400.]);
         assert_eq!(cards.widget_size(Widget::Devbox)[1], 400.);
-        cards.config.widget_sizes.insert("devbox".into(), [360., 100.]);
+        cards
+            .config
+            .widget_sizes
+            .insert("devbox".into(), [360., 100.]);
         cards.screen_size = [800., 300.];
         assert!(cards.widget_size(Widget::Devbox)[1] <= 300. - 96. + 0.01);
     }

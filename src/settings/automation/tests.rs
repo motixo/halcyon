@@ -27,7 +27,15 @@ fn opening_reads_only_and_offers_every_profile_and_display() {
         .collect();
     assert_eq!(
         names,
-        ["Halcyon", "Calm", "Evening", "Focus", "Paper", "Rosé", "Clean desktop"]
+        [
+            "Halcyon",
+            "Calm",
+            "Evening",
+            "Focus",
+            "Paper",
+            "Rosé",
+            "Clean desktop"
+        ]
     );
     let choices = editor.display_choices();
     assert_eq!(

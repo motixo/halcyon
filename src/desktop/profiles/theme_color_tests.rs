@@ -153,7 +153,7 @@ fn style_changes_keep_an_outline_chosen_after_themes_and_link_an_older_one() {
 }
 
 #[test]
-fn surfaces_and_accents_from_the_previous_release_stay_linked() {
+fn legacy_surface_roles_require_explicit_repair_before_recoloring() {
     for family in Family::ALL {
         let (fixture, store, installed) =
             reported(&format!("theme-previous-release-{}", family.id()), true);
@@ -187,8 +187,8 @@ fn surfaces_and_accents_from_the_previous_release_stay_linked() {
         let draft = AppearanceDraft::load(&store).unwrap();
         let state = native_custom(&draft, typed.appearance);
         assert!(
-            !state.surfaces,
-            "{family:?}: previous surfaces are not Custom"
+            state.surfaces,
+            "{family:?}: legacy surfaces require reviewed repair"
         );
         // The stale outline is the one thing that does not follow yet.
         assert!(state.windows, "{family:?}");
@@ -205,7 +205,7 @@ fn surfaces_and_accents_from_the_previous_release_stay_linked() {
             .known()
             .copied()
             .flatten();
-        let target = family.surface([200, 120, 60]);
+        let target = surface;
         assert!(
             moved.is_some_and(|c| {
                 [c.red, c.green, c.blue].map(|v| (v * 255.).round() as u8) == target
@@ -232,6 +232,7 @@ fn unset_window_surfaces_follow_the_style_and_wallpaper_tint() {
     let mut config: serde_json::Value =
         serde_json::from_slice(&fs::read(store.app_config().unwrap()).unwrap()).unwrap();
     config["appearance"]["family"] = serde_json::json!(Family::Soft);
+    config["appearance"]["native_mode_palettes"] = 1.into();
     config["appearance"]["accent"] = serde_json::json!([224, 138, 243]);
     fs::write(store.app_config().unwrap(), config.to_string()).unwrap();
     let (_, typed) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
@@ -270,7 +271,8 @@ fn unset_window_surfaces_follow_the_style_and_wallpaper_tint() {
 #[test]
 fn material_survives_theme_apply_and_captured_setup_restores_native_bars() {
     use crate::materials::{Finish, Kind, Target};
-    let (_fixture, store, installed) = reported("material-profile", true);
+    let (fixture, store, installed) = reported("material-profile", true);
+    crate::desktop::islands::fixture_installed(&fixture.0);
     crate::desktop::materials::apply(&store, Target::Shared, Some(Finish::new(Kind::Liquid)))
         .unwrap();
     let theme = record(Family::Soft);
@@ -409,5 +411,663 @@ fn material_motion_capture_keeps_genuinely_legacy_setups_on_their_old_format() {
             proposal.is_empty(),
             "legacy omission leaves motion unchanged"
         );
+    }
+}
+
+/// Six setup profiles must carry native palettes in both polarities. No
+/// running widget process participates in a mode switch.
+#[test]
+fn preset_mode_roundtrip_preserves_bar_foreground_contrast() {
+    use crate::desktop::panels::Background;
+    for preset in crate::desktop::profiles::presets()
+        .into_iter()
+        .filter(|p| p.id != CLEAN && !p.profile.appearance_only)
+    {
+        let fixture = Fixture::new(&format!("mode-roundtrip-{}", preset.id));
+        fixture.system(
+            "com.system76.CosmicPanel",
+            "entries",
+            "[\"Panel\",\"Dock\"]",
+        );
+        fixture.system("com.system76.CosmicPanel.Dock", "anchor", "Bottom");
+        fixture.system("com.system76.CosmicPanel.Panel", "anchor", "Top");
+        fixture.user(
+            "com.system76.CosmicPanel.Dock",
+            "background",
+            "Color((0.1,0.2,0.3))",
+        );
+        fixture.user(
+            "com.system76.CosmicPanel.Panel",
+            "background",
+            "Color((0.1,0.2,0.3))",
+        );
+        let path = fixture.0.join("config.json");
+        fs::write(&path, "{}").unwrap();
+        let store = fixture.store().with_app_config(path);
+        let installed = Installed::discover(&store);
+        let preset = crate::desktop::profiles::fitted(
+            preset,
+            &crate::config::Config::default(),
+            &installed.bundled_dir,
+            false,
+        );
+        let selected = [
+            Domain::Dock,
+            Domain::Panel,
+            Domain::Appearance,
+            Domain::WidgetStyle,
+        ]
+        .into_iter()
+        .collect();
+        let planned = plan(&store, &installed, &preset.profile, &selected);
+        assert!(planned.can_apply(), "{:?}", planned.blocking_reasons());
+        apply(&store, &planned).unwrap();
+        for dark in [false, true, false] {
+            fixture.user(
+                "com.system76.CosmicTheme.Mode",
+                "is_dark",
+                &dark.to_string(),
+            );
+            let draft = AppearanceDraft::load(&store).unwrap();
+            let variant = if dark {
+                ThemeVariant::Dark
+            } else {
+                ThemeVariant::Light
+            };
+            let preview = draft.preview(variant);
+            for bar in ["Dock", "Panel"] {
+                let background: Background = ron::from_str(
+                    &fixture
+                        .read(&format!("com.system76.CosmicPanel.{bar}"), "background")
+                        .unwrap(),
+                )
+                .unwrap();
+                assert_eq!(background, Background::ThemeDefault, "{} {bar}", preset.id);
+            }
+            let color = |c: cosmic::cosmic_theme::palette::Srgba| {
+                cosmic::iced::Color::from_rgb(c.red, c.green, c.blue)
+            };
+            assert!(
+                desktop_theme::contrast(color(preview.background), color(preview.on_background))
+                    >= 4.5,
+                "{} {variant:?}: unreadable bar",
+                preset.id
+            );
+            assert_eq!(
+                lightness(preview.background) < 0.5,
+                dark,
+                "{} {variant:?}",
+                preset.id
+            );
+            assert!(
+                draft
+                    .color(variant, ColorRole::Background)
+                    .known()
+                    .unwrap()
+                    .is_some(),
+                "{} {variant:?}: missing family surface",
+                preset.id
+            );
+        }
+    }
+}
+
+#[test]
+fn external_mode_change_works_without_widget_process() {
+    // Change only COSMIC's native mode file after applying a family. The
+    // stored native roles must suffice, including automatic mode's events.
+    let (fixture, store, installed) = reported("external-theme-mode", true);
+    switch(&store, &installed, Family::Paper);
+    let snapshot = fixture.tree();
+    for dark in [true, false] {
+        fixture.user("com.system76.CosmicTheme.Mode", "auto_switch", "true");
+        fixture.user(
+            "com.system76.CosmicTheme.Mode",
+            "is_dark",
+            &dark.to_string(),
+        );
+        let variant = if dark {
+            ThemeVariant::Dark
+        } else {
+            ThemeVariant::Light
+        };
+        let preview = AppearanceDraft::load(&store).unwrap().preview(variant);
+        assert_eq!(lightness(preview.background) < 0.5, dark);
+        assert!(
+            AppearanceDraft::load(&store)
+                .unwrap()
+                .color(variant, ColorRole::Primary)
+                .known()
+                .unwrap()
+                .is_some(),
+            "family container exists in {variant:?}"
+        );
+    }
+    for (path, bytes) in snapshot {
+        if path.is_file() && !path.to_string_lossy().contains("CosmicTheme.Mode") {
+            assert_eq!(fs::read(path).unwrap(), bytes.unwrap());
+        }
+    }
+}
+
+#[test]
+fn mode_change_preserves_explicit_surface_overrides() {
+    use crate::desktop::appearance::{SystemMode, Value};
+    let (fixture, store, installed) = reported("mode-custom-surface", true);
+    switch(&store, &installed, Family::Soft);
+    let custom = "Color((0.1, 0.2, 0.3))";
+    fixture.user("com.system76.CosmicPanel.Dock", "background", custom);
+    write_v2(
+        &fixture,
+        "com.system76.CosmicTheme.Light.Builder",
+        "bg_color",
+        "Some(\"#EFE0D0FF\")",
+    );
+    let before = fixture.tree();
+    let mut draft = AppearanceDraft::load(&store).unwrap();
+    draft.set(Control::Mode, Value::Mode(SystemMode::Light));
+    store.apply(&draft.plan().patch).unwrap();
+    for (path, bytes) in before {
+        if path.is_file()
+            && path.starts_with(store.user_root())
+            && !path.to_string_lossy().contains("CosmicTheme.Mode")
+        {
+            assert_eq!(fs::read(path).unwrap(), bytes.unwrap());
+        }
+    }
+}
+
+#[test]
+fn legacy_surface_equality_does_not_authorize_mode_migration() {
+    let (fixture, store, _installed) = reported("legacy-mode-ownership", true);
+    // No current generation marker or transaction proof. Even equal colors
+    // might have been entered deliberately outside Halcyon.
+    let family = Family::Soft;
+    let mut raw: serde_json::Value =
+        serde_json::from_slice(&fs::read(store.app_config().unwrap()).unwrap()).unwrap();
+    raw["appearance"]["family"] = serde_json::json!(family);
+    raw["appearance"]["accent"] = serde_json::Value::Null;
+    fs::write(store.app_config().unwrap(), raw.to_string()).unwrap();
+    let [r, g, b] = family.surface(family.accent());
+    write_v2(
+        &fixture,
+        "com.system76.CosmicTheme.Dark.Builder",
+        "bg_color",
+        &format!("Some(\"#{r:02X}{g:02X}{b:02X}FF\")"),
+    );
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    let mut draft = AppearanceDraft::load(&store).unwrap();
+    linked_colors(&mut draft, cfg.appearance, [200, 90, 30]);
+    assert!(
+        !draft.dirty(),
+        "old equal colors alone do not authorize repair"
+    );
+}
+
+#[test]
+fn mode_change_then_wallpaper_update_then_undo_preserves_current_palette() {
+    use crate::desktop::appearance::SystemMode;
+    use crate::desktop::wallpaper::{self, BgColor, BgEntry, BgSource, automatic};
+    let (fixture, store, installed) = reported("mode-wallpaper-undo", true);
+    let set_wallpaper = |rgb| {
+        fixture.user(
+            wallpaper::NAMESPACE,
+            "all",
+            &ron::to_string(&BgEntry::new("all", BgSource::Color(BgColor::Single(rgb)))).unwrap(),
+        )
+    };
+    set_wallpaper([0.2, 0.5, 0.7]);
+    switch(&store, &installed, Family::Soft);
+    automatic::commit(&store, automatic::prepare(&store).unwrap().unwrap()).unwrap();
+    let mut mode = AppearanceDraft::load(&store).unwrap();
+    mode.set(Control::Mode, Edit::Mode(SystemMode::Light));
+    let changed = store
+        .apply_owned(
+            &mode.plan().patch,
+            None,
+            crate::desktop::Owner::Appearance,
+            "Light mode",
+        )
+        .unwrap();
+    set_wallpaper([0.8, 0.3, 0.2]);
+    automatic::commit(&store, automatic::prepare(&store).unwrap().unwrap()).unwrap();
+    let (_, before) = automatic::read_config(&store).unwrap();
+    let colors = AppearanceDraft::load(&store).unwrap();
+    let native: Vec<_> = ThemeVariant::ALL
+        .into_iter()
+        .map(|v| (v, colors.preview(v).background, colors.preview(v).accent))
+        .collect();
+    store.undo_latest(&changed.id).unwrap();
+    let (_, after) = automatic::read_config(&store).unwrap();
+    assert_eq!(after.appearance.accent, before.appearance.accent);
+    let restored = AppearanceDraft::load(&store).unwrap();
+    assert_eq!(restored.mode().known(), Some(&SystemMode::Dark));
+    for (variant, surface, accent) in native {
+        assert_eq!(restored.preview(variant).background, surface);
+        assert_eq!(restored.preview(variant).accent, accent);
+    }
+}
+
+#[test]
+fn explicit_theme_repair_is_reviewable_preserves_custom_leaves_and_captures_first() {
+    let (fixture, store, installed) = reported("mode-repair", true);
+    fixture.system(
+        "com.system76.CosmicPanel",
+        "entries",
+        "[\"Dock\",\"Panel\"]",
+    );
+    fixture.system("com.system76.CosmicPanel.Dock", "anchor", "Bottom");
+    fixture.system("com.system76.CosmicPanel.Panel", "anchor", "Top");
+    fixture.user(
+        "com.system76.CosmicPanel.Dock",
+        "background",
+        "Color((0.1,0.2,0.3))",
+    );
+    fixture.user(
+        "com.system76.CosmicPanel.Panel",
+        "background",
+        "Color((0.2,0.3,0.4))",
+    );
+    let mut raw: serde_json::Value =
+        serde_json::from_slice(&fs::read(store.app_config().unwrap()).unwrap()).unwrap();
+    raw["appearance"]["family"] = serde_json::json!(Family::Soft);
+    raw["appearance"]["overrides"] = serde_json::json!(1u64 << 12);
+    fs::write(store.app_config().unwrap(), raw.to_string()).unwrap();
+    let before = fixture.tree();
+    let repair = repair_matching(&store).unwrap();
+    let proposed = plan(
+        &store,
+        &installed,
+        &repair,
+        &repair.domains().into_iter().collect(),
+    );
+    assert_eq!(fixture.tree(), before, "review is read-only");
+    assert!(proposed.can_apply(), "{:?}", proposed.blocking_reasons());
+    apply(&store, &proposed).unwrap();
+    assert_eq!(
+        fixture
+            .read("com.system76.CosmicPanel.Dock", "background")
+            .unwrap(),
+        "Color((0.1,0.2,0.3))"
+    );
+    assert_eq!(
+        fixture
+            .read("com.system76.CosmicPanel.Panel", "background")
+            .unwrap(),
+        "ThemeDefault"
+    );
+    let info = crate::desktop::recovery::load_baseline(&store)
+        .unwrap()
+        .unwrap();
+    let saved = info
+        .domains
+        .iter()
+        .flat_map(|d| &d.native)
+        .find(|r| {
+            r.supported_key().as_ref()
+                == Some(
+                    &crate::desktop::ConfigKey::new(
+                        "com.system76.CosmicPanel.Panel",
+                        1,
+                        "background",
+                    )
+                    .unwrap(),
+                )
+        })
+        .unwrap();
+    assert_eq!(saved.contents().unwrap().unwrap(), b"Color((0.2,0.3,0.4))");
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.appearance.native_mode_palettes, 1);
+    assert_eq!(cfg.appearance.overrides, 1u64 << 12);
+}
+
+/// Export real profile planner output to an explicitly selected private
+/// scenario directory; no installed or live configuration is consulted.
+#[test]
+#[ignore = "native scenario fixture export; requires HALCYON_MODE_EVIDENCE"]
+fn native_theme_mode_fixtures() {
+    let destination = std::path::PathBuf::from(
+        std::env::var_os("HALCYON_MODE_EVIDENCE").expect("explicit fixture destination"),
+    );
+    assert!(destination.is_absolute());
+    for preset in crate::desktop::profiles::presets()
+        .into_iter()
+        .filter(|p| p.id != CLEAN && !p.profile.appearance_only)
+    {
+        let fixture = Fixture::new("mode-export");
+        fixture.system(
+            "com.system76.CosmicPanel",
+            "entries",
+            "[\"Panel\",\"Dock\"]",
+        );
+        fixture.system("com.system76.CosmicPanel.Dock", "anchor", "Bottom");
+        fixture.system("com.system76.CosmicPanel.Panel", "anchor", "Top");
+        fixture.user(
+            "com.system76.CosmicPanel.Dock",
+            "background",
+            "Color((0.1,0.2,0.3))",
+        );
+        fixture.user(
+            "com.system76.CosmicPanel.Panel",
+            "background",
+            "Color((0.1,0.2,0.3))",
+        );
+        let config = fixture.0.join("config.json");
+        fs::write(&config, "{}").unwrap();
+        let store = fixture.store().with_app_config(config);
+        let installed = Installed::discover(&store);
+        let preset = crate::desktop::profiles::fitted(
+            preset,
+            &crate::config::Config::default(),
+            &installed.bundled_dir,
+            false,
+        );
+        let selected = [
+            Domain::Dock,
+            Domain::Panel,
+            Domain::Appearance,
+            Domain::WidgetStyle,
+        ]
+        .into_iter()
+        .collect();
+        let proposed = plan(&store, &installed, &preset.profile, &selected);
+        assert!(proposed.can_apply(), "{:?}", proposed.blocking_reasons());
+        apply(&store, &proposed).unwrap();
+        let output = destination.join(preset.id);
+        for (path, bytes) in fixture.tree() {
+            if let Some(bytes) = bytes
+                && path.starts_with(store.user_root())
+            {
+                let to = output
+                    .join("cosmic")
+                    .join(path.strip_prefix(store.user_root()).unwrap());
+                fs::create_dir_all(to.parent().unwrap()).unwrap();
+                fs::write(to, bytes).unwrap();
+            }
+        }
+        fs::write(
+            output.join("profile.json"),
+            serde_json::to_vec_pretty(&preset.profile).unwrap(),
+        )
+        .unwrap();
+        let draft = AppearanceDraft::load(&store).unwrap();
+        let rgb = |c: cosmic::cosmic_theme::palette::Srgba| {
+            [c.red, c.green, c.blue].map(|v| (v * 255.).round() as u8)
+        };
+        let expected: serde_json::Value = ThemeVariant::ALL.into_iter().map(|v| {
+            let p = draft.preview(v);
+            (v.title().to_lowercase(), serde_json::json!({"background":rgb(p.background),"foreground":rgb(p.on_background)}))
+        }).collect();
+        fs::write(
+            output.join("expected.json"),
+            serde_json::to_vec_pretty(&expected).unwrap(),
+        )
+        .unwrap();
+    }
+}
+
+#[test]
+fn review_r1_provenance_requires_complete_accepted_native_domains() {
+    for excluded in [Domain::Appearance, Domain::Dock, Domain::Panel] {
+        let (_fixture, store, installed) =
+            reported(&format!("review-r1-exclude-{excluded:?}"), true);
+        let p = record(Family::Paper);
+        let selected = p.domains().into_iter().filter(|d| *d != excluded).collect();
+        let proposed = plan(&store, &installed, &p, &selected);
+        assert!(proposed.can_apply(), "{:?}", proposed.blocking_reasons());
+        apply(&store, &proposed).unwrap();
+        let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(
+            cfg.appearance.native_mode_palettes, 0,
+            "excluded {excluded:?}"
+        );
+    }
+}
+
+#[test]
+fn review_r1_widget_scope_keeps_only_existing_unchanged_ownership() {
+    let (_fixture, store, installed) = reported("review-r1-existing-proof", true);
+    switch(&store, &installed, Family::Soft);
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.appearance.native_mode_palettes, 1);
+    let mut p = capture(&store, "Same owner").unwrap().profile;
+    // A harmless widget change can retain proof for the same native owner.
+    p.widget_style.as_mut().unwrap()["appearance"]["opacity"] = json!(80);
+    let proposed = plan(
+        &store,
+        &installed,
+        &p,
+        &[Domain::WidgetStyle].into_iter().collect(),
+    );
+    apply(&store, &proposed).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(cfg.appearance.native_mode_palettes, 1);
+    let p = record(Family::Paper);
+    let proposed = plan(
+        &store,
+        &installed,
+        &p,
+        &[Domain::WidgetStyle].into_iter().collect(),
+    );
+    apply(&store, &proposed).unwrap();
+    let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+    assert_eq!(
+        cfg.appearance.native_mode_palettes, 0,
+        "new widget family cannot inherit another family's native proof"
+    );
+}
+
+#[test]
+fn review_r1_generation_noop_roles_remain_guarded_until_commit() {
+    for changed in ["role", "bar", "owner"] {
+        let (fixture, store, installed) =
+            reported(&format!("review-r1-proof-guard-{changed}"), true);
+        switch(&store, &installed, Family::Soft);
+        let mut raw: serde_json::Value =
+            serde_json::from_slice(&fs::read(store.app_config().unwrap()).unwrap()).unwrap();
+        raw["appearance"]["native_mode_palettes"] = json!(0);
+        fs::write(store.app_config().unwrap(), raw.to_string()).unwrap();
+        let repair = repair_matching(&store).unwrap();
+        let proposed = plan(
+            &store,
+            &installed,
+            &repair,
+            &repair.domains().into_iter().collect(),
+        );
+        assert!(proposed.can_apply());
+        match changed {
+            "role" => write_v2(
+                &fixture,
+                "com.system76.CosmicTheme.Light.Builder",
+                "bg_color",
+                "Some(\"#123456FF\")",
+            ),
+            "bar" => fixture.user("com.system76.CosmicPanel.Dock", "anchor", "Bottom"),
+            _ => {
+                raw["appearance"]["family"] = json!(Family::Paper);
+                fs::write(store.app_config().unwrap(), raw.to_string()).unwrap();
+            }
+        }
+        let before = fixture.tree();
+        assert!(apply(&store, &proposed).is_err(), "changed {changed}");
+        assert_eq!(fixture.tree(), before);
+        let (_, cfg) = crate::desktop::wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(cfg.appearance.native_mode_palettes, 0);
+    }
+}
+
+#[test]
+fn applying_frosted_colors_preserves_existing_system_effect_preferences() {
+    for enabled in [false, true] {
+        let (fixture, store, installed) = reported(&format!("decorative-frosted-{enabled}"), true);
+        for variant in ThemeVariant::ALL {
+            for surface in appearance::Surface::ALL {
+                write_v2(
+                    &fixture,
+                    variant.builder_namespace(),
+                    surface.key(),
+                    &enabled.to_string(),
+                );
+            }
+        }
+        let mut profile = record(Family::Frosted);
+        preserve_custom(&store, &installed, &mut profile).unwrap();
+        let planned = plan(
+            &store,
+            &installed,
+            &profile,
+            &profile.domains().into_iter().collect(),
+        );
+        assert!(planned.can_apply(), "{:?}", planned.blocking_reasons());
+        apply(&store, &planned).unwrap();
+        let draft = AppearanceDraft::load(&store).unwrap();
+        for variant in ThemeVariant::ALL {
+            for surface in appearance::Surface::ALL {
+                assert_eq!(draft.frosted(variant, surface).known(), Some(&enabled));
+            }
+        }
+    }
+}
+
+fn legacy_frosted_theme_bytes(on: bool) -> Vec<u8> {
+    serde_json::to_vec_pretty(&json!({
+        "format": "desktop-cards-profile",
+        "version": 7,
+        "name": "Legacy colors",
+        "appearance_only": true,
+        "appearance": {"dark": {
+            "accent": "#247a91",
+            "frosted": {"panel": false, "applets": on, "system_interface": on, "windows": on}
+        }}
+    }))
+    .unwrap()
+}
+
+#[test]
+fn legacy_frosted_themes_import_without_weakening_validation() {
+    for on in [false, true] {
+        let bytes = legacy_frosted_theme_bytes(on);
+        let shared = import(&bytes).unwrap();
+        let local = import_local(&bytes).unwrap();
+        assert_eq!(shared, local);
+        assert_eq!(
+            local
+                .appearance
+                .as_ref()
+                .unwrap()
+                .dark
+                .as_ref()
+                .unwrap()
+                .frosted,
+            Some(FrostedLook {
+                panel: Some(false),
+                applets: Some(on),
+                system_interface: Some(on),
+                windows: Some(on),
+            })
+        );
+        assert_eq!(import_local(&export_local(&local).unwrap()).unwrap(), local);
+        // The historical allowlist still rejects global panel On, unrelated
+        // fields and unknown fields. Do not normalize malformed input away.
+        for (pointer, value) in [
+            ("/appearance/dark/frosted/panel", json!(true)),
+            ("/appearance/dark/outline_width", json!(2)),
+            ("/appearance/dark/frosted/future_effect", json!(true)),
+        ] {
+            let mut invalid: Value = serde_json::from_slice(&bytes).unwrap();
+            widget::put(&mut invalid, pointer, Some(value)).unwrap();
+            let invalid = serde_json::to_vec(&invalid).unwrap();
+            assert!(import(&invalid).is_err(), "{pointer}");
+            assert!(import_local(&invalid).is_err(), "{pointer}");
+        }
+    }
+}
+
+#[test]
+fn legacy_frosted_baseline_load_and_theme_apply_preserve_bytes_and_system_effects() {
+    for legacy_on in [false, true] {
+        for current_on in [false, true] {
+            let (fixture, store, installed) = reported(
+                &format!("legacy-frosted-baseline-{legacy_on}-{current_on}"),
+                true,
+            );
+            for variant in ThemeVariant::ALL {
+                for surface in appearance::Surface::ALL {
+                    write_v2(
+                        &fixture,
+                        variant.builder_namespace(),
+                        surface.key(),
+                        &current_on.to_string(),
+                    );
+                }
+            }
+            let bytes = legacy_frosted_theme_bytes(legacy_on);
+            let library = ProfileLibrary::new(&store);
+            let id = ProfileId::parse(BEFORE_THEMES).unwrap();
+            let path = store
+                .state_dir()
+                .join(crate::desktop::store::PROFILES_DIR)
+                .join("before-themes.json");
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, &bytes).unwrap();
+            let legacy = library.load(&id).unwrap();
+            assert_eq!(legacy, import(&bytes).unwrap());
+            let entries = library.list().unwrap();
+            assert_eq!(
+                entries
+                    .iter()
+                    .find(|entry| entry.id == id)
+                    .unwrap()
+                    .profile
+                    .as_ref()
+                    .unwrap(),
+                &legacy
+            );
+            assert_eq!(fs::read(&path).unwrap(), bytes);
+
+            // A new built-in must get past retain_before_themes with the old
+            // baseline present. Applying that legacy baseline is color-only too.
+            for profile in [record(Family::Paper), legacy.clone()] {
+                let before = AppearanceDraft::load(&store)
+                    .unwrap()
+                    .color(ThemeVariant::Dark, ColorRole::Accent)
+                    .known()
+                    .copied();
+                let planned = plan(
+                    &store,
+                    &installed,
+                    &profile,
+                    &profile.domains().into_iter().collect(),
+                );
+                assert!(planned.can_apply(), "{:?}", planned.blocking_reasons());
+                assert!(
+                    !planned
+                        .patch()
+                        .iter()
+                        .any(|(key, _)| key.namespace().ends_with(".Builder")
+                            && key.key().starts_with("frosted"))
+                );
+                apply(&store, &planned).unwrap();
+                let draft = AppearanceDraft::load(&store).unwrap();
+                assert_ne!(
+                    draft
+                        .color(ThemeVariant::Dark, ColorRole::Accent)
+                        .known()
+                        .copied(),
+                    before
+                );
+                for variant in ThemeVariant::ALL {
+                    for surface in appearance::Surface::ALL {
+                        assert_eq!(draft.frosted(variant, surface).known(), Some(&current_on));
+                    }
+                }
+                assert_eq!(
+                    fs::read(&path).unwrap(),
+                    bytes,
+                    "baseline bytes must never be rewritten"
+                );
+                assert_eq!(library.load(&id).unwrap(), legacy);
+            }
+        }
     }
 }

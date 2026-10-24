@@ -1,5 +1,20 @@
 # Islands material foundation (Halcyon 0.2)
 
+## 0.2.5 decorative rendering policy
+
+Native backdrop enhancement is deferred. The companion does not bind the desktop
+background-effect manager, so it neither requests bar blur nor advertises/forwards
+that facility to hosted applets and popups. `material_blur()` is false and
+`Capabilities.rounded_blur` stays false; `MaterialSupport { version: 1 }` still
+means the four decorative finishes are supported. Tint, static gradients, edges,
+Liquid radius, native opacity/maximization, input masks and cached backgrounds
+remain unchanged. No global theme/effect preference is rewritten. The updated
+patch must be rebuilt; an older running host still has its earlier behavior.
+
+The native-blur descriptions and demonstrations below are historical foundation
+notes, not claims about 0.2.5 rendering or release acceptance. See
+[material change notes](../docs/decorative-materials-025.md).
+
 The Task 1 foundation retains the version-1 Islands sidecar and IPC without introducing a second color owner. The Task 2 material extension is documented below; these foundation notes describe the original native contract.
 
 - `PanelSpace::layout_island_backgrounds` in the reconstructed patch obtains color through native `self.bg_color()`. That preserves native dark/light background, configured opacity, native frosted alpha mapping, overrides, maximization and animation. Do not replace it with an independent RGB palette.

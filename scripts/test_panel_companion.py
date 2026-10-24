@@ -63,7 +63,7 @@ class CompanionPackaging(unittest.TestCase):
         code = ('import sys; from pathlib import Path; '
                 + 'sys.path.insert(0, ' + repr(str(COMPANION)) + '); '
                 + 'import panel_launcher as p; p.STOCK=Path("/bin/true"); '
-                + 'p.other_host=lambda: None; p.compatible=lambda bundle: True; sys.exit(p.main())')
+                + 'p.other_host=lambda: None; p.prepare_launch=lambda bundle: (lambda child: True); sys.exit(p.main())')
         env = {**os.environ, 'HOME': str(self.home), 'XDG_DATA_HOME': str(self.home / '.local/share'),
                'XDG_STATE_HOME': str(self.home / '.local/state'), 'XDG_RUNTIME_DIR': str(runtime),
                'WAYLAND_DISPLAY': str(runtime / 'isolated-test-display')}
@@ -93,7 +93,7 @@ class CompanionPackaging(unittest.TestCase):
         code = ('import sys; from pathlib import Path; '
                 + 'sys.path.insert(0, ' + repr(str(COMPANION)) + '); '
                 + 'import panel_launcher as p; p.STOCK=Path("/bin/true"); '
-                + 'p.other_host=lambda: None; p.compatible=lambda bundle: True; '
+                + 'p.other_host=lambda: None; p.prepare_launch=lambda bundle: (lambda child: True); '
                 + 'p.runtime_compatible=lambda bundle: True; sys.exit(p.main())')
         subprocess.run([sys.executable, '-c', code], env=env, capture_output=True, check=True, timeout=5)
         self.assertFalse(marker.exists(), 'staging activated the companion in the same login')
@@ -416,7 +416,7 @@ class CompanionPackaging(unittest.TestCase):
                             return fd
                         with patch.dict(os.environ, child_env, clear=True), \
                                 patch.object(launcher, 'other_host', return_value=None), \
-                                patch.object(launcher, 'compatible', return_value=True), \
+                                patch.object(launcher, 'prepare_launch', return_value=lambda child: True), \
                                 patch.object(launcher, 'runtime_compatible', return_value=True), \
                                 patch.object(launcher.os, 'open', opened), \
                                 patch.object(launcher.os, 'fstat'), patch.object(launcher.os, 'set_inheritable'), \

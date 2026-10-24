@@ -606,6 +606,13 @@ impl Settings {
             .last_desktop_change
             .as_ref()
             .map(|(_, _, id)| id.clone());
+        self.undo_shown_change(shown)
+    }
+    /// The caller carries the original request through any queue delay.
+    pub(super) fn undo_shown_change(&mut self, shown: Option<String>) -> Task<Message> {
+        if self.native_worker_needed() {
+            return self.background_undo(shown, None);
+        }
         let result = crate::desktop::actions::history_store().and_then(|store| {
             let id = shown.ok_or_else(|| {
                 crate::desktop::DesktopError::UndoUnavailable("No settings action to undo".into())
@@ -630,6 +637,32 @@ impl Settings {
                 {
                     self.preference_undo = None;
                 }
+            }
+            Err(error) => self.failed(error.to_string()),
+        }
+        self.last_desktop_change = latest_desktop_change();
+        self.after_desktop_change()
+    }
+    pub(super) fn resolve_undo_review(
+        &mut self,
+        review: crate::desktop::store::UndoReview,
+        restore: bool,
+    ) -> Task<Message> {
+        if self.native_worker_needed() {
+            return self.background_undo(None, Some((review, restore)));
+        }
+        let result = crate::desktop::actions::history_store().and_then(|store| {
+            if restore {
+                store.accept_undo_review(&review)
+            } else {
+                store.keep_undo_current(&review)
+            }
+        });
+        match result {
+            Ok(_) => {
+                self.undo_review = None;
+                self.error = false;
+                self.status.clear();
             }
             Err(error) => self.failed(error.to_string()),
         }
@@ -676,7 +709,10 @@ mod tests {
             assert_eq!(page.parent(), None, "{page:?}");
         }
         assert_eq!(Page::DesktopAppearance.parent(), Some(Page::Themes));
-        assert_eq!(Page::DesktopWindowRules.parent(), Some(Page::DesktopWindows));
+        assert_eq!(
+            Page::DesktopWindowRules.parent(),
+            Some(Page::DesktopWindows)
+        );
     }
     #[test]
     fn task_search_finds_fields_and_opens_advanced_only_when_needed() {

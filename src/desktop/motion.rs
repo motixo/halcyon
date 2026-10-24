@@ -38,6 +38,7 @@ pub struct AppAnimations {
     backend: Backend,
     /// Why writing is off (preview mode), if it is.
     read_only: Option<String>,
+    capture: Option<(PathBuf, PathBuf, super::store::Access, Option<PathBuf>)>,
 }
 
 impl AppAnimations {
@@ -63,13 +64,23 @@ impl AppAnimations {
                     .join("gsettings"),
             ),
         };
-        Self { backend, read_only }
+        Self {
+            backend,
+            read_only,
+            capture: Some((
+                store.user_root().into(),
+                store.state_dir().into(),
+                store.access().clone(),
+                store.app_config().map(Path::to_path_buf),
+            )),
+        }
     }
     #[cfg(test)]
     fn with_program(program: PathBuf) -> Self {
         Self {
             backend: Backend::Live(program),
             read_only: None,
+            capture: None,
         }
     }
     #[cfg_attr(not(test), allow(dead_code))]
@@ -89,10 +100,9 @@ impl AppAnimations {
                 if !schema.is_dir() {
                     return Err(NOT_INSTALLED.into());
                 }
-                match std::fs::read_to_string(schema.join(KEY)) {
-                    Ok(text) => parse(&text),
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(DEFAULT),
-                    Err(error) => Err(error.to_string()),
+                match super::recovery::read_motion_fixture(&schema.join(KEY))? {
+                    Some(bytes) => parse(std::str::from_utf8(&bytes).map_err(|e| e.to_string())?),
+                    None => Ok(DEFAULT),
                 }
             }
             Backend::Live(program) => {
@@ -107,6 +117,49 @@ impl AppAnimations {
         if let Some(reason) = &self.read_only {
             return Err(reason.clone());
         }
+        // Refuse unsupported backends before creating any recovery evidence.
+        self.read()?;
+        if let Some((root, state, access, config)) = &self.capture {
+            if matches!(self.backend, Backend::Live(_))
+                && std::env::var("GSETTINGS_BACKEND").is_ok_and(|backend| backend != "dconf")
+            {
+                return Err(
+                    "This GSettings backend cannot preserve the original animation setting".into(),
+                );
+            }
+            let mut store =
+                DesktopStore::with_roots(root.clone(), vec![], state.clone(), access.clone());
+            if let Some(config) = config {
+                store = store.with_app_config(config.clone());
+            }
+            let backend = match self.backend {
+                Backend::Fixture(_) => "fixture",
+                Backend::Live(_) => "dconf",
+            };
+            return store.mutate_motion(backend, || self.original(), || self.write_backend(on));
+        }
+        self.write_backend(on)
+    }
+    fn original(&self) -> Result<Option<Vec<u8>>, String> {
+        match &self.backend {
+            Backend::Fixture(dir) => {
+                super::recovery::read_motion_fixture(&dir.join(SCHEMA).join(KEY))
+            }
+            Backend::Live(_) => {
+                let text = run(
+                    Path::new("/usr/bin/dconf"),
+                    &["read", "/org/gnome/desktop/interface/enable-animations"],
+                )?;
+                if text.trim().is_empty() {
+                    Ok(None)
+                } else {
+                    parse(&text)?;
+                    Ok(Some(text.into_bytes()))
+                }
+            }
+        }
+    }
+    fn write_backend(&self, on: bool) -> Result<bool, String> {
         let value = if on { "true" } else { "false" };
         match &self.backend {
             Backend::Fixture(dir) => {
@@ -114,10 +167,7 @@ impl AppAnimations {
                 if !schema.is_dir() {
                     return Err(NOT_INSTALLED.into());
                 }
-                let tmp = schema.join(format!(".{KEY}.tmp"));
-                std::fs::write(&tmp, value)
-                    .and_then(|()| std::fs::rename(&tmp, schema.join(KEY)))
-                    .map_err(|error| error.to_string())?;
+                super::recovery::write_motion_fixture(&schema.join(KEY), value.as_bytes())?;
             }
             Backend::Live(program) => {
                 run(program, &["set", SCHEMA, KEY, value])?;
@@ -261,7 +311,9 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&value).unwrap(), "false\n");
         assert_eq!(
             std::fs::read_to_string(&log).unwrap(),
-            format!("get {SCHEMA} {KEY}\nset {SCHEMA} {KEY} false\nget {SCHEMA} {KEY}\n")
+            format!(
+                "get {SCHEMA} {KEY}\nget {SCHEMA} {KEY}\nset {SCHEMA} {KEY} false\nget {SCHEMA} {KEY}\n"
+            )
         );
         // Missing program or schema: unavailable, with a short reason.
         let missing = AppAnimations::with_program(fixture.0.join("absent"));

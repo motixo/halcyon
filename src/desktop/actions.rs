@@ -7,10 +7,29 @@ use crate::config;
 use serde_json::Value;
 use std::cell::RefCell;
 
+thread_local! { static EPOCH: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) }; }
 thread_local! { static SCHEDULE: RefCell<Option<Option<String>>> = const { RefCell::new(None) }; }
 thread_local! { static GUARD: RefCell<Option<Value>> = const { RefCell::new(None) }; }
 thread_local! { static PROPERTY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) }; }
 thread_local! { static ACTION: RefCell<Option<String>> = const { RefCell::new(None) }; }
+
+thread_local! { static RECEIPT: RefCell<Option<Vec<LatestChange>>> = const { RefCell::new(None) }; }
+
+/// Keep the exact transactions completed by this dispatch, even if a subsequent
+/// read fails. Reading the shared latest-history file could claim another
+/// process's newer action as part of this arrangement session.
+pub(crate) fn with_receipts<T>(run: impl FnOnce() -> T) -> (T, Vec<LatestChange>) {
+    struct Restore(Option<Vec<LatestChange>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            RECEIPT.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+    let _restore = Restore(RECEIPT.with(|slot| slot.replace(Some(Vec::new()))));
+    let result = run();
+    let receipts = RECEIPT.with(|slot| slot.borrow_mut().take().unwrap_or_default());
+    (result, receipts)
+}
 
 /// The scope lasts for a single synchronous UI dispatch. Background jobs use
 /// explicit Source values and cannot inherit an idle window's action.
@@ -44,6 +63,16 @@ pub fn scheduled<T>(expected: Option<String>, run: impl FnOnce() -> T) -> T {
     }
     let _restore = Restore(SCHEDULE.with(|slot| slot.replace(Some(expected))));
     run()
+}
+pub fn scheduled_epoch<T>(epoch: u64, expected: Option<String>, run: impl FnOnce() -> T) -> T {
+    struct Reset(Option<u64>);
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            EPOCH.with(|v| v.set(self.0));
+        }
+    }
+    let _reset = Reset(EPOCH.with(|v| v.replace(Some(epoch))));
+    scheduled(expected, run)
 }
 pub fn property<T>(mask: u64, run: impl FnOnce() -> T) -> T {
     struct Restore(u64);
@@ -139,6 +168,7 @@ pub fn commit(
     let mut patch = patch.clone();
     if source == Source::Scheduled {
         patch.manual_guard = SCHEDULE.with(|slot| slot.borrow().clone());
+        patch.epoch_guard = EPOCH.with(|v| v.get());
     }
     let label = if source == Source::Manual {
         action_label(&patch, owner, label)
@@ -291,7 +321,7 @@ pub fn preferences(
         Ok(())
     })?;
     let store = preference_store(path).map_err(|error| error.to_string())?;
-    commit(
+    let receipt = commit(
         &store,
         &DesktopPatch::new(),
         Some(&patch),
@@ -300,6 +330,11 @@ pub fn preferences(
         Source::Manual,
     )
     .map_err(|error| error.to_string())?;
+    RECEIPT.with(|slot| {
+        if let Some(receipts) = slot.borrow_mut().as_mut() {
+            receipts.push(receipt);
+        }
+    });
     config::parse_config_text(config::read_config_text(path)?.as_deref())
 }
 
