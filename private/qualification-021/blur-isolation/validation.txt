@@ -1,0 +1,3 @@
+Local pre-dispatch validation: seven constrained native-export transform and media safety tests passed; Python compile and bash syntax passed; source/reference inventory and workflow one-allocation guards checked.
+Native Settings import/export capability and values are source-inspected, not locally executed on a desktop. Actual native interface/value assertions run in the guest before the first trigger.
+The legacy R3 manifest includes the previous workflow digest; the new isolation manifest authenticates the extended workflow and unchanged native helpers without rewriting R3 evidence.

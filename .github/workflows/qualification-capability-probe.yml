@@ -2,6 +2,10 @@ name: Offline native theme development session
 on:
   workflow_dispatch:
     inputs:
+      blur_isolation:
+        description: "One allocation: immediate native blur/overview causal controls, original guest"
+        default: false
+        type: boolean
       lockup:
         description: "Released 0.2.0 responsiveness: serial stock/main/Islands one-hour offline sessions"
         default: false
@@ -49,7 +53,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   package:
-    if: ${{ !inputs.lockup && !inputs.acceptance && !inputs.auto_diagnosis && !inputs.followup && inputs.package_run == '' }}
+    if: ${{ !inputs.blur_isolation && !inputs.lockup && !inputs.acceptance && !inputs.auto_diagnosis && !inputs.followup && inputs.package_run == '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -69,7 +73,7 @@ jobs:
           retention-days: 7
           compression-level: 0
   session:
-    if: ${{ !cancelled() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
+    if: ${{ !inputs.blur_isolation && !cancelled() && !inputs.build_only && (needs.package.result == 'success' || needs.package.result == 'skipped') }}
     needs: package
     strategy:
       fail-fast: false
@@ -193,4 +197,41 @@ jobs:
           name: ${{ inputs.lockup && format('lockup-session-{0}-{1}', matrix.host, github.run_id) || inputs.acceptance && format('theme-acceptance-{0}-{1}', matrix.host, github.run_id) || inputs.auto_diagnosis && format('theme-auto-{0}-{1}', matrix.host, github.run_id) || inputs.followup && format('theme-followup-{0}-{1}', matrix.host, github.run_id) || format('theme-session-{0}-{1}-{2}', matrix.lineage, matrix.host, github.run_id) }}
           path: ${{ runner.temp }}/cosmic/evidence/
           retention-days: 7
+          compression-level: 6
+
+  blur-isolation:
+    if: inputs.blur_isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Enforce immutable original inputs and local harness checks
+        env:
+          PACKAGE_RUN: ${{ inputs.package_run }}
+          BUILD_ONLY: ${{ inputs.build_only }}
+        run: |
+          test "$PACKAGE_RUN" = 39966537804
+          test "$BUILD_ONLY" = false
+          python3 private/qualification-021/blur-isolation/test_configuration.py
+      - name: Reuse original retained guest and finalized public input media
+        timeout-minutes: 15
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE_RUN: ${{ inputs.package_run }}
+        run: bash private/qualification-021/theme/prepare.sh
+      - name: Four fresh serial offline overlays and immediate native input comparisons
+        timeout-minutes: 55
+        run: sudo env WORK="$RUNNER_TEMP/cosmic" bash private/qualification-021/blur-isolation/run.sh
+      - name: Readable retained evidence
+        if: always()
+        run: sudo chmod -R a+rX "$RUNNER_TEMP/cosmic/evidence"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-blur-isolation-r1-${{ github.run_id }}
+          path: ${{ runner.temp }}/cosmic/evidence/
+          retention-days: 14
           compression-level: 6

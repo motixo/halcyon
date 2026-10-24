@@ -1,0 +1,87 @@
+{
+  "scope": "Four fresh original guest overlays; native supported Settings import/export; no binary build/patch; software VM only",
+  "sources": [
+    {
+      "repo": "cosmic-settings",
+      "commit": "f1d00fc06e18203e880771617657067c10c43321",
+      "url": "https://codeload.github.com/pop-os/cosmic-settings/tar.gz/f1d00fc06e18203e880771617657067c10c43321",
+      "bytes": 875340,
+      "sha256": "f662118d69abe86fa51d1c5827ebeafb8f37dd37911daab008571e4f9f53070e"
+    },
+    {
+      "repo": "libcosmic",
+      "commit": "d922ac380134c00208d2acf93947d44fb217eec5",
+      "url": "https://codeload.github.com/pop-os/libcosmic/tar.gz/d922ac380134c00208d2acf93947d44fb217eec5",
+      "bytes": 1490404,
+      "sha256": "e222dfa703a95eb9cf3b26773fc40554d3d1081d8ce151f210287dbd98a61e1c"
+    },
+    {
+      "repo": "libcosmic",
+      "consumer": "native cosmic-settings",
+      "commit": "430f3d48a97d8779f9c1985473912e594ccca1ae",
+      "url": "https://codeload.github.com/pop-os/libcosmic/tar.gz/430f3d48a97d8779f9c1985473912e594ccca1ae",
+      "bytes": 1507670,
+      "sha256": "3e53163e2c1d92ea2403ec25f3d377539c542badab9d02e8adbc3efd7b9a02cb"
+    }
+  ],
+  "compositor_source": {
+    "compositor_commit": "8cb1802caada438bb5cc7670dfabdaca5fad0502",
+    "source_archive_sha256": "17e6cfccb612d4e9fcb2c9d44617a700ca91a9db922bf30f60fb8fadbb6b19be",
+    "files": {
+      "src/backend/kms/mod.rs": "314b15a854005477b1dbf1870e36a0e51d33a14b0ee04e20a4e661f0a8118685",
+      "src/backend/render/mod.rs": "1d72009e4e338a2b41b8a7f22ba5a5c73dc24995fce83e0d25f9b02d18d3f6e5",
+      "src/backend/render/wayland/blur_effect.rs": "c79ac196ad5a41698a2cc6018b9cc99c92f30db9c881d4051014ae12b2ef1767",
+      "src/state.rs": "8ca40ed25f25a52101c509837631d96ed826ed676dd51a695642f5ec755b4475"
+    }
+  },
+  "r3_infra": "7840d5609b08ef95ac529af6ab546d77ccc36242",
+  "r3_full_artifacts": {
+    "stock": {
+      "id": 12532668378,
+      "name": "lockup-session-stock-40018232557",
+      "size_in_bytes": 91627649,
+      "digest": "sha256:6fe460119a371dc59abed53c87e448d23d89fe7e3a835b2d01a1287ffcdc0e29",
+      "expires_at": "2026-10-30T21:27:24Z"
+    },
+    "main": {
+      "id": 12536019039,
+      "name": "lockup-session-main-40027094006",
+      "size_in_bytes": 97674636,
+      "digest": "sha256:cf6f934b34e96f2e76cd5eb1402a933bb1aec3789ac38b5620a8093e9d040ae5",
+      "expires_at": "2026-10-30T22:38:46Z"
+    },
+    "islands": {
+      "id": 12539711512,
+      "name": "lockup-session-islands-40035187607",
+      "size_in_bytes": 100982874,
+      "digest": "sha256:678d8826ff13993ef924dbc52035d17b434d41acc196e57b9937579c6ea5e56b",
+      "expires_at": "2026-10-30T23:52:02Z"
+    }
+  },
+  "guest_run": 39963889546,
+  "retained_artifact": 12506756949,
+  "retained_zip_sha256": "e87c617f179da525d7d06e3e74b862fa87dcefabdbcbcb02f2e7258802a6ccd4",
+  "base_qcow_sha256": "d3ea6c9f93c68ca0013722c4d22d77408f590ba54bf4b929a25faa50eaeb5c98",
+  "vars_sha256": "25d24fad9e38e155e239bcdcd4edb058cf033e34903613f662cf44ba19a7d352",
+  "package_run": 39966537804,
+  "package_artifact": 12507891179,
+  "package_zip_sha256": "2cdea1fd0ba584bc1c0891033764042b07692b370392fc4f4896d4fef7e11f65",
+  "public_main_deb_sha256": "af1ff76f654f7eaefad6b788235304fff6cc868bcc14011b3b073a99db4af847",
+  "native_control": {
+    "interface": "/usr/bin/cosmic-settings appearance export/import",
+    "active_theme": "Dark",
+    "only_changed_fields": [
+      "frosted_windows",
+      "frosted_system_interface",
+      "frosted_applets"
+    ],
+    "unchanged_panel": false,
+    "strength": "Medium (step6, compositor uses7)",
+    "alpha_map_medium": 0.76154,
+    "zero_is_not_off": true,
+    "public_widget_blur_still_present_in_native_off_control": true
+  },
+  "publication": "0.2.5 ON HOLD",
+  "allocation_cap": 1,
+  "job_timeout_minutes": 90
+}
