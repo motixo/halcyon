@@ -34,8 +34,11 @@ class Pipeline(unittest.TestCase):
             binary=self.root/'released/usr/lib/cosmic-ext-halcyon-islands/cosmic-panel-islands'
             manifest=binary.with_name('companion-manifest.json')
             licenses=self.root/'released/usr/share/doc/cosmic-ext-halcyon-islands/THIRD_PARTY_LICENSES.txt'
+        # This synthetic matrix fixture never borrows the shipping catalog.
+        empty=self.root/'empty-catalog.json'
+        empty.write_bytes(canonical(dict(format='halcyon-islands-catalog',version=2,cohorts=[])))
         with patch.dict(os.environ, SOURCE_DATE_EPOCH='1792627200'):
-            pre=builder.build(binary,manifest,'0.2.1~test',self.root/'pre',licenses=licenses)
+            pre=builder.build(binary,manifest,'0.2.1~test',self.root/'pre',licenses=licenses,catalog=empty)
             subprocess.run(['dpkg-deb','-x',str(pre),str(self.root/'extract')],check=True,stdout=subprocess.DEVNULL)
             bundle=self.root/'extract/usr/lib/cosmic-ext-halcyon-islands'
             m,_=verify_bundle(bundle,'companion-manifest.json')

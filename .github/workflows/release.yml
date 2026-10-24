@@ -25,7 +25,7 @@ jobs:
           run-id: ${{ inputs.candidate_run }}
           github-token: ${{ github.token }}
           path: candidate
-      - name: Verify exact reviewed bytes and full native acceptance
+      - name: Verify exact reviewed bytes and explicit release policy approval
         env:
           MANIFEST_SHA256: ${{ inputs.manifest_sha256 }}
         run: python3 scripts/compatibility/release_gate.py --artifacts candidate --manifest-sha256 "$MANIFEST_SHA256"

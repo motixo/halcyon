@@ -476,6 +476,27 @@
           }
         ]
       }
+    },
+    "startup_policy": {
+      "const": {
+        "version": 1,
+        "id": "cosmic-1.10-1.11-startup-v1",
+        "families": [
+          "1.10",
+          "1.11"
+        ],
+        "assurance": "supported-family-probed-startup-not-hardware-qualification",
+        "native_source": {
+          "upstream": "ca20ce3185b3b4404f429d59d429c40b58a2ddef",
+          "patch_sha256": "56a7ae6237cf37f99ed5884eb0c976d2d711581b928e28a5d14822ef5e162845",
+          "core_sha256": "181c76a7f9903a6e3212e123264d8503d26a3f2fccb681666256bc85ebe99546",
+          "islands_sha256": "28ae30ded1bc2060b1db72f28978408661691b2916fb65d6358462cafec25985"
+        },
+        "binary_sha256": "07d95f0eda4675bb5b01619d79192248e3a2a687b508cd752c0611b50d4cc4e8",
+        "protocol": 1,
+        "runtime_probe": 1,
+        "max_outputs": 32
+      }
     }
   },
   "$comment": "bundle_contract.valid_catalog enforces semantic identity, complete packages/processes, digest/mode bindings, evidence scope and duplicate rejection. A native-session row is a reviewed qualification target; detached promotion must validate its exact final package before distribution. No row is shipped yet. Runtime v4 separates prelaunch session dependencies from panel-owned children. The host cannot be a dependency. Equivalent profiles preserve process roles/counts/paths. Prelaunch measurements never establish running readiness. Panel-child counts are configured at launch from qualified desktop Exec bindings and effective COSMIC config; session counts remain fixed. Configuration absence is not a generic missing-process exemption. Encoded catalog bytes are bounded by bundle_contract.CATALOG_BYTES in the shared opened-file reader. Ordinary records use RECORD_BYTES. Catalog policy v2 separates the runtime target from the unchanged full cohort identity; capacity is not native qualification."

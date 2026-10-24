@@ -90,6 +90,16 @@ def compatible(bundle, versions=None, manifest_name='manifest.json'):
                 from runtime_identity import installed_identity, running_identity, host_identity
                 with VerificationContext() as context:
                     captured, catalog = verify_bundle(bundle, manifest_name, context=context)
+                    from runtime_compatibility import enabled, Session
+                    if enabled(catalog):
+                        owner = host_identity(captured['binary_sha256'])
+                        if owner is None: return False
+                        session = Session()
+                        try:
+                            ready = session.inventory(owner)
+                            context.check()
+                            return ready
+                        finally: session.close()
                     installed = installed_identity(catalog)
                     running = running_identity(catalog, host=host_identity(captured['binary_sha256']))
                     context.check()
@@ -131,6 +141,11 @@ def _prepare_launch(bundle, context=None):
         if catalog['version'] != 2:
             context.close(); return None
         manifest = {**manifest, 'verified': True}
+        from runtime_compatibility import enabled, prepare
+        if enabled(catalog):
+            guard = prepare(manifest, catalog, context)
+            handed_off = guard is not None
+            return guard
         from runtime_target import installed_matches
         from runtime_identity import FileMeasurement
         installed_files = FileMeasurement()

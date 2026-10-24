@@ -14,6 +14,16 @@ def verify(root, expected):
     data=json.loads(manifest.read_bytes())
     if data.get('format')!='halcyon-release' or data.get('version')!=1 or data.get('release')=='0.2.0':
         raise ValueError('release_manifest_invalid')
+    package, main = artifacts(root,data)
+    if data.get('compatibility_policy') == 'cosmic-1.10-1.11-startup-v1':
+        from practical_release import verify as verify_practical
+        verify_practical(root,data,expected)
+        return data
+    if data.get('compatibility_policy') is not None: raise ValueError('unknown_release_policy')
+    promotion(root/package,root/'native-evidence',root/'approval.json',root/main)
+    return data
+
+def artifacts(root,data):
     kinds=set()
     for name,record in data['artifacts'].items():
         if Path(name).name!=name or digest(root/name)!=record['sha256']:raise ValueError('artifact_mismatch')
@@ -24,8 +34,8 @@ def verify(root, expected):
     main = [name for name, record in data['artifacts'].items() if record['kind'] == 'main-deb']
     if len(main) != 1:
         raise ValueError('exact_main_package_required')
-    promotion(root/package,root/'native-evidence',root/'approval.json',root/main[0])
-    return data
+    return package, main[0]
+
 
 if __name__=='__main__':
     p=argparse.ArgumentParser(description=__doc__);p.add_argument('--artifacts',type=Path,required=True);p.add_argument('--manifest-sha256',required=True)

@@ -18,7 +18,7 @@ CATALOG_BYTES = 64 * 1024 * 1024
 RECORD_BYTES = 16 * 1024 * 1024
 HELPERS = ('panel_launcher.py', 'bundle_contract.py', 'runtime_identity.py',
            'install_status.py', 'install.py', 'refresh.py', 'selector.py', 'panel_configuration.py',
-           'runtime_target.py', 'verification.py')
+           'runtime_target.py', 'verification.py', 'runtime_compatibility.py')
 FILES = (*HELPERS, 'cosmic-panel-islands', 'catalog.json')
 HEX = re.compile(r'[0-9a-f]{64}')
 CONFIGURATION_RESOLVER = 'cosmic-panel-ca20ce3-islands-v2'
@@ -288,6 +288,9 @@ def valid_catalog(catalog):
     if isinstance(catalog, Catalog): return catalog
     if not isinstance(catalog, dict) or catalog.get('format') != CATALOG or catalog.get('version') not in (1, 2) or not isinstance(catalog.get('cohorts'), list):
         raise ValueError('catalog_schema')
+    if 'startup_policy' in catalog:
+        from runtime_compatibility import enabled
+        enabled(catalog)
     seen = set()
     for row in catalog['cohorts']:
         if not isinstance(row, dict):
@@ -366,7 +369,10 @@ def _verify_bundle(bundle, manifest_name='manifest.json', owner=None, catalogs=N
         raise ValueError('unresolved_upstream')
     if not isinstance(manifest.get('files'), dict):
         raise ValueError('bundle_inventory')
-    if set(manifest['files']) != set(FILES) or not re.fullmatch(r'[0-9][A-Za-z0-9.+:~\-]*', manifest['package_version']):
+    # Historical v2 generations have ten helpers. They remain verifiable for
+    # migration/rollback under their original exact-target policy only.
+    legacy_files = set(FILES) - {'runtime_compatibility.py'}
+    if set(manifest['files']) not in (set(FILES), legacy_files) or not re.fullmatch(r'[0-9][A-Za-z0-9.+:~\-]*', manifest['package_version']):
         raise ValueError('bundle_inventory')
     for name, entry in manifest['files'].items():
         if not isinstance(entry, dict) or not isinstance(entry.get('mode'), int) or not isinstance(entry.get('sha256'), str):
@@ -387,6 +393,10 @@ def _verify_bundle(bundle, manifest_name='manifest.json', owner=None, catalogs=N
         raise ValueError('bundle_payload_mismatch')
     if any(r['qualification']=='native-session' for r in catalog['cohorts']) and manifest.get('upstream') != CONFIGURATION_SOURCE['upstream']:
         raise ValueError('configuration_native_source_mismatch')
+    if catalog.get('startup_policy'):
+        if set(manifest['files']) != set(FILES): raise ValueError('startup_policy_helper_missing')
+        from runtime_compatibility import validate_bundle
+        validate_bundle(manifest, catalog)
     return FrozenDict(manifest), catalog
 
 

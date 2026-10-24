@@ -52,10 +52,11 @@ class ReleaseCatalog(unittest.TestCase):
         self.assertTrue(native['acceptance']['passed'])
         self.assertFalse(native['actual_r2']['cleanup_passed'])
 
-    def test_current_helpers_and_payload_are_exact_tested_bytes_not_dev_version_admission(self):
+    def test_historical_payload_is_exact_and_new_policy_does_not_relabel_qualification(self):
         a=self.accepted
-        for name in HELPERS:self.assertEqual(digest(P/'companion'/name),a['helper_hashes'][name],name)
-        payload={name:dict(sha256=a['helper_hashes'][name],mode=0o755 if name in ('install.py','panel_launcher.py','selector.py') else 0o644) for name in HELPERS}
+        from runtime_compatibility import POLICY
+        self.assertEqual(self.catalog['startup_policy'],POLICY)
+        payload={name:dict(sha256=a['helper_hashes'][name],mode=0o755 if name in ('install.py','panel_launcher.py','selector.py') else 0o644) for name in a['helper_hashes']}
         payload['cosmic-panel-islands']=dict(sha256=a['tested_packages']['islands']['elf_sha256'],mode=0o755)
         self.assertEqual(identity(payload),a['payload_sha256'])
         self.assertEqual(self.row['payload_sha256'],a['payload_sha256'])

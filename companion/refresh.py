@@ -161,19 +161,33 @@ def _stage_locked(home, library, *, session, fixture, boundary, enable, context,
     except FileNotFoundError:
         if install.safe_path(home, POINTER).exists():
             return response('external_change', 'generation_missing')
-    if not catalog['cohorts']:
-        return response('blocked', 'no_qualified_cohort')
-    from runtime_identity import installed_identity
-    from runtime_target import installed_matches
+    from runtime_compatibility import enabled as family_policy, family
     from verification import bounded
-    if not fixture:
+    if family_policy(catalog):
         guard.watch.add(Path('/var/lib/dpkg/status'))
-        for row in catalog['cohorts']:
-            for path in row.get('runtime_target', {}).get('installed_files', {}): guard.resolve(Path(path))
-    installed = bounded(lambda: installed_identity(catalog), 5) if not fixture else read_json(home / 'installed-identity.json')
-    if not any(installed_matches(installed, r)
-               and r['qualification'] == 'native-session' and r['payload_sha256'] == manifest['payload_sha256'] for r in catalog['cohorts']):
-        return response('blocked', 'installed_runtime_unqualified')
+        try:
+            # Staging is eligibility only. Actual interfaces, configuration and
+            # child ownership are checked at the next launch, never live-swapped.
+            if fixture:
+                family(read_json(home / 'installed-identity.json').get('package_versions', {}))
+            else:
+                bounded(family, 2)
+        except (OSError, ValueError, TimeoutError, subprocess.SubprocessError):
+            return response('blocked', 'unsupported_cosmic_family')
+    else:
+        if not catalog['cohorts']:
+            return response('blocked', 'no_qualified_cohort')
+        from runtime_identity import installed_identity
+        from runtime_target import installed_matches
+        from verification import bounded
+        if not fixture:
+            guard.watch.add(Path('/var/lib/dpkg/status'))
+            for row in catalog['cohorts']:
+                for path in row.get('runtime_target', {}).get('installed_files', {}): guard.resolve(Path(path))
+        installed = bounded(lambda: installed_identity(catalog), 5) if not fixture else read_json(home / 'installed-identity.json')
+        if not any(installed_matches(installed, r)
+                   and r['qualification'] == 'native-session' and r['payload_sha256'] == manifest['payload_sha256'] for r in catalog['cohorts']):
+            return response('blocked', 'installed_runtime_unqualified')
     # A changed payload at the same version is also an unapproved replacement.
     if subprocess.run(['/usr/bin/dpkg', '--compare-versions', manifest['package_version'], 'gt', old_version], timeout=2).returncode != 0:
         return response('blocked', 'non_monotonic_version')

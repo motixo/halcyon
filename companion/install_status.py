@@ -119,8 +119,16 @@ def generation_status(result, home, library, installed=None, running=None, host=
     try:
         manifest, catalog = verify_bundle(library, 'companion-manifest.json', context=context)
         generation = digest(library / 'companion-manifest.json')
-        state = classify_compatibility(installed or {}, running or {}, {**manifest, 'verified': True}, catalog)
-        result['compatible'] = state['state'] in ('ready', 'logout_required')
+        from runtime_compatibility import enabled as family_policy, state as family_state
+        if family_policy(catalog):
+            # This read-only worker observation is not reusable write authority.
+            state = family_state(installed, host is True) if (installed or {}).get('family') else dict(
+                state='unsupported', reason='unsupported_cosmic_family', cohort=None)
+            result['compatible'] = state['state'] in ('ready', 'eligible')
+            result['package_versions'] = (installed or {}).get('package_versions', {})
+        else:
+            state = classify_compatibility(installed or {}, running or {}, {**manifest, 'verified': True}, catalog)
+            result['compatible'] = state['state'] in ('ready', 'logout_required')
     except (OSError, ValueError, KeyError, TypeError):
         result.update(compatible=False, healthy=False)
     try:
@@ -146,7 +154,7 @@ def generation_status(result, home, library, installed=None, running=None, host=
     elif deferred or active_generation != generation or state['state'] == 'logout_required':
         label, reason = 'Log out to activate', state['reason']
     elif host is not True:
-        label, reason = 'Checking compatibility', 'host_not_verified'
+        label, reason = ('Compatibility update needed', 'startup_not_ready') if state.get('policy') else ('Checking compatibility', 'host_not_verified')
     else:
         label, reason = 'Ready', state['reason']
     result['running'] = host
@@ -214,14 +222,25 @@ def main():
         measured = active = host = None
         with VerificationContext() as context:
             try:
-                _, catalog = verify_bundle(library, 'companion-manifest.json', context=context)
+                manifest, catalog = verify_bundle(library, 'companion-manifest.json', context=context)
                 # Disabled management needs no OS or live-process measurement.
                 if initial['enabled']:
-                    measured = installed_identity(catalog)
-                    _, selected, _, _ = selected_generation(home, context=context)
-                    owner = host_identity(selected['binary_sha256'])
-                    active = running_identity(catalog, phase='running', host=owner) if owner else None
-                    host = owner is not None
+                    from runtime_compatibility import enabled as family_policy, family, Session
+                    if family_policy(catalog):
+                        measured = family()
+                        _, selected, _, _ = selected_generation(home, context=context)
+                        owner = host_identity(selected['binary_sha256'])
+                        host = False
+                        if owner is not None and selected['payload_sha256'] == manifest['payload_sha256']:
+                            observation = Session(versions=measured['package_versions'])
+                            try: host = observation.inventory(owner)
+                            finally: observation.close()
+                    else:
+                        measured = installed_identity(catalog)
+                        _, selected, _, _ = selected_generation(home, context=context)
+                        owner = host_identity(selected['binary_sha256'])
+                        active = running_identity(catalog, phase='running', host=owner) if owner else None
+                        host = owner is not None
                 result = detect(home, library, installed, versions, installed=measured,running=active,host=host,context=context)
                 context.check()
                 return result

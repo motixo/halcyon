@@ -68,7 +68,7 @@ def build(binary, manifest, version, out, licenses=None, catalog=None):
         files = {p.name: {'sha256': digest(p), 'mode': p.stat().st_mode & 0o777}
                  for p in library.iterdir() if p.name != 'companion-manifest.json'}
         payload = identity({k: v for k, v in files.items() if k != 'catalog.json'})
-        if any(r['payload_sha256'] != payload for r in admitted['cohorts']):
+        if not admitted.get('startup_policy') and any(r['payload_sha256'] != payload for r in admitted['cohorts']):
             raise ValueError('Catalog belongs to a different finalized payload; retain a separate immutable package for that cohort')
         record.update(format='halcyon-islands-bundle', version=2, package_version=version,
                       files=files, payload_sha256=payload)

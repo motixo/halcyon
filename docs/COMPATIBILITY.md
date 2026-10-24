@@ -1,45 +1,76 @@
 # Islands compatibility and immutable qualification
 
-The 0.2.5 source catalog contains one accepted runtime target: the exact Pop noble
-COSMIC 1.11 package/code profile, one-output virtio device/features and Mesa
-llvmpipe software scope tested in native run **40071768899**. Its complete
-1,783-package source/distribution cohort is retained; runtime checks cover the
-explicit 105 public files and measured process/device/configuration constraints.
-The parent accepted the actual focused startup/input/cleanup/recovery outcome:
-prelaunch 2.399 s, running admission 4.344 s from prelaunch start, all 19 old owned
-PIDs absent, stock notifications and relogin passed. This is not physical-GPU,
-COSMIC 1.10, or the entire historical qualification-matrix approval.
+## Supported-family startup in 0.2.5
 
-`companion/compatibility/evidence/accepted-runtime-40071768899.json` records the
-accepted disposition separately from the unchanged original pending test record
-and actual observation. The runtime payload is
-`f3bb6c779355b9fb4180a18c84dd7453e8d00b51720edc7376d8535bceb15635`.
-The final 0.2.5 packages still require exact packaging/source/artifact binding and
-publication approval. No publication is authorized by the catalog itself.
+Islands supports attempted startup on COSMIC **1.10 and 1.11**, including AMD,
+Intel and NVIDIA desktops. Physical hardware and COSMIC 1.10 have **not** been
+natively qualified by the recorded VM test. Support means a bounded attempt with
+native interface checks, actual child-owned IPC readiness and reliable stock
+fallback; it does not guarantee every driver or future COSMIC version works.
+Native backdrop blur remains disabled.
 
-### Physical GPU users and 0.2.0 upgrades
+The explicit catalog `startup_policy` is separate from exact qualification rows.
+Panel and session must belong to the same supported family; patch/rebuild/source
+suffixes may differ. The installed compositor/settings daemon must be present.
+The verified companion must have the pinned native source/ELF, protocol 1 and
+probe 1. Its real loader/Wayland probe must succeed before starting a panel.
+Unknown families, unsupported configuration/desktop commands, source or interface
+failures choose stock. No environment variable bypasses this product policy.
 
-AMD, Intel and NVIDIA devices do not match this virtio target. The new launcher
-therefore selects stock before starting Islands; software rendering alone on a
-different device does not qualify it. Other Halcyon functionality is unaffected.
-No other GPU/version is inferred from the included ICD libraries. The smallest
-honest current shipping scope is this one measured runtime profile, with stock
-fallback elsewhere; broader physical-GPU Islands support is not claimed.
+This policy trusts the ordinary system package installation for OS code, providers
+and resources. It does **not** attest their archive hashes, dependency closure,
+kernel or GPU. Core session executables and the known configured applet commands
+are pinned to opened installed objects for one operation; running old/replaced
+objects, a restarted core, unowned/leftover applets and configuration races refuse
+startup. Exact core counts and actual configured child counts/ancestry remain
+required. Both standalone applets and multiplex executable aliases are supported.
+The known desktop contracts cover the default COSMIC panel/dock applets; arbitrary
+third-party executables are not silently admitted. Zero, one and multiple bars
+and outputs use the same resolver (up to its native 32-output bound). The parser
+retains sidecar, enabled absent-name fallback, All/Active/Name and ABA checks.
 
-Installed-byte eligibility and running/device readiness are distinct. Enable or
-automatic refresh can stage this generation if its exact installed package/files
-match, even when its running device will not. Such users may see **Log out to
-activate**, then stock at login; that label is not a promise of device support.
-If installed code/packages do not match, staging is refused. Neither case is
-Ready, and status never replaces a live host.
+One immutable verified bundle/catalog context is used per operation. There is no
+persistent path/stat acceptance cache. The five-second prelaunch deadline includes
+the unchanged ABI probe; child-owned protocol/capabilities and actual inventory
+must pass within the existing 15-second readiness deadline. Owned process-group
+cleanup, cancellation, descriptor isolation, notification handoff, crash latches
+and stock fallback are unchanged. Status is read-only, bounded by the existing
+worker/Settings deadlines, and never starts, replaces or kills a host.
 
-For an owned 0.2.0 installation, unsuccessful staging leaves the old copied
-launcher/generation untouched. Successful staging preserves the restore chain
-and applies the new selector on a later login, so unsupported devices then use
-stock. No currently running old host is killed by upgrade/refresh. Disable
-unwinds the new layers and original owned installation, with guarded external
-edits and baseline/Undo intact. New, disabled and manual users are not
-automatically enabled. The immutable public 0.2.0 assets are unchanged.
+### Status and upgrades
+
+Installation provenance and management remain available while checking. **Ready**
+means the active verified host owns the expected IPC and configured process
+inventory, not that this hardware was qualified. Diagnostics distinguish
+`family_ready_hardware_not_qualified` from historical qualification. **Log out to
+activate** applies only to a genuinely deferred/different selected generation.
+An already-selected generation without a healthy host reports **Compatibility
+update needed**, not repeated logout advice or a false claim that stock is running.
+
+A supported-family 0.2.0 user can stage this generation regardless of VM device,
+kernel or exact package-byte mismatch. Staging preserves the original owned
+restore chain and does not touch a running host. Activation is at next login;
+unknown interfaces or failed readiness fall back safely. Disable unwinds the new
+and original installation with guarded external edits, baseline and Undo intact.
+New/disabled/manual users are not automatically enabled. Historical v2 generations
+remain verifiable under their original policy for migration; missing new helpers
+cannot carry the new startup policy. Public 0.2.0 assets remain immutable.
+
+### Exact historical qualification remains exact
+
+The unchanged catalog row records native run **40071768899** on the exact Pop
+noble COSMIC 1.11, one-output virtio/Mesa llvmpipe scope: prelaunch 2.399 s, running
+admission 4.344 s from prelaunch start, all 19 old owned PIDs absent, stock
+notifications and relogin passed. Its 1,783-package/165,721-file authenticated
+source/distribution cohort and 105-file runtime target are preserved. This is not
+physical-GPU, COSMIC 1.10 or full historical-matrix qualification.
+
+`companion/compatibility/evidence/accepted-runtime-40071768899.json`, the original
+pending test authorization and raw observation are unchanged. Their tested payload
+is `f3bb6c779355b9fb4180a18c84dd7453e8d00b51720edc7376d8535bceb15635`.
+New startup helpers have a **different payload** and are not relabeled as that
+native result. Exact-target authoring/measurement tools below still describe the
+stronger evidence contract; they are not ordinary supported-family login gates.
 
 ## Trust and identity
 
@@ -808,31 +839,38 @@ their parser/code dependencies and test relevant fallback behavior. Custom nativ
 plugins or applet executables still require explicit supported code policy.
 
 
-## Final-version reuse of the accepted 0.2.5 runtime payload
+## Final packaging and explicit practical-policy release gate
 
-Runtime admission binds the helper/ELF payload digest and complete runtime policy,
-not the Halcyon Debian development version. Package version lives in the manifest;
-it is checked against dpkg and for monotonic generation staging. The payload hash
-covers every helper and the companion ELF with its mode, excluding catalog.json.
-The manifest separately hashes the catalog. Thus changing
-`0.2.5~dev.integration.5` to `0.2.5` need not invalidate native behavior evidence
-when all payload bytes/modes and behavior-bearing main files are unchanged.
-Catalog evidence IDs/native outcome metadata may be finalized without changing
-the exact tested profile, inventory, source closure or device constraints.
+Reuse the existing accepted main and companion ELFs; Python policy changes need
+new helper/package manifests, not native rebuilds. Build main and Islands packages
+from the same frozen source with the normal packaging scripts. Package version
+is checked against dpkg and for monotonic staging; it is not a native ABI identity.
+The manifest binds the exact catalog and every helper/ELF byte and mode. The
+catalog retains the historical VM row alongside the explicit new startup policy;
+a row for an older payload is historical evidence, not admission of the new one.
+No remote catalog service or login-time network is needed (about 25.8 MB locally,
+under the unchanged 64 MiB catalog bound).
 
-The final packager must verify that unchanged payload, the accepted catalog bytes,
-the unchanged main/companion ELFs and native build inputs, then record the **new**
-final deb/manifest/catalog/source hashes. The original tested dev deb and pending
-authorization stay immutable. New helpers, native code, runtime inventory/profile
-or device scope cannot use this metadata-only reuse argument.
+For this intentionally revised product policy, final `release-manifest.json`
+sets `compatibility_policy: "cosmic-1.10-1.11-startup-v1"`. Keep exact main-deb,
+islands-deb and corresponding-source artifact hashes. Generate a **pending**
+review request, after building immutable final artifacts:
 
-The older `qualify.promotion` / `release_gate.py` route binds an exact final Debian
-artifact to its own `halcyon-qualification` result and historical full scenario
-matrix. It does not automatically consume this focused acceptance record or allow
-renaming a tested dev package. No synthetic full-matrix result/approval has been
-created to make that gate pass. Parent's final release authorization must explicitly
-bind the actual final artifacts and the accepted focused evidence/reuse audit;
-the existing automated gate remains fail-closed until that release-policy handoff
-is resolved. This is an artifact/approval binding action, not a request for another
-native campaign. The catalog itself is shipped locally (about 25.8 MB, under the
-64 MiB bound); no remote catalog service or login-time network is required.
+```sh
+PYTHONPATH=companion:scripts/compatibility python3 -B scripts/compatibility/practical_release.py \
+  --artifacts /path/to/final-artifacts > /path/to/final-artifacts/approval-request.json
+```
+
+Parent's explicit final artifact approval supplies `approval.json` with that
+request's bound fields, `decision: "approve"` and a meaningful `review_reference`.
+The request generator never approves itself. `release_gate.py --artifacts ...
+--manifest-sha256 ...` verifies actual final artifact hashes, current helper/catalog
+source, matching main status helpers, unchanged accepted native ELFs, historical
+acceptance digest and explicit limitations. Repacking cannot inherit old approval.
+The limitations explicitly include physical hardware, COSMIC 1.10, new family
+helpers and the full matrix **not** being natively qualified.
+
+The original `qualify.promotion` full-matrix path is unchanged for manifests without
+this explicit policy. No synthetic native observation, qualification row or
+complete-session pass is generated to satisfy it. Publication still requires the
+parent's final authorization; this policy change does not publish anything.

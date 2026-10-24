@@ -376,6 +376,7 @@ class Snapshot:
                 raise ValueError('desktop_exec_syntax_unsupported')
             argv = shlex.split(command, comments=False, posix=True)
             qualified = self.policy['applets'][plugin]
+            if qualified.get('exec_name') and (not argv or Path(argv[0]).name != qualified['exec_name']): raise ValueError('desktop_exec_contract')
             if not argv or argv[1:] != qualified['args']: raise ValueError('desktop_arguments_unqualified')
             exe = Path(argv[0])
             if not exe.is_absolute():
