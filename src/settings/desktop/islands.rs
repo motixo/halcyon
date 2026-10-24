@@ -541,6 +541,39 @@ impl DesktopEditor {
     }
 }
 impl State {
+    /// Installation is the background worker's observation, independent of a
+    /// per-user generation or live socket. Prefer it to legacy IPC diagnostics
+    /// that can mistake an installed-but-disabled add-on for a missing one.
+    pub fn availability_message(&self) -> Option<&str> {
+        use crate::desktop::islands::{CompatibilityStatus, Installation};
+        match &self.installation {
+            Installation::Pending
+            | Installation::Installed {
+                status: Some(CompatibilityStatus::Checking),
+                ..
+            } => Some(
+                "Checking Islands compatibility. The standard dock and panel remain available.",
+            ),
+            Installation::Absent => Some(
+                "Install the Islands add-on to use this style. The standard dock and panel remain available.",
+            ),
+            Installation::Installed {
+                compatible: Some(false),
+                ..
+            } => Some(
+                "Islands is installed but unavailable for this desktop. The standard dock and panel remain available. Check diagnostics in App settings.",
+            ),
+            Installation::Installed { enabled: false, .. } => Some(
+                "Islands is installed but disabled. Manage it in App settings. The standard dock and panel remain available.",
+            ),
+            Installation::Installed {
+                status: Some(CompatibilityStatus::LogoutRequired),
+                ..
+            } => Some("Islands is enabled. Log out and back in to activate it."),
+            Installation::Installed { .. } => self.status.as_deref(),
+        }
+    }
+
     /// Display snapshot while the sole lease owner is executing on a worker.
     pub fn display_snapshot(&self) -> Self {
         Self {
@@ -560,6 +593,92 @@ impl State {
 #[cfg(test)]
 mod runtime_tests {
     use super::*;
+
+    fn warning_observation(
+        enabled: bool,
+        compatible: Option<bool>,
+        status: crate::desktop::islands::CompatibilityStatus,
+    ) -> crate::desktop::islands::Installation {
+        let fixture = crate::desktop::store::tests::Fixture::new("islands-warning-observation");
+        std::fs::write(
+            fixture.0.join("islands-installation.json"),
+            serde_json::to_vec(&serde_json::json!({
+                "format": "halcyon-islands-installation", "version": 1,
+                "installation": "installed", "provenance": "package",
+                "enabled": enabled, "compatible": compatible,
+                "status_version": 2, "status": status.label(),
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        crate::desktop::islands::Installation::discover(&fixture.store())
+    }
+
+    #[test]
+    fn installed_islands_warning_uses_observed_state_instead_of_legacy_socket_error() {
+        use crate::desktop::islands::CompatibilityStatus;
+        let installed = warning_observation;
+        let mut state = State {
+            // This is the contradictory diagnostic seen in the r3 screenshot:
+            // the package exists, but no per-user generation was ever enabled.
+            status: Some("Install and enable the Islands add-on to use this style.".into()),
+            ..Default::default()
+        };
+        for (observation, expected) in [
+            (
+                installed(false, Some(false), CompatibilityStatus::Disabled),
+                "installed but unavailable",
+            ),
+            (
+                installed(false, Some(true), CompatibilityStatus::Disabled),
+                "installed but disabled",
+            ),
+            (
+                installed(false, None, CompatibilityStatus::Checking),
+                "Checking Islands compatibility",
+            ),
+            (
+                installed(true, Some(true), CompatibilityStatus::LogoutRequired),
+                "Log out and back in",
+            ),
+        ] {
+            state.installation = observation.clone();
+            let warning = state.availability_message().unwrap();
+            assert!(warning.contains(expected), "{warning}");
+            assert!(!warning.contains("Install and enable"));
+            assert_eq!(
+                state.installation, observation,
+                "copy does not change admission"
+            );
+            assert!(!state.compatible, "copy does not enable Arrange");
+        }
+    }
+
+    #[test]
+    fn islands_warning_preserves_absence_pending_and_live_host_errors() {
+        use crate::desktop::islands::{CompatibilityStatus, Installation};
+        let mut state = State::default();
+        assert!(
+            state
+                .availability_message()
+                .unwrap()
+                .starts_with("Checking")
+        );
+        state.installation = Installation::Absent;
+        assert!(
+            state
+                .availability_message()
+                .unwrap()
+                .starts_with("Install the Islands")
+        );
+        state.installation = warning_observation(true, Some(true), CompatibilityStatus::Standard);
+        state.status = Some("The panel socket is not owned by this user".into());
+        assert_eq!(state.availability_message(), state.status.as_deref());
+        state.status = None;
+        state.compatible = true;
+        assert_eq!(state.availability_message(), None);
+    }
+
     #[test]
     fn task2r1_runtime_result_is_bound_to_the_requested_panel() {
         let mut editor = DesktopEditor::default();
