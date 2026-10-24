@@ -452,16 +452,29 @@ def main():
     import argparse
     import json
     from bundle_contract import verify_bundle
-    parser = argparse.ArgumentParser(description='Read-only installed lock and declared live-code measurements')
+    parser = argparse.ArgumentParser(description='Bounded read-only Islands target and live-code measurements')
     parser.add_argument('--catalog', type=Path, required=True)
     parser.add_argument('--phase', choices=('prelaunch', 'running'), default='running')
     args = parser.parse_args()
     if args.catalog.name != 'catalog.json':
         parser.error('--catalog must identify a verified bundle catalog.json')
     bundle = args.catalog.parent
-    manifest, catalog = verify_bundle(bundle, 'companion-manifest.json' if (bundle/'companion-manifest.json').exists() else 'manifest.json')
-    host = host_identity(manifest['binary_sha256']) if args.phase == 'running' else None
-    print(json.dumps(dict(installed=installed_identity(catalog), runtime=running_identity(catalog, phase=args.phase, host=host))))
+    from bundle_contract import VerificationContext
+    from verification import bounded
+    def inspect():
+        with VerificationContext() as context:
+            manifest, catalog = verify_bundle(bundle, 'companion-manifest.json' if (bundle/'companion-manifest.json').exists() else 'manifest.json', context=context)
+            installed = installed_identity(catalog)
+            host = host_identity(manifest['binary_sha256']) if args.phase == 'running' else None
+            runtime = running_identity(catalog, phase=args.phase, host=host)
+            context.check()
+            return dict(installed=installed,runtime=runtime)
+    try: result = bounded(inspect,5)
+    except (OSError, ValueError, TimeoutError):
+        print(json.dumps(dict(reason='verification_incomplete',installed=dict(verified=False),runtime=dict(verified=False))))
+        raise SystemExit(2)
+    print(json.dumps(result))
+
 
 
 if __name__ == '__main__':

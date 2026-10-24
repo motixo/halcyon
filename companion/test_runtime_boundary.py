@@ -140,6 +140,18 @@ class Boundary(unittest.TestCase):
         self.assertEqual(rows[-1]['reason'],'verification_timeout')
         self.assertEqual({str(p):p.read_bytes() for p in home.rglob('*') if p.is_file()},before)
 
+    def test_diagnostic_cli_uses_same_cancellable_boundary(self):
+        import contextlib,io,sys,runtime_identity
+        bundle=self.root/'diagnostic';bundle_fixture(bundle)
+        output=io.StringIO();original=__import__('verification').bounded;start=time.monotonic()
+        with patch.object(sys,'argv',['measure','--catalog',str(bundle/'catalog.json')]), \
+             patch.object(runtime_identity,'installed_identity',side_effect=lambda *a,**k:time.sleep(20)), \
+             patch('verification.bounded',side_effect=lambda fn,timeout:original(fn,.08)),contextlib.redirect_stdout(output):
+            with self.assertRaises(SystemExit) as stopped:runtime_identity.main()
+        self.assertEqual(stopped.exception.code,2);self.assertLess(time.monotonic()-start,.5)
+        value=json.loads(output.getvalue());self.assertFalse(value['installed']['verified'])
+        self.assertFalse(value['runtime']['verified']);self.assertEqual(value['reason'],'verification_incomplete')
+
     def test_worker_deadline_descriptor_isolation_reap_and_no_fd_growth(self):
         fd=os.open(self.root/'private',os.O_CREAT|os.O_RDWR,0o600)
         self.addCleanup(os.close,fd)
