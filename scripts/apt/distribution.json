@@ -6,49 +6,49 @@
   "public_key_sha256": "bc0db85de8d205c56526c7c5dd439e50f9558c47450f57aa47dd7bf1467b772f",
   "releases": [
     {
-      "tag": "v0.2.5",
-      "release": "0.2.5",
-      "policy": "cosmic-1.10-1.11-startup-v1",
+      "tag": "v0.3.0",
+      "release": "0.3.0",
+      "policy": "cosmic-1.10-1.11-startup-v2",
       "assets": {
-        "cosmic-ext-halcyon_0.2.5_amd64.deb": {
+        "cosmic-ext-halcyon_0.3.0_amd64.deb": {
           "kind": "main-deb",
-          "sha256": "46d4f77021f9a8cd4acdd1d89f7344e916864a19087cf3c9970000e3f5e54e77",
-          "bytes": 20097786
+          "sha256": "a161840432580b8c48dd1ab2e45d0f54d6b75137f98aef50c60ca25a33820a32",
+          "bytes": 22609552
         },
-        "cosmic-ext-halcyon-islands_0.2.5_amd64.deb": {
+        "cosmic-ext-halcyon-islands_0.3.0_amd64.deb": {
           "kind": "islands-deb",
-          "sha256": "36695c188bd92ece235d62e86ee8c6b2e67af93dde20d569e75599e9b1f02c26",
-          "bytes": 12403548
+          "sha256": "24cb50aefc64c08ebf1f41cb3d196769b1538e945269cc3e521b6152bead7c29",
+          "bytes": 6017798
         },
-        "halcyon-0.2.5-corresponding-source.tar.gz": {
+        "halcyon-0.3.0-corresponding-source.tar.gz": {
           "kind": "corresponding-source",
-          "sha256": "6c138f871ee44380c31e48d92ca3f73196e2767dd94c175e963d68624fa82f32",
-          "bytes": 371846515
+          "sha256": "eb71bc87fe32a361f4f31ec7d8f5b20702d7494e3270d5b5ec46fca880074d2d",
+          "bytes": 280821252
         },
-        "halcyon-0.2.5-focused-native-evidence.zip": {
+        "halcyon-0.3.0-focused-native-evidence.zip": {
           "kind": "native-evidence",
-          "sha256": "f6770df74d7475d4bd22522792a6193f82a495a735bf385cb7a1ae91bf8e0c2f",
-          "bytes": 11288273
+          "sha256": "ad2a8c290f1d3b470d909351f10c2c12308f968b4f9ac5214d6dbd44b3f40595",
+          "bytes": 8031743
         },
         "RELEASE-NOTES.md": {
           "kind": "release-notes",
-          "sha256": "bf0301c202b87b0bdc72893210e5de6769246211e8b25c280edfb93f6ad5bdb0",
-          "bytes": 1307
+          "sha256": "4791a7613b323f6966e270a72fb64297ef88b56aaa8517fe30fbb496d69ec8ea",
+          "bytes": 6369
         },
         "release-provenance.json": {
           "kind": "source-provenance",
-          "sha256": "815770b09fbe3cd90e0518b1c8212c8f42cdd45069c4b5d5e7dc62cc0d223930",
-          "bytes": 3601
+          "sha256": "0e389aa00b95010f04bcc16d8f972945b9e95da60c842204c120f676bbbe731e",
+          "bytes": 1920
         },
         "release-manifest.json": {
           "kind": "release-manifest",
-          "sha256": "ea237af6b49635dcb9f0fe03e1523df6aaf66fd332a2729c8a335b8d82cff292",
-          "bytes": 1485
+          "sha256": "6e5facd7eb8cf5cda71d57022ee8f33728148ba102229d66e20c8d8ed4827351",
+          "bytes": 1347
         },
         "approval.json": {
           "kind": "release-approval",
-          "sha256": "563ac8ecc85fb1d6f29e66e062c7d88393d2cdc67002c05785d42a798eb0e5ab",
-          "bytes": 1882
+          "sha256": "0d9ffca4e176200818a7a7ea5be2b8edce0d017369c50797b4afdbee668e12c3",
+          "bytes": 2103
         }
       }
     }
