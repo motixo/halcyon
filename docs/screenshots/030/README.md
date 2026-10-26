@@ -22,6 +22,12 @@ this capture does not claim a stock-panel binary was qualified.
 
 ## Settings
 
+![Settings in the published 0.3.0 build](settings-wide.png)
+
+This 1280×900 capture is from the final 0.3.0 executable. Its private test session
+uses software rendering; it is not a GPU performance measurement. The desktop
+scene inside Settings is illustrative. The earlier compact captures follow.
+
 ![Setups in native Settings](setups.png)
 
 ![Appearance controls and illustrative desktop preview](appearance.png)

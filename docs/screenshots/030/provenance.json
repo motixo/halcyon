@@ -133,5 +133,20 @@
     "Physical hotplug/resume and hardware performance/battery",
     "Final packaged 0.3.0 main/companion admission",
     "Live Google provider and collector delivery"
+  ],
+  "supplemental_captures": [
+    {
+      "file": "settings-wide.png",
+      "sha256": "0d39745487d4c8d086d293d24332a712249877fe00f131acf1a40a7559bdbdb4",
+      "bytes": 284853,
+      "width": 1280,
+      "height": 900,
+      "date": "2026-10-26",
+      "embedded_app_version": "0.3.0",
+      "app_sha256": "ac726a48f1fd619ccc3e5af6ece47bf5cf2151e7426840af44b0f417f04cc707",
+      "source": "final release native Settings acceptance: gui-wide/captures/settings-themes.png",
+      "scope": "Unmodified native Settings capture; private configuration and synthetic provider observations; embedded desktop scene is illustrative.",
+      "renderer": "The release enables wgpu; this private nested-COSMIC capture used software rendering and is not a hardware performance measurement."
+    }
   ]
 }
