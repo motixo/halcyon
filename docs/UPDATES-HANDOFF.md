@@ -1,5 +1,10 @@
 # Published Updates integration and APT contract
 
+0.3.0 is published on the signed APT channel. A clean disposable client verified
+the 0.3.0 candidates and authenticated download, and rejected the missing-key
+case. Fresh packages enable the source by default; the sections below retain
+the historical integration details and current ownership contract.
+
 Halcyon **0.2.5 already contains** the Updates row, running-installation identity
 checks and asynchronous manual PackageKit adapter. The earlier pending Rust/UI
 handoff is historical. This APT task does not rebuild or modify those binaries.
@@ -60,9 +65,9 @@ UI or hardware acceptance. Final public URL/signature/bootstrap acceptance uses
 host APT, global trust or the live desktop.
 
 
-## Local 0.3.0 enrollment flow
+## 0.3.0 enrollment flow
 
-The development Settings build separates clean manual packages, deliberately
+The 0.3.0 Settings build separates clean manual packages, deliberately
 disabled sources, partial enrollment and verified enrollment. Only a clean,
 verified manual installation offers **Enable system updates…**. Files are the
 exact two pinned bootstrap assets from `scripts/apt/distribution.json`, downloaded
@@ -87,7 +92,7 @@ including after a failed attempt. Stable verified versions link to their own
 release tag. COSMIC Store still opens its main window; select Updates there.
 
 
-## Default enrollment for upcoming packages
+## Default enrollment in 0.3.0 packages
 
 The subsequent user decision makes system-update enrollment the default for clean
 main-package installs and clean upgrades of older unenrolled manual packages.
@@ -108,4 +113,5 @@ package scenarios passed. These cover fresh/manual upgrades, bootstrap migration
 opt-outs, administrator edits, removal and purge. Main package scenarios use a
 stub executable; the production Rust release build passed separately. Exact
 limitations: `.task-default-updates-evidence/acceptance.json`.
-The feature is local; no installed workstation package or published release was changed.
+This behavior is included in published 0.3.0. Release testing did not replace the
+maintainer’s installed workstation package.

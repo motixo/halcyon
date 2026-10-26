@@ -1,6 +1,6 @@
 # Release screenshots
 
-Current local development gallery: [0.3.0 native captures](030/README.md).
+0.3.0 development captures and provenance: [0.3.0 native captures](030/README.md).
 The files below are historical release evidence, retained under their original names.
 
 The 0.2.0 material images are actual native captures of the release packages in

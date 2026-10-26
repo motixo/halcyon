@@ -1,8 +1,9 @@
 # 0.3.0 development gallery
 
-Native captures from the local development build. **0.3.0 is not published.**
-The executable still identifies itself as 0.2.5; these images are not screenshots
-of the published 0.2.5 package.
+Native captures made during 0.3.0 development, before publication. The captured
+executable identified itself as 0.2.5; these images are not screenshots of the
+published 0.2.5 package. **0.3.0 is now published**; its final package checks and
+captures are linked from the [acceptance record](../../releases/0.3.0-acceptance.md).
 
 ## Desktop
 
@@ -31,8 +32,8 @@ this capture does not claim a stock-panel binary was qualified.
 
 ![Manual system-update enrollment fallback](updates.png)
 
-The Updates capture shows the older/manual installation fallback. Fresh upcoming
-packages now enable the signed source during installation.
+The Updates capture shows the older/manual installation fallback. Fresh 0.3.0
+packages enable the signed source during installation.
 
 ![Help and diagnostics](help.png)
 

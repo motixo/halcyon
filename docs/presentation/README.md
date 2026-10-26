@@ -1,6 +1,6 @@
 # Historical screenshot gallery
 
-Current local development gallery: [0.3.0 native captures](../screenshots/030/README.md).
+0.3.0 development captures and provenance: [0.3.0 native captures](../screenshots/030/README.md).
 The following images document earlier releases.
 
 Halcyon on three desktops, plus the controls for colors, dock and panel.

@@ -9,7 +9,7 @@ Prepare reviewable notes locally with:
 ```sh
 python3 scripts/render-release-notes.py --version 0.3.0 \
   --changes docs/releases/0.3.0.md \
-  --calendar 'Provider acceptance pending; do not publish this draft.' \
+  --calendar 'Google sign-in needs your OAuth client; live provider acceptance remains pending.' \
   --output /tmp/halcyon-0.3.0-release-notes.md
 ```
 
@@ -22,5 +22,5 @@ Preserve published packages, source archives, approvals and old release text.
 A new main app does not qualify a companion. Confirm the matching companion,
 activation instructions, supported COSMIC inputs and corresponding source archive.
 
-Current draft: [0.3.0](../releases/0.3.0.md). Current native development gallery:
+Published release notes: [0.3.0](../releases/0.3.0.md). Current native development gallery:
 [provenance and limitations](../screenshots/030/README.md).

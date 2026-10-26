@@ -2,14 +2,19 @@
 
 ## 0.3.0 release preparation and live reporting
 
-Updated 2026-10-26. Final 0.3.0 packages passed complete-session acceptance and
-are frozen for publication. Installation, native Settings/Islands input, forced
-crash cleanup, stock recovery and disable/relogin passed on COSMIC 1.11 KVM.
-Compact, wide, scaled and light Settings checks and three private native toggle
-cycles also passed. The [final acceptance](releases/0.3.0-acceptance.md) binds exact
-package bytes and records limitations. Source includes patched `vendor/rrule`,
-locked dependencies and licenses. Earlier “unpublished” and package-pending entries
-below describe their dated development state; this section supersedes them.
+Updated 2026-10-26. **[0.3.0 is published](https://github.com/profilaz3/halcyon/releases/tag/v0.3.0)** with matching main/Islands packages, checksums, corresponding source and
+focused native evidence. Signed APT publication succeeded; a clean private APT
+client selected 0.3.0, verified the package download and rejected a missing key.
+All ten release assets match their approved hashes. Existing workstation and
+laptop installations were not replaced.
+
+Installation, native Settings/Islands input, forced-crash cleanup, stock recovery
+and disable/relogin passed on COSMIC 1.11 KVM. Compact, wide, scaled and light
+Settings checks and three private native toggle cycles also passed. The
+[final acceptance](releases/0.3.0-acceptance.md) records exact package bytes and
+limitations. Source includes patched `vendor/rrule`, locked dependencies and
+licenses. Earlier “unpublished” and package-pending entries below describe their
+dated development state; this section supersedes them.
 
 The live activity collector now serves schema 4 at its existing URL (Apps Script
 version 5). A private backup and migration rehearsal preceded the additive Sheet
