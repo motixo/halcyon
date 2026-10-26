@@ -162,11 +162,30 @@ impl Cards {
         if let Some(dew_point) = self.glance_dew_point() {
             width += 6. + super::clock::measure(&dew_point, 28. * 0.55, font);
         }
+        if let Some(status) = self.glance_weather_status() {
+            for line in status.lines() {
+                width = width.max(super::clock::measure(line, 10., font));
+            }
+        }
         width.ceil().max(minimum)
     }
 
+    fn glance_weather_status(&self) -> Option<String> {
+        self.weather.as_ref()?;
+        weather_status(
+            &self.config,
+            self.weather_at.as_deref(),
+            self.weather_error,
+            Local::now(),
+        )
+    }
+    fn glance_weather_status_height(&self) -> f32 {
+        self.glance_weather_status()
+            .map(|status| status.lines().count() as f32 * 12.5 + 4.)
+            .unwrap_or(0.)
+    }
     fn glance_weather_block_height(&self) -> f32 {
-        if self.glance_compact() { 48. } else { 65. }
+        (if self.glance_compact() { 48. } else { 65. }) + self.glance_weather_status_height()
     }
     fn glance_clock_width(&self, width: f32) -> f32 {
         (width
@@ -226,7 +245,7 @@ impl Cards {
         if !self.config.glance.show_weather {
             0.
         } else {
-            if self.glance_compact() { 22. } else { 43. }
+            (if self.glance_compact() { 22. } else { 43. }) + self.glance_weather_status_height()
         }
     }
     fn glance_header_height(&self) -> f32 {
@@ -643,12 +662,20 @@ impl Cards {
             )),
             (None, None) => rows.push(label("Choose city ↗", 12., p.accent)),
         }
+        let status = self.glance_weather_status();
+        if let Some(status) = &status {
+            rows.push(
+                container(label(status.clone(), 10., p.muted))
+                    .id(cosmic::widget::Id::new("glance-weather-status"))
+                    .into(),
+            );
+        }
         let content: Element<'_, Message> = if block {
             column::with_children(rows)
                 .spacing(2)
                 .align_x(Alignment::End)
                 .into()
-        } else if compact {
+        } else if compact && status.is_none() {
             row::with_children(rows)
                 .spacing(6)
                 .align_y(Alignment::Center)

@@ -21,10 +21,11 @@ USER_DIR = Path.home()
 PREFIX = Path(__file__).resolve().parent.parent
 LEGACY_BINARY = USER_DIR / '.local/bin/cosmic-desktop-cards'
 BINARY = PREFIX / 'bin/halcyon' if (PREFIX / 'bin/halcyon').exists() else LEGACY_BINARY
-CONFIG = USER_DIR / '.config/halcyon'
+CONFIG_ROOT = Path(os.environ.get('XDG_CONFIG_HOME') or USER_DIR / '.config')
+CONFIG = CONFIG_ROOT / 'halcyon'
 CONFIG_FILE = Path(os.environ.get('DESKTOP_CARDS_CONFIG', CONFIG / 'config.json'))
-BACKGROUND = USER_DIR / '.config/cosmic/com.system76.CosmicBackground/v1/all'
-CUSTOM = USER_DIR / '.config/cosmic/com.system76.CosmicSettings.Wallpaper/v1/custom-images'
+BACKGROUND = CONFIG_ROOT / 'cosmic/com.system76.CosmicBackground/v1/all'
+CUSTOM = CONFIG_ROOT / 'cosmic/com.system76.CosmicSettings.Wallpaper/v1/custom-images'
 # Built-in wallpapers come with Halcyon; an install from before the rename
 # copied them to Pictures/Desktop Cards.
 INSTALLED_WALLPAPERS = PREFIX / 'share/backgrounds/halcyon'
@@ -77,6 +78,8 @@ def config_lock():
         yield
 
 def edit_config(change):
+    if 'DESKTOP_CARDS_CONFIG' not in os.environ:
+        helper('--migrate-config', failure='Could not migrate existing settings.')
     with config_lock():
         data = config()
         change(data)
@@ -215,16 +218,9 @@ def focus(action):
     desktop_command({'action': 'focus', 'do': action})
 
 def settings(page=''):
-    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    # One graphical window; later requests bring it forward on the requested page.
-    with CONFIG_FILE.with_name('settings.lock').open('w') as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            atomic(CONFIG_FILE.with_name('settings-command.json'), json.dumps({'page': page}))
-            return
-        CONFIG_FILE.with_name('settings-command.json').unlink(missing_ok=True)
-        subprocess.run([str(BINARY), '--settings', page], check=True)
+    # The native entry point owns the window and forwards requests, including
+    # direct binary/desktop launches, and leaves the widget service's cgroup.
+    subprocess.run([str(BINARY), '--settings', page], check=True)
 
 
 def restore_background():
@@ -255,7 +251,6 @@ SETTINGS_PAGES = ('overview', 'pending', 'themes', 'presets', 'schedules', 'widg
 
 
 def main():
-    CONFIG.mkdir(parents=True, exist_ok=True)
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command')
     sub.add_parser('theme').add_argument('name', choices=THEMES)

@@ -1,5 +1,8 @@
 # Release screenshots
 
+Current local development gallery: [0.3.0 native captures](030/README.md).
+The files below are historical release evidence, retained under their original names.
+
 The 0.2.0 material images are actual native captures of the release packages in
 an isolated COSMIC session. They use the bundled Halcyon Night wallpaper,
 ordinary native applets, synthetic checklist notes and real system readings.

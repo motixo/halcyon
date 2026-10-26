@@ -9,7 +9,6 @@ const HEADER_HEIGHT: f32 = 16.;
 const INDICATOR_HEIGHT: f32 = 5.;
 const LINE_GAP: f32 = 4.;
 const SECTION_GAP: f32 = 8.;
-const CARD_PADDING: f32 = 36.;
 const EMPTY_HEIGHT: f32 = 20.;
 
 impl Cards {
@@ -28,25 +27,7 @@ impl Cards {
 }
 
 pub(super) fn natural_height(preferences: &DevboxPreferences, gpu_count: usize) -> f32 {
-    let section_height = HEADER_HEIGHT + LINE_GAP + indicator_height(preferences);
-    let heights: Vec<_> = preferences
-        .ordered_sections()
-        .into_iter()
-        .filter(|section| section.enabled(preferences))
-        .map(|section| match section {
-            DevboxSection::Gpu => {
-                let count = gpu_count.max(1);
-                count as f32 * section_height + count.saturating_sub(1) as f32 * SECTION_GAP
-            }
-            _ => section_height,
-        })
-        .collect();
-    CARD_PADDING
-        + if heights.is_empty() {
-            EMPTY_HEIGHT
-        } else {
-            heights.iter().sum::<f32>() + heights.len().saturating_sub(1) as f32 * SECTION_GAP
-        }
+    crate::layout_state::devbox_content_height(preferences, gpu_count)
 }
 
 /// The same card is used on the desktop and in Settings; rendering only reads

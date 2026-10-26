@@ -42,7 +42,10 @@ impl Settings {
         };
         section(vec![
             split(
-                detail("Set up Halcyon", "All steps are optional."),
+                detail(
+                    "Getting started",
+                    "Make the desktop yours. Every step is optional.",
+                ),
                 button::text("Skip setup")
                     .id(cosmic::widget::Id::new("setup-skip"))
                     .on_press(Message::SetupDismissed(true))
@@ -50,7 +53,7 @@ impl Settings {
             ),
             step(
                 "1",
-                "Desktop widgets",
+                "Widgets · My widgets",
                 if self.service.running {
                     "Running".into()
                 } else {
@@ -72,11 +75,17 @@ impl Settings {
                 },
             ),
             separator(),
-            split(detail("Start when you sign in", ""), startup.into()),
+            split(
+                detail(
+                    "App settings · Start at sign-in",
+                    "Run Halcyon when you sign in.",
+                ),
+                startup.into(),
+            ),
             separator(),
             step(
                 "2",
-                "Local weather",
+                "Widgets · Weather",
                 self.config
                     .location
                     .as_ref()
@@ -93,7 +102,7 @@ impl Settings {
             separator(),
             step(
                 "3",
-                "Look",
+                "Appearance · Theme and colors",
                 match self.config.appearance.family {
                     Some(family) if self.config.appearance.wallpaper_colors => {
                         format!("{} · colors from your wallpaper", family.title())
@@ -105,26 +114,20 @@ impl Settings {
                 },
                 self.config.appearance.family.is_some(),
                 if self.config.appearance.family.is_some() {
-                    "Change look"
+                    "Change theme"
                 } else {
-                    "Choose a look"
+                    "Choose a theme"
                 },
-                // A first look comes from the starter looks; later changes
-                // are made in Colors & theme.
-                Some(Message::Page(if self.config.appearance.family.is_some() {
-                    Page::Themes
-                } else {
-                    Page::DesktopProfiles
-                })),
+                Some(Message::Page(Page::Themes)),
             ),
             separator(),
             step(
                 "4",
-                "Google Calendar",
+                "Widgets · Calendar",
                 if self.calendar.connection.connected() {
                     self.calendar.connection.account.clone()
                 } else {
-                    "Connect Google to see your agenda and meeting links.".into()
+                    "Connect Google Calendar or add a read-only calendar link.".into()
                 },
                 self.calendar.connection.connected(),
                 if self.calendar.connection.connected() {
@@ -147,7 +150,7 @@ impl Settings {
             .wrap()
             .into(),
             label(
-                "Arrange cards from Layout. Hold the pointer at the far-right screen edge for one second to open widget controls.",
+                "Move and resize widgets in Layout and displays. For quick controls, hold the pointer at the far-right screen edge for one second.",
                 11.,
                 MUTED,
             ),
@@ -157,9 +160,12 @@ impl Settings {
     pub(super) fn setup_prompt(&self) -> Element<'_, Message> {
         frame(
             split(
-                detail("Finish setup", "Weather city and calendar account"),
+                detail(
+                    "Getting started",
+                    "Choose a weather city and connect your calendar.",
+                ),
                 row::with_children(vec![
-                    button::standard("Set up")
+                    button::standard("Continue setup")
                         .id(cosmic::widget::Id::new("setup-open"))
                         .on_press(Message::SetupOpen(true))
                         .into(),

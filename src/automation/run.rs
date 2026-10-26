@@ -99,6 +99,16 @@ pub fn run(
     name: &str,
     held: &BTreeSet<Domain>,
 ) -> Ran {
+    run_for_cause(store, installed, target, name, held, false)
+}
+pub(super) fn run_for_cause(
+    store: &DesktopStore,
+    installed: &Installed,
+    target: &ProfileRef,
+    name: &str,
+    held: &BTreeSet<Domain>,
+    display: bool,
+) -> Ran {
     if !store.writable() {
         return Ran::Failed("Automatic switching is off in preview mode.".into());
     }
@@ -120,7 +130,8 @@ pub fn run(
         };
         let label = label(&profile.name);
         let selected: BTreeSet<Domain> = profile.domains().into_iter().collect();
-        let plan = profiles::plan(store, installed, &profile, &selected);
+        let mut plan = profiles::plan(store, installed, &profile, &selected);
+        plan.from_display_rule(display);
         let skipped = Vec::new();
         // A coordinated setup is atomic. A missing asset or unavailable
         // component cannot silently narrow the categories the rule chose.

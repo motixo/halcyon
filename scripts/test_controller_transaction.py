@@ -67,6 +67,31 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(captured['bytes']), collection.read_bytes())
         self.assertIn('rose.jpg', (self.native / 'com.system76.CosmicBackground/v1/all').read_text())
 
+    def test_auditfix_controller_help_preserves_legacy_first_launch_migration(self):
+        legacy = self.home / '.config/cosmic-desktop-cards/config.json'
+        legacy.parent.mkdir(parents=True)
+        original = b'{"theme":"ocean","appearance":{"opacity":71}}\n'
+        legacy.write_bytes(original)
+        self.run_cli('--help')
+        self.assertFalse(self.config.parent.exists())
+        self.run_cli('cosmic-colors', 'on')
+        self.assertEqual(json.loads(self.config.read_bytes())['appearance']['opacity'], 71)
+        self.assertEqual(legacy.read_bytes(), original)
+
+    def test_auditfix_python_writer_migrates_before_creating_config(self):
+        legacy = self.home / '.config/cosmic-desktop-cards/config.json'
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text('{"theme":"rose","appearance":{"opacity":71}}')
+        # Exercise the same edit path as weather without reaching its network lookup.
+        boot = BOOT.rsplit('m.main()', 1)[0] + 'm.edit_config(lambda data: data.update(location={"name":"Fixture"}))\n'
+        result = subprocess.run([sys.executable, '-c', boot, str(ROOT/'scripts/desktop-cards'),
+                                 str(Path(BINARY).resolve())], env=self.env, capture_output=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(self.config.read_bytes())
+        self.assertEqual(data['theme'], 'rose')
+        self.assertEqual(data['appearance']['opacity'], 71)
+        self.assertEqual(data['location']['name'], 'Fixture')
+
     def test_cosmic_colors_on_captures_false_preference_and_palette_only_keeps_other_leaves(self):
         self.config.parent.mkdir(parents=True)
         self.config.write_text('{"theme":"teal","appearance":{"match_wallpaper":false,"match_cosmic_colors":false,"opacity":83},"private_token":"not exported"}')

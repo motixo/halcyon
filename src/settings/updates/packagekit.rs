@@ -1,4 +1,4 @@
-//! Noble PackageKit 1.2.8 XML protocol. No install/update methods exist here.
+//! Noble PackageKit 1.2.8 protocol. Only reviewed bootstrap files can be installed.
 //! Enum numbers verified against installed libpackagekit-glib2.so.18 using its
 //! pk_exit_enum_from_string / pk_error_enum_from_string (no service calls).
 use super::{Failure, Identity};
@@ -15,6 +15,131 @@ const TRANSACTION: &str = "org.freedesktop.PackageKit.Transaction";
 const EXIT_SUCCESS: u32 = 1;
 const FILTER_NONE: u64 = 1 << 1;
 const STEP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Package installation outlives a Settings window. Files are retained when a
+/// lost connection/timeout leaves the daemon's outcome unknown.
+pub(super) async fn install_bootstrap(
+    prepared: std::sync::Arc<super::enrollment::Prepared>,
+    progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
+) -> Result<(), Failure> {
+    if super::identity::isolated() {
+        return Err(Failure::InstallationChanged);
+    }
+    let connection = timeout(STEP_TIMEOUT, Connection::system())
+        .await
+        .map_err(|_| Failure::Timeout)?
+        .map_err(|_| Failure::MissingPackageKit)?;
+    install_progress(&connection, &prepared, progress).await
+}
+#[cfg(test)]
+pub(super) async fn install_on(
+    connection: &Connection,
+    prepared: &super::enrollment::Prepared,
+) -> Result<(), Failure> {
+    install_progress(connection, prepared, None).await
+}
+async fn install_progress(
+    connection: &Connection,
+    prepared: &super::enrollment::Prepared,
+    progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
+) -> Result<(), Failure> {
+    prepared.verify()?;
+    let work = async {
+        let root = zbus::Proxy::new(connection, SERVICE, ROOT, SERVICE)
+            .await
+            .map_err(bus_error)?;
+        // pk_role_enum_from_string("install-files") on the supported Noble library.
+        let roles: u64 = root.get_property("Roles").await.map_err(bus_error)?;
+        if roles & (1 << 10) == 0 {
+            return Err(Failure::MissingPackageKit);
+        }
+        let reply = connection
+            .call_method(Some(SERVICE), ROOT, Some(SERVICE), "CreateTransaction", &())
+            .await
+            .map_err(bus_error)?;
+        let owner = reply
+            .header()
+            .sender()
+            .ok_or(Failure::InvalidResponse)?
+            .to_string();
+        let path: OwnedObjectPath = reply
+            .body()
+            .deserialize()
+            .map_err(|_| Failure::InvalidResponse)?;
+        if path.as_str() == "/" || path.as_str() == ROOT {
+            return Err(Failure::InvalidResponse);
+        }
+        let rule = zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender(owner.as_str())
+            .map_err(|_| Failure::InvalidResponse)?
+            .path(path.as_str())
+            .map_err(|_| Failure::InvalidResponse)?
+            .interface(TRANSACTION)
+            .map_err(|_| Failure::InvalidResponse)?
+            .build();
+        let mut signals = MessageStream::for_match_rule(rule, connection, Some(128))
+            .await
+            .map_err(bus_error)?;
+        let proxy = zbus::Proxy::new(connection, owner.as_str(), path.as_str(), TRANSACTION)
+            .await
+            .map_err(bus_error)?;
+        proxy
+            .call::<_, _, ()>("SetHints", &vec!["interactive=true", "background=false"])
+            .await
+            .map_err(bus_error)?;
+        prepared.verify()?;
+        prepared
+            .handed_off
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+        let paths: Vec<_> = prepared
+            .paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        // These exact hash-pinned local .debs are not repository-signed packages.
+        // This is the OS's explicit localinstall authorization, never a retry
+        // that weakens a rejected repository trust check.
+        if let Some(progress) = &progress {
+            let _ = progress.send(super::InstallPhase::Authorizing);
+        }
+        proxy
+            .call::<_, _, ()>("InstallFiles", &(0u64, paths))
+            .await
+            .map_err(bus_error)?;
+        if let Some(progress) = &progress {
+            let _ = progress.send(super::InstallPhase::Installing);
+        }
+        let mut failure = None;
+        while let Some(message) = signals.next().await {
+            let message = message.map_err(bus_error)?;
+            match message.header().member().map(|v| v.as_str()) {
+                Some("ErrorCode") => {
+                    let (code, _): (u32, String) = message
+                        .body()
+                        .deserialize()
+                        .map_err(|_| Failure::InvalidResponse)?;
+                    failure = Some(error_code(code));
+                }
+                Some("Finished") => {
+                    let (exit, _): (u32, u32) = message
+                        .body()
+                        .deserialize()
+                        .map_err(|_| Failure::InvalidResponse)?;
+                    prepared
+                        .handed_off
+                        .store(false, std::sync::atomic::Ordering::Relaxed);
+                    return failure.map_or_else(|| exit_code(exit), Err);
+                }
+                _ => {}
+            }
+        }
+        Err(Failure::Failed)
+    };
+    timeout(Duration::from_secs(15 * 60), work)
+        .await
+        .unwrap_or(Err(Failure::Timeout))
+}
 
 pub(super) async fn cancelled(cancel: &mut watch::Receiver<bool>) {
     loop {

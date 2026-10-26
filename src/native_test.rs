@@ -43,14 +43,29 @@ impl Native {
         struct Find {
             id: cosmic::widget::Id,
             found: Option<Rectangle>,
+            offset: cosmic::iced::Vector,
+            pending: cosmic::iced::Vector,
         }
         impl Operation for Find {
             fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn Operation)) {
+                let previous = self.offset;
+                self.offset += std::mem::take(&mut self.pending);
                 f(self);
+                self.offset = previous;
+            }
+            fn scrollable(
+                &mut self,
+                _: Option<&cosmic::widget::Id>,
+                _: Rectangle,
+                _: Rectangle,
+                translation: cosmic::iced::Vector,
+                _: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
+            ) {
+                self.pending = translation;
             }
             fn container(&mut self, id: Option<&cosmic::widget::Id>, bounds: Rectangle) {
                 if id == Some(&self.id) {
-                    self.found = Some(bounds);
+                    self.found = Some(bounds - self.offset);
                 }
             }
             fn focusable(
@@ -60,7 +75,7 @@ impl Native {
                 _: &mut dyn Focusable,
             ) {
                 if id == Some(&self.id) {
-                    self.found = Some(bounds);
+                    self.found = Some(bounds - self.offset);
                 }
             }
         }
@@ -73,10 +88,28 @@ impl Native {
         let mut find = Find {
             id: cosmic::widget::Id::new(id.to_string()),
             found: None,
+            offset: Default::default(),
+            pending: Default::default(),
         };
         ui.operate(&self.renderer, &mut find);
         self.cache = ui.into_cache();
         find.found
+    }
+    pub fn operate<M>(&mut self, view: cosmic::Element<'_, M>, mut operation: Box<dyn Operation>) {
+        let mut ui = UserInterface::build(
+            view,
+            self.size,
+            std::mem::take(&mut self.cache),
+            &mut self.renderer,
+        );
+        loop {
+            ui.operate(&self.renderer, operation.as_mut());
+            match operation.finish() {
+                cosmic::iced::advanced::widget::operation::Outcome::Chain(next) => operation = next,
+                _ => break,
+            }
+        }
+        self.cache = ui.into_cache();
     }
     pub fn event<M>(
         &mut self,
@@ -193,6 +226,33 @@ impl Native {
         }
         self.cache = ui.into_cache();
     }
+    pub fn capture_scaled<M>(
+        &mut self,
+        view: cosmic::Element<'_, M>,
+        theme: &cosmic::Theme,
+        scale: f32,
+        name: &str,
+    ) {
+        let Some(dir) = std::env::var_os("DESKTOP_CARDS_LAYOUT_EVIDENCE") else {
+            return;
+        };
+        let _ = self.render(view, theme);
+        let size = Size::new(
+            (self.size.width * scale) as u32,
+            (self.size.height * scale) as u32,
+        );
+        let pixels = self
+            .renderer
+            .screenshot(size, scale, cosmic::iced::Color::TRANSPARENT);
+        image::save_buffer(
+            std::path::PathBuf::from(dir).join(format!("{name}.png")),
+            &pixels,
+            size.width,
+            size.height,
+            image::ColorType::Rgba8,
+        )
+        .unwrap();
+    }
     pub fn capture<M>(&mut self, view: cosmic::Element<'_, M>, theme: &cosmic::Theme, name: &str) {
         let Some(dir) = std::env::var_os("DESKTOP_CARDS_LAYOUT_EVIDENCE") else {
             return;
@@ -214,14 +274,29 @@ impl Native {
         struct Find {
             text: String,
             found: Vec<Rectangle>,
+            offset: cosmic::iced::Vector,
+            pending: cosmic::iced::Vector,
         }
         impl Operation for Find {
             fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn Operation)) {
+                let previous = self.offset;
+                self.offset += std::mem::take(&mut self.pending);
                 f(self);
+                self.offset = previous;
+            }
+            fn scrollable(
+                &mut self,
+                _: Option<&cosmic::widget::Id>,
+                _: Rectangle,
+                _: Rectangle,
+                translation: cosmic::iced::Vector,
+                _: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
+            ) {
+                self.pending = translation;
             }
             fn text(&mut self, _: Option<&cosmic::widget::Id>, bounds: Rectangle, text: &str) {
                 if text == self.text {
-                    self.found.push(bounds);
+                    self.found.push(bounds - self.offset);
                 }
             }
         }
@@ -234,6 +309,8 @@ impl Native {
         let mut find = Find {
             text: text.to_owned(),
             found: Vec::new(),
+            offset: Default::default(),
+            pending: Default::default(),
         };
         ui.operate(&self.renderer, &mut find);
         self.cache = ui.into_cache();

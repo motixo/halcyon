@@ -61,7 +61,14 @@ def driver(mode):
                 actors=[json.loads(p.read_text()) for p in sorted(root.glob('actor-*'))]
                 leader=json.loads((root/'leader').read_text());reports.update(actors=actors,leader=leader)
                 assert all(a['pgid']==leader['pid']==a['sid'] for a in actors)
-                if mode=='outer-term':
+                if mode.startswith('selector-'):
+                    import fcntl
+                    fd=os.open(root/'runtime/desktop-cards-panel.lock',os.O_RDWR)
+                    try:
+                        try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);reports['lock_held_before_cleanup']=False
+                        except BlockingIOError:reports['lock_held_before_cleanup']=True
+                    finally:os.close(fd)
+                if mode in ('outer-term','selector-term'):
                     os.kill(os.getpid(),signal.SIGTERM)
                     # RED-version escape hatch; never let a broken supervisor
                     # leave fixture actors behind on the test's outer timeout.
@@ -73,7 +80,7 @@ def driver(mode):
             except BaseException as e:errors.append(repr(e))
         thread=threading.Thread(target=control);thread.start()
         original_env=os.environ.copy()
-        if mode=='outer-term':os.environ['RESIST_LEADER']='1'
+        if mode in ('outer-term','selector-term'):os.environ['RESIST_LEADER']='1'
         try:
             # Readiness is not under test; lifecycle fixture tests separately use
             # real IPC/ELF/admission. This fixture measures cleanup at handoff.
@@ -95,7 +102,20 @@ def driver(mode):
                 return [a for a in rows if a and a['state'] not in ('Z','X')]
             def failed():
                 reports['live_at_failed_marker']=live()
-            if mode=='handoff':
+            if mode.startswith('selector-'):
+                import selector, fcntl
+                from unittest.mock import patch
+                (root/'runtime').mkdir()
+                real_popen=subprocess.Popen
+                def spawn(args,**kwargs):
+                    assert args==['/usr/bin/cosmic-panel']
+                    return real_popen([str(script)],**kwargs)
+                with patch.dict(os.environ,{'XDG_RUNTIME_DIR':str(root/'runtime'),'WAYLAND_DISPLAY':'isolated-selector'}),patch.object(selector.subprocess,'Popen',spawn):
+                    reports['result']=selector.fallback()
+                fd=os.open(root/'runtime/desktop-cards-panel.lock',os.O_RDWR)
+                try:fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);reports['lock_released_after_cleanup']=True
+                finally:os.close(fd)
+            elif mode=='handoff':
                 result=launcher.supervise(script,'/unreachable/stock',failed=failed,session_socket=True)
                 reports['result']=result
             elif mode=='fallback':

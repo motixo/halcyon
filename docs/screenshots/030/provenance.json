@@ -1,0 +1,137 @@
+{
+  "format": "halcyon-native-development-gallery",
+  "version": 1,
+  "date": "2026-10-25",
+  "target_release": "0.3.0",
+  "published": false,
+  "embedded_app_version": "0.2.5",
+  "source_head": "516807e4379a4870446754b670884f4c602b2f35",
+  "source_dirty": true,
+  "app_sha256": "d8f17540c81edddbfeefbc1bb94ca3434ed3b8f55b0f46762bd6d36877dfb7ff",
+  "companion_sha256": "fa3da1c7f77596ad6d1804152880827f9f0520fe79a2b4b4b894c498c05610ff",
+  "renderer": "software rendering in private nested COSMIC",
+  "settings_sizes_tested": [
+    {
+      "logical": "820x600",
+      "scale": 1,
+      "physical": [
+        820,
+        600
+      ]
+    },
+    {
+      "logical": "1280x900",
+      "scale": 1,
+      "physical": [
+        1280,
+        900
+      ]
+    },
+    {
+      "logical": "820x600",
+      "scale": 1.5,
+      "physical": [
+        1230,
+        900
+      ]
+    },
+    {
+      "logical": "820x600",
+      "scale": 1,
+      "physical": [
+        820,
+        600
+      ]
+    }
+  ],
+  "fixtures": "Private configuration, isolated session bus and display; public bundled wallpaper; synthetic location. Settings installation/provider statuses are fixture-controlled. Actual system readings and empty Notes are shown on desktop.",
+  "images": [
+    {
+      "file": "everyday-islands.png",
+      "sha256": "838caf5bdf4e4bd4d49d4106133e03fa4b71a7e409d0a796a495a02f7f167854",
+      "bytes": 1616117,
+      "width": 1920,
+      "height": 1080,
+      "scope": "native desktop; real widget and companion processes"
+    },
+    {
+      "file": "writing-desk.png",
+      "sha256": "4ecdaa2202c3cc703c4a846068cd10d3a6a3dadb10395e81d9c0f39891f1d39d",
+      "bytes": 1557703,
+      "width": 1920,
+      "height": 1080,
+      "scope": "native desktop; real widget and companion processes"
+    },
+    {
+      "file": "standard-panel.png",
+      "sha256": "559a35325e0801b56ec00ed8c77049602e7cbb916234984e7a16ded3a05072dc",
+      "bytes": 1586037,
+      "width": 1920,
+      "height": 1080,
+      "scope": "native desktop; real widget and companion processes"
+    },
+    {
+      "file": "setups.png",
+      "sha256": "4eb4d299f62643e4022b47c0bc447fae4dd6e7ac515e5da83c9d14fbf1819435",
+      "bytes": 138387,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    },
+    {
+      "file": "appearance.png",
+      "sha256": "9d5e6817b73599b58fb0049ce6596398310e267d8acdcf9b886b542105803b4e",
+      "bytes": 277751,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    },
+    {
+      "file": "dock-panel.png",
+      "sha256": "b6950307a5642a8fcc94d2d299a7051063f0f5c5b4b55bc476ea6c4bf491b421",
+      "bytes": 211260,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    },
+    {
+      "file": "layout.png",
+      "sha256": "71c1d10bee956aaabd06cc5de687548d1fd155f93707857378d72076a88b8cf2",
+      "bytes": 131914,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    },
+    {
+      "file": "updates.png",
+      "sha256": "74f6e9951c1d07c0c4f61bee30f95e5091fd11c525848f24f859bfd39efaf93c",
+      "bytes": 58551,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    },
+    {
+      "file": "help.png",
+      "sha256": "54bd90de0b09ee176fb1606a5a5b8bbecbc7b2ed9ec8d7d4a52fe26aff658613",
+      "bytes": 69139,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    },
+    {
+      "file": "recent-changes.png",
+      "sha256": "a7e2f67d6b8d26adc720ec574cba2ff6a3a9d8bf97efd72e93a3050da0265170",
+      "bytes": 61202,
+      "width": 820,
+      "height": 600,
+      "scope": "native Settings; isolated installation/provider observations; embedded scenes illustrative"
+    }
+  ],
+  "not_qualified": [
+    "Normal-user graphical PolicyKit authentication",
+    "Screen-reader, enlarged text and dedicated high-contrast acceptance",
+    "Physical hotplug/resume and hardware performance/battery",
+    "Final packaged 0.3.0 main/companion admission",
+    "Live Google provider and collector delivery"
+  ]
+}

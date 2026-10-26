@@ -108,6 +108,14 @@ pub(super) struct UndoFile {
     /// Flat, oldest first. Legacy version-one records have an empty history.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub history: Vec<UndoFile>,
+    #[serde(
+        default,
+        deserialize_with = "super::activity::deserialize",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub recent: Vec<super::activity::Summary>,
+    #[serde(default, deserialize_with = "super::activity::deserialize_partial")]
+    pub recent_partial: bool,
     /// Derived transitions after this action, coalesced by touched field.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub derived: Vec<JournalEntry>,
@@ -157,6 +165,8 @@ impl LatestChange {
             widget: self.widget.clone(),
             source: Source::Manual,
             history: Vec::new(),
+            recent: Vec::new(),
+            recent_partial: false,
             derived: Vec::new(),
             derived_widget: Vec::new(),
             transaction_id: None,
@@ -365,6 +375,19 @@ impl UndoFile {
         }
     }
     pub(super) fn followed_by(mut self, mut next: Self) -> Self {
+        next.recent_partial = self.recent_partial || self.recent.is_empty();
+        if self.recent.is_empty() {
+            for file in self.history.iter().chain(std::iter::once(&self)) {
+                if super::activity::has_changes(file) {
+                    super::activity::append(
+                        &mut next.recent,
+                        super::activity::summarize(file, false),
+                    );
+                }
+            }
+        } else {
+            next.recent = std::mem::take(&mut self.recent);
+        }
         let mut history = std::mem::take(&mut self.history);
         // Only manual actions consume history slots. A scheduled action is
         // still the latest observation, but never the visible Undo action.

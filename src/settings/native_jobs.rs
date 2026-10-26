@@ -20,7 +20,7 @@ pub enum Done {
     Profiles(profiles::ProfilesEditor, profiles::Outcome),
     Wizard(wizard::Wizard, wizard::Outcome),
     Undo(
-        Result<(), String>,
+        Result<Option<String>, String>,
         Option<crate::desktop::store::UndoReview>,
     ),
     Material(Result<(), String>),
@@ -45,6 +45,16 @@ impl Settings {
         self.error = false;
     }
     pub(super) fn dispatch_native(&mut self, message: &Message) -> Option<Task<Message>> {
+        if let Message::Wizard(edit) = message
+            && self.wizard.as_ref().is_none_or(|w| !w.accepts(edit))
+        {
+            return Some(Task::none());
+        }
+        // Pure view state does not wait for desktop IO or grow the edit queue.
+        if matches!(message, Message::ToggleScene | Message::ContentScrolled(_)) {
+            return None;
+        }
+
         // Privacy lives outside desktop transactions and must not wait behind a
         // theme/profile operation. Its own worker never holds a desktop lock.
         if matches!(
@@ -98,6 +108,10 @@ impl Settings {
             }
             return Some(Task::none());
         }
+        if matches!(message, Message::Wizard(edit) if !matches!(edit.action(), wizard::Message::Next | wizard::Message::Look(_) | wizard::Message::Cancel | wizard::Message::Start))
+        {
+            return None;
+        }
         if !self.native_worker_needed() {
             return None;
         }
@@ -131,6 +145,10 @@ impl Settings {
                 if property != 0 {
                     self.native_property = 0;
                 }
+                let recovery = matches!(
+                    edit,
+                    desktop::Message::Recover | desktop::Message::KeepRecovery
+                );
                 let complete = direct::completion(message).is_some();
                 let label = direct::label(message);
                 self.begin_native();
@@ -166,7 +184,12 @@ impl Settings {
                             }
                         }
                     }
-                    Done::Desktop(editor, focus, crate::desktop::store::revision() != revision)
+                    // Recovery can restore widget preferences or clear a journal
+                    // without advancing the normal transaction revision. Refresh
+                    // the other views before any watcher notification arrives.
+                    let changed = crate::desktop::store::revision() != revision
+                        || (recovery && !matches!(editor.notice, Some(desktop::Notice::Error(_))));
+                    Done::Desktop(editor, focus, changed)
                 }))
             }
             Message::Profiles(edit)
@@ -240,6 +263,11 @@ impl Settings {
         self.begin_native();
         task(move || {
             let mut conflict = None;
+            let undone = if review.is_none() {
+                shown.clone()
+            } else {
+                None
+            };
             let result = crate::desktop::actions::history_store()
                 .and_then(|store| {
                     if let Some((review, restore)) = review {
@@ -266,7 +294,7 @@ impl Settings {
                 })
                 .map(|_| ())
                 .map_err(|e| e.to_string());
-            Done::Undo(result, conflict)
+            Done::Undo(result.map(|()| undone), conflict)
         })
     }
     pub(super) fn background_material(
@@ -312,8 +340,10 @@ impl Settings {
                 ])
             }
             Done::Profiles(editor, outcome) => {
+                let before = self.profiles.selection().clone();
                 self.profiles = editor;
-                self.profile_outcome(outcome)
+                let reveal = self.reveal_setup_selection(&before);
+                Task::batch([self.profile_outcome(outcome), reveal])
             }
             Done::Wizard(wizard, outcome) => {
                 self.wizard = Some(wizard);
@@ -322,8 +352,9 @@ impl Settings {
             Done::Undo(result, review) => {
                 self.undo_review = review;
                 match result {
-                    Ok(()) => {
+                    Ok(id) => {
                         self.error = false;
+                        self.wizard_undo_completed(id);
                         #[cfg(test)]
                         {
                             self.preference_undo = None;
@@ -356,6 +387,11 @@ impl Settings {
         self.last_desktop_change = navigation::latest_desktop_change();
         self.checkpoint_session_drafts();
         let mut tasks = vec![task];
+        if self.page == Page::General
+            && (self.support.recent_open || self.app_settings_page == super::AppSettingsPage::Help)
+        {
+            tasks.push(self.load_support());
+        }
         while !self.native_busy {
             let Some(message) = self.native_deferred.pop_front() else {
                 break;
@@ -399,4 +435,103 @@ fn same_slider(a: &Message, b: &Message) -> bool {
             Message::DesktopEditor(Edit::Spacing(_))
         )
     )
+}
+
+#[cfg(test)]
+mod review030_tests {
+    use super::*;
+    use crate::displays::test_support::isolated;
+    use cosmic::Application;
+    use cosmic::iced::futures::StreamExt;
+
+    #[test]
+    fn review030_native_recovery_refreshes_preferences_flags_and_undo_before_watchers() {
+        if isolated(
+            "settings::native_jobs::review030_tests::review030_native_recovery_refreshes_preferences_flags_and_undo_before_watchers",
+        ) {
+            return;
+        }
+        use crate::desktop::{
+            DesktopPatch, Owner,
+            store::{Fault, widget::WidgetPatch},
+        };
+        let root =
+            std::path::PathBuf::from(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap());
+        crate::desktop::islands::fixture_installed(&root);
+        // Force the actual native-worker boundary without invoking a real helper.
+        std::fs::write(root.join("status-islands-probe.py"), "import pathlib\nprint((pathlib.Path(__file__).parent/'islands-installation.json').read_text())\n").unwrap();
+        for restore in [true, false] {
+            Config::save_changes(serde_json::json!({"theme":"teal"})).unwrap();
+            let store = crate::desktop::DesktopStore::from_env().unwrap();
+            let prior = store.latest_change().unwrap().map(|c| c.id);
+            let mut patch = WidgetPatch::new();
+            patch
+                .set("/theme", Some("teal".into()), Some("ocean".into()))
+                .unwrap();
+            store.inject(Some(Fault::InterruptBeforeRecord));
+            assert!(
+                store
+                    .apply_owned(
+                        &DesktopPatch::new(),
+                        Some(&patch),
+                        Owner::Profile,
+                        "Interrupted theme"
+                    )
+                    .is_err()
+            );
+            store.inject(None);
+            assert_eq!(Config::load().theme, "ocean");
+            let (mut app, _) = Settings::init(Core::default(), Page::DesktopDock);
+            assert_eq!(app.config.theme, "ocean");
+            assert!(app.desktop.recovery().is_some());
+            let revision = crate::desktop::store::revision();
+            let edit = if restore {
+                desktop::Message::Recover
+            } else {
+                desktop::Message::KeepRecovery
+            };
+            let task = app.update(Message::DesktopEditor(edit));
+            assert!(app.native_busy, "test must use the real worker path");
+            let messages = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut messages = Vec::new();
+                    if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                        while let Some(action) = stream.next().await {
+                            if let cosmic::iced::runtime::Action::Output(cosmic::Action::App(
+                                message,
+                            )) = action
+                            {
+                                messages.push(message);
+                            }
+                        }
+                    }
+                    messages
+                });
+            assert_eq!(
+                crate::desktop::store::revision(),
+                revision,
+                "recovery does not advance ordinary-write revision"
+            );
+            assert_eq!(messages.len(), 1);
+            for message in messages {
+                assert!(matches!(message, Message::NativeDone(_)));
+                // Deliver completion alone: no Tick, Preview, or filesystem event.
+                let _ = app.update(message);
+            }
+            assert!(!app.native_busy);
+            assert!(app.desktop.recovery().is_none());
+            assert!(store.pending_recovery().unwrap().is_none());
+            assert_eq!(app.config.theme, if restore { "teal" } else { "ocean" });
+            assert_eq!(app.config.theme, Config::load().theme);
+            assert_eq!(
+                app.last_desktop_change
+                    .as_ref()
+                    .map(|(_, _, id)| id.clone()),
+                prior
+            );
+        }
+    }
 }

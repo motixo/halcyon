@@ -1,17 +1,12 @@
-//! The built-in setups. Six starter looks each set a whole desktop: a
-//! bundled Halcyon wallpaper whose colors the widgets, windows, dock and
-//! panel follow, and a widget style. They share one layout: a pill dock,
-//! a pill Islands panel on top, a see-through At a glance and the system
-//! monitor. "Clean desktop" is a quick switch
-//! that only hides things. Every record goes through the same `import` as
-//! a shared file, so a preset can express nothing an imported profile could
-//! not. Fonts, icon themes, monitor bindings, applet arrangements, locations
-//! and projects stay the user's. Loading presets reads nothing and writes
-//! nothing; `fitted` adapts one to the user's configuration.
+//! Curated desktop setups, each with a distinct purpose and widget composition.
+//! Stable IDs keep existing schedules working. Selecting is read-only; Apply
+//! uses the same scoped plan and Undo as saved setups. Widget layout is an
+//! explicit replacement, while notes, accounts, folders, display assignments,
+//! applets and timer state remain the user's. Missing resources degrade locally.
 use super::format::{Profile, import};
 use super::themes;
 use crate::desktop_theme::Family;
-use dock_islands_core::Placement;
+use dock_islands_core::{Arrangement, Placement, Section, Separate, Settings, Together};
 use serde_json::{Value, json};
 
 /// A built-in profile: stable ID, short description and the record.
@@ -32,9 +27,7 @@ const RENAMED: [(&str, &str); 3] = [
     ("workbench", "halcyon"),
 ];
 
-/// A starter look differs only in how it looks: wallpaper, style and the
-/// colors taken from the wallpaper. What is on the desktop is the same for
-/// all of them (see `record`).
+/// A coordinated appearance paired with a useful desktop composition.
 struct Look {
     id: &'static str,
     name: &'static str,
@@ -57,8 +50,8 @@ const PILL: u32 = crate::desktop::panels::MAX_RADIUS;
 const LOOKS: [Look; 6] = [
     Look {
         id: "halcyon",
-        name: "Halcyon",
-        description: "Frosted glass over the night sea.",
+        name: "Everyday",
+        description: "Your day at a glance, with system activity off to the side.",
         family: Family::Frosted,
         wallpaper: "halcyon-night",
         palette: "ocean",
@@ -67,8 +60,8 @@ const LOOKS: [Look; 6] = [
     },
     Look {
         id: "calm",
-        name: "Calm",
-        description: "Soft cards over still teal water.",
+        name: "Slow morning",
+        description: "The time, the weather, and a little space to collect your thoughts.",
         family: Family::Soft,
         wallpaper: "halcyon-calm",
         palette: "teal",
@@ -77,8 +70,8 @@ const LOOKS: [Look; 6] = [
     },
     Look {
         id: "evening",
-        name: "Evening",
-        description: "Soft lavender cards at dusk.",
+        name: "After hours",
+        description: "A quiet clock and your music. Leave the workday behind.",
         family: Family::Soft,
         wallpaper: "halcyon-evening",
         palette: "lavender",
@@ -87,8 +80,8 @@ const LOOKS: [Look; 6] = [
     },
     Look {
         id: "focus",
-        name: "Focus",
-        description: "Bare text over quiet mountain mist.",
+        name: "Deep work",
+        description: "One timer, a quiet clock, and room for the task in front of you.",
         family: Family::Bare,
         wallpaper: "halcyon-focus",
         palette: "graphite",
@@ -97,8 +90,8 @@ const LOOKS: [Look; 6] = [
     },
     Look {
         id: "paper",
-        name: "Paper",
-        description: "Light mode, warm paper cards and a serif clock.",
+        name: "Writing desk",
+        description: "A warm, light desktop with a notebook always within reach.",
         family: Family::Paper,
         wallpaper: "halcyon-paper",
         palette: "amber",
@@ -107,8 +100,8 @@ const LOOKS: [Look; 6] = [
     },
     Look {
         id: "rose",
-        name: "Rosé",
-        description: "Rose glass over a warm sunset.",
+        name: "Studio",
+        description: "Ideas on the left. Projects and system activity on the right.",
         family: Family::Glass,
         wallpaper: "halcyon-rose",
         palette: "rose",
@@ -136,25 +129,20 @@ fn record(look: &Look) -> Value {
     base.appearance_only = false;
     base.appearance = Some(themes::appearance(look.family, Some(look.seed)));
     let mut value = serde_json::to_value(base).expect("profiles serialize");
-    // Dock and panel float as pills in a dark tint of the wallpaper's
-    // color, like the windows; the panel shows Islands kept together (a
-    // plain bar where the Islands component can't run). Where they sit,
-    // their applets and the islands' arrangement stay the person's.
+    // Keep applets and physical outputs; vary the bar treatment and whether
+    // the dock steps aside. The panel remains available in every setup.
     let bar = json!({"background": crate::desktop::panels::Background::ThemeDefault,
-        "floating": true, "margin": 6, "border_radius": PILL});
-    let islands = dock_islands_core::Settings {
-        enabled: true,
-        placement: Placement::Together,
-        gap: look.family.spec().bar.island_gap,
-        ..Default::default()
-    };
+        "floating": !look.light, "margin": if look.light { 0 } else { 6 },
+        "border_radius": if look.light { 12 } else { PILL }});
+    let islands = islands_composition(look.id).expect("curated setup");
     merge(
         &mut value,
         json!({
             "name": look.name,
             "appearance": {"mode": if look.light { "light" } else { "dark" }},
             "widget_style": {"theme": look.palette,
-                "appearance": {"accent": look.seed, "wallpaper_colors": true},
+                "appearance": {"accent": look.seed, "wallpaper_colors": true,
+                    "wallpaper_light": look.light},
                 // A see-through At a glance (on a panel over a light
                 // wallpaper, where light text wouldn't read), and a system
                 // monitor that shows only what every computer has.
@@ -163,21 +151,183 @@ fn record(look: &Look) -> Value {
                 "devbox": {"cpu": true, "gpu": true, "memory": true, "disk": true,
                     "network": true, "uptime": true, "swap": false, "services": false}},
             "wallpaper": {"background": {"source": {"bundled": look.wallpaper}, "fit": "fill"}},
-            // Calendar stays off until someone connects one; the clock
-            // still shows the date.
-            "widget_layout": {"enabled_widgets": ["devbox"],
-                "glance": {"enabled": true, "initialized": true, "show_clock": true,
-                    "show_weather": true, "show_calendar": false}},
+            "widget_layout": composition(look.id),
             "dock": bar.clone(),
             "panel": bar,
         }),
     );
     merge(
         &mut value["panel"],
-        json!({"spacing": 6, "padding": 1,
+        json!({"spacing": 6, "padding": 2, "floating": true, "margin": if look.light { 8 } else { 6 },
             "islands": serde_json::to_value(islands).expect("islands serialize")}),
     );
+    merge(
+        &mut value["dock"],
+        json!({"autohide":
+        if matches!(look.id, "focus" | "evening") { "Always" } else { "Never" }}),
+    );
     value
+}
+
+/// Portable group placement: moves no applet between groups and contains no
+/// connector names. Every recipe has an explicit, non-default arrangement;
+/// the planner can distinguish it from a style that preserves placement.
+pub fn islands_composition(id: &str) -> Option<Settings> {
+    use Section::{Center, End, Start};
+    let (placement, gap, together, separate) = match id {
+        "halcyon" => (
+            Placement::Separate,
+            18,
+            Together::default(),
+            Separate {
+                positions: [500, 5000, 9500],
+                ..Default::default()
+            },
+        ),
+        "focus" => (
+            Placement::Together,
+            10,
+            Together {
+                order: [Center, Start, End],
+                position: 5000,
+            },
+            Separate::default(),
+        ),
+        "paper" => (
+            Placement::Separate,
+            24,
+            Together::default(),
+            Separate {
+                positions: [1800, 5000, 8200],
+                ..Default::default()
+            },
+        ),
+        "rose" => (
+            Placement::Separate,
+            16,
+            Together::default(),
+            Separate {
+                positions: [500, 2000, 9500],
+                ..Default::default()
+            },
+        ),
+        "calm" => (
+            Placement::Together,
+            28,
+            Together {
+                position: 5500,
+                ..Default::default()
+            },
+            Separate::default(),
+        ),
+        "evening" => (
+            Placement::Together,
+            12,
+            Together {
+                position: 9500,
+                ..Default::default()
+            },
+            Separate::default(),
+        ),
+        _ => return None,
+    };
+    Some(Settings {
+        enabled: true,
+        placement,
+        gap,
+        default_layout: Arrangement { together, separate },
+        ..Default::default()
+    })
+}
+
+pub fn islands_description(id: &str) -> Option<&'static str> {
+    Some(match id {
+        "halcyon" => "Three islands, balanced across the panel",
+        "focus" => "A compact group in the center",
+        "paper" => "Three inset islands with soft square corners",
+        "rose" => "Two islands to the left, one to the right",
+        "calm" => "A relaxed center group with room between islands",
+        "evening" => "A small group tucked to the right",
+        _ => return None,
+    })
+}
+
+/// No content or account fields: switching the visible tools never erases data.
+fn composition(id: &str) -> Value {
+    let (widgets, glance, weather, notes, music, focus, positions) = match id {
+        "halcyon" => (
+            json!(["devbox"]),
+            true,
+            true,
+            false,
+            false,
+            false,
+            json!({"glance":[0.035,0.09],"devbox":[0.97,0.58]}),
+        ),
+        "calm" => (
+            json!([]),
+            true,
+            true,
+            true,
+            false,
+            false,
+            json!({"glance":[0.06,0.12],"notes":[0.92,0.58]}),
+        ),
+        "evening" => (
+            json!(["clock"]),
+            false,
+            false,
+            false,
+            true,
+            false,
+            json!({"clock":[0.07,0.1],"music":[0.92,0.82]}),
+        ),
+        "focus" => (
+            json!(["clock"]),
+            false,
+            false,
+            false,
+            false,
+            true,
+            json!({"clock":[0.06,0.12],"focus":[0.93,0.75]}),
+        ),
+        "paper" => (
+            json!(["clock"]),
+            false,
+            false,
+            true,
+            false,
+            false,
+            json!({"clock":[0.05,0.1],"notes":[0.92,0.35]}),
+        ),
+        "rose" => (
+            json!(["devbox", "projects"]),
+            false,
+            false,
+            true,
+            false,
+            false,
+            json!({"notes":[0.04,0.55],"devbox":[0.97,0.1],"projects":[0.97,0.92]}),
+        ),
+        _ => unreachable!("known curated setup"),
+    };
+    json!({"enabled_widgets": widgets, "widget_positions": positions,
+        "glance": {"enabled":glance,"initialized":true,"show_clock":true,
+            "show_weather":weather,"show_calendar":false},
+        "notes":{"enabled":notes},"music":{"enabled":music},"focus":{"enabled":focus}})
+}
+
+/// Short, purpose-led labels for the setup browser; stable IDs are internal.
+pub fn occasion(id: &str) -> &'static str {
+    match id {
+        "halcyon" => "A little of everything",
+        "calm" => "Start gently",
+        "focus" => "Make room to concentrate",
+        "paper" => "Think on paper",
+        "rose" => "Build something",
+        "evening" => "Switch off from work",
+        _ => "Your desktop, your way",
+    }
 }
 
 const CLEAN_RECORD: &str = r##"{
@@ -243,29 +393,10 @@ pub fn islands_available(store: &crate::desktop::DesktopStore) -> bool {
     crate::desktop::islands::Installation::discover(store).installed()
 }
 
-/// A starter look adds the widgets it places and never takes away what
-/// someone set up themselves. What their saved configuration holds is
-/// theirs, even when it equals the defaults: a widget list of their own gains
-/// the system monitor, an At a glance they set up (on or off) stays as it
-/// is, and their system monitor keeps its rows. A new person gets the look's.
-fn keep_own_widgets(preset: &mut Preset, config: &crate::config::Config) {
-    let saved = config.saved;
-    if let Some(Value::Object(layout)) = preset.profile.widget_layout.as_mut() {
-        if saved.widgets
-            && let Some(Value::Array(widgets)) = layout.get_mut("enabled_widgets")
-        {
-            for widget in &config.enabled_widgets {
-                let widget = Value::String(widget.clone());
-                if !widgets.contains(&widget) {
-                    widgets.push(widget);
-                }
-            }
-        }
-        if saved.glance || config.glance.initialized {
-            layout.remove("glance");
-        }
-    }
-    if saved.devbox
+/// Keep a person's selected system readings. The recipe controls visibility
+/// and position, not the information they've configured inside a widget.
+fn keep_widget_content(preset: &mut Preset, config: &crate::config::Config) {
+    if config.saved.devbox
         && let Some(Value::Object(style)) = preset.profile.widget_style.as_mut()
     {
         style.remove("devbox");
@@ -293,10 +424,14 @@ pub fn fitted(
         widgets.retain(|widget| widget != "projects");
     }
     if preset.id != CLEAN {
-        keep_own_widgets(&mut preset, config);
+        keep_widget_content(&mut preset, config);
     }
     if !installed(&preset, bundled_dir) {
         preset.profile.wallpaper = None;
+        if let Some(style) = preset.profile.widget_style.as_mut() {
+            // With no bundled picture, retain the current wallpaper's ink.
+            style["appearance"]["wallpaper_light"] = config.appearance.wallpaper_light.into();
+        }
     }
     if !islands {
         for look in [&mut preset.profile.dock, &mut preset.profile.panel]
@@ -379,6 +514,35 @@ mod tests {
     }
 
     #[test]
+    fn writing_desk_and_dark_setup_apply_readable_wallpaper_ink() {
+        let (_fixture, store) = desk("preset-wallpaper-ink");
+        let installed = Installed::discover(&store);
+        let dir = crate::desktop::wallpaper::bundled_dir(&store);
+        for (id, light) in [("paper", true), ("halcyon", false)] {
+            let config = crate::config::Config::from_bytes(
+                &std::fs::read(store.app_config().unwrap()).unwrap(),
+            )
+            .unwrap();
+            let p = fitted(preset(id).unwrap(), &config, &dir, false).profile;
+            apply(
+                &store,
+                &plan(&store, &installed, &p, &p.domains().into_iter().collect()),
+            )
+            .unwrap();
+            // Settings acknowledges a setup's colors; they must already be
+            // correct without waiting for a later wallpaper change.
+            crate::desktop::wallpaper::automatic::keep_manual_colors(&store).unwrap();
+            let applied = crate::config::Config::from_bytes(
+                &std::fs::read(store.app_config().unwrap()).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(applied.appearance.wallpaper_light, light);
+            let ink = crate::desktop_theme::luminance(applied.wallpaper_palette().foreground);
+            assert!(if light { ink < 0.15 } else { ink > 0.8 }, "{id}: {ink}");
+        }
+    }
+
+    #[test]
     fn presets_are_distinct_valid_complete_looks_and_loading_writes_nothing() {
         let (fixture, store) = desk("presets-valid");
         let before = fixture.tree();
@@ -446,45 +610,29 @@ mod tests {
                     "{}",
                     preset.id
                 );
-                // One layout for every look: pill dock, pill Islands panel on
-                // top kept together, see-through At a glance without the
-                // calendar, and only the system monitor.
+                // Every recipe uses installed native bars, never applet rewrites.
                 let panel = profile.panel.as_ref().unwrap();
-                let islands = panel.islands.as_ref().unwrap();
-                assert!(islands.enabled, "{}", preset.id);
-                assert_eq!(islands.placement, Placement::Together, "{}", preset.id);
-                assert!(
-                    panel.anchor.is_none(),
-                    "where the panel sits stays the person's"
+                assert_eq!(
+                    panel.islands.as_ref(),
+                    islands_composition(preset.id).as_ref()
                 );
+                assert!(panel.anchor.is_none());
                 assert!(profile.dock.as_ref().unwrap().islands.is_none());
                 for bar in [panel, profile.dock.as_ref().unwrap()] {
-                    assert_eq!(bar.floating, Some(true), "{}", preset.id);
-                    assert_eq!(bar.border_radius, Some(PILL), "{}", preset.id);
-                    assert!(bar.autohide.is_none(), "{}", preset.id);
                     assert!(matches!(
                         bar.background,
                         Some(crate::desktop::panels::Background::ThemeDefault)
                     ));
                 }
-                // See-through, except on a panel over the light wallpaper.
-                let glance = if preset.id == "paper" {
-                    "panel"
-                } else {
-                    "transparent"
-                };
-                assert_eq!(style["glance"]["style"], glance, "{}", preset.id);
-                assert_eq!(style["glance"]["own_background"], true);
-                assert_eq!(style["devbox"]["services"], false);
-                for metric in ["cpu", "gpu", "memory", "disk", "network", "uptime"] {
-                    assert_eq!(style["devbox"][metric], true, "{metric}");
-                }
                 let layout = profile.widget_layout.as_ref().unwrap();
-                assert_eq!(layout["enabled_widgets"], json!(["devbox"]));
-                assert_eq!(layout["glance"]["enabled"], true);
                 assert_eq!(layout["glance"]["show_calendar"], false);
                 for widget in ["music", "notes", "focus"] {
-                    assert!(layout.get(widget).is_none(), "{widget} is left alone");
+                    assert!(layout[widget]["enabled"].is_boolean());
+                    assert_eq!(
+                        layout[widget].as_object().unwrap().len(),
+                        1,
+                        "visibility only"
+                    );
                 }
                 // The installed COSMIC panel crashes with a frosted background.
                 let raw = serde_json::to_string(profile).unwrap();
@@ -524,6 +672,177 @@ mod tests {
             before,
             "loading and planning presets writes nothing"
         );
+    }
+
+    #[test]
+    fn setup_islands_are_distinct_and_fit_short_long_and_empty_groups() {
+        use dock_islands_core::{Span, resolve};
+        let mut signatures = std::collections::BTreeSet::new();
+        for id in ["halcyon", "focus", "paper", "rose", "calm", "evening"] {
+            let settings = islands_composition(id).unwrap();
+            settings.validate().unwrap();
+            // Private native acceptance consumes the exact compiled recipes.
+            if let Some(path) = std::env::var_os("HALCYON_SETUP_RECIPE_EVIDENCE") {
+                let path = std::path::PathBuf::from(path);
+                std::fs::create_dir_all(&path).unwrap();
+                std::fs::write(
+                    path.join(format!("{id}.json")),
+                    serde_json::to_vec_pretty(&settings).unwrap(),
+                )
+                .unwrap();
+                std::fs::write(
+                    path.join(format!("{id}.ron")),
+                    ron::to_string(&settings).unwrap(),
+                )
+                .unwrap();
+            }
+            assert_ne!(
+                settings.default_layout,
+                Arrangement::default(),
+                "{id} must request its composition"
+            );
+            assert!(settings.outputs.is_empty());
+            let layout = resolve(
+                &settings,
+                "",
+                Span {
+                    start: 0.,
+                    length: 1920.,
+                },
+                [96., 80., 224.],
+                32.,
+            );
+            assert!(
+                signatures.insert(format!("{:?}", layout.spans)),
+                "{id} repeats another arrangement"
+            );
+            for width in [240., 480., 900., 1920.] {
+                for natural in [
+                    [96., 80., 224.],
+                    [0., 80., 224.],
+                    [4000., 40., 800.],
+                    [0., 0., 80.],
+                ] {
+                    let layout = resolve(
+                        &settings,
+                        "",
+                        Span {
+                            start: 0.,
+                            length: width,
+                        },
+                        natural,
+                        32.,
+                    );
+                    let mut spans: Vec<_> = layout.spans.into_iter().flatten().collect();
+                    spans.sort_by(|a, b| a.start.total_cmp(&b.start));
+                    assert!(
+                        spans
+                            .iter()
+                            .all(|s| s.start >= -0.001 && s.end() <= width + 0.001),
+                        "{id}: {spans:?}"
+                    );
+                    assert!(
+                        spans
+                            .windows(2)
+                            .all(|pair| pair[0].end() <= pair[1].start + 0.001),
+                        "{id}: {spans:?}"
+                    );
+                    for (i, n) in natural.into_iter().enumerate() {
+                        assert_eq!(layout.spans[i].is_some(), n > 0.);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn setup_islands_plan_preview_and_undo_preserve_applets_enablement_and_local_layouts() {
+        use crate::desktop::panels::{PanelDraft, PanelKind};
+        let (fixture, store) = desk("setup-islands-plan");
+        crate::desktop::islands::fixture_installed(&fixture.0);
+        fixture.system(
+            PANEL,
+            "plugins_wings",
+            "Some(([\"custom.Start\"],[\"custom.End\",\"custom.End\"]))",
+        );
+        fixture.system(PANEL, "plugins_center", "Some([\"custom.Center\"])");
+        let key = crate::desktop::islands::key(PanelKind::Panel);
+        for enabled in [false, true] {
+            let mut current = Settings {
+                enabled,
+                ..Default::default()
+            };
+            current.default_layout.together.position = 1234;
+            current
+                .outputs
+                .insert("DP-1".into(), current.default_layout.clone());
+            fixture.user(
+                key.namespace(),
+                key.key(),
+                &ron::to_string(&current).unwrap(),
+            );
+            let baseline = PanelDraft::load(&store, PanelKind::Panel).unwrap();
+            for id in ["halcyon", "focus", "paper", "rose", "calm", "evening"] {
+                let preset = preset(id).unwrap();
+                let look = preset.profile.panel.as_ref().unwrap();
+                let selected = [Domain::Panel].into_iter().collect();
+                let proposal = plan(
+                    &store,
+                    &Installed::discover(&store),
+                    &preset.profile,
+                    &selected,
+                );
+                assert!(
+                    proposal.can_apply(),
+                    "{id}: {:?}",
+                    proposal.blocking_reasons()
+                );
+                let desired = proposal
+                    .patch()
+                    .get(&key)
+                    .unwrap()
+                    .desired
+                    .as_ref()
+                    .unwrap()
+                    .decode::<Settings>()
+                    .unwrap();
+                assert_eq!(desired.enabled, enabled);
+                assert_eq!(
+                    desired.default_layout,
+                    look.islands.as_ref().unwrap().default_layout
+                );
+                assert_eq!(desired.placement, look.islands.as_ref().unwrap().placement);
+                assert_eq!(desired.outputs, current.outputs);
+                assert!(
+                    proposal
+                        .patch()
+                        .keys()
+                        .all(|k| !k.key().starts_with("plugins_") && k.key() != "output")
+                );
+                let preview = super::super::preview_panel_style(baseline.clone(), look, true);
+                assert_eq!(preview.islands().known(), Some(&desired));
+                assert_eq!(preview.applets(), baseline.applets());
+                let applied = apply(&store, &proposal).unwrap();
+                assert_eq!(
+                    PanelDraft::load(&store, PanelKind::Panel)
+                        .unwrap()
+                        .islands()
+                        .known(),
+                    Some(&desired)
+                );
+                store.undo_latest(&applied.id).unwrap();
+                let restored = PanelDraft::load(&store, PanelKind::Panel).unwrap();
+                assert_eq!(restored.islands().known(), Some(&current));
+                assert_eq!(restored.applets(), baseline.applets());
+                let excluded = plan(
+                    &store,
+                    &Installed::discover(&store),
+                    &preset.profile,
+                    &[Domain::WidgetStyle].into_iter().collect(),
+                );
+                assert!(excluded.patch().get(&key).is_none());
+            }
+        }
     }
 
     #[test]
@@ -599,7 +918,8 @@ mod tests {
         assert_eq!(config.appearance.accent, Some([0x6a, 0xc2, 0xc6]));
         assert!(config.appearance.wallpaper_colors);
         assert!(config.glance.enabled && config.glance.own_background);
-        assert!(config.widget_visible(Widget::Devbox));
+        assert!(config.widget_visible(Widget::Notes));
+        assert!(!config.widget_visible(Widget::Devbox));
         assert!(!config.glance.show_calendar);
         assert!(config.devbox.gpu && config.devbox.uptime && !config.devbox.services);
         // After Clean desktop nothing of theirs shows, so only the look's.
@@ -617,70 +937,101 @@ mod tests {
     }
 
     #[test]
-    fn a_look_adds_its_widgets_and_keeps_what_someone_set_up() {
+    fn setups_replace_composition_but_preserve_content_and_custom_readings() {
         let dir = std::path::Path::new("/nonexistent");
-        let calm = || preset("calm").unwrap();
-        let layout = |p: &Preset| p.profile.widget_layout.clone().unwrap();
-        // A new person gets exactly the look's widgets.
-        let fresh = fitted(calm(), &crate::config::Config::default(), dir, false);
-        assert_eq!(layout(&fresh)["enabled_widgets"], json!(["devbox"]));
-        assert_eq!(layout(&fresh)["glance"]["show_calendar"], false);
-        assert!(
-            fresh
-                .profile
-                .widget_style
-                .as_ref()
-                .unwrap()
-                .get("devbox")
-                .is_some()
-        );
-        // Someone with their own setup keeps it.
         let own = crate::config::Config::from_bytes(
             br#"{"enabled_widgets":["calendar","weather"],"glance":{"enabled":false},"devbox":{"swap":false}}"#,
-        )
-        .unwrap();
-        let kept = fitted(calm(), &own, dir, false);
-        assert_eq!(
-            layout(&kept)["enabled_widgets"],
-            json!(["devbox", "calendar", "weather"])
-        );
-        // At a glance they turned off stays off.
-        assert!(layout(&kept).get("glance").is_none());
+        ).unwrap();
+        let slow = fitted(preset("calm").unwrap(), &own, dir, false);
+        let layout = slow.profile.widget_layout.as_ref().unwrap();
+        assert_eq!(layout["enabled_widgets"], json!([]));
+        assert_eq!(layout["glance"]["enabled"], true);
+        assert_eq!(layout["notes"]["enabled"], true);
         assert!(
-            kept.profile
+            slow.profile
                 .widget_style
                 .as_ref()
                 .unwrap()
                 .get("devbox")
                 .is_none()
         );
-        // The look's style still applies.
-        assert_eq!(
-            kept.profile.widget_style.as_ref().unwrap()["glance"]["style"],
-            "transparent"
-        );
-        // Choices equal to the defaults are still theirs once saved.
-        let defaults_saved = crate::config::Config::from_bytes(
-            serde_json::to_vec(
-                &json!({"enabled_widgets": crate::config::Config::default().enabled_widgets}),
-            )
-            .unwrap()
-            .as_slice(),
-        )
-        .unwrap();
-        let kept = fitted(calm(), &defaults_saved, dir, false);
-        for widget in &crate::config::Config::default().enabled_widgets {
-            assert!(
-                layout(&kept)["enabled_widgets"]
-                    .as_array()
-                    .unwrap()
-                    .contains(&json!(widget)),
-                "{widget} kept"
-            );
+        let mut seen = std::collections::BTreeSet::new();
+        for id in ["halcyon", "calm", "evening", "focus", "paper", "rose"] {
+            let p = fitted(preset(id).unwrap(), &own, dir, false);
+            let v = p.profile.widget_layout.as_ref().unwrap();
+            let signature = json!([
+                v["enabled_widgets"],
+                v["glance"]["enabled"],
+                v["notes"]["enabled"],
+                v["music"]["enabled"],
+                v["focus"]["enabled"]
+            ])
+            .to_string();
+            assert!(seen.insert(signature), "{id} repeats another composition");
+            assert!(!v.to_string().contains("text"));
+            assert!(!v.to_string().contains("duration"));
         }
-        // Clean desktop still hides everything.
-        let clean = fitted(preset(CLEAN).unwrap(), &own, dir, false);
-        assert_eq!(layout(&clean)["enabled_widgets"], json!([]));
+        let studio = fitted(preset("rose").unwrap(), &own, dir, false);
+        assert!(
+            !studio.profile.widget_layout.as_ref().unwrap()["enabled_widgets"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("projects"))
+        );
+        let mut projects = own.clone();
+        projects.project_roots.push("/my/project".into());
+        let studio = fitted(preset("rose").unwrap(), &projects, dir, false);
+        assert!(
+            studio.profile.widget_layout.as_ref().unwrap()["enabled_widgets"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("projects"))
+        );
+    }
+
+    #[test]
+    fn curated_layout_can_be_excluded_and_every_setup_can_be_undone() {
+        let (fixture, store) = desk("curated-undo");
+        let installed = Installed::discover(&store);
+        let dir = crate::desktop::wallpaper::bundled_dir(&store);
+        let config =
+            crate::config::Config::from_bytes(&std::fs::read(store.app_config().unwrap()).unwrap())
+                .unwrap();
+        let original = std::fs::read(store.app_config().unwrap()).unwrap();
+        for id in ["halcyon", "calm", "evening", "focus", "paper", "rose"] {
+            let p = fitted(preset(id).unwrap(), &config, &dir, false).profile;
+            let selected = p.domains().into_iter().collect();
+            let plan = plan(&store, &installed, &p, &selected);
+            assert!(plan.can_apply(), "{id}: {:?}", plan.blocking_reasons());
+            let applied = apply(&store, &plan).unwrap();
+            let bytes = std::fs::read(store.app_config().unwrap()).unwrap();
+            let current: Value = serde_json::from_slice(&bytes).unwrap();
+            for key in ["location", "project_roots", "future_field"] {
+                assert_eq!(
+                    current[key],
+                    serde_json::from_slice::<Value>(&original).unwrap()[key],
+                    "{id}/{key}"
+                );
+            }
+            store.undo_latest(&applied.id).unwrap();
+            assert_eq!(
+                std::fs::read(store.app_config().unwrap()).unwrap(),
+                original,
+                "{id} undo"
+            );
+            assert_eq!(fixture.read(DOCK, "plugins_center"), None);
+            let selected = p
+                .domains()
+                .into_iter()
+                .filter(|d| *d != Domain::WidgetLayout)
+                .collect();
+            let filtered = super::super::plan(&store, &installed, &p, &selected);
+            assert!(!filtered.widget_patch().changes().any(|(pointer, _)| {
+                pointer.starts_with("/enabled_widgets")
+                    || pointer.ends_with("/enabled")
+                    || pointer.starts_with("/widget_positions/")
+            }));
+        }
     }
     #[test]
     fn task2_imported_islands_fields_adapt_without_sidecars_or_activation() {

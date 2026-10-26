@@ -141,7 +141,25 @@ untouched. The maintainer must inspect any customized current-population
 formulas and add that same criterion; do not reinterpret historical aggregates.
 `Summary!B9` remains the existing configuration status cell.
 
-## Maintainer deployment handoff (not performed here)
+## Live deployment status
+
+On 2026-10-26 the existing web-app deployment was upgraded to immutable version
+5, with schema 4 at the unchanged endpoint. The private workbook was backed up,
+the additive migration rehearsed on a private copy, and the setup writes applied
+through the Sheets API because remote Apps Script execution returned 403.
+The existing daily maintenance trigger was retained; its successful execution
+was visible in the project activity. The customized current-count formulas were
+updated to exclude opted-out installations. Existing records were preserved.
+
+Live verification covered status-only opt-out, activity suppression, explicit
+re-enable, detailed activity, duplicate activity/status, stale revisions and
+schema-2 compatibility. Synthetic rows were removed and aggregates checked.
+The accepted source avoids Apps Script's unsupported logical assignment syntax
+and accepts Sheets' native date coercion for the owned snapshot date. Local
+collector coverage is 38 passing tests. Restricted migration evidence remains
+outside the repository; release evidence contains only sanitized results.
+
+## Maintainer deployment procedure
 
 1. Keep publication on hold. Record the existing immutable Apps Script version,
    deployment ID/URL, Script Properties, trigger list, private sharing and Sheet

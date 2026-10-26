@@ -82,7 +82,11 @@ class Worker:
                     try:
                         if config:
                             for path,directory,entry in config.watch.registrations:
-                                parent_watch.add(path,directory,entry=entry)
+                                optional = (path,directory,entry) in config.watch.optional_registrations
+                                try:
+                                    parent_watch.add(path,directory,entry=entry,optional=optional)
+                                except (OSError, ValueError):
+                                    if not optional: raise
                         eligible=result is not None and not result.invalidated()
                         _send(child, {'eligible':eligible,
                             'watches':{str(k):list(v) for k,v in parent_watch.paths.items()},

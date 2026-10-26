@@ -123,7 +123,15 @@ impl DesktopStore {
             return Ok((patch, widgets));
         }
         let history = self.history_file()?;
-        let file = history.as_ref().and_then(undo::UndoFile::manual);
+        // An owned Cancel can reverse an older action. Its derivation chain
+        // must come from that receipt, never from the latest unrelated action.
+        let file = history.as_ref().and_then(|history| {
+            history
+                .history
+                .iter()
+                .chain(std::iter::once(history))
+                .find(|file| file.id == latest.id)
+        });
         let mut patch = DesktopPatch::new();
         for entry in latest.change.entries() {
             let mut expected = entry.after.clone();

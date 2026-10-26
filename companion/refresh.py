@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 
 import install
-from bundle_contract import canonical, digest, read_json, read_catalog_bytes, verify_bundle
+from bundle_contract import canonical, digest, read_json, read_catalog_bytes, verify_bundle, installed_package_status
 from panel_launcher import session_identity
 
 PACKAGE = 'cosmic-ext-halcyon-islands'
@@ -140,7 +140,7 @@ def _stage_locked(home, library, *, session, fixture, boundary, enable, context,
             return response('blocked', 'not_installed_package')
         result = subprocess.run(['/usr/bin/dpkg-query', '-W', '-f=${Status}\n${Version}', PACKAGE], capture_output=True, text=True, timeout=3)
         fields = result.stdout.splitlines()
-        if result.returncode or len(fields) != 2 or fields[0] != 'install ok installed':
+        if result.returncode or len(fields) != 2 or not installed_package_status(fields[0]):
             return response('blocked', 'package_absent')
     manifest, catalog = verify_bundle(library, 'companion-manifest.json', owner=os.getuid() if fixture else 0, context=context)
     if not fixture and manifest['package_version'] != fields[1]:

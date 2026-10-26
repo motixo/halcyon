@@ -1,7 +1,6 @@
 //! Workspaces subpage: a small diagram of the orientation and display mode,
 //! then Navigation, Multiple displays and Overview.
 use super::desktop::{ERROR, WARN, banner, conflict_banner, kept};
-use super::pages::section;
 use super::system_appearance::fill;
 use super::windows::{recovery_banner, store_pill};
 use super::*;
@@ -81,23 +80,21 @@ impl Settings {
             .spacing(2)
             .into()
         } else {
-            row::with_children(vec![
-                container(workspace_diagram(known.unwrap_or_default(), accent, height))
-                    .width(height * 2.4)
-                    .into(),
-                column::with_children(vec![
-                    split(
-                        heading("Workspaces", ""),
-                        store_pill(editor.store(), accent),
-                    ),
-                    label(summary(known), 12., MUTED),
-                ])
-                .spacing(4)
-                .width(Length::Fill)
-                .into(),
+            column::with_children(vec![
+                split(
+                    heading("Workspaces", ""),
+                    store_pill(editor.store(), accent),
+                ),
+                label(summary(known), 12., MUTED),
+                self.scene_frame(
+                    container(workspace_diagram(known.unwrap_or_default(), accent, height))
+                        .max_width(520)
+                        .width(Length::Fill)
+                        .into(),
+                    "Schematic · workspace orientation and display behavior",
+                ),
             ])
-            .spacing(18)
-            .align_y(Alignment::Center)
+            .spacing(16)
             .into()
         });
         if let Some(banner) = recovery_banner(
@@ -122,31 +119,33 @@ impl Settings {
             ));
         }
         items.push(workspaces_navigation(draft, known, accent));
-        items.push(section(vec![
-            label("Multiple displays", 16., FG),
-            choice(
-                known.map(|config| config.workspace_mode),
-                &[
-                    ("Separate on each display", WorkspaceMode::OutputBound),
-                    ("Shared across displays", WorkspaceMode::Global),
-                ],
-                Edit::Mode,
-                accent,
-            ),
-            label(
-                match known.map(|config| config.workspace_mode) {
-                    Some(WorkspaceMode::Global) => {
-                        "Switching workspaces changes every display together."
-                    }
-                    _ => "Each display switches its own workspaces.",
-                },
-                11.,
-                MUTED,
-            ),
-        ]));
-        items.push(section(vec![
-            label("Overview", 16., FG),
-            split(
+        items.push(group(
+            Some("Workspaces · displays"),
+            vec![
+                choice(
+                    known.map(|config| config.workspace_mode),
+                    &[
+                        ("Separate on each display", WorkspaceMode::OutputBound),
+                        ("Shared across displays", WorkspaceMode::Global),
+                    ],
+                    Edit::Mode,
+                    accent,
+                ),
+                label(
+                    match known.map(|config| config.workspace_mode) {
+                        Some(WorkspaceMode::Global) => {
+                            "Switching workspaces changes every display together."
+                        }
+                        _ => "Each display switches its own workspaces.",
+                    },
+                    11.,
+                    MUTED,
+                ),
+            ],
+        ));
+        items.push(group(
+            Some("Workspaces · overview"),
+            vec![split(
                 label("Typing in the overview", 13., FG),
                 choice(
                     known.map(|config| config.action_on_typing),
@@ -158,8 +157,8 @@ impl Settings {
                     Edit::Typing,
                     accent,
                 ),
-            ),
-        ]));
+            )],
+        ));
         column::with_children(items).spacing(16).into()
     }
 }
@@ -190,34 +189,36 @@ fn workspaces_navigation<'a>(
             .into(),
         Setting::Unsupported(_) => text::body("").into(),
     };
-    section(vec![
-        label("Navigation", 16., FG),
-        split(
-            label("Orientation", 13., FG),
-            choice(
-                known.map(|config| config.workspace_layout),
-                &[
-                    ("Vertical", WorkspaceLayout::Vertical),
-                    ("Horizontal", WorkspaceLayout::Horizontal),
-                ],
-                Edit::Layout,
-                accent,
-            ),
-        ),
-        split(
-            column::with_children(vec![
-                label("Wrap around", 13., FG),
-                label(
-                    "Moving past the last workspace returns to the first",
-                    11.,
-                    MUTED,
+    group(
+        Some("Workspaces · navigation"),
+        vec![
+            split(
+                label("Orientation", 13., FG),
+                choice(
+                    known.map(|config| config.workspace_layout),
+                    &[
+                        ("Vertical", WorkspaceLayout::Vertical),
+                        ("Horizontal", WorkspaceLayout::Horizontal),
+                    ],
+                    Edit::Layout,
+                    accent,
                 ),
-            ])
-            .spacing(2)
-            .into(),
-            wrap,
-        ),
-    ])
+            ),
+            split(
+                column::with_children(vec![
+                    label("Wrap around", 13., FG),
+                    label(
+                        "Moving past the last workspace returns to the first",
+                        11.,
+                        MUTED,
+                    ),
+                ])
+                .spacing(2)
+                .into(),
+                wrap,
+            ),
+        ],
+    )
 }
 
 /// Two displays and their workspaces: a strip beside (vertical) or below

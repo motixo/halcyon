@@ -128,3 +128,14 @@ test('a claimed Reporting snapshot refuses custom formulas or literals inside it
   }
  }
 });
+
+test('native Sheets date coercion keeps the owned reporting snapshot usable',()=>{
+ for(const operation of ['setup','post','maintenance']) {
+  const f=fixture();f.seed([legacy()]);f.sandbox.setup();
+  const tab=f.sheets.get('Reporting');
+  tab.put(1,2,new Date(new Date().toISOString().slice(0,10)+'T00:00:00Z'));
+  if(operation==='post') assert.equal(f.sandbox.doPost(off(1)).ok,true);
+  else f.sandbox[operation]();
+  tab.put(1,2,new Date(NaN));unchangedFailure(f,operation);
+ }
+});

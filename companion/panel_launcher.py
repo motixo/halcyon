@@ -61,6 +61,11 @@ def supported_system(versions):
         for system in SUPPORTED_SYSTEMS)
 
 
+def state_directory(home=None):
+    """Resolve the same persistent failure state for management and launch."""
+    return Path(os.environ.get('XDG_STATE_HOME') or (home or Path.home()) / '.local/state') / 'desktop-cards-panel'
+
+
 def digest(path):
     h=hashlib.sha256()
     with open(path,'rb') as f:
@@ -636,13 +641,33 @@ def pause(seconds):
     return stop.is_set()
 
 
+def retire_session_streams(pass_fds, env=None):
+    """A completed host consumed these streams; the next host connects afresh."""
+    environment = dict(os.environ if env is None else env)
+    retired = set()
+    for name in ('PANEL_NOTIFICATIONS_FD', 'WAYLAND_SOCKET'):
+        value = environment.pop(name, None)
+        try:
+            descriptor = int(value)
+        except (TypeError, ValueError):
+            continue
+        if descriptor in pass_fds:
+            retired.add(descriptor)
+    for descriptor in retired:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+    return tuple(fd for fd in pass_fds if fd not in retired), environment
+
+
 def stock_host(binary, pass_fds=(), limit=None, env=None, keep_running=False):
     """Run the stock host, restarting it here when it fails.
 
     cosmic-session's own restart delay doubles with every failure and never
     resets, reaching hours, so a failure is not handed back to it. A restarted
-    host cannot reuse the session's notifications stream, so it runs without
-    it until the next login."""
+    host cannot reuse either inherited session stream. It opens a fresh
+    WAYLAND_DISPLAY connection and runs without notifications until login."""
     failures, runs = 0, 0
     while True:
         started = time.monotonic()
@@ -660,10 +685,7 @@ def stock_host(binary, pass_fds=(), limit=None, env=None, keep_running=False):
         failures += 1
         sys.stderr.write('cosmic-panel exited (%s); restarting in %ds\n' % ('wedged' if wedged else code, delay))
         sys.stderr.flush()
-        if 'PANEL_NOTIFICATIONS_FD' in os.environ:
-            notifications = int(os.environ['PANEL_NOTIFICATIONS_FD'])
-            pass_fds = tuple(fd for fd in pass_fds if fd != notifications)
-            env = {k: v for k, v in os.environ.items() if k != 'PANEL_NOTIFICATIONS_FD'}
+        pass_fds, env = retire_session_streams(pass_fds, env)
         if pause(delay):
             return 0
 
@@ -690,20 +712,18 @@ def supervise(binary, fallback, pass_fds=(), failed=None, session_socket=False, 
         # a new panel would break notifications. The marker selects stock
         # on that restart, which receives the fresh socket from the session.
         return 75
+    env = None
+    if started:
+        pass_fds, env = retire_session_streams(pass_fds)
     if not persisted:
         # Without a marker, keep the stock decision and lock in this process
         # until logout. A consumed notification stream cannot be reused.
-        env = None
-        if session_socket and started:
-            notifications = os.environ.get('PANEL_NOTIFICATIONS_FD')
-            pass_fds = tuple(fd for fd in pass_fds if str(fd) != notifications)
-            env = {k: v for k, v in os.environ.items() if k != 'PANEL_NOTIFICATIONS_FD'}
         return stock_host(fallback, pass_fds, env=env, keep_running=True)
-    return stock_host(fallback, pass_fds)
+    return stock_host(fallback, pass_fds, env=env)
 
 def main(bundle=None, pointer=None, deadline=None):
     data=Path(os.environ.get('XDG_DATA_HOME',Path.home()/'.local/share'))
-    state=Path(os.environ.get('XDG_STATE_HOME',Path.home()/'.local/state'))/'desktop-cards-panel'
+    state=state_directory()
     bundle=bundle or data/'cosmic-desktop-cards/companion'
     selection=data/'cosmic-desktop-cards/companion/selection.json'
     try:

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -15,6 +16,33 @@ spec.loader.exec_module(projects)
 
 
 class SafeProjectStatus(unittest.TestCase):
+    def test_auditfix_project_metadata_rejects_special_and_oversized_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / 'safe-project'
+            root.mkdir()
+            manifest = root / 'package.json'
+            probe = '''import importlib.util, pathlib, resource, sys
+resource.setrlimit(resource.RLIMIT_AS, (96*1024*1024, 96*1024*1024))
+spec=importlib.util.spec_from_file_location('projects',sys.argv[1])
+m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
+print(m.project_title(pathlib.Path(sys.argv[2])))
+'''
+            for kind in ('zero', 'fifo', 'oversized', 'valid'):
+                with self.subTest(kind=kind):
+                    manifest.unlink(missing_ok=True)
+                    if kind == 'zero':
+                        manifest.symlink_to('/dev/zero')
+                    elif kind == 'fifo':
+                        os.mkfifo(manifest)
+                    elif kind == 'oversized':
+                        manifest.write_bytes(b' ' * (128*1024+1))
+                    else:
+                        manifest.write_text('{"displayName":"A real title"}')
+                    result = subprocess.run([sys.executable, '-c', probe, projects.__file__, str(root)],
+                                            capture_output=True, text=True, timeout=3)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), 'A real title' if kind == 'valid' else 'Safe Project')
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

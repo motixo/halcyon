@@ -16,7 +16,6 @@ pub enum Message {
         String,
         Result<Vec<account::CalendarChoice>, account::Problem>,
     ),
-    Select(usize),
     Toggle(usize, bool),
     SubscriptionForm(bool),
     SubscriptionName(String),
@@ -35,8 +34,6 @@ pub struct Editor {
     pub connection: account::Connection,
     pub client_ready: bool,
     pub choices: Vec<account::CalendarChoice>,
-    pub labels: Vec<String>,
-    pub selected: Option<usize>,
     pub pending: Option<account::Authorization>,
     pub busy: bool,
     pub connecting: bool,
@@ -55,8 +52,6 @@ impl Default for Editor {
             connection: account::load_connection(),
             client_ready: account::load_client().is_ok(),
             choices: vec![],
-            labels: vec![],
-            selected: None,
             pending: None,
             busy: false,
             connecting: false,
@@ -84,8 +79,6 @@ impl Editor {
         if self.connection != connection {
             self.connection = connection;
             self.choices.clear();
-            self.labels.clear();
-            self.selected = None;
             self.loading = false;
             self.confirm_disconnect = false;
         }
@@ -236,34 +229,18 @@ impl Settings {
                 self.calendar.loading = false;
                 match result {
                     Ok(choices) => {
-                        self.calendar.selected = choices
-                            .iter()
-                            .position(|choice| choice.id == self.calendar.connection.calendar_id);
-                        self.calendar.labels =
-                            choices.iter().map(|choice| choice.name.clone()).collect();
+                        match account::refresh_metadata(&self.calendar.connection, &choices) {
+                            Ok(connection) => self.calendar.connection = connection,
+                            Err(problem) => {
+                                self.calendar.error = Some(problem.to_string());
+                                return Task::none();
+                            }
+                        }
                         self.calendar.choices = choices;
                         self.calendar.error = self.calendar.connection.selected_calendars().iter().any(|selected| !self.calendar.choices.iter().any(|c| c.id == selected.id)).then(||
                             "A selected calendar is no longer available. Choose calendars again.".into());
                     }
                     Err(problem) => self.calendar.error = Some(problem.to_string()),
-                }
-            }
-            Message::Select(index) => {
-                if self.calendar.busy {
-                    return Task::none();
-                }
-                if let Some(choice) = self.calendar.choices.get(index) {
-                    match account::save_selection(&self.calendar.connection, choice) {
-                        Ok(connection) => {
-                            self.calendar.connection = connection;
-                            self.calendar.selected = Some(index);
-                            // The revision change fences the earlier check's
-                            // response, so it must also release that check.
-                            self.calendar.loading = false;
-                            self.calendar.error = None;
-                        }
-                        Err(problem) => self.calendar.error = Some(problem.to_string()),
-                    }
                 }
             }
             Message::Toggle(index, enabled) => {
@@ -492,8 +469,13 @@ mod tests {
         // the network or a keyring. Its response is delivered explicitly below.
         let _ = settings.update_calendar(Message::Check);
         assert!(settings.calendar.loading);
-        let _ = settings.update_calendar(Message::Select(1));
-        assert_eq!(account::load_connection().calendar_id, "team");
+        let _ = settings.update_calendar(Message::Toggle(1, true));
+        assert!(
+            account::load_connection()
+                .selected_calendars()
+                .iter()
+                .any(|c| c.id == "team")
+        );
         assert!(
             !settings.calendar.loading,
             "the superseded check must not block retry"
@@ -514,6 +496,13 @@ mod tests {
             Ok(choices),
         ));
         assert!(!settings.calendar.loading);
-        assert_eq!(settings.calendar.selected, Some(1));
+        assert!(
+            settings
+                .calendar
+                .connection
+                .selected_calendars()
+                .iter()
+                .any(|c| c.id == "team")
+        );
     }
 }

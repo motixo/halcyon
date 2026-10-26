@@ -15,10 +15,13 @@ mod privacy;
 pub(super) mod profiles;
 mod recovery;
 mod reveal;
+mod sample;
+mod scene;
 mod setup;
 mod shortcuts;
 mod sidebar;
 mod slider_completion;
+mod support;
 mod system_appearance;
 mod themes;
 mod tools;
@@ -38,6 +41,7 @@ use cosmic::iced::{Alignment, Background, Border, Color};
 use cosmic::widget::{
     button, column, container, icon, mouse_area, row, scrollable, slider, text, text_input, toggler,
 };
+pub(super) use pages::AppSettingsPage;
 pub(super) use slider_completion::completed_slider;
 
 const FG: Color = Color::from_rgb(0.94, 0.93, 0.97);
@@ -135,9 +139,9 @@ fn frame<'a>(
 }
 fn detail<'a>(title: impl Into<String>, description: impl Into<String>) -> Element<'a, Message> {
     let description = description.into();
-    let mut lines = vec![label(title, 14., FG)];
+    let mut lines = vec![label(title, 15., FG)];
     if !description.is_empty() {
-        lines.push(label(description, 12., MUTED));
+        lines.push(label(description, 13., MUTED));
     }
     column::with_children(lines)
         .spacing(3)
@@ -162,11 +166,15 @@ fn switch<'a>(
     )
 }
 fn heading<'a>(title: &'static str, description: &'static str) -> Element<'a, Message> {
-    let mut lines: Vec<Element<'a, Message>> = vec![text::title3(title).into()];
+    let mut lines: Vec<Element<'a, Message>> =
+        vec![text::title3(title).size(28).width(Length::Fill).into()];
     if !description.is_empty() {
-        lines.push(label(description, 12., MUTED));
+        lines.push(label(description, 13., MUTED));
     }
-    column::with_children(lines).spacing(4).into()
+    column::with_children(lines)
+        .spacing(4)
+        .width(Length::Fill)
+        .into()
 }
 fn separator() -> Element<'static, Message> {
     container(text::body(""))
@@ -272,7 +280,18 @@ pub(super) fn nav_style(selected: bool, _accent: Color) -> cosmic::theme::Button
             background: Some(Background::Color(if hovered {
                 component.hover.into()
             } else if selected {
-                component.selected_state_color().into()
+                let base: Color = component.base.into();
+                let accent: Color = theme.cosmic().accent.base.into();
+                let strength = if theme.theme_type.is_high_contrast() {
+                    0.35
+                } else {
+                    0.16
+                };
+                Color::from_rgb(
+                    base.r + (accent.r - base.r) * strength,
+                    base.g + (accent.g - base.g) * strength,
+                    base.b + (accent.b - base.b) * strength,
+                )
             } else {
                 Color::TRANSPARENT
             })),
@@ -387,7 +406,11 @@ impl Settings {
             Page::Focus => self.focus_page(),
             Page::General => self.general_page(),
             Page::Desktop => self.desktop_page(),
-            Page::DesktopDock => self.desktop_dock_page(),
+            Page::DesktopDock => {
+                column::with_children(vec![self.desktop_dock_header(), self.desktop_dock_page()])
+                    .spacing(20)
+                    .into()
+            }
             // On a short viewport the sample window scrolls with the controls
             // so the basic controls stay visible.
             Page::DesktopAppearance if !self.appearance_pinned() => column::with_children(vec![
@@ -422,9 +445,7 @@ impl Settings {
             Page::DesktopShortcuts => self.shortcuts_page(),
             Page::DesktopAutomation => self.automation_page(),
         };
-        let pinned = !searching
-            && (self.page == Page::DesktopDock
-                || (self.page == Page::DesktopAppearance && self.appearance_pinned()));
+        let pinned = !searching && self.page == Page::DesktopAppearance && self.appearance_pinned();
         // Unpinned, System appearance keeps a fixed strip above its scroll
         // area instead of the top padding: a hex field scrolled across the
         // top edge would otherwise paint into the window header bar.
@@ -467,8 +488,13 @@ impl Settings {
             [12, 22, 20, 22]
         }))
         .id(cosmic::widget::Id::new("settings-content"))
+        .on_scroll(|viewport| Message::ContentScrolled(viewport.absolute_offset().y))
         .width(Length::Fill)
         .height(Length::Fill);
+        let scrolling = container(scrolling)
+            .id(cosmic::widget::Id::new("settings-viewport"))
+            .width(Length::Fill)
+            .height(Length::Fill);
         // Dock & Panel keeps its miniature and selector pinned above the
         // scrolling controls, so the preview stays in view while editing.
         // Fixed parts are drawn over the scroll area (see `layered`).
@@ -526,10 +552,7 @@ impl Settings {
             sidebar,
             layered::layered(
                 vec![
-                    layered::opaque(column::with_children(vec![
-                        self.navigation_header(),
-                        separator(),
-                    ])),
+                    layered::opaque(column::with_children(vec![self.navigation_header()])),
                     layered::layered(
                         vec![
                             content,
@@ -555,7 +578,7 @@ impl Settings {
         .into()
     }
 
-    /// The four destinations at the top; App settings anchored at the bottom.
+    /// Six stable roots. Leaf editors stay within their owning destination.
     /// Entries come from the shared nav model so selection, search and Back
     /// keep one source of truth.
     fn sidebar(&self, _accent: Color) -> Element<'_, Message> {
@@ -568,6 +591,7 @@ impl Settings {
             }
             parts.push(
                 text::body(self.nav_model.text(id).unwrap_or_default().to_owned())
+                    .size(15)
                     .class(if active {
                         cosmic::theme::Text::Custom(|theme| cosmic::iced::widget::text::Style {
                             color: Some(theme.cosmic().accent_text_color().into()),
@@ -589,13 +613,25 @@ impl Settings {
             )))
             .class(nav_style(active, self.settings_accent()))
             .selected(active)
-            .padding([6, 14])
+            .padding([11, 12])
             .width(Length::Fill)
             .on_press(Message::NavSelected(id))
             .into()
         };
-        // One heading per group, then its pages, in menu order.
-        let mut groups = Vec::new();
+        let mut search = cosmic::widget::text_input::search_input("Search", &self.search_query)
+            .id(super::navigation::search_id())
+            .on_input(Message::SearchSettings)
+            .on_submit(|_| Message::SearchFirst)
+            .width(Length::Fill);
+        if !self.search_query.is_empty() {
+            search = search.on_clear(Message::SearchSettings(String::new()));
+        }
+        let mut groups = vec![
+            container(text::title3("Halcyon").size(22))
+                .padding([14, 12, 6, 12])
+                .into(),
+            container(search).padding([0, 2, 12, 2]).into(),
+        ];
         for (title, pages) in Page::SIDEBAR {
             let mut items: Vec<Element<'_, Message>> = Vec::new();
             if let Some(title) = title {
@@ -611,7 +647,7 @@ impl Settings {
                     .find(|&id| self.nav_model.data::<Page>(id) == Some(page))
                     .map(entry)
             }));
-            groups.push(column::with_children(items).spacing(2).into());
+            groups.push(column::with_children(items).spacing(6).into());
         }
         let content = container(
             scrollable(
@@ -643,7 +679,7 @@ impl Settings {
     /// The System appearance header stays pinned only while it leaves room
     /// for the first controls below it.
     pub(super) fn appearance_pinned(&self) -> bool {
-        self.window.height >= 800.
+        false // Visual previews scroll with their controls at every window size.
     }
 
     /// A fixed palette as a round accent swatch; its name is the tooltip.
@@ -747,19 +783,6 @@ impl Settings {
                     .id(cosmic::widget::Id::new("contrast-assist")).into()),
         ])
         };
-        let preview_choice = segmented(
-            [Widget::Weather, Widget::Devbox, Widget::Clock]
-                .into_iter()
-                .map(|widget| {
-                    (
-                        widget.title().to_owned(),
-                        self.appearance_preview == widget,
-                        Some(Message::AppearancePreview(widget)),
-                    )
-                })
-                .collect(),
-            self.settings_accent(),
-        );
         column::with_children(vec![
             heading("Widget style", ""),
             if let Some(f) = appearance.family {
@@ -807,12 +830,7 @@ impl Settings {
             } else {
                 container(cosmic::iced::widget::space()).into()
             },
-            self.editor_with_preview_header(
-                self.card_preview(),
-                controls,
-                "Sample data",
-                Some(preview_choice),
-            ),
+            controls,
             self.widget_text_section(),
         ])
         .spacing(16)

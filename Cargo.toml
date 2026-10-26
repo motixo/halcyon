@@ -1,6 +1,6 @@
 [package]
 name = "cosmic-ext-halcyon"
-version = "0.2.5"
+version = "0.3.0"
 description = "Desktop widgets and themes for COSMIC"
 homepage = "https://github.com/profilaz3/halcyon"
 repository = "https://github.com/profilaz3/halcyon"
@@ -50,6 +50,11 @@ sha2 = "=0.11.0"
 getrandom = "=0.4.3"
 ical = "=0.11.0"
 rrule = "=0.14.0"
+
+[patch.crates-io]
+# Generated DST gaps must be skipped before COUNT is consumed. See the patch
+# provenance and scope in vendor/rrule/HALCYON-PATCH.md.
+rrule = { path = "vendor/rrule" }
 
 [profile.release]
 # Release packages ship without symbols.

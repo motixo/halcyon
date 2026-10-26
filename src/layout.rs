@@ -1,10 +1,11 @@
 //! Geometry shared by the desktop arrangement editor and restored widget positions.
 pub type Point = [f32; 2];
 pub type Size = [f32; 2];
+pub const EDGE_GAPS: [f32; 2] = [24., 48.];
 
 fn bounds(widget: Size, screen: Size) -> [(f32, f32); 2] {
     [0, 1].map(|axis| {
-        let gap = if axis == 0 { 24. } else { 48. };
+        let gap = EDGE_GAPS[axis];
         let travel = (screen[axis] - widget[axis]).max(0.);
         if travel >= gap * 2. {
             (gap, travel - gap)

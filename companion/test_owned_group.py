@@ -12,6 +12,21 @@ import panel_launcher as launcher
 
 
 class OwnedGroup(unittest.TestCase):
+    def test_bootstrap_fallback_cleans_descendants_and_escalates_stop(self):
+        for mode in ('selector-exit', 'selector-term'):
+            with self.subTest(mode=mode):
+                result=subprocess.run([sys.executable,'-B',str(Path(__file__).with_name('owned_group_fixture.py')),mode],
+                                      text=True,capture_output=True,timeout=12)
+                self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+                r=json.loads(result.stdout)
+                self.assertEqual(r['live_at_return'],[],r)
+                self.assertTrue(r['outsider_alive'],r)
+                self.assertTrue(r['leader_reaped'],r)
+                self.assertTrue(r['lock_held_before_cleanup'],r)
+                self.assertTrue(r['lock_released_after_cleanup'],r)
+                self.assertLess(r['elapsed'],3,r)
+                self.assertEqual(set(r['harness_reaped_descendants']),{a['pid'] for a in r['actors']})
+
     def test_group_is_finished_before_handoff(self):
         for mode in ('leader-exit','outer-term','handoff','fallback','census-race'):
             with self.subTest(mode=mode):

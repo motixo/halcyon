@@ -35,7 +35,7 @@ impl Output {
     }
 }
 
-#[derive(Default, Debug)]
+#[derive(Clone, Default, Debug)]
 pub struct Registry {
     outputs: Vec<Output>,
     identities: std::collections::BTreeMap<String, String>,
@@ -65,6 +65,32 @@ impl Registry {
         });
         let output = found.next()?;
         found.next().is_none().then_some(output)
+    }
+    /// Compare explicit choices by output, while keeping Automatic distinct.
+    pub fn same_choice(&self, a: Option<&str>, b: Option<&str>) -> bool {
+        a == b
+            || match (
+                a.and_then(|s| self.unique(s)),
+                b.and_then(|s| self.unique(s)),
+            ) {
+                (Some(a), Some(b)) => a.handle == b.handle,
+                _ => false,
+            }
+    }
+    /// A newly identified output still inherits geometry saved under its connector.
+    /// New edits use the canonical identity; old geometry remains available to Undo.
+    pub fn effective_config(&self, config: &crate::config::Config) -> crate::config::Config {
+        let mut contexts = self.contexts(config);
+        for (widget, display) in &mut contexts {
+            if let Some(layouts) = config.monitor_layouts.get(widget)
+                && !layouts.contains_key(display)
+                && let Some(name) = self.unique(display).and_then(Output::name)
+                && layouts.contains_key(name)
+            {
+                *display = name.into();
+            }
+        }
+        config.on_displays(&contexts)
     }
     pub fn outputs(&self) -> &[Output] {
         &self.outputs
@@ -366,5 +392,46 @@ mod multi_monitor_tests {
         assert_ne!(edid_identity(&edid).unwrap(), first);
         edid[127] ^= 1;
         assert!(edid_identity(&edid).is_none());
+    }
+}
+
+#[cfg(test)]
+mod review030_tests {
+    use super::*;
+    use test_support::{Wire, info};
+    #[test]
+    fn review030_connector_choices_match_exactly_one_identity_and_keep_automatic_distinct() {
+        let wire = Wire::new();
+        let mut registry = Registry::default();
+        for (id, name) in [(1, "DP-1"), (2, "DP-2")] {
+            registry.update(
+                OutputEvent::Created(Some(info(Some(name), (1920, 1080)))),
+                wire.output(id),
+            );
+        }
+        registry.accept_identities(
+            registry.generation,
+            [
+                ("DP-1".into(), "edid:one".into()),
+                ("DP-2".into(), "edid:two".into()),
+            ]
+            .into(),
+        );
+        for preferred in [None, Some("DP-2"), Some("edid:two"), Some("missing")] {
+            let choices = registry.choices(preferred);
+            let selected: Vec<_> = choices
+                .iter()
+                .filter(|(_, value)| registry.same_choice(value.as_deref(), preferred))
+                .collect();
+            assert_eq!(selected.len(), 1);
+            assert_eq!(
+                selected[0].1.as_deref(),
+                match preferred {
+                    Some("DP-2") => Some("edid:two"),
+                    other => other,
+                }
+            );
+        }
+        assert!(!registry.same_choice(None, Some("DP-1")));
     }
 }

@@ -1,20 +1,26 @@
 # Release presentation
 
-Tagged releases use [.github/RELEASE_TEMPLATE.md](../../.github/RELEASE_TEMPLATE.md).
-The release workflow fills in the version, repository, package changelog and
-actual Calendar build configuration. Images and documentation links are pinned
-to the release tag, so old release pages do not silently change with main.
+The release workflow verifies and promotes an **already reviewed candidate**.
+It does not render `.github/RELEASE_TEMPLATE.md`, rebuild packages or automatically
+publish on tag push. Editing the template does not update an existing release.
 
-Before tagging, update `packaging/debian/changelog` with user-visible changes.
-Lead with the change people will notice, then mention important fixes. The
-template already supplies download, installation, updates and compatibility
-information; do not repeat these in the changelog.
+Prepare reviewable notes locally with:
 
-If an Islands package is added manually, extend the release notes with its exact
-supported COSMIC versions, activation instructions, and corresponding source
-archive. Do not claim an Islands binary exists just because Halcyon was built.
+```sh
+python3 scripts/render-release-notes.py --version 0.3.0 \
+  --changes docs/releases/0.3.0.md \
+  --calendar 'Provider acceptance pending; do not publish this draft.' \
+  --output /tmp/halcyon-0.3.0-release-notes.md
+```
 
-For a presentation-only edit to an existing release, preserve its download
-assets, tag, compatibility information and known limitations. Use a pinned
-commit URL for artwork added after that release's tag. Do not imply newer
-source fixes are present in the old binaries.
+Replace draft wording with the exact candidate's acceptance before publication.
+Include that reviewed text in the release candidate and bind it to the candidate's
+manifest/checksums. The publisher must use those same notes; no script here uploads
+them. Images and documentation links in the template are tag-pinned.
+
+Preserve published packages, source archives, approvals and old release text.
+A new main app does not qualify a companion. Confirm the matching companion,
+activation instructions, supported COSMIC inputs and corresponding source archive.
+
+Current draft: [0.3.0](../releases/0.3.0.md). Current native development gallery:
+[provenance and limitations](../screenshots/030/README.md).

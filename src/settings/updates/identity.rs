@@ -15,6 +15,8 @@ const EXE: &str = "/usr/bin/halcyon";
 const SOURCE: &str = "/etc/apt/sources.list.d/halcyon.sources";
 const PREFS: &str = "/etc/apt/preferences.d/halcyon";
 const KEY: &str = "/usr/share/keyrings/halcyon-archive-keyring.gpg";
+const DEFAULTS: &str = "/usr/share/cosmic-ext-halcyon/updates";
+const RECEIPT: &str = "/var/lib/halcyon/updates/default-source.json";
 const STORE: &str = "com.system76.CosmicStore.desktop";
 const SOURCE_TEXT: &str = "Types: deb\nURIs: https://profilaz3.github.io/halcyon/apt\nSuites: noble\nComponents: main\nArchitectures: amd64\nSigned-By: /usr/share/keyrings/halcyon-archive-keyring.gpg\n";
 const PREFS_TEXT: &str = "Package: cosmic-ext-halcyon cosmic-ext-halcyon-islands halcyon-archive-keyring halcyon-update-source\nPin: release o=Halcyon,l=Halcyon,a=noble,n=noble,c=main\nPin-Priority: 500\n\nPackage: *\nPin: release o=Halcyon\nPin-Priority: -1\n\nPackage: *\nPin: origin \"profilaz3.github.io\"\nPin-Priority: -1\n";
@@ -26,9 +28,19 @@ pub enum UpdateChannel {
     Source,
     Unknown,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Enrollment {
+    #[default]
+    Unknown,
+    Available,
+    Disabled,
+    Incomplete,
+    Enrolled,
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
     pub format_version: u32,
+    pub enrollment: Enrollment,
     pub channel: UpdateChannel,
     pub reason: &'static str,
     pub running_version: String,
@@ -42,6 +54,7 @@ impl Default for Identity {
     fn default() -> Self {
         Self {
             format_version: 1,
+            enrollment: Enrollment::Unknown,
             channel: UpdateChannel::Unknown,
             reason: "Installation could not be verified.",
             running_version: env!("CARGO_PKG_VERSION").into(),
@@ -53,6 +66,18 @@ impl Default for Identity {
     }
 }
 impl Identity {
+    pub fn can_enroll(&self) -> bool {
+        self.channel == UpdateChannel::ManualDeb
+            && self.enrollment == Enrollment::Available
+            && self.evidence.is_some()
+    }
+    pub fn same_enrollment_candidate(&self, other: &Self) -> bool {
+        self.can_enroll()
+            && other.can_enroll()
+            && self.evidence == other.evidence
+            && self.installed_version == other.installed_version
+            && self.architecture == other.architecture
+    }
     pub fn can_check(&self) -> bool {
         self.format_version == 1 && self.channel == UpdateChannel::Apt && self.evidence.is_some()
     }
@@ -264,6 +289,49 @@ impl Database {
         (stamp(&target)? == before).then_some(sha)
     }
 }
+fn protected_digest(root: &Path, path: &str) -> Option<String> {
+    let path = rooted(root, path);
+    let meta = fs::symlink_metadata(&path).ok()?;
+    if !meta.is_file() || (root == Path::new("/") && (meta.uid() != 0 || meta.mode() & 0o022 != 0))
+    {
+        return None;
+    }
+    let before = stamp(&path)?;
+    let hash = digest(&path)?;
+    (stamp(&path)? == before).then_some(hash)
+}
+fn default_receipt(root: &Path) -> Option<serde_json::Value> {
+    let before = protected_digest(root, RECEIPT)?;
+    let value: serde_json::Value =
+        serde_json::from_str(&read(&rooted(root, RECEIPT), 65536)?).ok()?;
+    (value.get("format")?.as_str()? == "halcyon-default-updates"
+        && value.get("version")?.as_u64()? == 1
+        && protected_digest(root, RECEIPT)? == before)
+        .then_some(value)
+}
+fn default_enrollment(root: &Path, db: &Database) -> Option<String> {
+    let receipt = default_receipt(root)?;
+    if receipt.get("phase")?.as_str()? != "complete" {
+        return None;
+    }
+    let mut hashes = String::new();
+    for (name, target) in [
+        ("source.sources", SOURCE),
+        ("preferences", PREFS),
+        ("archive-keyring.gpg", KEY),
+    ] {
+        let template = format!("{DEFAULTS}/{name}");
+        let expected = db.verified_file(root, MAIN, &template)?;
+        if protected_digest(root, target)? != expected
+            || receipt.get("files")?.get(target)?.as_str()? != expected
+        {
+            return None;
+        }
+        hashes.push_str(&expected);
+    }
+    hashes.push_str(&protected_digest(root, RECEIPT)?);
+    Some(hashes)
+}
 fn enrollment(root: &Path, db: &Database) -> Option<Option<String>> {
     let source = rooted(root, SOURCE);
     // Conflicting copies cannot silently broaden the scoped source contract.
@@ -316,13 +384,16 @@ fn enrollment(root: &Path, db: &Database) -> Option<Option<String>> {
     if parsed.get("Enabled").is_some_and(|s| s == "no") {
         return Some(None);
     }
-    // Deliberately accept only the owned bootstrap contract, not a lookalike URL
-    // or PackageKit's unauthenticated package-id data field.
+    // Accept the exact scoped contract, backed by legacy bootstrap ownership
+    // or measured main-package templates and their completed install receipt.
     if text != SOURCE_TEXT || read(&rooted(root, PREFS), 65536)? != PREFS_TEXT {
         return None;
     }
-    db.installed("halcyon-update-source", "all")?;
-    db.installed("halcyon-archive-keyring", "all")?;
+    if db.installed("halcyon-update-source", "all").is_none()
+        || db.installed("halcyon-archive-keyring", "all").is_none()
+    {
+        return default_enrollment(root, db).map(Some);
+    }
     let mut hashes = String::new();
     for (package, path) in [
         ("halcyon-update-source", SOURCE),
@@ -395,12 +466,50 @@ pub(super) fn measure(root: &Path, proc_exe: &Path, source_binary: &Path) -> Ide
     match enrollment(root, &db) {
         Some(Some(enrollment)) => {
             result.channel = UpdateChannel::Apt;
-            result.reason = "System updates · checks only when you ask.";
+            result.enrollment = Enrollment::Enrolled;
+            result.reason = "System updates enabled · managed by your system.";
             result.evidence = Some(format!("{running_hash}{enrollment}"));
         }
         Some(None) => {
             result.channel = UpdateChannel::ManualDeb;
-            result.reason = "Manual package · system updates are not enabled.";
+            let source = rooted(root, SOURCE);
+            result.enrollment = if source.exists() {
+                Enrollment::Disabled
+            } else if rooted(root, RECEIPT).symlink_metadata().is_ok() {
+                match default_receipt(root)
+                    .as_ref()
+                    .and_then(|v| v.get("phase"))
+                    .and_then(|p| p.as_str())
+                {
+                    Some("complete" | "disabled" | "preserved") => Enrollment::Disabled,
+                    Some("pending") => Enrollment::Incomplete,
+                    _ => Enrollment::Unknown,
+                }
+            } else if db.installed("halcyon-update-source", "all").is_some() {
+                // An owned conffile removed by its administrator stays removed.
+                Enrollment::Disabled
+            } else if db.installed("halcyon-archive-keyring", "all").is_some()
+                || rooted(root, KEY).exists()
+                || rooted(root, PREFS).exists()
+                || rooted(root, DEFAULTS).exists()
+            {
+                Enrollment::Incomplete
+            } else {
+                Enrollment::Available
+            };
+            result.evidence = Some(running_hash.clone());
+            result.reason = match result.enrollment {
+                Enrollment::Disabled => {
+                    "System updates were disabled. Your source settings are preserved."
+                }
+                Enrollment::Incomplete => {
+                    "System update setup is incomplete. Review the installation instructions."
+                }
+                Enrollment::Unknown => {
+                    "System update setup could not be verified. Review the installation instructions."
+                }
+                _ => "Manual package · system updates are not enabled.",
+            };
         }
         None => result.reason = "System update enrollment could not be verified.",
     }

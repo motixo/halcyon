@@ -35,6 +35,17 @@ fn child(name: &str) -> bool {
 }
 
 fn click(app: &mut Settings, native: &mut Native, id: &str) {
+    // Checklist and connection details can extend beyond the short viewport.
+    // Reveal them through the actual page scrollable before asserting fit.
+    native.scroll(app.settings_view(), "settings-content", 0.);
+    let target = native.bounds(app.settings_view(), id);
+    if target.y + target.height > native.size.height - 64. {
+        native.scroll(
+            app.settings_view(),
+            "settings-content",
+            (target.y - 240.).max(0.),
+        );
+    }
     let bounds = native.bounds(app.settings_view(), id);
     assert!(
         bounds.x >= 0.
@@ -97,8 +108,8 @@ fn fresh_user_setup_routes_to_weather_calendar_and_local_widgets() {
         click(&mut app, &mut native, "setup-step-3");
         assert_eq!(
             app.page,
-            Page::DesktopProfiles,
-            "setup offers the starter looks"
+            Page::Themes,
+            "setup opens Appearance's theme choices"
         );
         let _ = app.update(Message::Page(Page::Overview));
         click(&mut app, &mut native, "setup-open");
@@ -109,12 +120,20 @@ fn fresh_user_setup_routes_to_weather_calendar_and_local_widgets() {
             &controls_theme(&app.config),
             &format!("new-user-unconfigured-{}", size.width),
         );
+        std::fs::write(
+            crate::calendar::account_path().unwrap(),
+            serde_json::to_vec(&app.calendar.connection).unwrap(),
+        )
+        .unwrap();
         app.calendar.client_ready = true;
         native.capture(
             app.settings_view(),
             &controls_theme(&app.config),
             &format!("new-user-connect-{}", size.width),
         );
+        if app.scene_open() {
+            click(&mut app, &mut native, "scene-toggle");
+        }
         click(&mut app, &mut native, "calendar-connect");
         assert!(app.calendar.busy && app.calendar.connecting);
         let _ = app.update(Message::Calendar(calendar::Message::Cancel));
@@ -149,6 +168,11 @@ fn connected_account_selector_and_errors_fit_and_reject_old_responses() {
             credential: "fixture".into(),
             ..Default::default()
         };
+        std::fs::write(
+            crate::calendar::account_path().unwrap(),
+            serde_json::to_vec(&app.calendar.connection).unwrap(),
+        )
+        .unwrap();
         app.calendar.client_ready = true;
         let choices = vec![
             crate::calendar::CalendarChoice {
@@ -173,7 +197,10 @@ fn connected_account_selector_and_errors_fit_and_reject_old_responses() {
             "new".into(),
             Ok(choices),
         )));
-        assert_eq!(app.calendar.selected, Some(0));
+        assert_eq!(
+            app.calendar.connection.selected_calendars()[0].id,
+            "primary"
+        );
         let _ = app.update(Message::Resized(size));
         let mut native = Native::new(size);
         native.capture(
@@ -181,6 +208,8 @@ fn connected_account_selector_and_errors_fit_and_reject_old_responses() {
             &controls_theme(&app.config),
             &format!("new-user-connected-{}", size.width),
         );
+        click(&mut app, &mut native, "scene-toggle");
+        assert!(!app.scene_open());
         click(&mut app, &mut native, "calendar-account-options");
         click(&mut app, &mut native, "calendar-disconnect");
         assert!(app.calendar.confirm_disconnect);

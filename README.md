@@ -20,6 +20,15 @@ what you want to see on your desktop.
 
 **Pop!_OS 24.04 · Intel & AMD 64-bit · Rust + libcosmic · Free and open source**
 
+## 0.3.0
+
+Native Settings with desktop previews, redesigned Setups, per-widget displays,
+Calendar subscriptions, system updates enabled by default for fresh packages,
+Help and Recent changes.
+[Release notes](docs/releases/0.3.0.md) · [Native Settings gallery](docs/screenshots/030/README.md).
+The older desktop images below are retained as historical captures;
+the Settings gallery shows the current interface.
+
 ## Different looks, same desktop
 
 Six starter looks and thirteen widget styles. Use light cards, frosted surfaces,
@@ -45,7 +54,7 @@ Keep one shared finish or adjust Widgets, Dock and Panel independently. Transpar
 tint and Widget readability let you tune the result without replacing your colors.
 Liquid adds a brief optional edge glint on widgets; bar highlights are static.
 Changes apply immediately, with Undo, and materials travel with saved setups.
-The 0.2.5 material path uses decorative translucency, tint, edges and highlights;
+Current materials use decorative translucency, tint, edges and highlights;
 it does not request native backdrop blur or optical refraction. Color theme
 application does not enable COSMIC frosting. Existing system effects remain
 under your control; see [the material change notes](docs/decorative-materials-025.md).
@@ -58,20 +67,9 @@ or optical refraction effect.
 
 [![Appearance material chooser](docs/screenshots/materials-chooser.png)](docs/screenshots/materials-chooser.png)
 
-<table>
-  <tr>
-    <td width="50%"><a href="docs/screenshots/materials-frosted.png"><img src="docs/screenshots/materials-frosted.png" alt="Frosted widgets and native bars" width="100%"></a><br><strong>Frosted</strong></td>
-    <td width="50%"><a href="docs/screenshots/materials-clear.png"><img src="docs/screenshots/materials-clear.png" alt="Clear glass widgets and native bars" width="100%"></a><br><strong>Clear glass</strong></td>
-  </tr>
-  <tr>
-    <td><a href="docs/screenshots/materials-smoked.png"><img src="docs/screenshots/materials-smoked.png" alt="Smoked glass widgets and native bars" width="100%"></a><br><strong>Smoked glass</strong></td>
-    <td><a href="docs/screenshots/materials-liquid.png"><img src="docs/screenshots/materials-liquid.png" alt="Liquid widgets and native bars" width="100%"></a><br><strong>Liquid</strong></td>
-  </tr>
-</table>
-
-*Earlier native-blur captures, using the same wallpaper and synthetic notes.
-They illustrate the finishes, not exact 0.2.5 decorative rendering. Stock COSMIC
-bars follow their own appearance; matching finishes require our active host.*
+[Historical finish comparisons](docs/screenshots/README.md) are retained for reference.
+They use the earlier native-blur implementation and do not represent current
+decorative rendering.
 
 ## Widgets
 
@@ -192,11 +190,12 @@ Code, documentation and design contributions are welcome.
 
 ## Privacy
 
-Usage sharing is on by default; 0.2.5 adds a checkbox to turn it off. Activity
-requests contain a random installation ID, app version, approximate first country
-and format fields. A minimal preference update is attempted even when opting out.
-The current collector rejects 0.2.5 requests until its upgrade; older clients
-continue reporting to a private Google Sheet. The first country is looked up through Country.is;
+Usage sharing is on by default and can be turned off in App settings → Privacy.
+Activity requests contain a random installation ID, app version, approximate first
+country, first desktop start when known, and format fields. A minimal preference
+update is attempted even when opting out. The upgraded collector accepts current
+and older clients; retained opt-outs are excluded from current activity counts.
+The first country is looked up through Country.is;
 Halcyon does not store the IP address. They contain no calendar, music, notes, projects,
 precise location or hardware details. [Privacy details](docs/PRIVACY.md).
 

@@ -102,4 +102,77 @@ class GenerationStatus(unittest.TestCase):
             self.assertEqual(status['installation'],'installed');self.assertFalse(status['healthy'])
             self.assertEqual(status['status'],'Compatibility update needed')
 
+class ToggleStatus(unittest.TestCase):
+    def test_auditfix_disabled_family_status_keeps_unmeasured_compatibility_unknown(self):
+        import copy
+        import os
+        from unittest.mock import patch
+        import bundle_contract as bundle
+        import install_status, refresh, install, runtime_compatibility as compatibility
+        from test_generation_contract import bundle_fixture, FIXTURE_BINARY_SHA
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary); home = root/'home'; home.mkdir(); library = root/'library'
+            with patch.dict(compatibility.POLICY, binary_sha256=FIXTURE_BINARY_SHA):
+                manifest, catalog = bundle_fixture(library, catalog=False)
+                catalog['startup_policy'] = copy.deepcopy(compatibility.POLICY)
+                (library/'catalog.json').write_bytes(bundle.canonical(catalog))
+                manifest['files']['catalog.json']['sha256'] = bundle.digest(library/'catalog.json')
+                (library/'companion-manifest.json').write_bytes(bundle.canonical(manifest))
+                (home/'installed-identity.json').write_bytes(bundle.canonical({'package_versions': {
+                    'cosmic-panel':'1.11.2~fixture','cosmic-session':'1.11.0~fixture',
+                    'cosmic-comp':'0.1~fixture','cosmic-settings-daemon':'1.11.0~fixture'}}))
+                with patch.dict(os.environ, {'HOME':str(home),'XDG_STATE_HOME':str(home/'state')}, clear=True):
+                    for after_disable in (False, True):
+                        if after_disable:
+                            with refresh.locked(home):
+                                refresh.stage_locked(home, library, session='fixture', fixture=True, enable=True)
+                                for path, _ in refresh.records(home):
+                                    install.restore(path)
+                        initial = install_status.detect(home, library, True, {})
+                        with patch.object(compatibility, 'family', side_effect=AssertionError('unneeded package query')), \
+                             patch.object(compatibility, 'Session', side_effect=AssertionError('unneeded session query')):
+                            result = install_status.inspect(home, library, True, {}, initial)
+                        self.assertFalse(result['enabled'])
+                        self.assertEqual(result['status'], 'Islands disabled')
+                        self.assertIsNone(result['compatible'])
+                        self.assertEqual(result['compatibility']['reason'], 'not_measured')
+
+    def test_custom_crash_marker_and_ownership_conflict_are_not_disabled(self):
+        import os
+        from unittest.mock import patch
+        from test_generation_contract import bundle_fixture, installed, measured
+        import install_status, refresh, install
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);home=root/'home';home.mkdir();library=root/'library'
+            _,catalog=bundle_fixture(library);known=installed(catalog['cohorts'][0])
+            (home/'installed-identity.json').write_text(json.dumps(known))
+            with refresh.locked(home):
+                refresh.stage_locked(home,library,fixture=True,session='old',enable=True)
+            state=root/'custom-state'
+            with patch.dict(os.environ,{'XDG_STATE_HOME':str(state)}),patch.object(panel_launcher,'session_identity',return_value='new'):
+                def status():
+                    return install_status.detect(home,library,True,{},installed=known,running=measured(catalog['cohorts'][0]),host=True)
+                self.assertEqual(status()['status'],'Ready')
+                failed=state/'desktop-cards-panel/failed';failed.parent.mkdir(parents=True);failed.touch()
+                self.assertEqual(status()['reason'],'previous_failure')
+                # The public fixture CLI must ignore inherited real state paths.
+                import subprocess
+                isolated=subprocess.run([sys.executable,str(Path(install_status.__file__)),
+                    '--root',str(home),'--library',str(library)],text=True,capture_output=True,timeout=8)
+                self.assertEqual(isolated.returncode,0,isolated.stderr)
+                self.assertNotEqual(json.loads(isolated.stdout)['reason'],'previous_failure')
+                failed.unlink()
+                unused=home/'.local/state/desktop-cards-panel/failed';unused.parent.mkdir(parents=True);unused.touch()
+                self.assertEqual(status()['status'],'Ready')
+                selector=home/refresh.SELECTOR;original=selector.read_bytes();selector.write_bytes(b'external edit')
+                observed=status()
+                self.assertEqual(observed['reason'],'ownership_conflict')
+                self.assertTrue(observed['enabled']);self.assertTrue(observed['running'])
+                self.assertFalse(observed['healthy'])
+                with self.assertRaises(ValueError):install.restore(refresh.records(home)[0][0])
+                self.assertEqual(selector.read_bytes(),b'external edit')
+                selector.write_bytes(original)
+                for path,_ in refresh.records(home):install.restore(path)
+                self.assertEqual(status()['reason'],'disabled')
+
 if __name__ == '__main__': unittest.main()

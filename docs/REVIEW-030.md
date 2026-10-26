@@ -8,10 +8,37 @@ recovery and unnecessary complexity in local 0.3.0 development. Reviewed source:
 There are 22 tracked review items: one P1, fourteen P2 and seven P3, including
 R17's optional fault-model robustness work. Round 1 identified R01 through R18;
 Round 2 added R19 through R22, broadened R03 and qualified existing findings.
-R01 blocks release on resource-exhaustion grounds; R02 blocks the current release
-verification path. All fixes remain open. Optional reductions and an unresolved
-validation question are tracked separately. Follow-up reviews may challenge,
-merge or reprioritize findings; preserve the reasoning when changing status.
+All 22 findings are fixed and verified locally; see the fix evidence below.
+R01's parser now runs within process resource limits,
+and R02 uses the authoritative current policy. External release acceptance stays
+separate from these code fixes. Optional reductions and the recovery validation
+question are tracked below with their dispositions.
+
+## Islands on/off follow-up — 2026-10-25
+
+The six additional findings T01–T06 were audited against the dirty `main`
+checkout at base `516807e` and fixed locally after the user's “Fix all” request.
+The original findings and reproductions remain in
+`../.task-islands-toggle-audit-evidence/report.txt`. Astra completed this audit;
+the requested Claude Developer pass remains blocked by provider authentication.
+
+| ID | Priority | Status | Fix and focused evidence |
+| --- | --- | --- | --- |
+| T01 | P2 | Verified | Bootstrap fallback retains its unreaped leader and lock through bounded group cleanup. Real-process regressions cover leader exit, resistant descendants, and resistant-host termination without affecting an unrelated process. |
+| T02 | P2 | Verified locally | Physical output arrival/update/removal no longer depends on the current Islands setting; repeated registration keeps one record. The private native session starts disabled with an absent configured output, then successfully enables on its already connected fallback. Physical unplug/replug remains separate acceptance. |
+| T03 | P2 | Verified | Disable reconciles original placement and retires temporary fallback surfaces. Three private native on/off cycles passed, including successful acknowledgments when the configured monitor is absent. |
+| T04 | P2 | Verified | Dock & Panel's Check again uses the existing generation-ordered installation refresh. The Rust regression observes external removal and restoration through that exact message; queue and refresh-deadline regressions also pass. |
+| T05 | P2 | Verified | Launcher, enable and status share state-directory resolution. Real CLI fixtures verify custom failure markers and stale markers in an unused default directory; explicit `--root` status remains isolated. |
+| T06 | P3 | Verified | Status preserves selected activation intent and reports ownership conflicts as unhealthy instead of disabled. Regression confirms an external selector edit is preserved and normal disable still reports disabled. |
+
+Evidence: `../.task-islands-toggle-fix-evidence/`. The final native patch applies
+with zero fuzz to the pinned upstream archive and reproduces all 151 compiled
+source files. Both release builds pass; the native ELF and main binary hashes,
+test counts and changed source hashes are recorded in `result.json` there.
+The isolated compositor uses software rendering and one available display plus
+an absent configured display. This does not qualify physical hotplug, mixed
+scaling, a packaged payload or the user's installed session. Historical native
+evidence and release pins were not relabeled for these new bytes.
 
 ## Work order and completion rules
 
@@ -30,7 +57,8 @@ Use **Open**, **In progress**, **Fixed locally**, **Verified**, **Deferred** or
 commit/reference, focused evidence for the trigger and relevant build checks.
 Record native acceptance separately where source or fixture evidence cannot
 establish real session behavior. Deferred and Rejected require a reason.
-Implementation owners are unassigned; review assignments do not authorize fixes.
+User authorized implementation on 2026-10-25; review assignments alone had not
+authorized changes. The parent integrated and validated the delegated fixes.
 
 Preserve all `.task-*-evidence` directories and existing private evidence. There
 is one Cargo slot; coordinate any necessary build/test work through the parent.
@@ -45,30 +73,102 @@ repository's simulated partial-write behavior, not established Sheets behavior.
 
 | ID | Priority | Status | Finding | Evidence |
 | --- | --- | --- | --- | --- |
-| R01 | P1 | Open | Recurrence expansion can exhaust resources | Code and pinned dependency |
-| R02 | P2 | Open | Release gate rejects current startup policy | Probe |
-| R03 | P2 | Open | Cancellation and cleanup registry races can orphan credentials | Code |
-| R04 | P2 | Open | Late display identity makes Arrange save under an obsolete key | Code |
-| R05 | P2 | Open | Arrange leaves other display widgets offscreen | Code |
-| R06 | P2 | Open | Optional applet watch failure rejects the host | Probe |
-| R07 | P2 | Open | Repeated applet restart replaces the wrong client | Code |
-| R08 | P2 | Open | Failed final verification still reports Ready | Probe |
-| R09 | P2 | Open | Valid DST transition timestamps reject the feed | Code and format specification |
-| R10 | P2 | Open | Case-sensitive calendar tokens lose or retain wrong events | Code and format specification |
-| R11 | P2 | Open | Expiring histories amplify collector writes | Probe |
-| R12 | P2 | Open | Stopping widgets also kills child Settings | Code, inherited |
-| R13 | P2 | Open | CI omits new regression suites | Workflow inspection |
-| R14 | P3 | Open | Google source colors and names remain missing or stale | Code |
-| R15 | P3 | Open | Connector preferences lose selected display highlight | Code |
-| R16 | P3 | Open | Reset command leaves monitor geometry intact | Code |
-| R17 | P3 | Open (optional) | Partial first report loses first observed version | Fault model; live behavior unresolved |
-| R18 | P3 | Open | Desktop launcher bypasses single-instance Settings | Code, inherited |
-| R19 | P2 | Open | Resume after display change discards a failed Arrange draft | Code and bounded transition model |
-| R20 | P2 | Open | Layout saves fail without the widget process display snapshot | Code |
-| R21 | P3 | Open | Clock Move & resize opens the wrong display | Code |
-| R22 | P3 | Open | Automatic reorder ignores monitor-specific custom placement | Code |
+| R01 | P1 | Verified | Recurrence expansion can exhaust resources | Code and pinned dependency |
+| R02 | P2 | Verified | Release gate rejects current startup policy | Probe |
+| R03 | P2 | Verified | Cancellation and cleanup registry races can orphan credentials | Code |
+| R04 | P2 | Verified | Late display identity makes Arrange save under an obsolete key | Code |
+| R05 | P2 | Verified | Arrange leaves other display widgets offscreen | Code |
+| R06 | P2 | Verified | Optional applet watch failure rejects the host | Probe |
+| R07 | P2 | Verified | Repeated applet restart replaces the wrong client | Code |
+| R08 | P2 | Verified | Failed final verification still reports Ready | Probe |
+| R09 | P2 | Verified | Valid DST transition timestamps reject the feed | Code and format specification |
+| R10 | P2 | Verified | Case-sensitive calendar tokens lose or retain wrong events | Code and format specification |
+| R11 | P2 | Verified | Expiring histories amplify collector writes | Probe |
+| R12 | P2 | Verified | Stopping widgets also kills child Settings | Code, inherited |
+| R13 | P2 | Verified | CI omits new regression suites | Workflow inspection |
+| R14 | P3 | Verified | Google source colors and names remain missing or stale | Code |
+| R15 | P3 | Verified | Connector preferences lose selected display highlight | Code |
+| R16 | P3 | Verified | Reset command leaves monitor geometry intact | Code |
+| R17 | P3 | Verified | Partial first report loses first observed version | Fault model; live behavior unresolved |
+| R18 | P3 | Verified | Desktop launcher bypasses single-instance Settings | Code, inherited |
+| R19 | P2 | Verified | Resume after display change discards a failed Arrange draft | Code and bounded transition model |
+| R20 | P2 | Verified | Layout saves fail without the widget process display snapshot | Code |
+| R21 | P3 | Verified | Clock Move & resize opens the wrong display | Code |
+| R22 | P3 | Verified | Automatic reorder ignores monitor-specific custom placement | Code |
 
-## Findings and acceptance
+## Fix evidence (2026-10-25)
+
+Implementation is in the working tree based on `516807e`. No release, installed
+app replacement, collector deployment or live account operation is part of these
+fixes. Existing review evidence and all earlier `.task-*-evidence` directories
+are preserved. The findings below retain their original triggers for reference.
+
+| Items | Implemented correction | Focused acceptance |
+| --- | --- | --- |
+| R01 | Separate parser process; 512 MiB address-space, 2-second CPU and 4-second wall limits; serialized admission and kill on cancellation | Historical secondly/dense yearly rules, normal recurrence recovery, and three cancelled workers with observed process IDs |
+| R02 | Release dispatcher uses runtime `POLICY['id']` | Current policy reaches verifier; wrong policy/hash/approval still rejected |
+| R03 | Persist pending IDs before creation and replacement; retain a lease through outstanding keyring creation; checked registry read/modify/write and async lease waiting; return after durable commit | Cancellation, concurrent append, active credential protection, lock/write failure, and five disposable Secret Service tests |
+| R04, R19 | Rebase identity-only Arrange contexts without losing drafts/receipts; reject Resume context mismatches before changing failed state | Save/reopen/Undo after late identity; failed Save and Cancel drafts/receipts survive changed outputs |
+| R05 | Reconcile surfaces outside the editing display while retaining Arrange surface fencing | Both display-probe arrival orders and existing stale-input/surface suite |
+| R06, R08 | Register only successful watches, observe launcher/desktop symlinks, preserve optional errors through Admission; clear readiness on final-check failure | Admission-level symlink/failure cases; required-core failure; successful inventory followed by failed final check |
+| R07 | Bind native restart to stable occurrence identity and rotate the previous socket/client on every restart | Reproducible zero-fuzz patch, native Rust duplicate test, fresh companion and isolated compositor duplicate-restart fixture |
+| R09, R10 | Resolve explicit DST times using first/pre-gap offsets; normalize structural/calendar enum tokens while preserving user text/URLs | Zagreb gap/overlap, old transition beside current event, mixed-case recurrence/exclusion/cancellation |
+| R11, R17 | Batch adjacent changed collector rows (up to 256 per write); recover an incomplete first-observation version before newer data overwrites it | 37 collector tests, including mass expiry and interrupted writes with a newer retry version |
+| R12, R18 | Native Settings ownership and serialized page forwarding; widget-service descendants start in a separate application scope | Controller routing, Rust ownership/forwarding tests, private systemd scope survives fixture-service stop/restart and flushes pending edit |
+| R13 | CI includes activity, configured-applet, practical compatibility and current release-dispatch suites | Explicit workflow entries/discovery and focused suite execution |
+| R14 | Refresh selected Google metadata by ID with connection revision fencing | Legacy/current selections update names/colors; membership/order and stale-response protection retained |
+| R15, R20, R21, R22 | Compare resolved outputs; build Layout geometry from live Settings registry; route Clock/Glance through display-aware selection; count monitor geometry as custom | Connector highlight; no-snapshot move/save and hotplug guard; both Clock modes; manual versus automatic reorder |
+| R16 | Reset base and all monitor geometry in one transaction, preserving assignments | Effective reset and Undo restoring both geometry maps |
+| V01 | Successful native recovery explicitly refreshes other views even when ordinary-write revision stays unchanged | Actual worker completion delivered before any watcher; preferences, recovery flags and Undo checked |
+
+Evidence directories:
+
+- `.task-review030-calendar-evidence/`: parser/cleanup runs and disposable-keyring harness.
+- `.task-review030-companion-evidence/`: focused Python/native tests, fresh companion,
+  patch/binary hashes and compositor screenshots.
+- `.task-review030-lifecycle-evidence/`: private service/scope fixture and result.
+
+Integrated validation:
+
+- Initial full Rust release-profile run: **1,009 passed, 1 failed, 10 ignored**.
+  The failure caught a stale Arrange entry capturing a surface rebuild before
+  epoch validation. The implementation was corrected; the safety test and its
+  assertions were not weakened.
+- Final affected reruns: **122 app tests passed**, **25 calendar tests passed**.
+  All nine new `review030_` regressions and the native Settings ownership/image
+  cache tests passed in the integrated run. Five otherwise ignored calendar
+  tests additionally passed on a disposable D-Bus/Secret Service with fake
+  credentials. Remaining ignored cases require their separate native fixtures;
+  the ignored parser entry is invoked by the bounded parser tests.
+- Companion/release Python checks: **34 passed with no skips** using retained
+  fixtures. The broader companion run had 90 passes and one skipped
+  receipt-dependent case, subsequently covered by the 34-test run.
+- Collector: **37 Node tests passed**. Controller: **18 Python tests passed**.
+- Native duplicate-occurrence regression and fresh companion release build
+  passed with Rust 1.93.0, `--locked --offline`. In an isolated COSMIC session,
+  both Islands-enabled and ordinary panel modes retained the first duplicate
+  and restored the second twice at identical positions/pixels. This is native
+  software-rendered acceptance, not physical GPU qualification.
+- Private systemd fixture: the independent scope survived service stop/restart
+  and flushed pending edits. The installed widget service was not changed.
+- Main release build passed with the same Rust/toolchain flags. The production
+  parser returned three ordinary events in 4 ms and rejected historical secondly
+  and dense yearly inputs in 2.00 s and 1.76 s, respectively; maximum observed
+  child RSS was 407,140 KiB under its 512 MiB address-space ceiling. Neither
+  pathological input ran in the UI process.
+- Formatting and `git diff --check` passed.
+
+`.task-review030-validation/` contains the original full run and final app/build
+logs. The calendar directory contains the final calendar and keyring logs.
+The main executable SHA256 is
+`105f5422c578af85963a1bd96ff49b1c83a7d947cef1509363d6f4d6b52327f9`.
+`.task-review030-validation/result.json` binds the final source files and artifacts
+to this validation record. The native companion SHA256 is
+`d22fbae691acee85afeb40a629b2207815d6794238b88197161b823af78fcadc`.
+Fresh packaged-artifact qualification and release pin updates remain a release
+step; retained integration.5 fixtures do **not** qualify the new payload.
+
+## Findings and acceptance (original review)
 
 ### R01 Bound recurrence work and stop cancelled parsing
 
@@ -423,24 +523,31 @@ layout explanation is absent. This is separate from R16's reset command.
 
 ## Optional reductions
 
-- **O01 Open:** Consolidate duplicate image caches in
-  [profiles.rs](../src/settings/view/profiles.rs), lines 93 and 122. Only
-  `look_image` calls `look_rgba`; both caches retain pixel copies. Removing the
-  redundant copy saves 3.52 MiB per 1280x720 wallpaper, approximately 21.09 MiB
-  across six visited looks, excluding renderer allocations. Keep stable handles
-  and the bounded single-entry crop cache. This is bounded overhead, not a leak.
-- **O02 Open:** Remove obsolete single-selection `Select`, `labels` and
-  `selected` calendar editor state after moving useful race coverage to Toggle.
-  Confirm all message/test callers before removing the path.
-- **O03 Open, inherited:** Narrow successful-write refreshes in
+- **O01 Verified:** Consolidated duplicate image caches in
+  [profiles.rs](../src/settings/view/profiles.rs), lines 93 and 122. The stable
+  `look_image` handle now owns the sole decoded pixel buffer; the redundant
+  `look_rgba` cache was removed. This saves 3.52 MiB per 1280x720 wallpaper, approximately 21.09 MiB
+  across six visited looks, excluding renderer allocations. Stable handles
+  and the bounded single-entry crop cache are preserved and tested. This is bounded overhead, not a leak.
+- **O02 Verified:** Removed obsolete single-selection `Select`, `labels` and
+  `selected` calendar editor state; useful race coverage now exercises Toggle.
+  All message/test callers were updated and the integrated tests passed.
+- **O03 Deferred, inherited:** Narrow successful-write refreshes in
   [settings.rs](../src/settings.rs), `after_desktop_change` line 3347. It refreshes
   every opened editor and replans profiles synchronously. Latency is unmeasured;
   retain correctness and measure a representative save before adding machinery.
-  Prefer affected-editor refresh over a new scheduling framework.
+  Prefer affected-editor refresh over a new scheduling framework. The recovery
+  test established a cross-domain refresh requirement; no measured save latency
+  justifies narrowing this path. Deferred to a measured performance task.
 
 ## Validation question
 
-**V01 Open:** `DesktopStore::recover` and `discard_recovery` change settings,
+**V01 Verified:** The forced native-worker regression established that recovery
+must explicitly refresh other views when its revision does not advance. The fix
+and test passed, including restored preferences, cleared recovery flags and Undo
+before any watcher event. Original review context follows.
+
+ `DesktopStore::recover` and `discard_recovery` change settings,
 history or journals without incrementing the revision checked by
 [native_jobs.rs](../src/settings/native_jobs.rs), line 169. A visible stale-state
 defect is not established because watchers/page reopening may reconcile it.

@@ -15,6 +15,7 @@ mod native_test;
 mod paths;
 mod schedule;
 mod settings;
+mod settings_lifecycle;
 mod system_theme;
 mod tools;
 mod usage;
@@ -22,10 +23,16 @@ mod watch;
 mod widget_style;
 
 fn main() -> cosmic::iced::Result {
+    if std::env::args().nth(1).as_deref() == Some("--calendar-parser") {
+        calendar::parser_main();
+    }
     // Settings from before the rename move to the new folders, once.
     paths::migrate();
     let mut args = std::env::args().skip(1);
     let command = args.next();
+    if command.as_deref() == Some("--migrate-config") {
+        return Ok(());
+    }
     if matches!(
         command.as_deref(),
         Some("--select-palette" | "--set-cosmic-colors")
@@ -100,7 +107,29 @@ fn main() -> cosmic::iced::Result {
         return Ok(());
     }
     if command.as_deref() == Some("--settings") {
-        return settings::run(args.next().as_deref().unwrap_or(""));
+        let page = args.next().unwrap_or_default();
+        let launch = (|| -> std::io::Result<Option<std::fs::File>> {
+            if let Some(status) = settings_lifecycle::independent_scope()? {
+                if !status.success() {
+                    return Err(std::io::Error::other(format!(
+                        "Settings scope exited with {status}"
+                    )));
+                }
+                return Ok(None);
+            }
+            let config = config::Config::path()
+                .ok_or_else(|| std::io::Error::other("Configuration directory unavailable"))?;
+            let request = serde_json::to_vec(&serde_json::json!({"page": page}))?;
+            settings_lifecycle::prepare(&config, &request)
+        })();
+        match launch {
+            Ok(Some(_owner)) => return settings::run(&page),
+            Ok(None) => return Ok(()),
+            Err(error) => {
+                eprintln!("Could not open Settings: {error}");
+                std::process::exit(1);
+            }
+        }
     }
     usage::start(paths::state_dir().map(|dir| dir.join("usage.json")));
     let settings = cosmic::app::Settings::default()

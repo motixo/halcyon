@@ -129,15 +129,18 @@ class Boundary(unittest.TestCase):
                 super().__init__(*args)
             @classmethod
             def home(cls):return home
-        def run(*arguments):
+        def run(*arguments, status='install ok installed'):
             output=io.StringIO()
-            with patch.object(install_status,'Path',FixturePath),patch.object(install_status,'query',return_value='install ok installed'), \
+            with patch.object(install_status,'Path',FixturePath),patch.object(install_status,'query',return_value=status), \
                  patch.object(install_status,'regular',return_value=True),patch.object(sys,'argv',['status',*arguments]),contextlib.redirect_stdout(output):
                 install_status.main()
             return [json.loads(line) for line in output.getvalue().splitlines()]
         with patch.object(runtime_identity,'installed_identity',side_effect=AssertionError('disabled must not scan')):
             self.assertEqual(run('--presence')[0]['installation'],'installed')
             self.assertEqual(run()[0]['reason'],'disabled')
+            self.assertEqual(run('--presence',status='hold ok installed')[0]['installation'],'installed')
+            self.assertEqual(run(status='hold ok installed')[0]['reason'],'disabled')
+            self.assertEqual(run('--presence',status='hold ok unpacked')[0]['installation'],'absent')
         selection=home/'.local/share/cosmic-desktop-cards/companion/selection.json'
         selection.parent.mkdir(parents=True);selection.write_text('{"enabled":true}')
         before={str(p):p.read_bytes() for p in home.rglob('*') if p.is_file()}

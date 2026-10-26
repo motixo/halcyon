@@ -601,14 +601,7 @@ impl AutomationEditor {
                 let Some(store) = self.store() else {
                     return;
                 };
-                let result = automation::Automation::default()
-                    .to_bytes()
-                    .and_then(|bytes| {
-                        let path = store
-                            .state_file(automation::FILE)
-                            .map_err(|error| error.to_string())?;
-                        crate::tools::write_private(&path, &bytes)
-                    });
+                let result = automation::reset(store);
                 match result {
                     Ok(()) => self.notice = Some(Notice::Done("Automation settings reset".into())),
                     Err(error) => self.notice = Some(Notice::Error(error)),

@@ -89,7 +89,24 @@ pub fn controller_with(
             widgets.set(
                 "/appearance/accent",
                 widget::get(&raw, "/appearance/accent"),
-                None,
+                config.appearance.family.map(|_| {
+                    let color = Palette::named(name).accent;
+                    serde_json::json!([
+                        (color.r * 255.).round() as u8,
+                        (color.g * 255.).round() as u8,
+                        (color.b * 255.).round() as u8,
+                    ])
+                }),
+            )?;
+            widgets.set(
+                "/appearance/color_policy",
+                widget::get(&raw, "/appearance/color_policy"),
+                Some("custom".into()),
+            )?;
+            widgets.set(
+                "/appearance/wallpaper_colors",
+                widget::get(&raw, "/appearance/wallpaper_colors"),
+                Some(false.into()),
             )?;
             if config.appearance.color_source == crate::config::ColorSource::Desktop {
                 widgets.set(
@@ -146,6 +163,7 @@ pub fn controller_with(
         "/appearance/match_wallpaper",
         "/appearance/match_cosmic_colors",
         "/appearance/color_source",
+        "/appearance/family",
     ] {
         if !widgets.iter().any(|(p, _)| p == pointer) {
             let original = widget::get(&raw, pointer);
@@ -1238,6 +1256,37 @@ mod controller_tests {
         .unwrap();
         (fixture, store, bundled)
     }
+    #[test]
+    fn auditfix_cli_palette_changes_authoritative_theme_colors_and_undo_restores_them() {
+        use crate::config::{ColorPolicy, Config};
+        let (_fixture, store, bundled) = fixture("auditfix-cli-family");
+        let original = serde_json::json!({
+            "theme":"teal",
+            "appearance":{"family":"paper","color_policy":"theme","match_wallpaper":false,"opacity":83}
+        });
+        fs::write(
+            store.app_config().unwrap(),
+            serde_json::to_vec(&original).unwrap(),
+        )
+        .unwrap();
+        let before: Config = serde_json::from_value(original).unwrap();
+        let mut previous = before.palette().accent;
+        for name in ["rose", "ocean"] {
+            controller_with(&store, ControllerRequest::Palette(name), &bundled).unwrap();
+            let (_, current) = wallpaper::automatic::read_config(&store).unwrap();
+            assert_eq!(current.appearance.family, before.appearance.family);
+            assert_eq!(current.appearance.opacity, 83);
+            assert_eq!(current.appearance.color_policy, Some(ColorPolicy::Custom));
+            assert_ne!(current.palette().accent, previous);
+            previous = current.palette().accent;
+        }
+        let latest = store.latest_change().unwrap().unwrap();
+        store.undo_latest(&latest.id).unwrap();
+        let (_, restored) = wallpaper::automatic::read_config(&store).unwrap();
+        assert_eq!(restored.theme, "rose");
+        assert_ne!(restored.palette().accent, previous);
+    }
+
     #[test]
     fn fresh_cli_palette_captures_absent_app_and_preserves_wallpaper_collection() {
         let (fixture, store, bundled) = fixture("cli-fresh");

@@ -841,3 +841,106 @@ fn desktop_icons_apply_exact_values_and_unknown_members_block_only_icons() {
     assert!(!part(&blocked, Domain::DesktopIcons).blocked.is_empty());
     assert!(part(&blocked, Domain::Wallpaper).blocked.is_empty());
 }
+
+#[test]
+fn auditfix_set03_offline_unlisted_wallpaper_applies_and_undo_restores_retained_file() {
+    for same in [false, true] {
+        let fixture = desk(&format!("auditfix-offline-{same}"), &["eDP-1"]);
+        let retained = entry("DP-2", &color([0.7, 0.2, 0.1]));
+        fixture.user(BG, "all", &entry("all", &color([0.1, 0.1, 0.1])));
+        fixture.user(BG, "same-on-all", if same { "true" } else { "false" });
+        fixture.user(BG, "backgrounds", "[]");
+        fixture.user(BG, "output.DP-2", &retained);
+        let before = settings(&fixture);
+        let profile = with_wallpaper(
+            "Offline display",
+            WallpaperLook {
+                displays: Some(DisplaysName::Separate),
+                per_display: Some(
+                    [(
+                        "DP-2".into(),
+                        source(SourceLook::Color(Rgb::Hex("#336699".into()))),
+                    )]
+                    .into(),
+                ),
+                ..Default::default()
+            },
+        );
+        let store = fixture.store();
+        let installed = Installed::discover(&store);
+        let prepared = plan(&store, &installed, &profile, &parts(&profile));
+        assert!(prepared.can_apply(), "{:?}", prepared.blocking_reasons());
+        let latest = apply(&store, &prepared).unwrap();
+        assert_eq!(read_list(&fixture), ["DP-2".into()].into());
+        let BgSource::Color(BgColor::Single(actual)) = read_entry(&fixture, "output.DP-2").source
+        else {
+            panic!("expected the requested solid color");
+        };
+        for (actual, expected) in actual.into_iter().zip([0.2, 0.4, 0.6]) {
+            assert!((actual - expected).abs() < 0.000001);
+        }
+        assert!(plan(&store, &installed, &profile, &parts(&profile)).is_empty());
+        store.undo_latest(&latest.id).unwrap();
+        assert_eq!(settings(&fixture), before);
+
+        let prepared = plan(&store, &installed, &profile, &parts(&profile));
+        fixture.user(BG, "output.DP-2", &entry("DP-2", &color([0.2, 0.8, 0.1])));
+        let changed = settings(&fixture);
+        assert!(matches!(
+            apply(&store, &prepared),
+            Err(DesktopError::Conflict(_))
+        ));
+        assert_eq!(
+            settings(&fixture),
+            changed,
+            "outside edits must still conflict"
+        );
+    }
+}
+
+#[test]
+fn auditfix_set03_unlisted_unreadable_or_unsupported_wallpaper_blocks_atomically() {
+    for unreadable in [false, true] {
+        let fixture = desk(
+            &format!("auditfix-offline-blocked-{unreadable}"),
+            &["eDP-1"],
+        );
+        fixture.user(BG, "same-on-all", "true");
+        fixture.user(BG, "backgrounds", "[]");
+        let store = fixture.store();
+        if unreadable {
+            fs::create_dir_all(store.user_path(&wallpaper::output_key("DP-2").unwrap())).unwrap();
+        } else {
+            fixture.user(BG, "output.DP-2", "(output: \"DP-2\", source: FutureVariant, filter_by_theme: false, rotation_frequency: 300)");
+        }
+        let mut profile = with_wallpaper(
+            "Offline display",
+            WallpaperLook {
+                displays: Some(DisplaysName::Separate),
+                per_display: Some(
+                    [(
+                        "DP-2".into(),
+                        source(SourceLook::Color(Rgb::Hex("#336699".into()))),
+                    )]
+                    .into(),
+                ),
+                ..Default::default()
+            },
+        );
+        profile.desktop_icons = Some(DesktopIconsLook {
+            show_trash: Some(true),
+            ..Default::default()
+        });
+        profile.version = profile.written_version();
+        let before = settings(&fixture);
+        let prepared = plan(
+            &store,
+            &Installed::discover(&store),
+            &profile,
+            &parts(&profile),
+        );
+        assert!(!part(&prepared, Domain::Wallpaper).blocked.is_empty());
+        assert!(apply(&store, &prepared).is_err());
+        assert_eq!(settings(&fixture), before);
+    }
+}

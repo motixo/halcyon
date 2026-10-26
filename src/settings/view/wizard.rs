@@ -1,7 +1,7 @@
-//! First-run setup screens: the illustrated backdrop, one frosted card per
-//! step and the drawn dock and panel choices. Brand colors on purpose; the
-//! wizard looks the same whatever theme the desktop has yet.
+//! First-run setup with native, opaque theme-aware cards and controls.
+//! Illustrations are local samples; the existing wizard owns apply and rollback.
 use super::*;
+mod widget_pages;
 use crate::desktop::profiles::Preset;
 use crate::settings::wizard::{Message as Step, Shape, Step as Screen, Wizard};
 use cosmic::iced::widget::stack;
@@ -103,7 +103,17 @@ fn words<'a>(value: impl Into<String>, size: f32, color: Color) -> Element<'a, M
     text::body(value.into())
         .size(size)
         .line_height(1.3)
-        .class(cosmic::theme::Text::Color(color))
+        .class(super::text_style(if color == INK {
+            FG
+        } else if color == SOFT {
+            MUTED
+        } else if color == LAVENDER {
+            cosmic::theme::active().cosmic().accent_text_color().into()
+        } else if color == DANGER {
+            super::desktop::ERROR
+        } else {
+            color
+        }))
         .into()
 }
 
@@ -112,7 +122,7 @@ fn heading<'a>(value: &'static str, size: f32) -> Element<'a, Message> {
         .size(size)
         .line_height(1.15)
         .font(cosmic::font::bold())
-        .class(cosmic::theme::Text::Color(INK))
+        .class(cosmic::theme::Text::Default)
         .into()
 }
 
@@ -122,7 +132,21 @@ fn fill_box<'a>(
     border: Color,
     radius: f32,
 ) -> cosmic::widget::Container<'a, Message, cosmic::Theme> {
-    container(content).class(cosmic::theme::Container::custom(move |_| {
+    container(content).class(cosmic::theme::Container::custom(move |theme| {
+        let color = if color == CARD {
+            theme.cosmic().background(theme.transparent).base.into()
+        } else if color == TILE {
+            theme.current_container().component.base.into()
+        } else if color == PRIMARY || color == LAVENDER {
+            theme.cosmic().accent.base.into()
+        } else {
+            color
+        };
+        let border = if border == EDGE {
+            theme.current_container().component.divider.into()
+        } else {
+            border
+        };
         cosmic::iced::widget::container::Style {
             background: Some(Background::Color(color)),
             border: Border {
@@ -149,76 +173,38 @@ fn shape<'a>(w: f32, h: f32, radius: f32, color: Color) -> Element<'a, Message> 
 }
 
 fn button_style(
-    background: Color,
-    hover: Color,
+    _background: Color,
+    _hover: Color,
     border: Color,
-    radius: f32,
+    _radius: f32,
 ) -> cosmic::theme::Button {
-    let style = move |focused: bool, hovered: bool| cosmic::widget::button::Style {
-        background: Some(Background::Color(if hovered { hover } else { background })),
-        border_color: border,
-        border_width: if border.a > 0. { 1. } else { 0. },
-        border_radius: radius.into(),
-        outline_width: if focused { 2. } else { 0. },
-        outline_color: LAVENDER,
-        ..Default::default()
-    };
-    cosmic::theme::Button::Custom {
-        active: Box::new(move |focused, _| style(focused, false)),
-        hovered: Box::new(move |focused, _| style(focused, true)),
-        pressed: Box::new(move |focused, _| style(focused, true)),
-        disabled: Box::new(move |_| style(false, false)),
-    }
+    super::profiles::tile_style(
+        border == LAVENDER,
+        cosmic::theme::active().cosmic().accent_color().into(),
+    )
 }
 
-fn primary<'a>(label: &'static str, id: &'static str, message: Message) -> Element<'a, Message> {
-    button::custom(
-        container(words(label, 14., Color::from_rgb(0.07, 0.06, 0.16)))
-            .width(Length::Fill)
-            .align_x(Alignment::Center),
-    )
-    .id(cosmic::widget::Id::new(id))
-    .class(button_style(
-        PRIMARY,
-        Color::from_rgb(0.68, 0.62, 1.),
-        Color::TRANSPARENT,
-        18.,
-    ))
-    .padding([10, 18])
-    .width(132.)
-    .on_press(message)
-    .into()
+fn primary<'a>(
+    label: &'static str,
+    id: &'static str,
+    message: Option<Message>,
+) -> Element<'a, Message> {
+    button::suggested(label)
+        .id(cosmic::widget::Id::new(id))
+        .on_press_maybe(message)
+        .into()
 }
 
 fn secondary<'a>(label: &'static str, id: &'static str, message: Message) -> Element<'a, Message> {
-    button::custom(
-        container(words(label, 14., INK))
-            .width(Length::Fill)
-            .align_x(Alignment::Center),
-    )
-    .id(cosmic::widget::Id::new(id))
-    .class(button_style(
-        Color::from_rgba(1., 1., 1., 0.07),
-        Color::from_rgba(1., 1., 1., 0.13),
-        EDGE,
-        18.,
-    ))
-    .padding([10, 18])
-    .width(96.)
-    .on_press(message)
-    .into()
+    button::standard(label)
+        .id(cosmic::widget::Id::new(id))
+        .on_press(message)
+        .into()
 }
 
 fn quiet<'a>(label: &'static str, id: &'static str, message: Message) -> Element<'a, Message> {
-    button::custom(words(label, 14., SOFT))
+    button::text(label)
         .id(cosmic::widget::Id::new(id))
-        .class(button_style(
-            Color::TRANSPARENT,
-            Color::from_rgba(1., 1., 1., 0.06),
-            Color::TRANSPARENT,
-            18.,
-        ))
-        .padding([10, 14])
         .on_press(message)
         .into()
 }
@@ -343,47 +329,58 @@ fn dock_drawing<'a>(shape: Shape, icon: f32) -> Element<'a, Message> {
 impl Settings {
     /// The width inside the step card, beside its scroll bar.
     fn wizard_inner_width(&self) -> f32 {
-        (self.window.width - 64.).min(CARD_WIDTH) - 56. - 12.
+        (self.window.width - 48.).min(CARD_WIDTH) - 44. - 12.
     }
 
     pub(super) fn wizard_view<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
-        let welcome = wizard.step == Screen::Welcome;
-        let mut layers: Vec<Element<'a, Message>> = Vec::new();
-        layers.push(match backdrop(welcome) {
-            Some(handle) => cosmic::widget::image(handle)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .content_fit(cosmic::iced::ContentFit::Cover)
-                .into(),
-            None => shape(0., 0., 0., Color::from_rgb(0.05, 0.05, 0.14)),
-        });
-        layers.push(if welcome {
+        let view: Element<'a, Message> = container(if wizard.step == Screen::Welcome {
             self.wizard_welcome(wizard)
         } else {
             self.wizard_card(wizard)
-        });
-        stack(layers)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+        })
+        .class(cosmic::theme::Container::custom(|theme| {
+            cosmic::iced::widget::container::Style {
+                background: Some(Background::Color(
+                    theme.cosmic().background(theme.transparent).base.into(),
+                )),
+                ..Default::default()
+            }
+        }))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into();
+        view.map(move |message| match message {
+            Message::Wizard(action) => go(wizard.rendered(action)),
+            other => other,
+        })
     }
 
     fn wizard_welcome<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
         // Setup resumed with changes made: continue, or undo them.
         let actions = if wizard.has_changes() {
             vec![
-                primary("Continue", "wizard-start", go(Step::Start)),
+                primary(
+                    "Continue",
+                    "wizard-start",
+                    (!self.native_busy).then_some(go(Step::Start)),
+                ),
                 quiet("Cancel setup", "wizard-cancel", go(Step::Cancel)),
             ]
         } else {
             vec![
-                primary("Start", "wizard-start", go(Step::Start)),
+                primary(
+                    "Start",
+                    "wizard-start",
+                    (!self.native_busy).then_some(go(Step::Start)),
+                ),
                 quiet("Skip", "wizard-leave", go(Step::Leave)),
             ]
         };
         let intro = column::with_children(vec![
-            heading("Halcyon", 64.),
-            words(Screen::Welcome.hint(), 19., LAVENDER),
+            heading("Welcome to Halcyon", 36.),
+            words("Make your COSMIC desktop feel like home.", 18., SOFT),
+            words("Start with a setup, shape your dock and panel, and choose and arrange your widgets. Every step is optional.", 14., SOFT),
+            words("You can change everything later in Settings.", 14., SOFT),
             cosmic::iced::widget::space().height(18.).into(),
             row::with_children(actions)
                 .spacing(16)
@@ -395,7 +392,7 @@ impl Settings {
             container(intro)
                 .width(Length::Fill)
                 .height(Length::Fill)
-                .padding([0, 64])
+                .padding([24, 40])
                 .align_y(Alignment::Center)
                 .into(),
             container(dots(Screen::Welcome))
@@ -412,13 +409,83 @@ impl Settings {
         let body = match step {
             Screen::Look => self.wizard_looks(wizard),
             Screen::Bars => self.wizard_bars(wizard),
+            Screen::Widgets => self.wizard_widgets(wizard, false),
+            Screen::Arrange => self.wizard_widgets(wizard, true),
             Screen::Weather => self.wizard_weather(),
             Screen::Ready => self.wizard_ready(wizard),
             Screen::Welcome => cosmic::iced::widget::space().into(),
         };
+        let progress = match step {
+            Screen::Look => 0,
+            Screen::Bars => 1,
+            Screen::Ready => 3,
+            _ => 2,
+        };
         let mut parts = vec![
-            heading(step.title(), 34.),
-            words(step.hint(), 15., LAVENDER),
+            row::with_children(
+                ["Setup", "Dock & panel", "Widgets", "Ready"]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, title)| {
+                        fill_box(
+                            words(
+                                format!(
+                                    "{}  {title}",
+                                    if i < progress {
+                                        "✓".to_string()
+                                    } else {
+                                        (i + 1).to_string()
+                                    }
+                                ),
+                                11.,
+                                if i == progress { LAVENDER } else { SOFT },
+                            ),
+                            if i == progress {
+                                TILE
+                            } else {
+                                Color::TRANSPARENT
+                            },
+                            Color::TRANSPARENT,
+                            6.,
+                        )
+                        .padding([4, 8])
+                        .into()
+                    })
+                    .collect::<Vec<Element<'_, Message>>>(),
+            )
+            .spacing(4)
+            .into(),
+            heading(
+                match step {
+                    Screen::Look => "Starter setup",
+                    Screen::Bars => "Dock and panel",
+                    Screen::Widgets => "Your widgets",
+                    Screen::Arrange => "Arrange your widgets",
+                    Screen::Weather => "Weather",
+                    Screen::Ready => "Your desktop is ready",
+                    Screen::Welcome => "Welcome",
+                },
+                26.,
+            ),
+            words(
+                match step {
+                    Screen::Look => {
+                        "Setups · Choices apply as you go. Cancel reverses setup’s desktop changes."
+                    }
+                    Screen::Bars => "Desktop · Choose the shape and behavior of your bars.",
+                    Screen::Widgets => "Choose what you want on your desktop.",
+                    Screen::Arrange => {
+                        "Drag to reorder, or use the arrows. The preview follows along."
+                    }
+                    Screen::Weather => {
+                        "Widgets · Choose a forecast city. This preference stays if you cancel setup."
+                    }
+                    Screen::Ready => "Find these choices again in Setups, Desktop and Widgets.",
+                    Screen::Welcome => "Make yourself at home.",
+                },
+                14.,
+                SOFT,
+            ),
             cosmic::iced::widget::space().height(10.).into(),
             scrollable(container(body).padding([0, 12, 0, 0]))
                 .id(cosmic::widget::Id::new("wizard-body"))
@@ -434,17 +501,48 @@ impl Settings {
                     secondary("Back", "wizard-back", go(Step::Back)),
                     quiet("Cancel", "wizard-cancel", go(Step::Cancel)),
                 ],
-                primary("Finish", "wizard-finish", go(Step::Finish)),
+                primary(
+                    if wizard.widgets.pending {
+                        "Review widgets"
+                    } else {
+                        "Finish"
+                    },
+                    "wizard-finish",
+                    (!self.native_busy).then_some(go(Step::Finish)),
+                ),
             ),
             _ => (
                 vec![
                     secondary("Back", "wizard-back", go(Step::Back)),
-                    quiet("Skip", "wizard-skip", go(Step::Skip)),
+                    quiet(
+                        if matches!(step, Screen::Widgets | Screen::Arrange) {
+                            "Keep current widgets"
+                        } else if step == Screen::Weather {
+                            "Do this later"
+                        } else {
+                            "Skip"
+                        },
+                        "wizard-skip",
+                        go(Step::Skip),
+                    ),
                 ],
                 // Cancel on every step undoes what setup changed so far.
                 row::with_children(vec![
                     quiet("Cancel", "wizard-cancel", go(Step::Cancel)),
-                    primary("Next", "wizard-next", go(Step::Next)),
+                    button::suggested(match step {
+                        Screen::Widgets => "Arrange widgets",
+                        Screen::Arrange if wizard.widgets.active().is_empty() => "Continue",
+                        Screen::Arrange => "Use these widgets",
+                        _ => "Next",
+                    })
+                    .id(cosmic::widget::Id::new("wizard-next"))
+                    .on_press_maybe(
+                        (!self.native_busy
+                            && (step != Screen::Arrange
+                                || wizard.widget_plan(&self.config).error.is_none()))
+                        .then_some(go(Step::Next)),
+                    )
+                    .into(),
                 ])
                 .spacing(8)
                 .align_y(Alignment::Center)
@@ -461,14 +559,7 @@ impl Settings {
                 )
                 .width(Length::FillPortion(2))
                 .into(),
-                container(dots(step))
-                    .width(Length::FillPortion(2))
-                    .align_x(Alignment::Center)
-                    .into(),
-                container(right)
-                    .width(Length::FillPortion(2))
-                    .align_x(Alignment::End)
-                    .into(),
+                container(right).align_x(Alignment::End).into(),
             ])
             .align_y(Alignment::Center)
             .into(),
@@ -479,13 +570,13 @@ impl Settings {
             EDGE,
             18.,
         )
-        .padding([26, 28])
+        .padding([16, 22])
         .max_width(CARD_WIDTH)
         .height(Length::Fill);
         container(card)
             .width(Length::Fill)
             .height(Length::Fill)
-            .padding([28, 32])
+            .padding([16, 24])
             .align_x(Alignment::Center)
             .into()
     }
@@ -551,8 +642,9 @@ impl Settings {
     }
 
     fn wizard_bars<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
-        let mut bars = wizard.bars;
-        bars.islands &= self.desktop.islands.installation.installed();
+        let bars = wizard.bars;
+        // Both columns fit even at the minimum 820px width. Stacking them
+        // makes the dock choices fall below the footer in a 600px window.
         let column_width = (self.wizard_inner_width() - 18.) / 2.;
         let tile_width = (column_width - 8. * 2.) / 3.;
         let draw = tile_width - 24.;
@@ -586,15 +678,14 @@ impl Settings {
             !bars.islands,
             Some(go(Step::Islands(false))),
         )];
-        if wizard.islands_available && self.desktop.islands.installation.installed() {
-            styles.push(choice(
-                panel_drawing(true, bars.panel_shape, draw, 12.),
-                "Islands",
-                "wizard-panel-islands".into(),
-                bars.islands,
-                Some(go(Step::Islands(true))),
-            ));
-        }
+        styles.push(choice(
+            panel_drawing(true, bars.panel_shape, draw, 12.),
+            "Islands",
+            "wizard-panel-islands".into(),
+            bars.islands,
+            (wizard.islands_available && self.desktop.islands.installation.installed())
+                .then_some(go(Step::Islands(true))),
+        ));
         let panel = vec![
             words("Panel", 15., INK),
             line("Style", styles),
@@ -651,23 +742,30 @@ impl Settings {
                 ],
             ),
         ];
-        column::with_children(vec![
+        let controls = vec![
+            column::with_children(panel)
+                .spacing(10)
+                .width(column_width)
+                .into(),
+            column::with_children(dock)
+                .spacing(10)
+                .width(column_width)
+                .into(),
+        ];
+        let controls = row::with_children(controls).spacing(18).into();
+        let mut parts = vec![
             self.wizard_bars_preview(wizard),
-            row::with_children(vec![
-                column::with_children(panel)
-                    .spacing(10)
-                    .width(column_width)
-                    .into(),
-                column::with_children(dock)
-                    .spacing(10)
-                    .width(column_width)
-                    .into(),
-            ])
-            .spacing(18)
-            .into(),
-        ])
-        .spacing(16)
-        .into()
+            words(
+                "Preview · Islands appearance requires the running add-on.",
+                12.,
+                SOFT,
+            ),
+            controls,
+        ];
+        if bars.islands && !self.desktop.islands.installation.installed() {
+            parts.push(words("Islands is selected; the preview shows the standard panel fallback. Check the add-on in App settings after setup.", 12., DANGER));
+        }
+        column::with_children(parts).spacing(16).into()
     }
 
     /// The chosen look's wallpaper, full width, with the panel on top and
@@ -782,8 +880,7 @@ impl Settings {
     }
 
     fn wizard_ready<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
-        let mut bars = wizard.bars;
-        bars.islands &= self.desktop.islands.installation.installed();
+        let bars = wizard.bars;
         let look = wizard
             .look
             .and_then(|id| {
@@ -808,8 +905,12 @@ impl Settings {
         let summary = |name: &'static str, value: String, target: Screen| -> Element<'a, Message> {
             fill_box(
                 row::with_children(vec![
-                    container(words(name, 14., INK)).width(Length::Fill).into(),
-                    words(value, 14., SOFT),
+                    container(words(name, 14., INK))
+                        .width(Length::FillPortion(1))
+                        .into(),
+                    container(words(value, 14., SOFT))
+                        .width(Length::FillPortion(2))
+                        .into(),
                     button::custom(words("Change", 13., LAVENDER))
                         .class(button_style(
                             Color::TRANSPARENT,
@@ -832,31 +933,67 @@ impl Settings {
             .width(Length::Fill)
             .into()
         };
-        column::with_children(vec![
-            summary("Look", look, Screen::Look),
-            summary("Dock & panel", panel, Screen::Bars),
-            summary("Weather", city, Screen::Weather),
-            self.usage_control(),
-            fill_box(
-                row::with_children(vec![
-                    container(words("Start at sign-in", 14., INK))
-                        .width(Length::Fill)
-                        .into(),
-                    toggler(wizard.startup)
-                        .on_toggle(|on| go(Step::Startup(on)))
-                        .into(),
-                ])
-                .align_y(Alignment::Center)
+        let mut parts = vec![
+            summary("Starter setup", look, Screen::Look),
+            summary("Dock and panel", panel, Screen::Bars),
+            summary(
+                "Widgets",
+                if wizard.widgets.active().is_empty() {
+                    "None".into()
+                } else {
+                    wizard
+                        .widgets
+                        .active()
+                        .iter()
+                        .map(|w| w.title())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                },
+                Screen::Widgets,
+            ),
+        ];
+        if wizard.widgets.selected(Widget::Weather) {
+            parts.push(summary("Weather", city, Screen::Weather));
+        }
+        if !wizard.widgets.active().is_empty() {
+            parts.push(
+                fill_box(
+                    row::with_children(vec![
+                        container(words("Start at sign-in", 14., INK))
+                            .width(Length::Fill)
+                            .into(),
+                        toggler(wizard.startup)
+                            .on_toggle(|on| go(Step::Startup(on)))
+                            .into(),
+                    ])
+                    .align_y(Alignment::Center)
+                    .into(),
+                    TILE,
+                    EDGE,
+                    10.,
+                )
+                .id(cosmic::widget::Id::new("wizard-startup"))
+                .padding([10, 14])
+                .width(Length::Fill)
                 .into(),
-                TILE,
-                EDGE,
-                10.,
+            );
+        }
+        row::with_children(vec![
+            container(column::with_children(parts).spacing(8))
+                .width(Length::FillPortion(3))
+                .into(),
+            container(
+                column::with_children(vec![
+                    words("Your desktop · Sample content", 12., SOFT),
+                    self.wizard_widget_preview(wizard, 210.),
+                    self.usage_control(),
+                ])
+                .spacing(12),
             )
-            .padding([10, 14])
-            .width(Length::Fill)
+            .width(Length::FillPortion(2))
             .into(),
         ])
-        .spacing(8)
+        .spacing(20)
         .into()
     }
 }

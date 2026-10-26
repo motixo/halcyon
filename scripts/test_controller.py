@@ -57,13 +57,13 @@ class ControllerTests(unittest.TestCase):
                 [str(controller.USER_DIR / '.local/bin/cosmic-desktop-cards'), '--settings', 'calendar'],
                 check=True)
 
-    def test_second_request_focuses_existing_window_instead_of_launching_another(self):
+    def test_settings_ownership_is_only_in_the_native_entry_point(self):
+        # Even a held legacy controller lock must not intercept native routing.
         with self.config.with_name('settings.lock').open('w') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            with patch.object(controller.subprocess, 'run') as run:
-                controller.settings('weather')
-                run.assert_not_called()
-        self.assertEqual(json.loads(self.config.with_name('settings-command.json').read_text()), {'page': 'weather'})
+            controller.settings('weather')
+        self.run.assert_called_once_with([str(controller.BINARY), '--settings', 'weather'], check=True)
+        self.assertFalse(self.config.with_name('settings-command.json').exists())
 
     def test_cli_settings_route_and_weather_shortcut_use_graphical_pages(self):
         with patch.object(controller.sys, 'argv', ['desktop-cards', 'settings', '--page', 'projects']):

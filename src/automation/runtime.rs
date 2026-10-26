@@ -9,7 +9,7 @@
 //! change, not several.
 use super::decide::{self, Due, Effect, Outcome, State};
 use super::rules::Automation;
-use super::run::{Ran, run};
+use super::run::{Ran, run_for_cause};
 use crate::desktop::DesktopStore;
 use crate::desktop::profiles::{Domain, Installed};
 use chrono::{DateTime, Local, TimeZone, Utc};
@@ -48,15 +48,27 @@ impl Job {
             } else if let Some(at) = manual.filter(|at| at.timestamp() >= due.at) {
                 Ran::KeptManual(at.timestamp())
             } else {
-                crate::desktop::actions::scheduled_epoch(self.epoch, expected, || {
-                    run(
-                        store,
-                        &installed,
-                        &due.profile,
-                        &due.name,
-                        &super::read_hold(store),
-                    )
-                })
+                match super::lock_rules(store) {
+                    Err(reason) => Ran::Failed(reason),
+                    Ok(_lock) => match super::load(store) {
+                        Err(reason) => Ran::Failed(reason),
+                        Ok(settings) if !due.is_current(&settings, super::now()) => Ran::Failed(
+                            "The automation rule changed. This switch was cancelled.".into(),
+                        ),
+                        Ok(_) => {
+                            crate::desktop::actions::scheduled_epoch(self.epoch, expected, || {
+                                run_for_cause(
+                                    store,
+                                    &installed,
+                                    &due.profile,
+                                    &due.name,
+                                    &super::read_hold(store),
+                                    matches!(due.cause, decide::Cause::Display(_)),
+                                )
+                            })
+                        }
+                    },
+                }
             };
             results.push((due, ran));
         }
@@ -223,6 +235,20 @@ impl Automator {
         connected: impl FnOnce() -> Vec<String>,
     ) -> Option<Job> {
         self.wake = None;
+        // Clear invalid persisted waits even when all rules or the master
+        // switch are disabled (the running check below would skip decide).
+        if self.state.pending.as_ref().is_some_and(|pending| {
+            self.settings
+                .as_ref()
+                .is_none_or(|settings| !pending.is_current(settings, now.timestamp()))
+        }) {
+            self.state.pending = None;
+            if let Some(store) = &self.store
+                && let Err(error) = super::save_state(store, &self.state)
+            {
+                eprintln!("Automation: could not save its state: {error}");
+            }
+        }
         if !self.running() {
             return None;
         }
@@ -349,6 +375,10 @@ impl Automator {
                 _ => {}
             }
             let outcome = Outcome {
+                transaction: match &ran {
+                    Ran::Applied { change, .. } => Some(change.clone()),
+                    _ => None,
+                },
                 at: now,
                 due,
                 effect: ran.effect(),

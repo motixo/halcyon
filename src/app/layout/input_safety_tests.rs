@@ -684,3 +684,687 @@ fn arrange_recovery_pin_retry_before_watcher() {
         recovery_pin_before_watcher(2);
     }
 }
+
+// These regressions drive real config transactions and the production output
+// messages. The socketpair proxies never connect to a compositor.
+fn auditfix_measure_outputs(cards: &mut Cards) -> Vec<SctkLayerSurfaceSettings> {
+    let mut created = Vec::new();
+    if !cards.output_known {
+        let (width, height) = cards
+            .selected_output
+            .as_ref()
+            .unwrap()
+            .info
+            .logical_size
+            .unwrap();
+        let task = cards.update(Message::SurfaceResized(
+            cards.ids[5],
+            cosmic::iced::Size::new(width as f32, height as f32),
+        ));
+        created.extend(emitted(cards, task).1);
+    }
+    let extra: Vec<_> = cards
+        .extra_probes
+        .iter()
+        .filter(|probe| probe.size.is_none())
+        .map(|probe| (probe.id, probe.output.info.logical_size.unwrap()))
+        .collect();
+    for (id, (width, height)) in extra {
+        let task = cards.update(Message::SurfaceResized(
+            id,
+            cosmic::iced::Size::new(width as f32, height as f32),
+        ));
+        created.extend(emitted(cards, task).1);
+    }
+    created
+}
+
+fn auditfix_two_display_arrange() -> (Cards, crate::displays::test_support::Wire) {
+    use crate::displays::{
+        OutputEvent,
+        test_support::{Wire, info},
+    };
+    let config = Config::save_changes(serde_json::json!({
+        "widget_display":"eDP-1", "enabled_widgets":["weather"],
+        "placement":{"snap":false},
+        "widget_monitors":{"weather":{"display":"DP-2"}},
+        "monitor_layouts":{"weather":{
+            "DP-2":{"position":[0.2,0.2],"size":[360.,180.]},
+            "eDP-1":{"position":[0.8,0.8],"size":[360.,180.]}
+        }}
+    }))
+    .unwrap();
+    let wire = Wire::new();
+    let (mut cards, _) = Cards::init(Core::default(), config);
+    for (id, name, size) in [(1, "eDP-1", (1920, 1080)), (2, "DP-2", (1280, 720))] {
+        let task = cards.update(Message::OutputChanged(
+            OutputEvent::Created(Some(info(Some(name), size))),
+            wire.output(id),
+        ));
+        emitted(&mut cards, task);
+    }
+    auditfix_measure_outputs(&mut cards);
+    let task = cards.update(Message::ArrangeDisplay("DP-2".into()));
+    emitted(&mut cards, task);
+    auditfix_measure_outputs(&mut cards);
+    assert!(cards.layout_editor.active && cards.arranging_widget(Widget::Weather));
+    assert_eq!(cards.screen_size, [1280., 720.]);
+    cards.put_layout_point(Widget::Weather, [550., 280.]);
+    assert!(cards.commit_arrange());
+    assert!(!cards.layout_editor.session_actions.is_empty());
+    (cards, wire)
+}
+
+#[test]
+fn auditfix_run02_identity_after_removal_cannot_retarget_failed_transaction() {
+    if isolated("auditfix_run02_identity_after_removal_cannot_retarget_failed_transaction") {
+        return;
+    }
+    for save in [true, false] {
+        let (mut cards, _wire) = auditfix_two_display_arrange();
+        cards.put_layout_point(Widget::Weather, [780., 400.]);
+        let draft = cards.layout_editor.draft.clone();
+        let baseline = cards.layout_editor.baseline["weather"];
+        let receipts = cards.layout_editor.session_actions.clone();
+        let original = cards.selected_output.as_ref().unwrap().handle.clone();
+        let path = Config::path().unwrap();
+        let saved = std::fs::read(&path).unwrap();
+        let holder = Holder::new(&path.with_extension("json.lock"));
+        let task = cards.update(Message::LayoutFinish(save));
+        assert!(
+            emitted(&mut cards, task)
+                .1
+                .iter()
+                .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+        );
+        drop(holder);
+        assert!(cards.paused_layout.as_ref().unwrap().exit_failed);
+        let task = cards.update(Message::OutputChanged(
+            crate::displays::OutputEvent::Removed,
+            original,
+        ));
+        emitted(&mut cards, task);
+        auditfix_measure_outputs(&mut cards);
+        // Deliver the actual follow-up reconciliation, both an empty identity
+        // result and a newly identified fallback. Neither proves a DP-2 alias.
+        for identities in [
+            BTreeMap::new(),
+            [("eDP-1".into(), "edid:fallback".into())].into(),
+        ] {
+            let task = cards.update(Message::DisplayIdentities(
+                cards.displays.generation,
+                identities,
+            ));
+            emitted(&mut cards, task);
+            let paused = cards.paused_layout.as_ref().unwrap();
+            assert_eq!(paused.contexts["weather"], "DP-2");
+            assert_eq!(paused.baseline["weather"], baseline);
+            assert_eq!(paused.draft, draft);
+            assert_eq!(paused.session_actions, receipts);
+            let task = cards.update(Message::LayoutResume);
+            assert!(emitted(&mut cards, task).1.is_empty());
+            assert!(!cards.layout_editor.active);
+            assert!(cards.paused_layout.as_ref().unwrap().exit_failed);
+            assert_eq!(std::fs::read(&path).unwrap(), saved);
+        }
+    }
+}
+
+#[test]
+fn auditfix_run03_failed_exit_resumes_original_nondefault_output() {
+    if isolated("auditfix_run03_failed_exit_resumes_original_nondefault_output") {
+        return;
+    }
+    for save in [true, false] {
+        let (mut cards, _wire) = auditfix_two_display_arrange();
+        let original = cards.selected_output.as_ref().unwrap().handle.clone();
+        cards.put_layout_point(Widget::Weather, [780., 400.]);
+        cards.layout_editor.selected = Some(Widget::Weather);
+        let draft = cards.layout_editor.draft.clone();
+        let receipts = cards.layout_editor.session_actions.clone();
+        let path = Config::path().unwrap();
+        let holder = Holder::new(&path.with_extension("json.lock"));
+        let task = cards.update(Message::LayoutFinish(save));
+        assert!(
+            emitted(&mut cards, task)
+                .1
+                .iter()
+                .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+        );
+        drop(holder);
+        auditfix_measure_outputs(&mut cards);
+        assert_eq!(
+            cards.selected_output.as_ref().unwrap().name(),
+            Some("eDP-1")
+        );
+        assert_eq!(cards.screen_size, [1920., 1080.]);
+        let task = cards.update(Message::LayoutResume);
+        let mut created = emitted(&mut cards, task).1;
+        created.extend(auditfix_measure_outputs(&mut cards));
+        assert!(cards.layout_editor.active && cards.arranging_widget(Widget::Weather));
+        assert_eq!(cards.selected_output.as_ref().unwrap().handle, original);
+        assert_eq!(cards.screen_size, [1280., 720.]);
+        assert_eq!(cards.layout_editor.draft, draft);
+        assert_eq!(cards.layout_editor.session_actions, receipts);
+        assert!(created.iter().any(|s| s.namespace == "halcyon-arrange"
+            && s.keyboard_interactivity == KeyboardInteractivity::Exclusive
+            && matches!(&s.output, IcedOutput::Output(output) if output == &original)));
+        let task = cards.update(Message::LayoutKey(
+            keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+            false,
+        ));
+        emitted(&mut cards, task);
+        let nudged = cards.layout_editor.draft["weather"];
+        assert!(nudged[0] > draft["weather"][0]);
+        assert_eq!(nudged[1], draft["weather"][1]);
+        let task = cards.update(Message::LayoutFinish(true));
+        emitted(&mut cards, task);
+        auditfix_measure_outputs(&mut cards);
+        assert!(!cards.layout_editor.active && cards.paused_layout.is_none());
+        let saved = Config::load();
+        assert_eq!(
+            saved.monitor_layouts["weather"]["DP-2"].position,
+            Some(nudged)
+        );
+        assert_eq!(
+            saved.monitor_layouts["weather"]["eDP-1"].position,
+            Some([0.8, 0.8])
+        );
+        assert_eq!(
+            cards.selected_output.as_ref().unwrap().name(),
+            Some("eDP-1")
+        );
+    }
+}
+
+#[test]
+fn auditfix_run04_failed_completed_gesture_survives_geometry_and_reentry() {
+    if isolated("auditfix_run04_failed_completed_gesture_survives_geometry_and_reentry") {
+        return;
+    }
+    let (mut cards, _wire) = moved();
+    let receipts = cards.layout_editor.session_actions.clone();
+    let path = Config::path().unwrap();
+    let saved = std::fs::read(&path).unwrap();
+    let holder = Holder::new(&path.with_extension("json.lock"));
+    cards.layout_editor.selected = Some(Widget::Weather);
+    let task = cards.update(Message::LayoutKey(
+        keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+        false,
+    ));
+    emitted(&mut cards, task);
+    assert!(cards.layout_editor.error.is_some());
+    assert!(!cards.layout_editor.exit_failed);
+    let draft = cards.layout_editor.draft.clone();
+    let history_len = cards.layout_editor.history.len();
+    let output = cards.selected_output.as_ref().unwrap().handle.clone();
+    let task = cards.update(Message::OutputChanged(
+        crate::displays::OutputEvent::InfoUpdate(crate::displays::test_support::info(
+            Some("test-output"),
+            (1600, 900),
+        )),
+        output,
+    ));
+    assert!(
+        emitted(&mut cards, task)
+            .1
+            .iter()
+            .all(|s| s.keyboard_interactivity == KeyboardInteractivity::None)
+    );
+    auditfix_measure_outputs(&mut cards);
+    drop(holder);
+    let task = cards.update(Message::ArrangeDisplay("test-output".into()));
+    assert!(emitted(&mut cards, task).1.is_empty());
+    let paused = cards.paused_layout.as_ref().unwrap();
+    assert!(paused.exit_failed && !paused.active);
+    assert_eq!(paused.draft, draft);
+    assert_eq!(paused.history.len(), history_len);
+    assert_eq!(paused.session_actions, receipts);
+    assert_eq!(std::fs::read(&path).unwrap(), saved);
+    let task = cards.update(Message::LayoutResume);
+    assert!(
+        emitted(&mut cards, task)
+            .1
+            .iter()
+            .any(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+    );
+    assert_eq!(cards.layout_editor.draft, draft);
+    assert_eq!(cards.layout_editor.session_actions, receipts);
+    // Cancel still owns exactly the earlier successful gesture's receipt.
+    let task = cards.update(Message::LayoutFinish(false));
+    emitted(&mut cards, task);
+    assert!(cards.paused_layout.is_none() && !cards.layout_editor.active);
+    assert_eq!(Config::load().widget_positions["weather"], [0.2, 0.2]);
+}
+
+#[test]
+fn auditfix_run02_paused_alias_on_original_handle_preserves_undo() {
+    if isolated("auditfix_run02_paused_alias_on_original_handle_preserves_undo") {
+        return;
+    }
+    let (mut cards, _wire) = auditfix_two_display_arrange();
+    let original = cards.selected_output.as_ref().unwrap().handle.clone();
+    let receipts = cards.layout_editor.session_actions.clone();
+    let draft = cards.layout_editor.draft.clone();
+    let path = Config::path().unwrap();
+    let holder = Holder::new(&path.with_extension("json.lock"));
+    let task = cards.update(Message::LayoutFinish(false));
+    emitted(&mut cards, task);
+    drop(holder);
+    auditfix_measure_outputs(&mut cards);
+    let task = cards.update(Message::DisplayIdentities(
+        cards.displays.generation,
+        [("DP-2".into(), "edid:original".into())].into(),
+    ));
+    emitted(&mut cards, task);
+    let paused = cards.paused_layout.as_ref().unwrap();
+    assert_eq!(paused.contexts["weather"], "edid:original");
+    assert_eq!(paused.editing_display.as_deref(), Some("edid:original"));
+    assert_eq!(paused.draft, draft);
+    assert_eq!(paused.session_actions, receipts);
+    let task = cards.update(Message::LayoutResume);
+    emitted(&mut cards, task);
+    auditfix_measure_outputs(&mut cards);
+    assert!(cards.layout_editor.active && cards.arranging_widget(Widget::Weather));
+    assert_eq!(cards.selected_output.as_ref().unwrap().handle, original);
+    let task = cards.update(Message::LayoutFinish(false));
+    emitted(&mut cards, task);
+    auditfix_measure_outputs(&mut cards);
+    assert!(cards.paused_layout.is_none());
+    let saved = Config::load();
+    assert_eq!(
+        saved.monitor_layouts["weather"]["DP-2"].position,
+        Some([0.2, 0.2])
+    );
+    assert_eq!(
+        saved.monitor_layouts["weather"]["eDP-1"].position,
+        Some([0.8, 0.8])
+    );
+    assert!(!saved.monitor_layouts["weather"].contains_key("edid:original"));
+}
+
+#[test]
+fn auditfix_run04_keep_or_retry_after_geometry_restores_default_display() {
+    if isolated("auditfix_run04_keep_or_retry_after_geometry_restores_default_display") {
+        return;
+    }
+    for keep in [true, false] {
+        let (mut cards, _wire) = auditfix_two_display_arrange();
+        let committed = cards.layout_editor.draft["weather"];
+        let path = Config::path().unwrap();
+        let holder = Holder::new(&path.with_extension("json.lock"));
+        cards.layout_editor.selected = Some(Widget::Weather);
+        let task = cards.update(Message::LayoutKey(
+            keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+            false,
+        ));
+        emitted(&mut cards, task);
+        assert!(cards.layout_editor.error.is_some());
+        let output = cards.selected_output.as_ref().unwrap().handle.clone();
+        let task = cards.update(Message::OutputChanged(
+            crate::displays::OutputEvent::InfoUpdate(crate::displays::test_support::info(
+                Some("DP-2"),
+                (1024, 768),
+            )),
+            output,
+        ));
+        emitted(&mut cards, task);
+        auditfix_measure_outputs(&mut cards);
+        drop(holder);
+        assert!(cards.paused_layout.as_ref().unwrap().exit_failed);
+        let task = cards.update(if keep {
+            Message::LayoutKeepSaved
+        } else {
+            Message::LayoutRetryCancel
+        });
+        emitted(&mut cards, task);
+        auditfix_measure_outputs(&mut cards);
+        assert!(cards.paused_layout.is_none() && !cards.layout_editor.active);
+        assert!(cards.arrange_display.is_none());
+        assert_eq!(
+            cards.selected_output.as_ref().unwrap().name(),
+            Some("eDP-1")
+        );
+        assert_eq!(
+            Config::load().monitor_layouts["weather"]["DP-2"].position,
+            Some(if keep { committed } else { [0.2, 0.2] })
+        );
+    }
+}
+
+fn auditfix_pending_arrange_recovery(save: bool) -> (Cards, crate::displays::test_support::Wire) {
+    let (mut cards, wire) = auditfix_two_display_arrange();
+    let path = Config::path().unwrap();
+    let holder = Holder::new(&path.with_extension("json.lock"));
+    let task = cards.update(Message::LayoutSelect(Widget::Weather));
+    emitted(&mut cards, task);
+    let task = cards.update(Message::LayoutKey(
+        keyboard::Key::Named(keyboard::key::Named::ArrowRight),
+        false,
+    ));
+    emitted(&mut cards, task);
+    assert!(cards.layout_editor.error.is_some());
+    assert_ne!(cards.layout_editor.draft, cards.layout_editor.baseline);
+    let task = cards.update(Message::LayoutFinish(save));
+    auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+    drop(holder);
+    auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+    assert_eq!(
+        cards.selected_output.as_ref().unwrap().name(),
+        Some("eDP-1")
+    );
+    let task = cards.update(Message::LayoutResume);
+    auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+    assert!(!cards.output_known && !cards.layout_editor.active);
+    assert_eq!(cards.selected_output.as_ref().unwrap().name(), Some("DP-2"));
+    (cards, wire)
+}
+
+fn auditfix_no_arrange_capture(created: &[SctkLayerSurfaceSettings]) {
+    assert!(
+        created.iter().all(|surface| {
+            surface.keyboard_interactivity == KeyboardInteractivity::None
+                && (surface.namespace != "halcyon-arrange"
+                    || surface.input_zone.as_ref().is_some_and(Vec::is_empty))
+        }),
+        "recovery must not create an input-capturing fallback overlay"
+    );
+}
+
+#[test]
+fn auditfix_state01_pending_resume_removal_keeps_draft_receipts_and_recovery_choices() {
+    if isolated("auditfix_state01_pending_resume_removal_keeps_draft_receipts_and_recovery_choices")
+    {
+        return;
+    }
+    for save in [true, false] {
+        for keep in [true, false] {
+            let (mut cards, _wire) = auditfix_pending_arrange_recovery(save);
+            let editor = cards.paused_layout.as_ref().unwrap();
+            let draft = editor.draft.clone();
+            let receipts = editor.session_actions.clone();
+            let baseline = editor.baseline.clone();
+            let guard = editor.guard.clone();
+            let history_len = editor.history.len();
+            let original = cards.selected_output.as_ref().unwrap().handle.clone();
+            let old_probe = cards.ids[5];
+            let old_epoch = cards.display_generation;
+            let path = Config::path().unwrap();
+            let saved = std::fs::read(&path).unwrap();
+            let committed = Config::load().monitor_layouts["weather"]["DP-2"].position;
+
+            // The reviewed gap: removal after Resume admission, before measurement.
+            let task = cards.update(Message::OutputChanged(
+                crate::displays::OutputEvent::Removed,
+                original,
+            ));
+            auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            let task = cards.update(Message::SurfaceResized(
+                old_probe,
+                cosmic::iced::Size::new(1280., 720.),
+            ));
+            let (destroyed, created) = emitted(&mut cards, task);
+            assert!(destroyed.contains(&old_probe));
+            auditfix_no_arrange_capture(&created);
+            let task = cards.update(Message::ArrangeSurface(old_epoch));
+            auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+            // The identity completion on the fallback must not rebase the draft.
+            let task = cards.update(Message::DisplayIdentities(
+                cards.displays.generation,
+                BTreeMap::new(),
+            ));
+            auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            for request in [
+                Message::Arrange,
+                Message::ArrangeDisplay("eDP-1".into()),
+                Message::LayoutResume,
+            ] {
+                let task = cards.update(request);
+                auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            }
+            assert!(!cards.layout_editor.active && !cards.pending_arrange);
+            assert!(cards.arrange_display.is_none());
+            assert_eq!(
+                cards.selected_output.as_ref().unwrap().name(),
+                Some("eDP-1")
+            );
+            let editor = cards.paused_layout.as_ref().unwrap();
+            assert!(editor.exit_failed && editor.pending_resume.is_none());
+            assert_eq!(editor.contexts["weather"], "DP-2");
+            assert_eq!(editor.draft, draft);
+            assert_eq!(editor.session_actions, receipts);
+            assert_eq!(editor.baseline, baseline);
+            assert_eq!(editor.guard, guard);
+            assert_eq!(editor.history.len(), history_len);
+            assert_eq!(editor.selected, Some(Widget::Weather));
+            assert!(cards.arrange_recovery_view().is_some());
+            assert_eq!(std::fs::read(&path).unwrap(), saved);
+
+            let task = cards.update(if keep {
+                Message::LayoutKeepSaved
+            } else {
+                Message::LayoutRetryCancel
+            });
+            auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+            assert!(cards.paused_layout.is_none() && !cards.layout_editor.active);
+            let config = Config::load();
+            assert_eq!(
+                config.monitor_layouts["weather"]["DP-2"].position,
+                if keep { committed } else { Some([0.2, 0.2]) }
+            );
+            assert_eq!(
+                config.monitor_layouts["weather"]["eDP-1"].position,
+                Some([0.8, 0.8])
+            );
+        }
+    }
+}
+
+#[test]
+fn auditfix_state01_pending_resume_blocks_arrange_display_until_original_probe() {
+    if isolated("auditfix_state01_pending_resume_blocks_arrange_display_until_original_probe") {
+        return;
+    }
+    for save in [true, false] {
+        let (mut cards, _wire) = auditfix_pending_arrange_recovery(save);
+        let original = cards.selected_output.as_ref().unwrap().handle.clone();
+        let probe = cards.ids[5];
+        let editor = cards.paused_layout.as_ref().unwrap();
+        let draft = editor.draft.clone();
+        let receipts = editor.session_actions.clone();
+        let guard = editor.guard.clone();
+        let saved = std::fs::read(Config::path().unwrap()).unwrap();
+        for request in [
+            Message::ArrangeDisplay("eDP-1".into()),
+            Message::ArrangeDisplay("DP-2".into()),
+            Message::Arrange,
+            Message::LayoutResume,
+        ] {
+            let task = cards.update(request);
+            assert!(emitted(&mut cards, task).1.is_empty());
+            assert_eq!(cards.ids[5], probe);
+            assert_eq!(cards.selected_output.as_ref().unwrap().handle, original);
+        }
+        // A proven alias on the original handle is still allowed during probing.
+        let task = cards.update(Message::DisplayIdentities(
+            cards.displays.generation,
+            [("DP-2".into(), "edid:original".into())].into(),
+        ));
+        auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+        let editor = cards.paused_layout.as_ref().unwrap();
+        assert!(editor.exit_failed && editor.pending_resume.is_some());
+        assert_eq!(editor.draft, draft);
+        assert_eq!(editor.session_actions, receipts);
+        assert_eq!(editor.guard, guard);
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), saved);
+        let created = auditfix_measure_outputs(&mut cards);
+        assert!(created.iter().any(|surface| surface.namespace == "halcyon-arrange"
+            && surface.keyboard_interactivity == KeyboardInteractivity::Exclusive
+            && matches!(&surface.output, IcedOutput::Output(output) if output == &original)));
+        assert!(cards.layout_editor.active && cards.paused_layout.is_none());
+        assert!(!cards.layout_editor.exit_failed && cards.layout_editor.pending_resume.is_none());
+        assert_eq!(cards.screen_size, [1280., 720.]);
+        assert_eq!(cards.layout_editor.draft, draft);
+        assert_eq!(cards.layout_editor.session_actions, receipts);
+        assert_eq!(cards.layout_editor.contexts["weather"], "edid:original");
+        let task = cards.update(Message::LayoutFinish(false));
+        auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+        auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+        assert!(cards.paused_layout.is_none());
+        let config = Config::load();
+        assert_eq!(
+            config.monitor_layouts["weather"]["DP-2"].position,
+            Some([0.2, 0.2])
+        );
+        assert_eq!(
+            config.monitor_layouts["weather"]["eDP-1"].position,
+            Some([0.8, 0.8])
+        );
+        assert!(!config.monitor_layouts["weather"].contains_key("edid:original"));
+    }
+}
+
+#[test]
+fn auditfix_state01_pending_resume_geometry_or_context_change_returns_to_recovery() {
+    if isolated("auditfix_state01_pending_resume_geometry_or_context_change_returns_to_recovery") {
+        return;
+    }
+    for context_change in [true, false] {
+        let (mut cards, _wire) = auditfix_pending_arrange_recovery(true);
+        let editor = cards.paused_layout.as_ref().unwrap();
+        let draft = editor.draft.clone();
+        let receipts = editor.session_actions.clone();
+        let old_probe = cards.ids[5];
+        let task = if context_change {
+            let config = Config::save_changes(serde_json::json!({
+                "widget_monitors":{"weather":{"display":"eDP-1"}}
+            }))
+            .unwrap();
+            cards.apply_config(config)
+        } else {
+            cards.update(Message::OutputChanged(
+                crate::displays::OutputEvent::InfoUpdate(crate::displays::test_support::info(
+                    Some("DP-2"),
+                    (1024, 768),
+                )),
+                cards.selected_output.as_ref().unwrap().handle.clone(),
+            ))
+        };
+        auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+        let task = cards.update(Message::SurfaceResized(
+            old_probe,
+            cosmic::iced::Size::new(1280., 720.),
+        ));
+        auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+        auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+        assert!(!cards.layout_editor.active && !cards.pending_arrange);
+        assert!(cards.arrange_display.is_none());
+        assert_eq!(
+            cards.selected_output.as_ref().unwrap().name(),
+            Some("eDP-1")
+        );
+        let editor = cards.paused_layout.as_ref().unwrap();
+        assert!(editor.exit_failed && editor.pending_resume.is_none());
+        assert_eq!(editor.draft, draft);
+        assert_eq!(editor.session_actions, receipts);
+        assert_eq!(editor.contexts["weather"], "DP-2");
+        let task = cards.update(Message::LayoutRetryCancel);
+        auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+        auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+        assert!(cards.paused_layout.is_none());
+        let config = Config::load();
+        assert_eq!(
+            config.monitor_layouts["weather"]["DP-2"].position,
+            Some([0.2, 0.2])
+        );
+        assert_eq!(
+            config.monitor_layouts["weather"]["eDP-1"].position,
+            Some([0.8, 0.8])
+        );
+        assert_eq!(
+            config.widget_monitors["weather"].display.as_deref(),
+            Some(if context_change { "eDP-1" } else { "DP-2" })
+        );
+    }
+}
+
+#[test]
+fn auditfix_state01_pending_resume_recovery_choices_cancel_probe_and_preserve_conflicts() {
+    if isolated(
+        "auditfix_state01_pending_resume_recovery_choices_cancel_probe_and_preserve_conflicts",
+    ) {
+        return;
+    }
+    for conflict in [false, true] {
+        for keep in [true, false] {
+            let (mut cards, _wire) = auditfix_pending_arrange_recovery(false);
+            let editor = cards.paused_layout.as_ref().unwrap();
+            let draft = editor.draft.clone();
+            let receipts = editor.session_actions.clone();
+            let committed = Config::load().monitor_layouts["weather"]["DP-2"].position;
+            let old_probe = cards.ids[5];
+            if conflict {
+                let mut raw: serde_json::Value = serde_json::from_slice(
+                    &std::fs::read(Config::path().unwrap()).unwrap(),
+                )
+                .unwrap();
+                raw["monitor_layouts"]["weather"]["DP-2"]["position"] =
+                    serde_json::json!([0.95, 0.95]);
+                Config::save_changes(serde_json::json!({
+                    "monitor_layouts":raw["monitor_layouts"],
+                    "theme":"ocean"
+                }))
+                .unwrap();
+            }
+            let saved = std::fs::read(Config::path().unwrap()).unwrap();
+            let task = cards.update(if keep {
+                Message::LayoutKeepSaved
+            } else {
+                Message::LayoutRetryCancel
+            });
+            auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            let task = cards.update(Message::SurfaceResized(
+                old_probe,
+                cosmic::iced::Size::new(1280., 720.),
+            ));
+            auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
+            assert!(!cards.layout_editor.active && !cards.pending_arrange);
+            assert!(cards.arrange_display.is_none());
+            assert_eq!(
+                cards.selected_output.as_ref().unwrap().name(),
+                Some("eDP-1")
+            );
+            if conflict && !keep {
+                let editor = cards.paused_layout.as_ref().unwrap();
+                assert!(editor.exit_failed && editor.pending_resume.is_none());
+                assert_eq!(editor.draft, draft);
+                assert_eq!(editor.session_actions, receipts);
+                assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), saved);
+                let task = cards.update(Message::LayoutKeepSaved);
+                auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
+            }
+            assert!(cards.paused_layout.is_none());
+            let config = Config::load();
+            assert_eq!(
+                config.monitor_layouts["weather"]["DP-2"].position,
+                if conflict {
+                    Some([0.95, 0.95])
+                } else if keep {
+                    committed
+                } else {
+                    Some([0.2, 0.2])
+                }
+            );
+            assert_eq!(
+                config.monitor_layouts["weather"]["eDP-1"].position,
+                Some([0.8, 0.8])
+            );
+            if conflict {
+                assert_eq!(config.theme, "ocean");
+            }
+        }
+    }
+}

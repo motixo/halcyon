@@ -236,7 +236,7 @@ def prepare(inputs, public, work, epoch, bootstrap=False, release_cache=None, bo
         is_bootstrap = release is data['bootstrap']
         fetch_assets(release, directory, bootstrap_cache if is_bootstrap else release_cache)
         if not is_bootstrap:
-            verified = release_gate.verify(directory, release['assets']['release-manifest.json']['sha256'])
+            verified = release_gate.verify_published(directory, release['assets']['release-manifest.json']['sha256'])
             if verified.get('compatibility_policy') != release['policy'] or verified['release'] != release['release']:
                 raise ValueError('published_release_policy_mismatch')
         else:

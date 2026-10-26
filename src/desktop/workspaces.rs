@@ -235,6 +235,19 @@ impl WorkspacesDraft {
         Plan { patch, blocked }
     }
 
+    /// Every edit depends on the entire effective struct, including defaults.
+    pub fn stale(&self, fresh: &Snapshot) -> Vec<ConfigKey> {
+        let key = key();
+        if self.dirty()
+            && (self.base.user(&key) != fresh.user(&key)
+                || self.base.effective(&key) != fresh.effective(&key))
+        {
+            vec![key]
+        } else {
+            Vec::new()
+        }
+    }
+
     /// Adopts outside changes while nothing is edited; with edits the key
     /// keeps its base so Apply detects the change, listed as a conflict.
     pub fn refresh(&mut self, snapshot: Snapshot) {
@@ -245,7 +258,8 @@ impl WorkspacesDraft {
             return;
         }
         let old = self.base.entry(&key).cloned().unwrap_or_default();
-        let changed = snapshot.user(&key) != old.user.as_ref();
+        let changed =
+            snapshot.user(&key) != old.user.as_ref() || snapshot.effective(&key) != old.effective();
         self.conflicts.clear();
         if changed {
             self.conflicts.push(key.clone());

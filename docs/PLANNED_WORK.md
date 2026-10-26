@@ -1,21 +1,129 @@
 # Planned work
 
+## 0.3.0 release preparation and live reporting
+
+Updated 2026-10-26. Final 0.3.0 packages passed complete-session acceptance and
+are frozen for publication. Installation, native Settings/Islands input, forced
+crash cleanup, stock recovery and disable/relogin passed on COSMIC 1.11 KVM.
+Compact, wide, scaled and light Settings checks and three private native toggle
+cycles also passed. The [final acceptance](releases/0.3.0-acceptance.md) binds exact
+package bytes and records limitations. Source includes patched `vendor/rrule`,
+locked dependencies and licenses. Earlier “unpublished” and package-pending entries
+below describe their dated development state; this section supersedes them.
+
+The live activity collector now serves schema 4 at its existing URL (Apps Script
+version 5). A private backup and migration rehearsal preceded the additive Sheet
+upgrade. All nine existing installation records were preserved. Remote Apps Script
+execution remained denied, so the maintainer applied the validated setup changes
+through the Sheets API and retained the already-running daily maintenance trigger.
+The customized current-count formulas now exclude opted-out installations.
+
+Live synthetic checks passed for status-only opt-out, suppressed activity,
+re-enable, schema-4 metadata, replay, stale revisions and schema-2 clients. Both
+test records were removed and the current aggregates verified. Google accepted
+the uploaded source after two unsupported logical assignments were expanded;
+the live date-coercion defect has a regression. All 38 collector tests pass.
+This supersedes the historical collector-deferred notes below; it does not
+qualify live Google Calendar OAuth or physical-display behavior.
+
+## App-wide audit repairs
+
+Updated 2026-10-26. **All 40 app-audit findings are fixed locally**, including the
+follow-up Arrange Resume race and closed-wizard Undo recovery. Final validation:
+1,125 application tests passed, 11 existing ignored; 300 recurrence-library,
+212 Python and 37 collector tests passed. Three private native Islands toggle
+cycles passed with a second bar visible and the target display absent.
+The [fix tracker](APP-AUDIT-FIXES-030-20261026.md) records each finding, source and
+artifact hashes, review closure and remaining physical-device/live-provider/package
+acceptance. Changes remain unpublished; final source packaging must include
+the patched `vendor/rrule` dependency and its licenses.
+
+## Onboarding widget selection and ordering
+
+Requested 2026-10-25. **Implemented locally; unpublished.** Choose and Arrange screens now run
+inside the existing wizard, with grouped clock/weather/calendar, a matching desktop
+preview, drag/button/keyboard ordering and guarded Apply/Cancel. Weather setup is conditional.
+The [plan and interactive concept](ONBOARDING-WIDGETS.md) cover actual placement,
+state recovery, preserved user content and native acceptance. The implementation
+also retains edits across displays, resumes drafts, handles empty selections and
+keeps Finish from discarding an unapplied widget draft.
+
+## Updates, Help, recent changes and release presentation
+
+Requested 2026-10-25 after the product-gap review: items 3, 5, 6 and 7, with a plan
+first. The [implementation plan](PRODUCT-COMPLETION-030.md) covers verified optional
+APT enrollment, a native Help & diagnostics page, bounded local recent-change
+history, and accurate 0.3.0 presentation. It records the existing components to
+reuse, the OS-installer proof needed, history/Undo boundaries and acceptance
+criteria. **Implemented and locally validated; unpublished.** The [acceptance record](PRODUCT-COMPLETION-030.md#local-validation--2026-10-25)
+links the installer proof, native captures and remaining real-device checks.
+The product-quality review adds one primary update action per state, problem-first
+Help, safe before/after history details, one-build presentation assets, and explicit
+keyboard, screen-reader, real-device and sustained-performance acceptance.
+
+Follow-up decision: fresh main packages and clean manual-package upgrades now
+enable the signed update source by default. Existing disabled/deleted/modified
+sources stay unchanged. [Package behavior and ownership](DISTRIBUTION.md#default-enrollment-ownership)
+and `.task-default-updates-evidence/acceptance.json` record the implementation.
+OS automatic-installation policy and optional Islands remain separate.
+
+## GitHub free usage and storage
+
+The [storage and workflow plan](GITHUB-STORAGE.md) separates free public CI,
+source/images, Releases and bounded APT hosting from local development archives
+and metered services. Cleanup preserves published assets and requires verified
+local copies before deleting unique Actions artifacts. Inventory and execution
+receipts are in `.task-github-storage-evidence/`; planned workflow retention
+changes have not been deployed. Cleanup removed **60.01 GiB** across both rounds;
+GitHub now retains **104.90 MiB of artifacts** and **2.52 GiB of caches**. Useful
+guest inputs and historical evidence are checksum-verified locally; two
+superseded guest snapshots were discarded. Nine obsolete experiment workflows
+are disabled, and the four main workflows remain active. Published release
+assets are unchanged. Three-day CI retention and superseded-run cancellation
+are prepared locally and YAML-validated.
+
+## Immersive native Settings redesign
+
+Direction accepted 2026-10-25. The [implementation plan](SETTINGS-REDESIGN.md)
+maps all existing settings into six navigation roots and sequences the native
+shell, Dock & panel and Appearance, widget inspectors and arrangement, Setups,
+and final acceptance. Interactive desktop previews and focused controls follow
+the approved visual references while retaining the current direct-action,
+Undo and recovery behavior. **Implemented and refined locally: 376 Settings tests and 11 media tests passed after the visual comfort pass.**
+The prior 40 display/Arrange/lifecycle tests remain recorded for unchanged paths.
+Actual COSMIC windows passed compact/wide, repeated-launch and compositor-verified
+150% checks. The [plan and evidence](SETTINGS-REDESIGN.md#local-validation--2026-10-25)
+record the remaining release-session limits. The installed app is unchanged.
+The existing local review fixes are preserved in the redesign baseline.
+The latest [visual comfort refinement](../.task-settings-comfort-evidence/REVIEW.md)
+adds a calmer shared shell, a wide scene/inspector layout and sharper bounded
+wallpaper previews. Final compact/wide/150% native acceptance passed.
+The [screen-by-screen polish report](../.task-settings-polish-evidence/REVIEW.md)
+records all 25 destinations, five maintenance subpages, the wizard and focused
+behavior fixes. The final executable passed compact/wide/150% native checks with
+96 captures, unchanged preferences and clean process exits.
+
 ## Current 0.3.0 review work
 
-Updated 2026-10-25. The [0.3.0 review tracker](REVIEW-030.md) records 22 review
-items, including one optional fault-model robustness item, with evidence,
-completion checks, optional simplifications and
-remaining acceptance. Calendar recurrence resource bounds are the P1 release
-blocker; the release gate also needs to recognize the current startup policy.
-No review fixes have been implemented yet. All nine reviews across two rounds
-are complete. Follow-up reviews added Arrange draft-loss and three everyday
-Layout workflow findings, expanded credential cleanup coverage and narrowed
-several claims. The challenge review upheld the P1 and left live Sheets
-partial-write behavior unresolved; that item is optional robustness work.
+The subsequent Islands on/off audit's six findings T01–T06 are also fixed and
+verified locally; see the [follow-up evidence](REVIEW-030.md#islands-onoff-follow-up--2026-10-25).
+This covers bootstrap cleanup, output inventory/restoration, status refresh,
+custom failure-state paths and ownership diagnostics. Three private native
+toggle cycles passed. Physical monitor acceptance, final packaged-artifact
+qualification and the authentication-blocked Claude Developer review remain
+separate.
 
-Use that tracker for current review status. The issue-12 implementation below
-remains local and has additional watch/restart/status defects recorded there;
-historical release holds later in this file do not undo published 0.2.5/APT.
+Updated 2026-10-25. All 22 findings in the [0.3.0 review tracker](REVIEW-030.md)
+are fixed and verified locally. The fixes cover
+bounded calendar parsing, cancellation-safe credential cleanup, display/Arrange
+recovery, Islands watches/restarts/status, current-policy release dispatch,
+collector writes, Settings ownership/lifetime, and CI coverage. Two optional
+reductions are implemented. Broad refresh narrowing is deferred pending measured
+latency; native recovery now explicitly refreshes before watcher notifications.
+
+Use that tracker for evidence and current validation status. Live calendar and
+collector acceptance, physical display transitions and final package qualification
+remain separate. Published 0.2.5/APT is unchanged.
 
 ## Current release and store distribution
 

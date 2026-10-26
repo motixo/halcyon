@@ -81,6 +81,10 @@ struct Root {
 }
 #[zbus::interface(name = "org.freedesktop.PackageKit")]
 impl Root {
+    #[zbus(property)]
+    fn roles(&self) -> u64 {
+        1 << 10
+    }
     async fn create_transaction(
         &self,
         #[zbus(object_server)] server: &ObjectServer,
@@ -149,6 +153,18 @@ impl Transaction {
 }
 #[zbus::interface(name = "org.freedesktop.PackageKit.Transaction")]
 impl Transaction {
+    async fn install_files(
+        &self,
+        flags: u64,
+        files: Vec<String>,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> zbus::fdo::Result<()> {
+        assert_eq!(flags, 0);
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|p| std::path::Path::new(p).is_file()));
+        self.trace.lock().unwrap().calls.push("InstallFiles".into());
+        self.signals(&emitter).await
+    }
     fn set_hints(&self, hints: Vec<String>) {
         assert_eq!(hints, ["interactive=true", "background=false"]);
         self.trace.lock().unwrap().calls.push("SetHints".into());
@@ -214,6 +230,7 @@ async fn service(bus: &Bus, scripts: Vec<Script>) -> (Connection, Connection, Ar
 fn apt() -> Identity {
     Identity {
         format_version: 1,
+        enrollment: Enrollment::Enrolled,
         channel: UpdateChannel::Apt,
         reason: "System updates · checks only when you ask.",
         running_version: "0.2.0".into(),
@@ -532,6 +549,15 @@ fn ui_click(
     id: &str,
 ) -> Vec<SettingsMessage> {
     use cosmic::iced::{Event, mouse};
+    native.scroll(app.settings_view(), "settings-content", 0.);
+    let target = native.bounds(app.settings_view(), id);
+    if target.y + target.height > native.size.height - 64. {
+        native.scroll(
+            app.settings_view(),
+            "settings-content",
+            (target.y - 240.).max(0.),
+        );
+    }
     let bounds = native.bounds(app.settings_view(), id);
     assert!(
         bounds.x >= 0.
@@ -575,7 +601,13 @@ fn native_updates_clicks_renders_failure_unknown_and_absence() {
         app.desktop.islands.installation = Installation::Absent;
         app.updates.identity = Some(apt());
         let mut native = Native::new(size);
-        native.scroll(app.settings_view(), "settings-content", 170.);
+        for message in ui_click(&app, &mut native, "app-settings-updates") {
+            drop(app.update(message));
+        }
+        assert_eq!(
+            app.app_settings_page,
+            crate::settings::AppSettingsPage::Updates
+        );
         let theme = crate::settings::controls_theme(&app.config);
         let suffix = format!("{}x{}", size.width as u32, size.height as u32);
         native.capture(
@@ -593,6 +625,11 @@ fn native_updates_clicks_renders_failure_unknown_and_absence() {
                 .try_bounds(app.updates_section(), "get-islands")
                 .is_none()
         );
+        assert!(
+            ui_click(&app, &mut native, "get-islands")
+                .iter()
+                .any(|message| matches!(message, SettingsMessage::OpenIslandsGuide))
+        ); // Inspect the action only; never launch the host browser.
         let messages = ui_click(&app, &mut native, "updates-check");
         assert!(
             messages
@@ -796,4 +833,73 @@ async fn cancellation_before_start_and_isolated_app_never_contact_the_host() {
         check_installation(apt(), cancel).await,
         Err(Failure::InstallationChanged)
     );
+}
+
+#[tokio::test]
+async fn enrollment_subscribes_before_handoff_and_preserves_failures() {
+    for (error, exit, expected) in [
+        (None, 1, Ok(())),
+        (Some(48), 1, Err(Failure::Authorization)),
+        (None, 3, Err(Failure::Cancelled)),
+        (Some(5), 1, Err(Failure::Untrusted)),
+        (None, 2, Err(Failure::Failed)),
+    ] {
+        let bus = Bus::new();
+        let prepared = enrollment::fixture(bus.directory.join("bootstrap"));
+        let (_service, client, trace) = service(
+            &bus,
+            vec![Script {
+                error,
+                finish: Some(exit),
+                delay_reply: true,
+                ..Default::default()
+            }],
+        )
+        .await;
+        assert_eq!(packagekit::install_on(&client, &prepared).await, expected);
+        assert_eq!(
+            trace.lock().unwrap().calls,
+            ["CreateTransaction", "SetHints", "InstallFiles"]
+        );
+        assert!(
+            !prepared
+                .handed_off
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+    }
+}
+#[tokio::test]
+async fn enrollment_changed_or_symlinked_files_never_reach_installer() {
+    for symlink in [false, true] {
+        let bus = Bus::new();
+        let prepared = enrollment::fixture(bus.directory.join("bootstrap"));
+        let (_service, client, trace) = service(&bus, vec![Script::default()]).await;
+        if symlink {
+            std::fs::remove_file(&prepared.paths[0]).unwrap();
+            std::os::unix::fs::symlink(&prepared.paths[1], &prepared.paths[0]).unwrap();
+        } else {
+            std::fs::write(&prepared.paths[0], b"changed").unwrap();
+        }
+        assert_eq!(
+            packagekit::install_on(&client, &prepared).await,
+            Err(Failure::Untrusted)
+        );
+        assert!(trace.lock().unwrap().calls.is_empty());
+    }
+}
+#[test]
+fn successful_check_timestamp_survives_failure_and_notes_use_stable_tags() {
+    let mut updates = Updates::default();
+    updates.identity = Some(apt());
+    let (token, _) = updates.begin();
+    updates.finish(token, Ok(Some("0.3.0-1".into())));
+    let checked = updates.last_checked;
+    assert!(checked.is_some());
+    assert_eq!(
+        updates.notes_url().as_deref(),
+        Some("https://github.com/profilaz3/halcyon/releases/tag/v0.3.0")
+    );
+    let (token, _) = updates.begin();
+    updates.finish(token, Err(Failure::Offline));
+    assert_eq!(updates.last_checked, checked);
 }

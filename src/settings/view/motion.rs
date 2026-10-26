@@ -1,7 +1,6 @@
 //! Accessibility: the supported app-motion preference and its limits.
 //! Halcyon edge-menu animation belongs in App settings.
 use super::desktop::WARN;
-use super::pages::section;
 use super::*;
 use crate::settings::motion::Message as Edit;
 
@@ -36,14 +35,11 @@ impl Settings {
                 .into(),
             _ => label("Reading…", 12., MUTED),
         };
-        let mut app_rows = vec![
-            label("Apps", 16., FG),
-            row_of(
-                "Reduce motion",
-                "Reduces motion in Halcyon settings, GTK apps, Firefox and Chromium-based browsers.",
-                apps,
-            ),
-        ];
+        let mut app_rows = vec![row_of(
+            "Reduce motion",
+            "Reduces motion in Halcyon settings, GTK apps, Firefox and Chromium-based browsers.",
+            apps,
+        )];
         if let Some(Err(reason)) = editor.current() {
             app_rows.push(label(reason.clone(), 11., WARN));
         }
@@ -58,8 +54,8 @@ impl Settings {
                     .on_press(Message::OpenDesktop("accessibility"))
                     .into(),
             ),
-            section(app_rows),
-            section(vec![
+            group(Some("Motion"), app_rows),
+            group(Some("Desktop motion"), vec![
                 label(
                     "COSMIC’s window, workspace and launcher animations are built in; this version has no setting for them.",
                     11.,
@@ -71,6 +67,18 @@ impl Settings {
                         .on_press(Message::Page(Page::DesktopDock))
                         .into(),
                 ),
+            ]),
+            group(Some("Readability"), vec![
+                group_row("Widget readability", "Contrast assistance and surface finishes",
+                    button::text("Improve readability")
+                        .id(cosmic::widget::Id::new("accessibility-readability"))
+                        .on_press(Message::SearchResult(crate::settings::navigation::WIDGET_READABILITY)).into()),
+                group_row("Fonts & icons", "Desktop text and icon themes",
+                    button::text("Fonts & icons")
+                        .on_press(Message::Page(Page::DesktopAppearance)).into()),
+                group_row("Settings interface", "Settings and edge-menu animation preferences",
+                    button::text("Interface")
+                        .on_press(Message::AppSettingsPage(AppSettingsPage::Interface)).into()),
             ]),
         ])
         .spacing(16)

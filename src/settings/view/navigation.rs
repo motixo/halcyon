@@ -63,40 +63,25 @@ impl Settings {
     }
 
     pub(super) fn navigation_header(&self) -> Element<'_, Message> {
-        // Breadcrumb on the left, a native search field on the right.
-        let mut search_row: Vec<Element<'_, Message>> = Vec::new();
-        search_row.push(match self.page.parent() {
-            Some(parent) => container(
-                button::text(parent.nav_title())
-                    .id(cosmic::widget::Id::new("settings-back"))
-                    .leading_icon(icon::from_name("go-previous-symbolic").size(16))
-                    .tooltip("Back (Alt+←)")
-                    .on_press(Message::Back),
-            )
-            .width(Length::Fill)
-            .into(),
-            None => cosmic::iced::widget::space().width(Length::Fill).into(),
-        });
-        let mut search =
-            cosmic::widget::text_input::search_input("Search settings", &self.search_query)
-                .id(super::super::navigation::search_id())
-                .on_input(Message::SearchSettings)
-                .on_submit(|_| Message::SearchFirst)
-                .width(Length::Fill);
-        if !self.search_query.is_empty() {
-            search = search.on_clear(Message::SearchSettings(String::new()));
+        let mut items = Vec::new();
+        // Roots already have a page title and a selected sidebar entry. Keep
+        // this bar for destinations; only leaf editors need a Back control.
+        if self.search_query.trim().is_empty() {
+            if !self.page.destinations().contains(&self.page)
+                && let Some(parent) = self.page.parent()
+            {
+                items.push(
+                    button::text(parent.nav_title())
+                        .id(cosmic::widget::Id::new("settings-back"))
+                        .leading_icon(icon::from_name("go-previous-symbolic").size(16))
+                        .tooltip("Back (Alt+←)")
+                        .on_press(Message::Back)
+                        .into(),
+                );
+            } else if self.page.destinations().len() > 1 {
+                items.push(self.destination_switcher());
+            }
         }
-        search_row.push(
-            container(search)
-                .width(if self.window.width >= 990. { 340 } else { 260 })
-                .into(),
-        );
-        let mut items = vec![
-            row::with_children(search_row)
-                .spacing(8)
-                .align_y(Alignment::Center)
-                .into(),
-        ];
         if let Some(problem) = &self.session_drafts.error {
             items.push(label(
                 format!("Draft recovery: {problem}"),
@@ -105,9 +90,43 @@ impl Settings {
             ));
         }
         container(column::with_children(items).spacing(4))
-            .padding([10, 22, 10, 22])
+            .padding([12, 22, 0, 22])
             .width(Length::Fill)
             .into()
+    }
+
+    fn destination_switcher(&self) -> Element<'_, Message> {
+        let current = if self.page.destinations().contains(&self.page) {
+            self.page
+        } else {
+            self.page.nav()
+        };
+        row::with_children(
+            self.page
+                .destinations()
+                .iter()
+                .map(|&page| {
+                    let selected = current == page;
+                    button::custom(label(
+                        page.nav_title(),
+                        14.,
+                        if selected { FG } else { MUTED },
+                    ))
+                    .id(cosmic::widget::Id::new(format!(
+                        "destination-{}",
+                        page.key()
+                    )))
+                    .class(nav_style(selected, self.settings_accent()))
+                    .selected(selected)
+                    .padding([9, 12])
+                    .on_press(Message::Page(page))
+                    .into()
+                })
+                .collect::<Vec<_>>(),
+        )
+        .spacing(4)
+        .wrap()
+        .into()
     }
 
     pub(super) fn search_results_page(&self) -> Element<'_, Message> {
@@ -206,11 +225,15 @@ impl Settings {
             rows.push(pages::section(parts));
         }
         if self.recovery_sheet.rows.is_empty() {
-            rows.push(label(
-                "No unfinished work from the previous version.",
-                14.,
-                MUTED,
-            ));
+            rows.push(pages::section(vec![
+                detail(
+                    "Nothing to recover",
+                    "No unfinished work from the previous version.",
+                ),
+                button::text("Back to app settings")
+                    .on_press(Message::AppSettingsPage(AppSettingsPage::Restore))
+                    .into(),
+            ]));
         } else {
             rows.push(
                 button::suggested("Use selected choices")
@@ -257,28 +280,7 @@ impl Settings {
                 .width(Length::Fill)
                 .into();
         }
-        use crate::settings::desktop::Notice;
-        let notice = match self.page {
-            Page::DesktopDock => self.desktop.notice.as_ref(),
-            Page::DesktopAppearance => self.system_appearance.notice.as_ref(),
-            Page::DesktopWindows => self.windows.notice().or(self.workspaces.notice()),
-            Page::DesktopWorkspaces => self.workspaces.notice(),
-            Page::DesktopIcons => self.desktop_icons.notice(),
-            Page::DesktopWindowRules => self.window_rules.notice(),
-            Page::DesktopShortcuts => self.shortcuts.notice(),
-            Page::DesktopProfiles => self.profiles.notice.as_ref(),
-            Page::DesktopAutomation => self.automation.notice.as_ref(),
-            Page::Themes if matches!(self.profiles.notice, Some(Notice::Error(_))) => {
-                self.profiles.notice.as_ref()
-            }
-            Page::DesktopWallpaper | Page::Themes | Page::Appearance => self.wallpaper.notice(),
-            _ => None,
-        };
-        let error = match notice {
-            Some(Notice::Error(error)) => Some(error.as_str()),
-            _ if self.error => Some(self.status.as_str()),
-            _ => None,
-        };
+        let error = self.page_error();
         let mut items = vec![
             container(label(error.unwrap_or(""), 12., desktop::ERROR))
                 .width(Length::Fill)
@@ -309,6 +311,36 @@ impl Settings {
         .padding([8, 22])
         .width(Length::Fill)
         .into()
+    }
+
+    pub(super) fn page_error(&self) -> Option<&str> {
+        use crate::settings::desktop::Notice;
+        let notices = match self.page {
+            Page::DesktopDock => [self.desktop.notice.as_ref(), None, None],
+            Page::DesktopAppearance => [self.system_appearance.notice.as_ref(), None, None],
+            Page::DesktopWindows => [self.windows.notice(), self.workspaces.notice(), None],
+            Page::DesktopWorkspaces => [self.workspaces.notice(), None, None],
+            Page::DesktopIcons => [self.desktop_icons.notice(), None, None],
+            Page::DesktopWindowRules => [self.window_rules.notice(), None, None],
+            Page::DesktopShortcuts => [self.shortcuts.notice(), None, None],
+            Page::DesktopProfiles => [self.profiles.notice.as_ref(), None, None],
+            Page::DesktopAutomation => [self.automation.notice.as_ref(), None, None],
+            Page::Themes => [
+                self.profiles.notice.as_ref(),
+                self.system_appearance.notice.as_ref(),
+                self.wallpaper.notice(),
+            ],
+            Page::DesktopWallpaper | Page::Appearance => [self.wallpaper.notice(), None, None],
+            _ => [None, None, None],
+        };
+        notices
+            .into_iter()
+            .flatten()
+            .find_map(|notice| match notice {
+                Notice::Error(error) => Some(error.as_str()),
+                Notice::Done(_) => None,
+            })
+            .or_else(|| self.error.then_some(self.status.as_str()))
     }
 }
 

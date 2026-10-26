@@ -274,6 +274,9 @@ impl Config {
         self.enabled_widgets.iter().any(|key| key == widget.key())
     }
     pub fn data_visible(&self, widget: Widget) -> bool {
+        if !self.widgets_visible {
+            return false;
+        }
         if self.glance.enabled {
             match widget {
                 Widget::Clock => return self.glance.show_clock,
@@ -289,6 +292,12 @@ impl Config {
         self.widget_positions
             .keys()
             .chain(self.widget_sizes.keys())
+            .chain(self.monitor_layouts.iter().filter_map(|(key, layouts)| {
+                layouts
+                    .values()
+                    .any(|layout| layout.position.is_some() || layout.size.is_some())
+                    .then_some(key)
+            }))
             .any(|key| Widget::parse(key).is_none_or(|widget| !widget.floating()))
     }
     pub fn save_changes(changes: serde_json::Value) -> Result<Self, String> {
@@ -2656,4 +2665,37 @@ mod material_migration_tests {
 
 fn yes() -> bool {
     true
+}
+
+#[cfg(test)]
+mod auditfix_tests {
+    use super::*;
+
+    #[test]
+    fn auditfix_w02_global_visibility_gates_grouped_providers_without_erasing_choices() {
+        let mut config = Config::default();
+        config.glance.enabled = true;
+        config.glance.show_clock = true;
+        config.glance.show_weather = true;
+        config.glance.show_calendar = true;
+        for widget in [Widget::Clock, Widget::Weather, Widget::Calendar] {
+            assert!(config.data_visible(widget));
+        }
+        config.widgets_visible = false;
+        assert!(
+            Widget::ALL
+                .into_iter()
+                .all(|widget| !config.data_visible(widget))
+        );
+        assert!(
+            config.glance.enabled
+                && config.glance.show_clock
+                && config.glance.show_weather
+                && config.glance.show_calendar
+        );
+        config.widgets_visible = true;
+        config.glance.show_weather = false;
+        assert!(config.data_visible(Widget::Clock) && config.data_visible(Widget::Calendar));
+        assert!(!config.data_visible(Widget::Weather));
+    }
 }

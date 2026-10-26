@@ -44,6 +44,7 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+pub mod activity;
 mod history;
 mod ownership;
 pub use history::UndoReview;
@@ -436,6 +437,7 @@ pub struct DesktopPatch {
     pub(crate) exact: bool,
     pub(crate) epoch_guard: Option<u64>,
     pub(crate) palette_ack: Option<u64>,
+    pub(crate) activity_display: bool,
     // Verified reversals, including semantic restorations that become no-ops.
     // Kept-current conflicts are deliberately absent from this attribution.
     reversed_native: std::collections::BTreeSet<ConfigKey>,
@@ -734,6 +736,8 @@ enum Record<'a> {
     Set(Owner, &'a str, Source),
     /// A successful Undo of the record with this id clears it.
     Clear(&'a str),
+    /// Cancel an exact receipt without discarding newer manual actions.
+    Retire(&'a LatestChange),
 }
 
 /// The widget configuration a transaction will write, as read under lock.
@@ -1065,18 +1069,16 @@ impl DesktopStore {
         .map(|committed| committed.change)
     }
 
-    /// Undoes `change` even when newer, unrelated changes followed it (the
-    /// setup wizard's Cancel after a city was chosen, for example). Refuses
-    /// without writing when anything it touched changed since. Clears the
-    /// persistent record only when `change` is still the latest one.
+    /// Reverse the caller's exact receipt and retire it in the same journaled
+    /// transaction, preserving every newer unrelated Undo action.
     pub fn undo_change(&self, change: &LatestChange) -> Result<AppliedChange, DesktopError> {
         let (patch, widget) = self.reversal(change)?;
-        let latest = self
-            .latest_change()?
-            .filter(|latest| latest.id == change.id);
-        let record = match &latest {
-            Some(latest) => Record::Clear(&latest.id),
-            None => Record::Keep,
+        let record = if change.change.entries.is_empty()
+            && change.widget.as_ref().is_none_or(|w| w.fields.is_empty())
+        {
+            Record::Keep
+        } else {
+            Record::Retire(change)
         };
         self.transact(&patch, widget.as_ref(), Operation::Undo, record)
             .map(|committed| committed.change)
@@ -1283,7 +1285,7 @@ impl DesktopStore {
             && widget.is_none()
             && !matches!(
                 record,
-                Record::Clear(_) | Record::Set(Owner::Recovery, _, _)
+                Record::Clear(_) | Record::Retire(_) | Record::Set(Owner::Recovery, _, _)
             )
             && patch.palette_ack.is_none()
         {
@@ -1383,7 +1385,7 @@ impl DesktopStore {
             && write.is_none()
             && !matches!(
                 record,
-                Record::Clear(_) | Record::Set(Owner::Recovery, _, _)
+                Record::Clear(_) | Record::Retire(_) | Record::Set(Owner::Recovery, _, _)
             )
             && patch.palette_ack.is_none()
         {
@@ -1392,7 +1394,7 @@ impl DesktopStore {
         // The record as found, kept until this transaction fully succeeds.
         let undo = match record {
             Record::Keep => None,
-            Record::Set(..) | Record::Clear(_) => Some(UndoBefore {
+            Record::Set(..) | Record::Clear(_) | Record::Retire(_) => Some(UndoBefore {
                 record: self.snapshot_record()?,
             }),
         };
@@ -1412,9 +1414,12 @@ impl DesktopStore {
             .collect();
         let restore_boundary = matches!(record, Record::Set(Owner::Recovery, _, _))
             || (operation == Operation::Undo
-                && self
-                    .latest_change()?
-                    .is_some_and(|c| c.owner == Owner::Recovery));
+                && match record {
+                    Record::Retire(receipt) => receipt.owner == Owner::Recovery,
+                    _ => self
+                        .latest_change()?
+                        .is_some_and(|c| c.owner == Owner::Recovery),
+                });
         let journal = Journal {
             format: JOURNAL_FORMAT.into(),
             version: match (&undo, &write) {
@@ -1451,6 +1456,8 @@ impl DesktopStore {
                 }
                 .to_file();
                 next.source = source;
+                let summary = activity::has_changes(&next)
+                    .then(|| activity::summarize(&next, patch.activity_display));
                 // Invalid legacy records are still preserved in the journal;
                 // they cannot be interpreted as useful history.
                 if let Ok(Some(mut previous)) = self.history_file() {
@@ -1470,27 +1477,49 @@ impl DesktopStore {
                 if let Some(stamp) = patch.palette_ack {
                     next.palette_ack = Some((self.restore_epoch()?, stamp));
                 }
+                if let Some(summary) = summary {
+                    activity::append(&mut next.recent, summary);
+                }
                 next.transaction_id = Some(change.id.clone());
                 Some(
                     serde_json::to_vec_pretty(&next)
                         .map_err(|error| DesktopError::Io(error.to_string()))?,
                 )
             }
-            Record::Clear(expected) => {
+            Record::Clear(_) | Record::Retire(_) => {
+                let expected = match record {
+                    Record::Clear(id) => id,
+                    Record::Retire(receipt) => &receipt.id,
+                    _ => unreachable!(),
+                };
                 let mut file = self
                     .history_file()?
+                    .or_else(|| match record {
+                        Record::Retire(receipt) => Some(receipt.to_file()),
+                        _ => None,
+                    })
                     .ok_or_else(|| DesktopError::UndoUnavailable("No history".into()))?;
                 let palette_ack = file.palette_ack;
+                let recent_partial = file.recent_partial || file.recent.is_empty();
+                let mut recent = std::mem::take(&mut file.recent);
                 let mut history = std::mem::take(&mut file.history);
                 if file.source == Source::Manual {
                     history.push(file);
                 }
-                let index = history
-                    .iter()
-                    .rposition(|file| file.id == expected)
-                    .ok_or_else(|| DesktopError::UndoUnavailable("History changed".into()))?;
-                let removed = history.remove(index);
-                history.truncate(index);
+                let index = history.iter().rposition(|file| file.id == expected);
+                let removed = if let Some(index) = index {
+                    let removed = history.remove(index);
+                    if matches!(record, Record::Clear(_)) {
+                        history.truncate(index);
+                    }
+                    removed
+                } else if let Record::Retire(receipt) = record {
+                    // Bounded global history may have evicted a still-owned
+                    // wizard receipt. Reversal guards still protect its fields.
+                    receipt.to_file()
+                } else {
+                    return Err(DesktopError::UndoUnavailable("History changed".into()));
+                };
                 // A semantic Undo can restore an older value using today's
                 // inputs. Bridge that verified restoration into older actions;
                 // only verified reversals, including no-op restorations, qualify.
@@ -1518,7 +1547,7 @@ impl DesktopStore {
                         .retain(|field| patch.reversed_widget.contains(&field.pointer));
                     restored
                 });
-                for older in &mut history {
+                for older in history.iter_mut().take(index.unwrap_or(0)) {
                     older.attribute_restoration(&removed, &restored, restored_widget.as_ref());
                 }
                 let mut previous = history.pop().unwrap_or_else(|| {
@@ -1537,6 +1566,22 @@ impl DesktopStore {
                     empty.source = Source::Derived;
                     empty
                 });
+                let mut summary = activity::summarize(&removed, false);
+                summary.id = change.id.clone();
+                summary.at = created.clone();
+                summary.cause = activity::Cause::You;
+                summary.action = if !matches!(record, Record::Retire(_))
+                    && change.entries.is_empty()
+                    && widget_change.as_ref().is_none_or(|w| w.fields.is_empty())
+                {
+                    activity::Action::Kept
+                } else {
+                    activity::Action::Undone
+                };
+                summary.details.clear();
+                activity::append(&mut recent, summary);
+                previous.recent = recent;
+                previous.recent_partial = recent_partial;
                 previous.history = history;
                 previous.palette_ack = palette_ack;
                 previous.transaction_id = Some(change.id.clone());
@@ -1787,7 +1832,7 @@ impl DesktopStore {
         let path = self.undo_path();
         match record {
             Record::Keep => Ok(()),
-            Record::Set(..) | Record::Clear(_) if new_record.is_some() => {
+            Record::Set(..) | Record::Clear(_) | Record::Retire(_) if new_record.is_some() => {
                 let bytes = new_record.ok_or("No Undo record to write")?;
                 match atomic_write(&path, bytes, Some(0o600)) {
                     Ok(()) => Ok(()),
@@ -1796,14 +1841,16 @@ impl DesktopStore {
                     Err(error) => Err(format!("Could not record Undo: {error}")),
                 }
             }
-            Record::Set(..) | Record::Clear(_) => match fs::remove_file(&path) {
-                Ok(()) => {
-                    let _ = sync_dir(&self.state_dir);
-                    Ok(())
+            Record::Set(..) | Record::Clear(_) | Record::Retire(_) => {
+                match fs::remove_file(&path) {
+                    Ok(()) => {
+                        let _ = sync_dir(&self.state_dir);
+                        Ok(())
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+                    Err(error) => Err(format!("Could not clear the Undo record: {error}")),
                 }
-                Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-                Err(error) => Err(format!("Could not clear the Undo record: {error}")),
-            },
+            }
         }
     }
 

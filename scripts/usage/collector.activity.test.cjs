@@ -74,3 +74,49 @@ test('interrupted activity writes retry without duplicate day counts or changed 
   assert.equal(JSON.parse(f.rows()[1][13]).length,1);
  }
 });
+test('first receipt/version pair recovers after every prefix write, even on upgrade retry',()=>{
+ for(let cell=1;cell<=15;cell++) {
+  const f=fixture();f.sandbox.setup();f.failAfterCells(cell);
+  assert.equal(f.sandbox.doPost({postData:{contents:JSON.stringify(activity)}}).ok,false);
+  const first=f.rows()[1][9];
+  assert.equal(f.sandbox.doPost({postData:{contents:JSON.stringify({...activity,version:'0.3.1'})}}).ok,true);
+  const row=f.rows()[1];
+  assert.equal(row[2],'0.3.1');
+  assert.equal(row[11],cell>=10 ? '0.3.0' : '0.3.1');
+  if(first) assert.equal(row[9],first);
+  assert.equal(row[12],1);assert.equal(JSON.parse(row[13]).length,1);
+ }
+});
+test('maintenance repairs an interrupted first observation without inventing legacy metadata',()=>{
+ const f=fixture(),s=f.sandbox,today=s.dayNumber(new Date());s.setup();
+ f.seed([
+  ['first',today,'0.3.0','','enabled','','',0,'',now.toISOString(),'','','','',''],
+  ['legacy',today,'0.2.5','','enabled','','',0,'','','','','','',''],
+ ]);
+ s.maintenance();
+ assert.equal(f.rows()[1][11],'0.3.0');assert.equal(f.rows()[2][11],'');
+});
+test('simultaneous expiry uses bounded adjacent batches for reports and maintenance',()=>{
+ for(const maintenance of [false,true]) for(const count of [100,600]) {
+  const f=fixture(),s=f.sandbox,today=s.dayNumber(new Date());s.setup();
+  const rows=Array.from({length:count},(_,i)=>[String(i),today-1,'0.3.0','','enabled','','',0,'',now.toISOString(),'','0.3.0',2,JSON.stringify([today-90,today-1]),now.toISOString()]);
+  f.seed(rows);
+  const writes=[];const range=f.raw.getRange.bind(f.raw);
+  f.raw.getRange=(...args)=>{const r=range(...args);const write=r.setValues;r.setValues=values=>{writes.push(args);return write(values);};return r;};
+  if(maintenance) s.maintenance();
+  else s.write_(f.raw,rows,s.applyReport(rows,'0',activity,new Date()));
+  assert.equal(writes.length,Math.ceil(count/256));
+  assert.ok(writes.every(([,col,h,w])=>col===1 && h<=256 && w===15));
+  assert.equal(f.rows()[1][12],maintenance?1:2);
+  assert.ok(f.rows().slice(2).every(row=>row[12]===1));
+ }
+});
+test('batch writes skip unchanged gaps and recover from interruption across a batch boundary',()=>{
+ const f=fixture(),s=f.sandbox,today=s.dayNumber(new Date());s.setup();
+ const rows=Array.from({length:600},(_,i)=>[String(i),today-1,'0.3.0','','enabled','','',0,'',now.toISOString(),'','0.3.0',2,JSON.stringify([today-90,today-1]),now.toISOString()]);
+ f.seed(rows);f.failAfterCells(256*15+10);
+ assert.throws(()=>s.maintenance());s.maintenance();
+ assert.equal(f.rows().length,601);assert.ok(f.rows().slice(1).every(row=>row[12]===1 && row[11]==='0.3.0'));
+ const before=f.rows().slice(1),after=before.map(row=>row.slice());after[0][2]='0.3.1';after[2][2]='0.3.1';
+ const count=f.state.writes;s.write_(f.raw,before,after);assert.equal(f.state.writes-count,2);
+});

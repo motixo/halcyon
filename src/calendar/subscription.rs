@@ -1,7 +1,7 @@
 //! Read-only calendar feeds. Subscription URLs are credentials, never config or logs.
 use super::*;
 use crate::data::{CalendarData, CalendarEvent};
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, NaiveDate, NaiveDateTime, Offset, TimeZone, Utc};
 use ical::{parser::ical::component::IcalEvent, property::Property};
 use rrule::{RRuleSet, Tz};
 use std::{
@@ -92,12 +92,111 @@ async fn download(value: &SecretText) -> Result<Vec<u8>, Problem> {
 }
 async fn parsed(feed: &Feed, month: &str) -> Result<Vec<CalendarEvent>, Problem> {
     let bytes = download(&feed.url).await?;
-    let month = month.to_string();
-    let choice = feed.choice.clone();
-    tokio::task::spawn_blocking(move || parse(&bytes, &month, &choice))
-        .await
-        .map_err(|_| Problem::InvalidFeed)?
+    parse_isolated(bytes, month.to_string(), feed.choice.clone()).await
 }
+
+// A dropped refresh must stop the parser, including work inside rrule. One
+// worker at a time, with OS limits before reading untrusted input; no secrets
+// are passed in argv, written to disk, or emitted on stderr.
+async fn parse_isolated(
+    bytes: Vec<u8>,
+    month: String,
+    choice: CalendarChoice,
+) -> Result<Vec<CalendarEvent>, Problem> {
+    parse_isolated_with(bytes, month, choice, |_| {}).await
+}
+async fn parse_isolated_with(
+    bytes: Vec<u8>,
+    month: String,
+    choice: CalendarChoice,
+    spawned: impl FnOnce(u32),
+) -> Result<Vec<CalendarEvent>, Problem> {
+    use std::process::Stdio;
+    use tokio::io::AsyncWriteExt;
+    static SLOT: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
+    let _slot = SLOT.acquire().await.map_err(|_| Problem::FeedLimit)?;
+    let input = serde_json::to_vec(&(bytes, month, choice)).map_err(|_| Problem::InvalidFeed)?;
+    let mut command =
+        tokio::process::Command::new(std::env::current_exe().map_err(|_| Problem::Storage)?);
+    #[cfg(not(test))]
+    command.arg("--calendar-parser");
+    #[cfg(test)]
+    command.args([
+        "--exact",
+        "calendar::subscription::tests::isolated_parser_entry",
+        "--ignored",
+        "--nocapture",
+    ]);
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|_| Problem::Storage)?;
+    spawned(child.id().ok_or(Problem::Storage)?);
+    let result = tokio::time::timeout(Duration::from_secs(4), async move {
+        let mut stdin = child.stdin.take().ok_or(Problem::Storage)?;
+        stdin
+            .write_all(&input)
+            .await
+            .map_err(|_| Problem::FeedLimit)?;
+        drop(stdin);
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|_| Problem::FeedLimit)?;
+        if !output.status.success() {
+            return Err(Problem::FeedLimit);
+        }
+        let bytes = output.stdout.as_slice();
+        // libtest prints its preamble before entering the worker test.
+        #[cfg(test)]
+        let bytes = &bytes[bytes
+            .iter()
+            .position(|b| *b == b'{')
+            .ok_or(Problem::InvalidFeed)?..];
+        serde_json::from_slice(bytes).map_err(|_| Problem::InvalidFeed)?
+    })
+    .await;
+    result.unwrap_or(Err(Problem::FeedLimit))
+}
+
+pub(crate) fn parser_main() -> ! {
+    use std::io::Read;
+    // This entry point runs before migrations, toolkit initialization or threads.
+    for (resource, value) in [
+        (libc::RLIMIT_AS, 512 * 1024 * 1024),
+        (libc::RLIMIT_CPU, 2),
+        (libc::RLIMIT_CORE, 0),
+    ] {
+        let limit = libc::rlimit {
+            rlim_cur: value,
+            rlim_max: value,
+        };
+        if unsafe { libc::setrlimit(resource, &limit) } != 0 {
+            std::process::exit(2);
+        }
+    }
+    let mut input = Vec::new();
+    let result = (|| {
+        std::io::stdin()
+            .take(32 * 1024 * 1024 + 1)
+            .read_to_end(&mut input)
+            .map_err(|_| Problem::InvalidFeed)?;
+        if input.len() > 32 * 1024 * 1024 {
+            return Err(Problem::FeedLimit);
+        }
+        let (bytes, month, choice): (Vec<u8>, String, CalendarChoice) =
+            serde_json::from_slice(&input).map_err(|_| Problem::InvalidFeed)?;
+        parse(&bytes, &month, &choice)
+    })();
+    if serde_json::to_writer(std::io::stdout(), &result).is_err() {
+        std::process::exit(2);
+    }
+    std::process::exit(0);
+}
+
 pub async fn add_subscription(
     expected: Connection,
     name: String,
@@ -160,12 +259,13 @@ async fn commit(
     connection: Connection,
     feeds: &Feeds,
 ) -> Result<Connection, Problem> {
-    keyring::save(&connection.credential, feeds).await?;
+    let _lease = keyring::save_prepared(connection.credential.clone(), feeds.clone()).await?;
     if let Err(problem) = store::replace(expected, &connection) {
-        auth::forget(&connection.credential).await;
+        // The prepared credential remains journaled for retry.
         return Err(problem);
     }
-    auth::forget(&expected.credential).await;
+    drop(_lease);
+    super::schedule_cleanup();
     Ok(connection)
 }
 pub async fn remove_subscription(expected: Connection, id: String) -> Result<Connection, Problem> {
@@ -235,10 +335,14 @@ pub(super) async fn events(
     })
 }
 fn value<'a>(props: &'a [Property], name: &str) -> Option<&'a str> {
-    props.iter().find(|p| p.name == name)?.value.as_deref()
+    props
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(name))?
+        .value
+        .as_deref()
 }
 fn prop<'a>(props: &'a [Property], name: &str) -> Option<&'a Property> {
-    props.iter().find(|p| p.name == name)
+    props.iter().find(|p| p.name.eq_ignore_ascii_case(name))
 }
 fn param<'a>(p: &'a Property, key: &str) -> Option<&'a str> {
     p.params
@@ -266,35 +370,69 @@ fn unescape(text: &str, limit: usize) -> String {
     out
 }
 fn datetime(p: &Property, raw: &str, fallback: Option<&str>) -> Result<DateTime<Tz>, Problem> {
+    let normalized = raw.to_ascii_uppercase();
+    let raw = normalized.as_str();
     let zone = param(p, "TZID")
         .or(fallback)
         .filter(|_| !raw.ends_with('Z') && raw.len() != 8);
     if zone.is_some_and(|z| z.contains(['\r', '\n', ':', ';'])) {
         return Err(Problem::FeedTimezone);
     }
-    let line = if let Some(z) = zone {
-        format!("DTSTART;TZID={z}:{raw}")
+    // Resolve the zone independently of the explicit local date: RFC 5545
+    // requires the earlier/pre-gap offset for explicit DATE-TIME values.
+    let tz = if let Some(z) = zone {
+        Tz::Tz(z.parse().map_err(|_| Problem::FeedTimezone)?)
+    } else if raw.ends_with('Z') {
+        Tz::UTC
     } else {
-        format!("DTSTART:{raw}")
+        Tz::LOCAL
     };
-    let set: RRuleSet = format!("{line}\nRRULE:FREQ=DAILY;COUNT=1")
-        .parse()
-        .map_err(|_| {
-            if zone.is_some() {
-                Problem::FeedTimezone
-            } else {
-                Problem::InvalidFeed
-            }
-        })?;
-    Ok(*set.get_dt_start())
+    let local = if raw.len() == 8 {
+        NaiveDate::parse_from_str(raw, "%Y%m%d")
+            .map_err(|_| Problem::InvalidFeed)?
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+    } else {
+        NaiveDateTime::parse_from_str(raw.trim_end_matches('Z'), "%Y%m%dT%H%M%S")
+            .map_err(|_| Problem::InvalidFeed)?
+    };
+    resolve_local_datetime(tz, local)
 }
+
+// RFC 5545 §3.3.5: use the first instant in an overlap and the offset before
+// a gap. This also resolves nominal duration endpoints (§3.3.6), but must not
+// be used for generated RRULE start times: those must skip gaps (§3.3.10).
+fn resolve_local_datetime(tz: Tz, local: NaiveDateTime) -> Result<DateTime<Tz>, Problem> {
+    if let Some(date) = tz.from_local_datetime(&local).earliest() {
+        return Ok(date);
+    }
+    // Offset before a gap (including historical full-day transitions). Bound
+    // the search independently of the feed and preserve the explicit instant.
+    for hours in 1..=48 {
+        let before = local
+            .checked_sub_signed(chrono::Duration::hours(hours))
+            .ok_or(Problem::InvalidFeed)?;
+        if let Some(date) = tz.from_local_datetime(&before).earliest() {
+            return date
+                .offset()
+                .fix()
+                .from_local_datetime(&local)
+                .single()
+                .map(|date| date.with_timezone(&tz))
+                .ok_or(Problem::InvalidFeed);
+        }
+    }
+    Err(Problem::FeedTimezone)
+}
+
 fn duration(text: &str) -> Result<(chrono::Duration, u64), Problem> {
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
         regex::Regex::new(r"^\+?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$")
             .unwrap()
     });
-    let caps = re.captures(text).ok_or(Problem::InvalidFeed)?;
+    let normalized = text.to_ascii_uppercase();
+    let caps = re.captures(&normalized).ok_or(Problem::InvalidFeed)?;
     let mut seconds = 0i64;
     let mut nominal_days = 0u64;
     if caps.iter().skip(1).all(|part| part.is_none()) {
@@ -396,10 +534,19 @@ fn instance(
         e.end = end.to_string();
     } else {
         e.start = start.to_rfc3339();
-        // RFC 5545 distinguishes a calendar day (P1D) from 24 hours (PT24H).
-        e.end = start
-            .checked_add_days(chrono::Days::new(nominal_days))
-            .ok_or(Problem::InvalidFeed)?
+        // Add nominal days in local calendar time, resolve that endpoint, then
+        // add elapsed hours/minutes/seconds. Keep the original instant when
+        // there are no nominal days, including the later half of an overlap.
+        let end = if nominal_days == 0 {
+            start
+        } else {
+            let local = start
+                .naive_local()
+                .checked_add_days(chrono::Days::new(nominal_days))
+                .ok_or(Problem::InvalidFeed)?;
+            resolve_local_datetime(start.timezone(), local)?
+        };
+        e.end = end
             .checked_add_signed(span - chrono::Duration::days(nominal_days as i64))
             .ok_or(Problem::InvalidFeed)?
             .to_rfc3339();
@@ -429,7 +576,21 @@ pub(super) fn parse(
     let from = DateTime::parse_from_rfc3339(&from).map_err(|_| Problem::InvalidFeed)?;
     let to = DateTime::parse_from_rfc3339(&to).map_err(|_| Problem::InvalidFeed)?;
     let started = std::time::Instant::now();
-    let mut parser = ical::IcalParser::new(Cursor::new(bytes));
+    let mut normalized = Vec::with_capacity(bytes.len());
+    // Unfold before normalizing: even structural tokens can span physical
+    // lines. Preserve case-sensitive text, URLs, UIDs and parameter values.
+    for content in ical::LineReader::new(Cursor::new(bytes)) {
+        let mut line = content.as_str().as_bytes().to_vec();
+        if let Some(end) = line.iter().position(|b| matches!(b, b';' | b':')) {
+            line[..end].make_ascii_uppercase();
+            if &line[..end] == b"BEGIN" || &line[..end] == b"END" {
+                line[end + 1..].make_ascii_uppercase();
+            }
+        }
+        normalized.extend_from_slice(&line);
+        normalized.push(b'\n');
+    }
+    let mut parser = ical::IcalParser::new(Cursor::new(normalized));
     let calendar = parser
         .next()
         .ok_or(Problem::InvalidFeed)?
@@ -476,7 +637,7 @@ pub(super) fn parse(
         if started.elapsed() > Duration::from_secs(4) {
             return Err(Problem::FeedLimit);
         }
-        if value(&e.properties, "STATUS") == Some("CANCELLED") {
+        if value(&e.properties, "STATUS").is_some_and(|v| v.eq_ignore_ascii_case("CANCELLED")) {
             continue;
         }
         let (start, span, nominal_days, template) = event(e, zone, choice)?;
@@ -485,26 +646,29 @@ pub(super) fn parse(
             let mut set = RRuleSet::new(start).rdate(start);
             let mut recurring = false;
             for p in &e.properties {
-                if p.name == "RRULE" {
+                if p.name.eq_ignore_ascii_case("RRULE") {
                     let rule: rrule::RRule<rrule::Unvalidated> = p
                         .value
                         .as_deref()
                         .ok_or(Problem::InvalidFeed)?
+                        .to_ascii_uppercase()
                         .parse()
                         .map_err(|_| Problem::InvalidFeed)?;
                     set = set.rrule(rule.validate(start).map_err(|_| Problem::FeedLimit)?);
                     recurring = true;
-                } else if p.name == "RDATE" || p.name == "EXDATE" {
+                } else if p.name.eq_ignore_ascii_case("RDATE")
+                    || p.name.eq_ignore_ascii_case("EXDATE")
+                {
                     for raw in p.value.as_deref().ok_or(Problem::InvalidFeed)?.split(',') {
                         let date = datetime(p, raw, zone)?;
-                        set = if p.name == "RDATE" {
+                        set = if p.name.eq_ignore_ascii_case("RDATE") {
                             set.rdate(date)
                         } else {
                             set.exdate(date)
                         };
                     }
                     recurring = true;
-                } else if p.name == "EXRULE" {
+                } else if p.name.eq_ignore_ascii_case("EXRULE") {
                     return Err(Problem::FeedLimit);
                 }
             }
@@ -546,6 +710,11 @@ pub(super) fn parse(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "private stdin worker invoked by isolated parser tests"]
+    fn isolated_parser_entry() {
+        parser_main();
+    }
     fn choice() -> CalendarChoice {
         CalendarChoice {
             id: "fixture".into(),
@@ -559,6 +728,385 @@ mod tests {
     }
     fn parse_events(body: &str) -> Vec<CalendarEvent> {
         parse(&feed(body), "2026-10", &choice()).unwrap()
+    }
+    #[test]
+    fn explicit_transition_dates_use_first_or_pre_gap_offset() {
+        let p = Property {
+            name: "DTSTART".into(),
+            params: Some(vec![("TZID".into(), vec!["Europe/Zagreb".into()])]),
+            value: None,
+        };
+        assert_eq!(
+            datetime(&p, "20261025T023000", None).unwrap().to_rfc3339(),
+            "2026-10-25T02:30:00+02:00"
+        );
+        assert_eq!(
+            datetime(&p, "20260329T023000", None).unwrap().to_rfc3339(),
+            "2026-03-29T03:30:00+02:00"
+        );
+        let events = parse_events(
+            "BEGIN:VEVENT\r\nUID:old\r\nDTSTART;TZID=Europe/Zagreb:20250330T023000\r\nEND:VEVENT\r\nBEGIN:VEVENT\r\nUID:current\r\nDTSTART:20261020T100000Z\r\nEND:VEVENT",
+        );
+        assert_eq!(events.len(), 1);
+    }
+
+    #[test]
+    fn auditfix_nominal_duration_resolves_transition_endpoints_before_elapsed_remainder() {
+        for (month, start, duration, end) in [
+            (
+                "2026-03",
+                "20260328T023000",
+                "P1D",
+                "2026-03-29T03:30:00+02:00",
+            ),
+            (
+                "2026-10",
+                "20261024T023000",
+                "P1D",
+                "2026-10-25T02:30:00+02:00",
+            ),
+            (
+                "2026-03",
+                "20260328T023000",
+                "P1DT1H30M45S",
+                "2026-03-29T05:00:45+02:00",
+            ),
+            (
+                "2026-10",
+                "20261024T023000",
+                "P1DT1H30M45S",
+                "2026-10-25T03:00:45+01:00",
+            ),
+            (
+                "2026-03",
+                "20260322T023000",
+                "P1W",
+                "2026-03-29T03:30:00+02:00",
+            ),
+            (
+                "2026-10",
+                "20261018T023000",
+                "P1W",
+                "2026-10-25T02:30:00+02:00",
+            ),
+        ] {
+            let bytes = feed(&format!(
+                "BEGIN:VEVENT\r\nUID:nominal\r\nDTSTART;TZID=Europe/Zagreb:{start}\r\nDURATION:{duration}\r\nEND:VEVENT"
+            ));
+            let events = parse(&bytes, month, &choice()).unwrap();
+            assert_eq!(events.len(), 1, "{start} {duration}");
+            assert_eq!(events[0].end, end, "{start} {duration}");
+        }
+    }
+
+    #[test]
+    fn auditfix_nominal_day_and_elapsed_24_hours_remain_distinct() {
+        for (month, start, nominal_end, elapsed_end, nominal_hours) in [
+            (
+                "2026-03",
+                "20260328T120000",
+                "2026-03-29T12:00:00+02:00",
+                "2026-03-29T13:00:00+02:00",
+                23,
+            ),
+            (
+                "2026-10",
+                "20261024T120000",
+                "2026-10-25T12:00:00+01:00",
+                "2026-10-25T11:00:00+01:00",
+                25,
+            ),
+        ] {
+            for (duration, expected, hours) in [
+                ("P1D", nominal_end, nominal_hours),
+                ("PT24H", elapsed_end, 24),
+            ] {
+                let bytes = feed(&format!(
+                    "BEGIN:VEVENT\r\nUID:duration\r\nDTSTART;TZID=Europe/Zagreb:{start}\r\nDURATION:{duration}\r\nEND:VEVENT"
+                ));
+                let events = parse(&bytes, month, &choice()).unwrap();
+                assert_eq!(events.len(), 1);
+                assert_eq!(events[0].end, expected);
+                assert_eq!(
+                    DateTime::parse_from_rfc3339(&events[0].end).unwrap()
+                        - DateTime::parse_from_rfc3339(&events[0].start).unwrap(),
+                    chrono::Duration::hours(hours),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn auditfix_elapsed_duration_preserves_later_overlap_start() {
+        let start = DateTime::parse_from_rfc3339("2026-10-25T02:30:00+01:00")
+            .unwrap()
+            .with_timezone(&Tz::Europe__Zagreb);
+        for (minutes, expected) in [
+            (0, "2026-10-25T02:30:00+01:00"),
+            (30, "2026-10-25T03:00:00+01:00"),
+        ] {
+            let event = instance(
+                CalendarEvent::default(),
+                start,
+                chrono::Duration::minutes(minutes),
+                0,
+            )
+            .unwrap();
+            assert_eq!(event.end, expected);
+        }
+    }
+
+    #[test]
+    fn auditfix_historical_nominal_transition_events_do_not_reject_current_feed() {
+        let events = parse_events(concat!(
+            "BEGIN:VEVENT\r\nUID:old-spring\r\nDTSTART;TZID=Europe/Zagreb:20250329T023000\r\nDURATION:P1D\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:old-autumn\r\nDTSTART;TZID=Europe/Zagreb:20251025T023000\r\nDURATION:P1D\r\nEND:VEVENT\r\n",
+            "BEGIN:VEVENT\r\nUID:current\r\nDTSTART:20261020T100000Z\r\nSUMMARY:Current\r\nEND:VEVENT",
+        ));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].title, "Current");
+        assert_eq!(events[0].start, "2026-10-20T10:00:00+00:00");
+    }
+
+    #[test]
+    fn auditfix_daily_gap_is_skipped_without_consuming_count() {
+        // Exercise both iterator generation paths, with and without BYSETPOS.
+        for rule in [
+            "FREQ=DAILY;COUNT=3",
+            "FREQ=DAILY;BYHOUR=2;BYSETPOS=1;COUNT=3",
+        ] {
+            let bytes = feed(&format!(
+                "BEGIN:VEVENT\r\nUID:daily\r\nDTSTART;TZID=Europe/Zagreb:20260328T023000\r\nDURATION:PT30M\r\nRRULE:{rule}\r\nEND:VEVENT"
+            ));
+            let events = parse(&bytes, "2026-03", &choice()).unwrap();
+            assert_eq!(
+                events.iter().map(|e| e.start.as_str()).collect::<Vec<_>>(),
+                [
+                    "2026-03-28T02:30:00+01:00",
+                    "2026-03-30T02:30:00+02:00",
+                    "2026-03-31T02:30:00+02:00"
+                ],
+                "{rule}",
+            );
+        }
+    }
+
+    #[test]
+    fn auditfix_multiple_hours_keep_valid_gap_day_occurrence_and_complete_count() {
+        let bytes = feed(
+            "BEGIN:VEVENT\r\nUID:hours\r\nDTSTART;TZID=Europe/Zagreb:20260328T023000\r\nRRULE:FREQ=DAILY;BYHOUR=2,3;COUNT=6\r\nEND:VEVENT",
+        );
+        let events = parse(&bytes, "2026-03", &choice()).unwrap();
+        assert_eq!(
+            events.iter().map(|e| e.start.as_str()).collect::<Vec<_>>(),
+            [
+                "2026-03-28T02:30:00+01:00",
+                "2026-03-28T03:30:00+01:00",
+                "2026-03-29T03:30:00+02:00",
+                "2026-03-30T02:30:00+02:00",
+                "2026-03-30T03:30:00+02:00",
+                "2026-03-31T02:30:00+02:00",
+            ],
+        );
+    }
+
+    #[test]
+    fn auditfix_hourly_gap_preserves_count_and_order() {
+        let bytes = feed(
+            "BEGIN:VEVENT\r\nUID:hourly\r\nDTSTART;TZID=Europe/Zagreb:20260329T013000\r\nRRULE:FREQ=HOURLY;COUNT=4\r\nEND:VEVENT",
+        );
+        let events = parse(&bytes, "2026-03", &choice()).unwrap();
+        assert_eq!(
+            events.iter().map(|e| e.start.as_str()).collect::<Vec<_>>(),
+            [
+                "2026-03-29T01:30:00+01:00",
+                "2026-03-29T03:30:00+02:00",
+                "2026-03-29T04:30:00+02:00",
+                "2026-03-29T05:30:00+02:00"
+            ],
+        );
+    }
+
+    #[test]
+    fn auditfix_recurrence_uses_first_autumn_occurrence_once() {
+        let events = parse_events(
+            "BEGIN:VEVENT\r\nUID:autumn\r\nDTSTART;TZID=Europe/Zagreb:20261024T023000\r\nDURATION:PT30M\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT",
+        );
+        assert_eq!(
+            events.iter().map(|e| e.start.as_str()).collect::<Vec<_>>(),
+            [
+                "2026-10-24T02:30:00+02:00",
+                "2026-10-25T02:30:00+02:00",
+                "2026-10-26T02:30:00+01:00"
+            ],
+        );
+        assert_eq!(events[1].end, "2026-10-25T02:00:00+01:00");
+    }
+
+    #[test]
+    fn auditfix_explicit_gap_dtstart_and_rdate_keep_pre_gap_interpretation() {
+        let explicit = feed(
+            "BEGIN:VEVENT\r\nUID:explicit\r\nDTSTART;TZID=Europe/Zagreb:20260329T023000\r\nDURATION:PT30M\r\nEND:VEVENT",
+        );
+        let events = parse(&explicit, "2026-03", &choice()).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].start, "2026-03-29T03:30:00+02:00");
+        assert_eq!(events[0].end, "2026-03-29T04:00:00+02:00");
+
+        let recurring = feed(
+            "BEGIN:VEVENT\r\nUID:rdate\r\nDTSTART;TZID=Europe/Zagreb:20260328T023000\r\nRRULE:FREQ=DAILY;COUNT=3\r\nRDATE;TZID=Europe/Zagreb:20260329T023000\r\nEND:VEVENT",
+        );
+        let events = parse(&recurring, "2026-03", &choice()).unwrap();
+        assert_eq!(
+            events.iter().map(|e| e.start.as_str()).collect::<Vec<_>>(),
+            [
+                "2026-03-28T02:30:00+01:00",
+                "2026-03-29T03:30:00+02:00",
+                "2026-03-30T02:30:00+02:00",
+                "2026-03-31T02:30:00+02:00"
+            ],
+        );
+    }
+
+    #[test]
+    fn auditfix_recurrence_skips_half_hour_and_full_day_gaps() {
+        for (month, zone, start, expected) in [
+            (
+                "2026-10",
+                "Australia/Lord_Howe",
+                "20261003T021500",
+                [
+                    "2026-10-03T02:15:00+10:30",
+                    "2026-10-05T02:15:00+11:00",
+                    "2026-10-06T02:15:00+11:00",
+                ],
+            ),
+            (
+                "2011-12",
+                "Pacific/Apia",
+                "20111229T120000",
+                [
+                    "2011-12-29T12:00:00-10:00",
+                    "2011-12-31T12:00:00+14:00",
+                    "2012-01-01T12:00:00+14:00",
+                ],
+            ),
+        ] {
+            let bytes = feed(&format!(
+                "BEGIN:VEVENT\r\nUID:gap\r\nDTSTART;TZID={zone}:{start}\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT"
+            ));
+            let events = parse(&bytes, month, &choice()).unwrap();
+            assert_eq!(
+                events.iter().map(|e| e.start.as_str()).collect::<Vec<_>>(),
+                expected,
+                "{zone}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn auditfix_isolated_parser_keeps_nominal_duration_and_completes_gap_count() {
+        let bytes = feed(
+            "BEGIN:VEVENT\r\nUID:isolated-dst\r\nDTSTART;TZID=Europe/Zagreb:20260328T023000\r\nDURATION:P1D\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT",
+        );
+        let events = parse_isolated(bytes, "2026-03".into(), choice())
+            .await
+            .unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .map(|e| (e.start.as_str(), e.end.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("2026-03-28T02:30:00+01:00", "2026-03-29T03:30:00+02:00"),
+                ("2026-03-30T02:30:00+02:00", "2026-03-31T02:30:00+02:00"),
+                ("2026-03-31T02:30:00+02:00", "2026-04-01T02:30:00+02:00"),
+            ],
+        );
+    }
+
+    #[test]
+    fn mixed_case_tokens_preserve_text_and_recurrence() {
+        let body = "be\r\n gin:ve\r\n vent\r\nUid:CaseSensitive\r\ndtstart:20261020T100000Z\r\nrRuLe:freq=daily;count=3\r\nexdate:20261021T100000Z\r\nrdate:20261024T100000Z\r\nsummary:MiXeD Text\r\nURL:https://example.com/MiXeD\r\nend:vevent\r\nBEGIN:VEVENT\r\nUID:cancelled\r\nDTSTART:20261022T100000Z\r\nstatus:cancelled\r\nEND:VEVENT";
+        let events = parse_events(body);
+        assert_eq!(events.len(), 3);
+        assert!(
+            events
+                .iter()
+                .all(|e| e.title == "MiXeD Text" && e.url == "https://example.com/MiXeD")
+        );
+        assert_eq!(events[1].start, "2026-10-22T10:00:00+00:00");
+    }
+    #[tokio::test]
+    async fn isolated_parser_bounds_pathological_rules_and_recovers() {
+        let started = std::time::Instant::now();
+        let seconds = (0..60).map(|n| n.to_string()).collect::<Vec<_>>().join(",");
+        let minutes = seconds.clone();
+        let hours = (0..24).map(|n| n.to_string()).collect::<Vec<_>>().join(",");
+        for rule in [
+            "FREQ=SECONDLY".to_string(),
+            format!(
+                "FREQ=YEARLY;BYMONTH=1,2,3,4,5,6,7,8,9,10,11,12;BYMONTHDAY=1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31;BYHOUR={hours};BYMINUTE={minutes};BYSECOND={seconds}"
+            ),
+        ] {
+            let bytes = feed(&format!(
+                "BEGIN:VEVENT\r\nUID:limit\r\nDTSTART:19700101T000000Z\r\nRRULE:{rule}\r\nEND:VEVENT"
+            ));
+            assert_eq!(
+                parse_isolated(bytes, "2026-10".into(), choice())
+                    .await
+                    .unwrap_err(),
+                Problem::FeedLimit
+            );
+        }
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let good = feed(
+            "BEGIN:VEVENT\r\nUID:good\r\nDTSTART:20261020T100000Z\r\nRRULE:FREQ=DAILY;COUNT=3\r\nEND:VEVENT",
+        );
+        assert_eq!(
+            parse_isolated(good, "2026-10".into(), choice())
+                .await
+                .unwrap()
+                .len(),
+            3
+        );
+    }
+    #[tokio::test]
+    async fn cancelling_refreshes_terminates_the_parser_workers() {
+        for _ in 0..3 {
+            let bytes = feed(
+                "BEGIN:VEVENT\r\nUID:slow\r\nDTSTART:19700101T000000Z\r\nRRULE:FREQ=SECONDLY\r\nEND:VEVENT",
+            );
+            let (started, pid) = tokio::sync::oneshot::channel();
+            let task = tokio::spawn(parse_isolated_with(
+                bytes,
+                "2026-10".into(),
+                choice(),
+                move |pid| {
+                    let _ = started.send(pid);
+                },
+            ));
+            let pid = tokio::time::timeout(Duration::from_secs(10), pid)
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(
+                std::path::Path::new(&format!("/proc/{pid}")).exists(),
+                "this request's worker has started"
+            );
+            task.abort();
+            let _ = task.await;
+            let deadline = std::time::Instant::now() + Duration::from_secs(2);
+            while std::path::Path::new(&format!("/proc/{pid}")).exists()
+                && std::time::Instant::now() < deadline
+            {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            assert!(
+                !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+                "cancelled worker must be terminated and reaped"
+            );
+        }
     }
     #[test]
     fn urls_are_private_https_credentials() {
@@ -726,6 +1274,12 @@ async fn private_subscription_commit_remove_and_stale_replacement() {
         Err(Problem::Changed)
     );
     assert!(
+        store::stale_credentials()
+            .unwrap()
+            .contains(&candidate.credential)
+    );
+    crate::calendar::tests::drain_cleanup().await;
+    assert!(
         keyring::read::<Feeds>(&candidate.credential, false)
             .await
             .is_err()
@@ -739,6 +1293,7 @@ async fn private_subscription_commit_remove_and_stale_replacement() {
         .await
         .unwrap();
     assert_eq!(remaining.selected_calendars()[0].name, "Personal");
+    crate::calendar::tests::drain_cleanup().await;
     assert!(
         keyring::read::<Feeds>(&connected.credential, false)
             .await

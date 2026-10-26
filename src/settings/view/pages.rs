@@ -1,5 +1,60 @@
 use super::*;
 
+/// Transient App settings navigation, independent of saved configuration.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AppSettingsPage {
+    #[default]
+    Operation,
+    Interface,
+    Privacy,
+    Updates,
+    Restore,
+    Help,
+}
+
+impl AppSettingsPage {
+    pub const ALL: [Self; 6] = [
+        Self::Operation,
+        Self::Interface,
+        Self::Privacy,
+        Self::Updates,
+        Self::Restore,
+        Self::Help,
+    ];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::Operation => "Startup & widgets",
+            Self::Interface => "Interface",
+            Self::Privacy => "Privacy",
+            Self::Updates => "Updates & installation",
+            Self::Restore => "Restore & recovery",
+            Self::Help => "Help & diagnostics",
+        }
+    }
+
+    pub fn tab_title(self) -> &'static str {
+        match self {
+            Self::Operation => "Startup",
+            Self::Updates => "Updates",
+            Self::Restore => "Recovery",
+            Self::Help => "Help",
+            page => page.title(),
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Operation => "operation",
+            Self::Interface => "interface",
+            Self::Privacy => "privacy",
+            Self::Updates => "updates",
+            Self::Restore => "restore",
+            Self::Help => "help",
+        }
+    }
+}
+
 pub(super) fn section<'a>(items: Vec<Element<'a, Message>>) -> Element<'a, Message> {
     frame(
         column::with_children(items)
@@ -33,6 +88,32 @@ fn widget_page(widget: Widget) -> Page {
 }
 
 impl Settings {
+    pub(super) fn widget_style_and_layout(&self, widget: Widget) -> Element<'_, Message> {
+        group(
+            Some("Surface & placement"),
+            vec![
+                group_row(
+                    "Surface finish",
+                    "Opacity, corners, outline and readability",
+                    button::text("Widget style")
+                        .on_press(Message::Page(Page::Appearance))
+                        .into(),
+                ),
+                group_row(
+                    "Position & size",
+                    "Move or resize this widget in Layout and displays",
+                    button::text("Move & resize")
+                        .id(cosmic::widget::Id::new(format!(
+                            "{}-edit-layout",
+                            widget.key()
+                        )))
+                        .on_press(Message::EditWidgetLayout(widget))
+                        .into(),
+                ),
+            ],
+        )
+    }
+
     pub(super) fn widget_heading(
         &self,
         widget: Widget,
@@ -64,9 +145,15 @@ impl Settings {
             && (self.displays.outputs().len() > 1
                 || self.config.widget_monitors.contains_key(widget.key()))
         {
-            column::with_children(vec![header, self.widget_display_controls(widget)])
-                .spacing(8)
-                .into()
+            column::with_children(vec![
+                header,
+                group(
+                    Some("Widget location"),
+                    vec![self.widget_display_controls(widget)],
+                ),
+            ])
+            .spacing(8)
+            .into()
         } else {
             header
         }
@@ -80,22 +167,28 @@ impl Settings {
                 .extend(widgets.iter().map(|&widget| self.widget_list_row(widget)))
                 .into()
         };
+        let information = group(
+            "Information",
+            &[
+                Widget::Glance,
+                Widget::Clock,
+                Widget::Calendar,
+                Widget::Weather,
+                Widget::Devbox,
+                Widget::Projects,
+            ],
+        );
+        let tools = group("Tools", &[Widget::Music, Widget::Notes, Widget::Focus]);
+        let groups =
+            super::desktop::inspector::paired(self.window.width >= 1100., information, tools);
         column::with_children(vec![
-            heading("My widgets", ""),
-            group(
-                "Information",
-                &[
-                    Widget::Glance,
-                    Widget::Clock,
-                    Widget::Calendar,
-                    Widget::Weather,
-                    Widget::Devbox,
-                    Widget::Projects,
-                ],
+            heading(
+                "My widgets",
+                "Choose a widget to customize it. Use its switch to show or hide it.",
             ),
-            group("Tools", &[Widget::Music, Widget::Notes, Widget::Focus]),
+            groups,
         ])
-        .spacing(20)
+        .spacing(16)
         .into()
     }
     fn widget_list_row(&self, widget: Widget) -> Element<'_, Message> {
@@ -136,8 +229,11 @@ impl Settings {
             .width(Length::Fill)
             .on_press(Message::Page(widget_page(widget)))
             .into(),
-            toggler(on)
-                .on_toggle(move |value| Message::Widget(widget, value))
+            container(toggler(on).on_toggle(move |value| Message::Widget(widget, value)))
+                .id(cosmic::widget::Id::new(format!(
+                    "widget-toggle-{}",
+                    widget.key()
+                )))
                 .into(),
         ])
         .spacing(18)
@@ -195,7 +291,7 @@ impl Settings {
         } else if custom_positions {
             "Custom layout · Reset it to reorder the column."
         } else {
-            "Save or cancel the layout to reorder."
+            "Finish or cancel the current arrangement to reorder."
         };
         column::with_children(vec![frame(
             column::with_children(vec![
@@ -393,9 +489,19 @@ impl Settings {
         }
         let mut items = vec![self.calendar_connection()];
         if self.calendar.connection.connected() {
-            items.push(group(Some("Events"), events));
+            items.push(group(Some("Agenda & privacy"), events));
         }
         items.push(group(Some("Appearance"), style));
+        items.push(group(
+            Some("Widget placement"),
+            vec![group_row(
+                "Position & size",
+                "Move or resize Calendar in Layout and displays",
+                button::text("Move & resize")
+                    .on_press(Message::EditWidgetLayout(Widget::Calendar))
+                    .into(),
+            )],
+        ));
         items.push(self.page_settings_advanced(
             Page::Calendar,
             vec![
@@ -470,7 +576,6 @@ impl Settings {
                     let selected = self.config.location.as_ref().is_some_and(|location| {
                         location.latitude == city.latitude && location.longitude == city.longitude
                     });
-                    location_controls.push(separator());
                     location_controls.push(
                         button::custom(split(
                             detail(city.name.clone(), city.region()),
@@ -497,11 +602,11 @@ impl Settings {
             }
         }
         let controls = column::with_children(vec![
-            self.search_target("weather-location", section(location_controls)),
+            self.search_target("weather-location", group(Some("Location"), location_controls)),
             self.search_target(
                 "weather-dew-point",
                 group(
-                    Some("Details"),
+                    Some("Weather details"),
                     vec![split(
                         self.help(
                             "dew-point",
@@ -517,6 +622,7 @@ impl Settings {
                     )],
                 ),
             ),
+            self.widget_style_and_layout(Widget::Weather),
             self.page_settings_advanced(Page::Weather, vec![self.refresh_control(Widget::Weather)]),
             button::text("Weather by Open-Meteo ↗")
                 .on_press(Message::OpenWeatherSource)
@@ -549,7 +655,6 @@ impl Settings {
                 .and_then(|part| part.to_str())
                 .unwrap_or(root)
                 .to_string();
-            roots.push(separator());
             roots.push(split(
                 row::with_children(vec![
                     icon::from_name("folder-symbolic").size(22).icon().into(),
@@ -570,10 +675,10 @@ impl Settings {
                 MUTED,
             ));
         }
-        roots.push(separator());
         roots.push(
             row::with_children(vec![
                 text_input("Folder path, for example ~/Projects", &self.folder_input)
+                    .id(cosmic::widget::Id::new("project-folder-input"))
                     .on_input(Message::FolderInput)
                     .on_submit(|_| Message::AddFolder)
                     .width(Length::Fill)
@@ -602,7 +707,8 @@ impl Settings {
             self.widget_settings_body(
                 self.samples.projects_view().map(|_| Message::Preview),
                 column::with_children(vec![
-                    section(roots),
+                    group(Some("Project folders"), roots),
+                    self.widget_style_and_layout(Widget::Projects),
                     self.page_settings_advanced(
                         Page::Projects,
                         vec![self.refresh_control(Widget::Projects)],
@@ -645,22 +751,25 @@ impl Settings {
                 .on_press(Message::RefreshInterval(widget, default))
                 .into()
         };
-        section(vec![
-            split(
-                self.help(
-                    "refresh-interval",
-                    "Update interval",
-                    "Updates pause while the widget is hidden.",
+        group(
+            Some("Refresh"),
+            vec![
+                split(
+                    self.help(
+                        "refresh-interval",
+                        "Update interval",
+                        "Updates pause while the widget is hidden.",
+                    ),
+                    reset,
                 ),
-                reset,
-            ),
-            buttons,
-            if self.config.data_visible(widget) {
-                cosmic::iced::widget::space().height(0).into()
-            } else {
-                label("Paused while hidden", 11., MUTED)
-            },
-        ])
+                buttons,
+                if self.config.data_visible(widget) {
+                    cosmic::iced::widget::space().height(0).into()
+                } else {
+                    label("Paused while hidden", 11., MUTED)
+                },
+            ],
+        )
     }
 
     pub(super) fn devbox_page(&self) -> Element<'_, Message> {
@@ -747,11 +856,12 @@ impl Settings {
             ));
         }
         let controls = column::with_children(vec![
-            section(vec![split(self.help("devbox-readings", "Readings", "Open a reading for its options. Reorder lets you drag rows or move them with the arrow buttons."),
-                button::text(if self.devbox_reordering {"Done"} else {"Reorder"})
+            group(Some("Readings"), vec![split(self.help("devbox-readings", "Readings", "Open a reading for its options. Reorder lets you drag rows or move them with the arrow buttons."),
+                self.search_target("devbox-reorder-anchor", button::text(if self.devbox_reordering {"Done"} else {"Reorder"})
                     .id(cosmic::widget::Id::new("devbox-reorder"))
-                    .on_press(Message::DevboxReorder(!self.devbox_reordering)).into()),
+                    .on_press(Message::DevboxReorder(!self.devbox_reordering)).into())),
                 column::with_children(rows).spacing(2).into()]),
+            self.widget_style_and_layout(Widget::Devbox),
             self.page_settings_advanced(Page::Devbox, vec![self.refresh_control(Widget::Devbox)]),
         ])
         .spacing(12)
@@ -1123,7 +1233,6 @@ impl Settings {
             ));
         }
         if show_calendar {
-            sections.push(separator());
             sections.push(split(
                 label("Tomorrow", 14., FG),
                 container(toggler(g.show_tomorrow).on_toggle(Message::GlanceTomorrow))
@@ -1131,6 +1240,24 @@ impl Settings {
                     .into(),
             ));
         }
+        let controls = column::with_children(vec![
+            group(Some("Sections"), sections),
+            group(Some("Appearance"), appearance),
+            self.glance_text_section(),
+            self.widget_style_and_layout(Widget::Glance),
+        ])
+        .spacing(16)
+        .into();
+        // The cached sample switches to the actual combined renderer when
+        // At a glance is enabled; opening this editor starts no providers.
+        let body = if g.enabled {
+            self.widget_settings_body(
+                self.samples.calendar_view().map(|_| Message::Preview),
+                controls,
+            )
+        } else {
+            controls
+        };
         column::with_children(vec![
             self.widget_heading(Widget::Glance, "At a glance"),
             label(
@@ -1142,12 +1269,8 @@ impl Settings {
                 13.,
                 MUTED,
             ),
-            section(appearance),
-            section(sections),
-            self.glance_text_section(),
-        ])
-        .spacing(14)
-        .into()
+            body,
+        ]).spacing(16).into()
     }
 
     pub(super) fn clock_page(&self) -> Element<'_, Message> {
@@ -1209,26 +1332,22 @@ impl Settings {
                 Message::ClockVertical,
             ));
         }
-        controls.extend([
-            separator(),
+        let content = vec![
             switch("24-hour time", "", clock.format_24h, Message::ClockFormat),
-            separator(),
             switch("Show date", "", clock.show_date, Message::ClockDate),
-        ]);
+        ];
         column::with_children(vec![
             self.widget_heading(Widget::Clock, "Clock"),
-            split(
-                self.help("clock-position", "Position & size", "Move, resize or center the widget in Layout. In At a glance, the whole card moves together."),
-                button::text("Move & resize")
-                    .id(cosmic::widget::Id::new("clock-edit-layout"))
-                    .on_press(Message::EditWidgetLayout(Widget::Clock)).into(),
-            ),
             self.widget_settings_body(
                 cosmic::widget::responsive(move |bounds| {
                     crate::app::settings_clock_preview(&self.config, [bounds.width, 112.])
                         .map(|_| Message::Preview)
                 }).height(112.).into(),
-                column::with_children(vec![section(controls),
+                column::with_children(vec![
+                    group(Some("Time & date"), content),
+                    group(Some("Text"), controls),
+                    self.help("clock-position", "Position & size", "Move, resize or center the widget in Layout. In At a glance, the whole card moves together."),
+                    self.widget_style_and_layout(Widget::Clock),
                     self.page_settings_advanced(Page::Clock, vec![self.refresh_control(Widget::Clock)])])
                     .spacing(16).into()),
         ])
@@ -1237,13 +1356,55 @@ impl Settings {
     }
 
     pub(super) fn general_page(&self) -> Element<'_, Message> {
+        let selected = self.app_settings_page;
+        let choices = row::with_children(
+            AppSettingsPage::ALL
+                .into_iter()
+                .map(|page| {
+                    button::custom(text::body(page.tab_title()))
+                        .id(cosmic::widget::Id::new(format!(
+                            "app-settings-{}",
+                            page.key()
+                        )))
+                        .class(nav_style(selected == page, self.settings_accent()))
+                        .selected(selected == page)
+                        .on_press(Message::AppSettingsPage(page))
+                        .into()
+                })
+                .collect::<Vec<_>>(),
+        )
+        .spacing(6)
+        .wrap();
+        let content = match selected {
+            AppSettingsPage::Operation => self.app_operation_page(),
+            AppSettingsPage::Interface => self.app_interface_page(),
+            AppSettingsPage::Privacy => self.privacy_section(),
+            AppSettingsPage::Updates => {
+                column::with_children(vec![self.updates_section(), self.addons_section()])
+                    .spacing(20)
+                    .into()
+            }
+            AppSettingsPage::Restore if self.support.recent_open => self.recent_changes_page(),
+            AppSettingsPage::Restore => self.app_restore_page(),
+            AppSettingsPage::Help => self.help_page(),
+        };
+        let mut parts = vec![choices.into()];
+        if !(selected == AppSettingsPage::Restore && self.support.recent_open)
+            && !(selected == AppSettingsPage::Help && self.support.report.is_some())
+        {
+            parts.push(heading(selected.title(), ""));
+        }
+        parts.push(content);
+        column::with_children(parts).spacing(20).into()
+    }
+
+    fn app_operation_page(&self) -> Element<'_, Message> {
         let mut running = toggler(self.service.running);
         let mut startup = toggler(self.service.startup);
         if self.service_known && !self.busy && !preview() {
             running = running.on_toggle(Message::Background);
             startup = startup.on_toggle(Message::Startup);
         }
-        let p = self.config.palette();
         let state = if preview() {
             "Preview"
         } else if !self.service_known {
@@ -1254,62 +1415,143 @@ impl Settings {
             "Stopped"
         };
         column::with_children(vec![
-            split(heading("App settings", ""), pill(state,
-                if self.service_known && self.service.running { p.accent } else { MUTED })),
-            section(vec![
-                split(label("Show widgets", 14., FG), toggler(self.config.widgets_visible).on_toggle(Message::Desktop).into()),
-                separator(),
-                split(detail("Run in background", "Keeps wallpaper colors and schedules active when widgets are hidden."), running.into()),
-                separator(),
-                split(label("Start at sign-in", 14., FG), startup.into()),
-                separator(),
-                split(detail("First-run setup", "Look, dock and panel, and weather, one step at a time."),
-                    button::standard("Run setup again")
-                        .on_press_maybe((!self.busy).then_some(Message::OpenWizard)).into()),
-            ]),
-            self.updates_section(),
-            self.privacy_section(),
-            section(vec![
+            group(
+                Some("Widgets & background operation"),
+                vec![
+                    split(
+                        label("Show widgets", 14., FG),
+                        toggler(self.config.widgets_visible)
+                            .on_toggle(Message::Desktop)
+                            .into(),
+                    ),
+                    split(
+                        detail(
+                            "Run in background",
+                            "Keeps wallpaper colors and schedules active when widgets are hidden.",
+                        ),
+                        row::with_children(vec![
+                            pill(
+                                state,
+                                if self.service_known && self.service.running {
+                                    self.settings_accent()
+                                } else {
+                                    MUTED
+                                },
+                            ),
+                            running.into(),
+                        ])
+                        .spacing(8)
+                        .align_y(Alignment::Center)
+                        .into(),
+                    ),
+                    split(label("Start at sign-in", 14., FG), startup.into()),
+                ],
+            ),
+            group(
+                Some("Getting started"),
+                vec![
+                    split(
+                        detail(
+                            "First-run setup",
+                            "Look, dock and panel, and weather, one step at a time.",
+                        ),
+                        button::standard("Run setup again")
+                            .on_press_maybe((!self.busy).then_some(Message::OpenWizard))
+                            .into(),
+                    ),
+                    split(
+                        detail("Setup checklist", "Continue setting up your desktop."),
+                        button::text("Show setup")
+                            .on_press(Message::SetupOpen(true))
+                            .into(),
+                    ),
+                ],
+            ),
+        ])
+        .spacing(20)
+        .into()
+    }
+
+    fn app_interface_page(&self) -> Element<'_, Message> {
+        column::with_children(vec![
+            group(Some("Edge menu"), vec![
                 split(self.help("edge-menu", "Edge menu", "Hold the pointer at the far-right screen edge for one second to open widget controls."),
                     button::standard("Show menu")
                         .on_press_maybe((self.service_known && self.service.running && !self.busy && !preview())
                             .then_some(Message::ShowControls)).into()),
-                separator(),
                 switch("Animate the edge menu", "", self.config.sidebar_slide, Message::SidebarSlide),
-                separator(),
-                self.search_target("settings-motion",split(self.help("settings-motion", "Animate settings",
+            ]),
+            group(Some("Settings interface"), vec![
+                self.search_target("settings-motion", split(self.help("settings-motion", "Animate settings",
                     "Briefly reveals options when you expand a section. Reduce motion in Accessibility always takes precedence."),
                     toggler(self.config.settings_animations).on_toggle(Message::SettingsAnimations).into())),
+                group_row("Reduce motion", "App motion and readability controls",
+                    button::text("Accessibility")
+                        .on_press(Message::Page(Page::DesktopMotion)).into()),
             ]),
+        ]).spacing(20).into()
+    }
+
+    fn app_restore_page(&self) -> Element<'_, Message> {
+        column::with_children(vec![
+            group(
+                None,
+                vec![group_row(
+                    "Recent changes",
+                    "See what changed, why it changed, and whether Undo is available.",
+                    button::text("View changes")
+                        .id(cosmic::widget::Id::new("recovery-recent-changes"))
+                        .on_press(Message::Support(crate::settings::support::Message::Recent(
+                            true,
+                        )))
+                        .into(),
+                )],
+            ),
             self.desktop_recovery_section(),
-            self.addons_section(),
-            section(vec![
-                // Recovered work waits here instead of on every page.
-                split(
+            group(
+                Some("Unfinished work"),
+                vec![split(
                     if self.recovery_sheet.rows.is_empty() {
-                        label("Recovery", 14., FG)
+                        detail(
+                            "Recovery",
+                            "Review recovered work from the previous version.",
+                        )
                     } else {
                         detail(
                             "Recovery",
                             format!(
                                 "{} unfinished {} from the previous version",
                                 self.recovery_sheet.rows.len(),
-                                if self.recovery_sheet.rows.len() == 1 { "edit" } else { "edits" }
+                                if self.recovery_sheet.rows.len() == 1 {
+                                    "edit"
+                                } else {
+                                    "edits"
+                                }
                             ),
                         )
                     },
                     button::text("Review unfinished work")
                         .on_press(Message::Page(Page::PendingChanges))
                         .into(),
-                ),
-                separator(),
-                split(label("Getting started", 14., FG),
-                    button::text("Show setup").on_press(Message::SetupOpen(true)).into()),
-                separator(),
-                split(self.help("restore-wallpaper", "Original wallpaper", "Restore the wallpaper from before Halcyon was installed."),
+                )],
+            ),
+            group(
+                Some("Restore original wallpaper"),
+                vec![split(
+                    self.help(
+                        "restore-wallpaper",
+                        "Original wallpaper",
+                        "Restore the wallpaper from before Halcyon was installed.",
+                    ),
                     button::text("Restore")
-                        .on_press_maybe((!self.busy && !preview()).then_some(Message::Restore(true))).into()),
-            ]),
-        ]).spacing(14).into()
+                        .on_press_maybe(
+                            (!self.busy && !preview()).then_some(Message::Restore(true)),
+                        )
+                        .into(),
+                )],
+            ),
+        ])
+        .spacing(20)
+        .into()
     }
 }

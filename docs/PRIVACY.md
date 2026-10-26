@@ -1,16 +1,15 @@
 # Privacy
 
-Halcyon **0.2.5** adds a reporting checkbox. Halcyon 0.2.0 reports automatically;
+Halcyon **0.2.5** introduced a reporting checkbox. Halcyon 0.2.0 reports automatically;
 older 0.1.0/0.1.1 releases do not report.
 
-**Temporary collector limitation:** the server upgrade is deferred. The current
-server rejects 0.2.5 activity and preference updates, although Google still
-receives the attempted requests. Country lookup can still occur while reporting
-is enabled. Turning reporting off works locally without server acknowledgement.
-Preference updates retry for up to seven days, then expire without changing the
-saved choice; expired updates are not sent later. Existing server activity stays
-visible until its normal expiry, and older clients continue reporting. Counts
-therefore omit 0.2.5 activity and do not yet reflect its opt-outs.
+**Collector status:** upgraded on 2026-10-26. Live checks verified activity and
+preference updates from current and older clients, including opt-out, replay and
+explicit re-enable. Current counts exclude retained opted-out installations.
+Turning reporting off works locally without server acknowledgement. Preference
+updates retry for up to seven days, then expire without changing the saved
+choice; expired updates are not sent later. Reports rejected before the upgrade
+are not reconstructed, so historical counts remain incomplete.
 
 ## Your reporting choice
 
@@ -46,14 +45,15 @@ preference is observed; stale responses cannot save a country or activity date.
 The purpose is to estimate how many installations remain in use. Schema 3
 activity contains `schema`, `kind` (`activity`), `installation`, `revision`,
 `version`, and `country` (a two-letter first country code, or `null`).
-The 0.3.0 development client uses schema 4, adding `first_started_at`: the UTC
+The 0.3.0 client uses schema 4, adding `first_started_at`: the UTC
 second of the first desktop start, or `null` when unknown. It is recorded locally
 only for a new enabled reporting identity, before network warmup. It is not an
 exact package-install time. Existing installations are not assigned an invented
 historical date, and filesystem timestamps/package logs are not inspected.
 The field is absent from opt-out/status messages. First-run opt-out does not
 create it; an already recorded date stays local and can be reported again after
-explicit re-enable. These changes are not deployed yet.
+explicit re-enable. The collector accepts this field; historical start dates
+remain unknown where no client supplied one.
 
 The installation token is randomly generated locally with 256 bits of entropy.
 It is not a Google identity, machine ID, username, email or hardware identifier.
@@ -157,7 +157,7 @@ Do not post installation tokens, credentials or private widget contents there.
 - **Weather:** searches and selected coordinates go to Open-Meteo.
 - **Google Calendar:** connecting an account allows Halcyon to read the calendars
   you select. Sign-in tokens stay in the system keyring.
-- **Calendar subscriptions (0.3.0 development):** HTTPS/iCal links are fetched
+- **Calendar subscriptions (0.3.0):** HTTPS/iCal links are fetched
   directly from their provider. Private links stay in the system keyring, not in
   preferences, exported setups or logs. The provider receives normal HTTPS
   requests and the connection IP. Redirects do not send the private link as a

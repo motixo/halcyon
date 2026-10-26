@@ -1,6 +1,5 @@
 //! Native inspector with direct completed controls and local form validation.
 use super::desktop::{ERROR, WARN, banner, conflict_banner, line};
-use super::pages::section;
 use super::system_appearance::fill;
 use super::windows::{recovery_banner, store_pill};
 use super::*;
@@ -173,11 +172,7 @@ impl Settings {
 
     fn rule_form<'a>(&'a self, form: &'a RuleForm, accent: Color) -> Element<'a, Message> {
         let editing = form.editing.is_some();
-        let mut items = vec![label(
-            if editing { "Edit rule" } else { "Add app" },
-            16.,
-            FG,
-        )];
+        let mut items = Vec::new();
         if form.advanced {
             items.push(field(
                 "App ID pattern",
@@ -249,7 +244,14 @@ impl Settings {
             .align_y(Alignment::Center)
             .into(),
         );
-        section(items)
+        group(
+            Some(if editing {
+                "Edit floating-app rule"
+            } else {
+                "Add floating app"
+            }),
+            items,
+        )
     }
 
     fn app_picker<'a>(&'a self, form: &'a RuleForm, accent: Color) -> Element<'a, Message> {
@@ -335,9 +337,6 @@ impl Settings {
             {
                 continue;
             }
-            if !items.is_empty() {
-                items.push(separator());
-            }
             items.push(self.rule_row(row, name, app.map(|app| app.icon.clone()), editable, accent));
         }
         if items.is_empty() {
@@ -352,7 +351,7 @@ impl Settings {
                 MUTED,
             ));
         }
-        section(items)
+        group(Some("Floating-app rules"), items)
     }
 
     fn rule_row<'a>(

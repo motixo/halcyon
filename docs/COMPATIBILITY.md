@@ -1,6 +1,6 @@
 # Islands compatibility and immutable qualification
 
-## Supported-family startup (next release; policy v2)
+## Supported-family startup (0.3.0; policy v2)
 
 Islands supports attempted startup on COSMIC **1.10 and 1.11**, including AMD,
 Intel and NVIDIA desktops. Physical hardware and COSMIC 1.10 have **not** been
@@ -45,6 +45,13 @@ cleanup, cancellation, descriptor isolation, notification handoff, crash latches
 and stock fallback are unchanged. Status is read-only, bounded by the existing
 worker/Settings deadlines, and never starts, replaces or kills a host.
 
+Packages using this family startup policy contain the validated policy without
+the historical exact-cohort records. The complete historical catalog remains in
+the repository and corresponding source archive. This avoids parsing 25 MiB of
+historical attestation on each startup/status operation; the family policy,
+native binary pins, integrity checks and deadlines are unchanged. Packages with
+the legacy exact-cohort policy retain their complete catalog.
+
 ### Status and upgrades
 
 Installation provenance and management remain available while checking. **Ready**
@@ -63,6 +70,21 @@ and original installation with guarded external edits, baseline and Undo intact.
 New/disabled/manual users are not automatically enabled. Historical v2 generations
 remain verifiable under their original policy for migration; missing new helpers
 cannot carry the new startup policy. Public 0.2.0 assets remain immutable.
+
+### Final 0.3.0 package acceptance
+
+The final 0.3.0 main and Islands packages passed focused acceptance together in
+an offline, complete COSMIC 1.11 KVM login with virtio/Mesa llvmpipe. Checks cover
+installed file integrity, Settings input, live Islands switching, owned-process
+cleanup, stock notification recovery and disable/relogin with layout preservation.
+The [review](releases/0.3.0-acceptance.md) records exact bytes, observations and a
+rendering artifact also seen with the unmodified stock panel. This does not
+qualify physical hardware, COSMIC 1.10 or the full native matrix.
+
+`companion/compatibility/evidence/accepted-final-030.json` binds the final package,
+ELF, helper and evidence hashes. The release gate checks those bindings separately
+from historical qualification. The corresponding source includes the complete
+historical catalog; the installed catalog contains only the validated family policy.
 
 ### Exact historical qualification remains exact
 
@@ -846,6 +868,27 @@ styling/layout variation; do not pin every installed font or user theme. Review
 their parser/code dependencies and test relevant fallback behavior. Custom native
 plugins or applet executables still require explicit supported code policy.
 
+
+## 0.3.0 final-package acceptance
+
+Policy v2 pins the newly built companion and its exact patch. Final main and
+Islands packages must match a separately reviewed
+`companion/compatibility/evidence/accepted-final-030.json` record. Until that
+record exists, publication fails with `final_native_acceptance_pending`.
+
+The record binds both package and extracted ELF hashes, all companion helpers,
+the payload and catalog, and the retained native evidence archive. It requires
+observed installation, Settings, startup, input, owned cleanup, stock recovery
+and relogin in a complete COSMIC 1.11 login session with virtio/llvmpipe graphics.
+The parent reviews the raw observations before recording acceptance. A candidate's
+own `passed` fields cannot replace this record in the frozen release source.
+
+The final artifact approval additionally binds that acceptance record, its raw
+evidence, the corresponding source and the release manifest. Changed packages,
+helpers or evidence require new acceptance; repacking cannot reuse an approval.
+Physical GPUs, COSMIC 1.10 and the full historical scenario matrix remain outside
+this focused scope. Historical 0.2.5 acceptance and published APT-renewal pins
+remain unchanged.
 
 ## Historical 0.2.5 packaging and practical-policy release gate
 

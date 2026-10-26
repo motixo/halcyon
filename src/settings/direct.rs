@@ -34,6 +34,8 @@ pub(super) fn completion(message: &Message) -> Option<Message> {
                             | desktop::islands::Edit::Placement(_)
                             | desktop::islands::Edit::Done
                             | desktop::islands::Edit::End(_)
+                            | desktop::islands::Edit::Move(_)
+                            | desktop::islands::Edit::GapFinished
                     )
             ) =>
         {

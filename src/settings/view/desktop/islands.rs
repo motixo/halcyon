@@ -17,15 +17,18 @@ impl Settings {
         let mut items = if draft.kind() == PanelKind::Panel {
             vec![label("Island placement", 16., FG)]
         } else {
-            vec![field(
-                "Style",
-                choice(
-                    &Setting::Known(settings.enabled),
-                    vec![("Standard".into(), false), ("Islands".into(), true)],
-                    |v| Edit::Islands(IslandEdit::Enabled(v)),
-                    accent,
+            vec![
+                label("Island placement", 16., FG),
+                field(
+                    "Dock shape",
+                    choice(
+                        &Setting::Known(settings.enabled),
+                        vec![("Standard".into(), false), ("Islands".into(), true)],
+                        |v| Edit::Islands(IslandEdit::Enabled(v)),
+                        accent,
+                    ),
                 ),
-            )]
+            ]
         };
         if !settings.enabled {
             return section(items);
@@ -90,6 +93,7 @@ impl Settings {
             ])
             .spacing(12)
             .align_y(Alignment::Center)
+            .wrap()
             .into(),
         ));
         let text = state
@@ -108,7 +112,10 @@ impl Settings {
                     .width(Length::Fill)
                     .apply(|control| completed_slider(control.into(), edit(Edit::Apply))),
                 text_input("14", text)
+                    .id(cosmic::widget::Id::new("islands-gap"))
                     .on_input(|s| change(IslandEdit::GapText(s)))
+                    .on_submit(|_| change(IslandEdit::GapFinished))
+                    .on_unfocus(change(IslandEdit::GapFinished))
                     .width(64)
                     .into(),
                 label("px", 12., MUTED),
@@ -119,7 +126,7 @@ impl Settings {
         ));
         if self.desktop.arranging() {
             items.push(label(
-                "Drag the handles on your dock. Tab selects; arrows move; Esc cancels.",
+                "Drag the handles on the selected bar. Tab selects; arrows move; Esc cancels.",
                 12.,
                 MUTED,
             ));

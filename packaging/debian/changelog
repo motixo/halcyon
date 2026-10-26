@@ -1,12 +1,25 @@
-cosmic-ext-halcyon (0.2.5) UNRELEASED; urgency=medium
+cosmic-ext-halcyon (0.3.0) unstable; urgency=medium
 
-  * Unreleased preparation. Publication remains on hold pending final validation.
+  * Redesign native Settings, Setups and first-run widget selection and ordering.
+  * Add per-display widget placement and safer layout recovery.
+  * Add calendar selection, Busy privacy mode and read-only iCal subscriptions.
+  * Enable signed system updates for new installations while preserving opt-outs.
+  * Add local diagnostics and recent changes; fix audited recovery, calendar,
+    update enrollment and Islands lifecycle issues.
+
+ -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Mon, 26 Oct 2026 12:00:00 +0000
+
+cosmic-ext-halcyon (0.2.5) unstable; urgency=medium
+
+  * Published 0.2.5. Upcoming 0.3.0 changes are tracked separately in
+    docs/releases/0.3.0.md until final package qualification.
   * Keep desktop colors coherent across light and dark modes; add scoped desktop
     backup, restore and recovery for interrupted changes.
   * Hide Islands controls when the add-on is absent and preserve settings when
     an installed update waits for the next login.
   * Add manual system-update checks for verified installations, with clear
-    cancellation, failure and COSMIC Store guidance. Enrollment is not available.
+    cancellation, failure and COSMIC Store guidance. In-app enrollment is not
+    available in 0.2.5; the published terminal bootstrap is optional.
   * Add the Share usage data control and disclose its minimal opt-out status
     message. Live collector migration remains pending.
   * Release Arrange input capture on failed exits and reconcile monitor pins

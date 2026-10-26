@@ -380,3 +380,80 @@ fn animated_pictures_are_told_from_still_ones_by_their_headers() {
     assert!(!animated(&write("photo.jpg", &jpeg(4, 4))));
     assert!(!animated(&fixture.0.join("absent.webp")));
 }
+
+#[test]
+fn settings_scene_is_sharp_bounded_and_keeps_gallery_thumbnails_small() {
+    let fixture = Fixture::new("settings-scene");
+    let path = fixture.0.join("wide.png");
+    fs::write(&path, png(1920, 1080, [20, 60, 90, 255])).unwrap();
+    let Preview::Ready(scene) = scene_preview(&path) else {
+        panic!("scene decodes")
+    };
+    assert_eq!((scene.width, scene.height), SCENE);
+    assert_eq!(scene.rgba.len(), (SCENE.0 * SCENE.1 * 4) as usize);
+    let Preview::Ready(tile) = thumbnail(&path) else {
+        panic!("thumbnail decodes")
+    };
+    assert_eq!((tile.width, tile.height), THUMB);
+    fs::write(&path, png(40, 30, [20, 60, 90, 255])).unwrap();
+    let Preview::Ready(small) = scene_preview(&path) else {
+        panic!("small image decodes")
+    };
+    assert_eq!(
+        (small.width, small.height),
+        (40, 30),
+        "decoder does not invent source detail"
+    );
+    fs::write(&path, b"invalid png").unwrap();
+    assert_eq!(none(scene_preview(&path)), NO_PREVIEW);
+    let oversized = fs::File::create(&path).unwrap();
+    oversized.set_len(MAX_FILE_BYTES + 1).unwrap();
+    assert_eq!(none(scene_preview(&path)), TOO_LARGE);
+}
+
+#[test]
+fn auditfix_set01_tiny_narrow_fill_has_bounded_real_output() {
+    let fixture = Fixture::new("auditfix-narrow-fill");
+    for (width, height) in [(1, 720), (1280, 1)] {
+        let path = fixture.0.join(format!("{width}x{height}.png"));
+        fs::write(&path, png(width, height, [71, 122, 193, 255])).unwrap();
+        assert!(fs::metadata(&path).unwrap().len() < 8192);
+        let Preview::Ready(source) = scene_preview(&path) else {
+            panic!("the tiny PNG must decode");
+        };
+        assert_eq!((source.width, source.height), (width, height));
+        // The real scene destination: the old tall case resized to 4.39 GiB.
+        // Crop-first retains at most 1280×720 output pixels.
+        let filled = fit_preview(&source, &ScalingMode::Zoom, SCENE.0, SCENE.1);
+        assert_eq!((filled.width, filled.height), SCENE);
+        assert_eq!(filled.rgba.len(), (SCENE.0 * SCENE.1 * 4) as usize);
+        assert!(
+            filled
+                .rgba
+                .chunks_exact(4)
+                .all(|p| p == [71, 122, 193, 255])
+        );
+    }
+}
+
+#[test]
+fn auditfix_set01_fill_crops_the_center_on_both_axes() {
+    for (width, height) in [(8, 4), (4, 8), (4, 4)] {
+        let input = image::RgbaImage::from_fn(width, height, |x, y| {
+            image::Rgba([(x * 20) as u8, (y * 20) as u8, 90, 255])
+        });
+        let source = Pixels::from_image(input);
+        let filled = fit_preview(&source, &ScalingMode::Zoom, 4, 4);
+        for y in 0..4 {
+            for x in 0..4 {
+                assert_eq!(
+                    pixel(&filled, x, y),
+                    pixel(&source, x + (width - 4) / 2, y + (height - 4) / 2)
+                );
+            }
+        }
+        let scaled = fit_preview(&source, &ScalingMode::Zoom, 8, 8);
+        assert_eq!(pixel(&scaled, 0, 0), pixel(&filled, 0, 0));
+        assert_eq!(pixel(&scaled, 7, 7), pixel(&filled, 3, 3));
+    }
+}

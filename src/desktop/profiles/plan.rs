@@ -185,7 +185,7 @@ impl Asset {
 
 /// How the islands look changes; what sits where doesn't. Per-monitor
 /// arrangements are local and always stay. A record without its own
-/// arrangement (every starter look, the wizard) keeps the current order and
+/// arrangement (an appearance-only style) keeps the current order and
 /// positions, and, where islands are already on, whether they sit together
 /// or apart.
 fn keep_arrangement(
@@ -228,6 +228,9 @@ pub struct ProfilePlan {
 }
 
 impl ProfilePlan {
+    pub(crate) fn from_display_rule(&mut self, display: bool) {
+        self.patch.activity_display = display;
+    }
     /// The setup wizard's explicit choice may enable or disable Islands.
     /// Profiles and automatic switches preserve the existing enabled state.
     pub(crate) fn choose_islands(
@@ -804,8 +807,38 @@ fn plan_panel(
     Some(patch)
 }
 
-/// Sets panel key `name` to `value` through the draft's typed setter, if
-/// the current value decodes as the key's type.
+/// Read-only catalogue projection using the planner's typed setters and
+/// placement preservation. Curated setups have no applet edits. This helper
+/// never discovers an installation, reads a file, or applies a transaction.
+pub(crate) fn preview_panel_style(
+    mut draft: PanelDraft,
+    look: &super::format::PanelLook,
+    installed_islands: bool,
+) -> PanelDraft {
+    if installed_islands && let Some(current) = draft.islands().known().cloned() {
+        let mut desired = look
+            .islands
+            .clone()
+            .map(|requested| keep_arrangement(requested, current.clone()))
+            .unwrap_or_else(|| current.clone());
+        // A recipe describes an arrangement; enablement is an explicit user choice.
+        desired.enabled = current.enabled;
+        if look.islands.is_none()
+            && let Some(gap) = look.island_gap
+        {
+            desired.gap = gap;
+        }
+        draft.set_islands(desired);
+    }
+    if let Ok(values) = look.values() {
+        for (name, value) in values {
+            let _ = set_typed(&mut draft, name, &value);
+        }
+    }
+    draft
+}
+
+/// Sets a panel key through its typed setter when the current value decodes.
 fn set_typed(draft: &mut PanelDraft, name: &str, value: &RawValue) -> Result<(), String> {
     use crate::desktop::panels::{Anchor, AutoHide, AutoHideBehavior, Background, PanelSize};
     macro_rules! typed {
@@ -1105,6 +1138,34 @@ fn plan_wallpaper(
             return None;
         }
     };
+    // Use shared deliberately retains output files. A saved arrangement
+    // may name an offline output that is no longer listed, so load its
+    // retained baseline too, before any edits. Keep the draft's metadata
+    // (including unreadable entries) and normal unsupported-value checks.
+    let mut snapshot = draft.snapshot().clone();
+    for name in look.per_display.iter().flat_map(|map| map.keys()) {
+        let key = match wallpaper::output_key(name) {
+            Ok(key) => key,
+            Err(error) => {
+                part.blocked.push(error.to_string());
+                return None;
+            }
+        };
+        if snapshot.entry(&key).is_none() {
+            match store.load(std::slice::from_ref(&key)) {
+                Ok(one) => {
+                    snapshot.insert(key.clone(), one.entry(&key).cloned().unwrap_or_default())
+                }
+                Err(error) => {
+                    part.blocked.push(format!(
+                        "The background file of {name} can’t be read: {error}"
+                    ));
+                    return None;
+                }
+            }
+        }
+    }
+    draft.refresh(snapshot);
     let mut origins = Vec::new();
     // First, as displays without their own start from it.
     if let Some(background) = &look.background {

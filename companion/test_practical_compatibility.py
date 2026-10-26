@@ -19,6 +19,29 @@ VERSIONS={'cosmic-panel':'1.11.2~new-build','cosmic-session':'1.11.0~other-build
           'cosmic-comp':'0.1~new-source','cosmic-settings-daemon':'1.11.0~rebuild'}
 
 class Policy(unittest.TestCase):
+    def test_release_catalog_keeps_authoritative_policy_and_preserves_history(self):
+        from bundle_contract import release_catalog, read_catalog, canonical
+        source=read_catalog(Path(__file__).parent/'compatibility/catalog.json')
+        before=canonical(source)
+        projected=release_catalog(source)
+        self.assertEqual(projected['startup_policy'], c.POLICY)
+        self.assertEqual(projected['cohorts'], [])
+        self.assertLess(len(canonical(projected)), 2048)
+        self.assertEqual(canonical(source), before)
+        self.assertTrue(source['cohorts'])
+        legacy=json.loads(before);legacy.pop('startup_policy')
+        self.assertEqual(release_catalog(legacy), legacy)
+
+    def test_release_catalog_refuses_unreviewed_policy_before_projection(self):
+        from bundle_contract import release_catalog
+        catalog=dict(format='halcyon-islands-catalog',version=2,cohorts=[],startup_policy=copy.deepcopy(c.POLICY))
+        # Use the real catalog format to exercise policy validation itself.
+        from bundle_contract import CATALOG
+        catalog['format']=CATALOG
+        catalog['startup_policy']['families'].append('1.12')
+        with self.assertRaisesRegex(ValueError,'unsupported_startup_policy'):
+            release_catalog(catalog)
+
     def test_release_families_not_vm_device_or_package_attestation(self):
         for gpu in ('AMD','Intel','NVIDIA','virtio'):
             for release in ('1.10','1.11'):
@@ -44,6 +67,20 @@ class Policy(unittest.TestCase):
         with patch.object(c.subprocess,'run',return_value=subprocess.CompletedProcess([],0,output,'')) as run:
             self.assertEqual(c.family()['family'],'1.11');self.assertEqual(run.call_count,1)
             self.assertEqual(run.call_args.kwargs['timeout'],1)
+
+    def test_held_packages_remain_installed_without_accepting_partial_states(self):
+        from bundle_contract import installed_package_status
+        for status in ('install ok installed', 'hold ok installed'):
+            output=''.join(n+'\t'+status+'\t'+v+'\n' for n,v in VERSIONS.items())
+            with self.subTest(status=status), patch.object(c.subprocess,'run',return_value=subprocess.CompletedProcess([],0,output,'')):
+                self.assertEqual(c.family()['family'],'1.11')
+        for status in ('hold ok unpacked', 'hold reinstreq installed', 'deinstall ok config-files', 'ok installed', None):
+            with self.subTest(status=status):
+                self.assertFalse(installed_package_status(status))
+                if status is not None:
+                    output=''.join(n+'\t'+status+'\t'+v+'\n' for n,v in VERSIONS.items())
+                    with patch.object(c.subprocess,'run',return_value=subprocess.CompletedProcess([],0,output,'')):
+                        with self.assertRaisesRegex(ValueError,'family_packages_incomplete'):c.family()
 
 class Processes(config_fixture.Configuration):
     # Reuse the established config fixture, but only collect our new lifecycle
@@ -168,6 +205,27 @@ class Wired(unittest.TestCase):
             with refresh.locked(self.home):
                 for path,_ in refresh.records(self.home):install.restore(path)
             self.assertFalse((self.home/refresh.SELECTOR).exists())
+    def test_final_status_check_failure_cannot_publish_ready(self):
+        import refresh, install_status
+        with refresh.locked(self.home):
+            refresh.stage_locked(self.home,self.library,session='first',fixture=True,enable=True)
+        class Observation:
+            def inventory(self, owner): return True
+            def applet_issues(self, owner): return [dict(applet='optional', reason='desktop_entry_missing')]
+            def check(self): pass
+            def close(self): pass
+        initial = dict(enabled=True)
+        with patch('panel_launcher.session_identity',return_value='second'), patch.object(c,'family',return_value=c.family(VERSIONS)), patch('runtime_identity.host_identity',return_value={'pid':123}), patch.object(c,'Session',return_value=Observation()):
+            result = install_status.inspect(self.home,self.library,True,{},initial)
+            self.assertEqual(result['status'],'Ready')
+            self.assertTrue(result['healthy'])
+            self.assertEqual(result['applet_issues'][0]['applet'],'optional')
+            with patch.object(Observation,'check',side_effect=ValueError('configuration_changed')):
+                result = install_status.inspect(self.home,self.library,True,{},initial)
+            self.assertEqual(result['status'],'Using standard panel')
+            self.assertFalse(result['healthy'])
+            self.assertFalse(result['running'])
+            self.assertEqual(result['reason'],'configuration_changed')
     def test_actual_prepare_dispatch_integrity_and_probe_refusal(self):
         import panel_launcher as launcher
         class Observation:

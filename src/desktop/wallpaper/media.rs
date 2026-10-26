@@ -17,6 +17,8 @@ use std::path::{Path, PathBuf};
 
 /// Thumbnail bounds (aspect ratio kept).
 pub const THUMB: (u32, u32) = (320, 180);
+/// Large Settings scenes; the gallery keeps its small thumbnails.
+pub const SCENE: (u32, u32) = (1280, 720);
 pub const MAX_FILE_BYTES: u64 = 64 << 20;
 pub const MAX_SIDE: u32 = 16384;
 pub const MAX_ALLOC: u64 = 512 << 20;
@@ -197,10 +199,15 @@ fn animated_bytes(bytes: &[u8]) -> bool {
 /// A thumbnail within `THUMB` of a PNG or JPEG file. Blocking; never
 /// panics. Larger files, sides or allocations are refused before decoding.
 pub fn thumbnail(path: &Path) -> Preview {
-    std::panic::catch_unwind(|| read_thumbnail(path)).unwrap_or(Preview::None(NO_PREVIEW))
+    std::panic::catch_unwind(|| read_preview(path, THUMB)).unwrap_or(Preview::None(NO_PREVIEW))
 }
 
-fn read_thumbnail(path: &Path) -> Preview {
+/// Bounded scene image, decoded only by the existing background worker.
+pub fn scene_preview(path: &Path) -> Preview {
+    std::panic::catch_unwind(|| read_preview(path, SCENE)).unwrap_or(Preview::None(NO_PREVIEW))
+}
+
+fn read_preview(path: &Path, bounds: (u32, u32)) -> Preview {
     let Ok(metadata) = std::fs::metadata(path) else {
         return Preview::None(MISSING);
     };
@@ -215,7 +222,7 @@ fn read_thumbnail(path: &Path) -> Preview {
         .and_then(|file| file.take(MAX_FILE_BYTES + 1).read_to_end(&mut bytes));
     match read {
         Ok(_) if bytes.len() as u64 > MAX_FILE_BYTES => Preview::None(TOO_LARGE),
-        Ok(_) => decode(&bytes),
+        Ok(_) => decode_at(&bytes, bounds),
         Err(_) => Preview::None(NO_PREVIEW),
     }
 }
@@ -223,6 +230,10 @@ fn read_thumbnail(path: &Path) -> Preview {
 /// Decodes PNG or JPEG bytes (by content) within the bounds and reduces
 /// them to `THUMB`.
 fn decode(bytes: &[u8]) -> Preview {
+    decode_at(bytes, THUMB)
+}
+
+fn decode_at(bytes: &[u8], bounds: (u32, u32)) -> Preview {
     let Ok(mut reader) = image::ImageReader::new(std::io::Cursor::new(bytes)).with_guessed_format()
     else {
         return Preview::None(NO_PREVIEW);
@@ -240,8 +251,8 @@ fn decode(bytes: &[u8]) -> Preview {
     reader.limits(limits);
     match reader.decode() {
         // Reduced to the bounds, never enlarged.
-        Ok(image) if image.width() > THUMB.0 || image.height() > THUMB.1 => Preview::Ready(
-            Pixels::from_image(image.thumbnail(THUMB.0, THUMB.1).to_rgba8()),
+        Ok(image) if image.width() > bounds.0 || image.height() > bounds.1 => Preview::Ready(
+            Pixels::from_image(image.thumbnail(bounds.0, bounds.1).to_rgba8()),
         ),
         Ok(image) => Preview::Ready(Pixels::from_image(image.to_rgba8())),
         Err(_) => Preview::None(NO_PREVIEW),
@@ -350,13 +361,36 @@ pub fn fit_preview(source: &Pixels, mode: &ScalingMode, width: u32, height: u32)
             Pixels::from_image(resize(&image, width, height, FilterType::Triangle))
         }
         ScalingMode::Zoom => {
-            let ratio = (f64::from(width) / w).max(f64::from(height) / h);
-            let (nw, nh) = scaled(ratio);
-            let (nw, nh) = (nw.max(width), nh.max(height));
-            let resized = resize(&image, nw, nh, FilterType::Triangle);
-            Pixels::from_image(
-                crop_imm(&resized, (nw - width) / 2, (nh - height) / 2, width, height).to_image(),
-            )
+            // Crop in source coordinates first. Resizing the full source
+            // to cover the target can expand a tiny 1×720 image into a
+            // multi-gigabyte intermediate. Both the crop and resize now
+            // stay within the source and destination bounds respectively.
+            let (cw, ch) = if w * f64::from(height) > h * f64::from(width) {
+                (
+                    ((h * f64::from(width) / f64::from(height)).round() as u32)
+                        .clamp(1, image.width()),
+                    image.height(),
+                )
+            } else {
+                (
+                    image.width(),
+                    ((w * f64::from(height) / f64::from(width)).round() as u32)
+                        .clamp(1, image.height()),
+                )
+            };
+            let cropped = crop_imm(
+                &image,
+                (image.width() - cw) / 2,
+                (image.height() - ch) / 2,
+                cw,
+                ch,
+            );
+            Pixels::from_image(resize(
+                &cropped.to_image(),
+                width,
+                height,
+                FilterType::Triangle,
+            ))
         }
         ScalingMode::Fit(color) => {
             let ratio = (f64::from(width) / w).min(f64::from(height) / h);

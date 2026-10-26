@@ -420,13 +420,23 @@ fn whole_namespace(namespace: &str) -> bool {
 /// Local colors/geometry/layout only. FIELDS excludes account data, note text,
 /// location, project roots, reporting, schedules and the complete config/journal.
 pub fn app_pointers() -> impl Iterator<Item = &'static str> {
-    widget::FIELDS.iter().map(|field| field.pointer).chain([
-        "/appearance/match_wallpaper",
-        "/appearance/match_cosmic_colors",
-        "/appearance/wallpaper_color_stamp",
-        "/placement/columns",
-        "/widgets_visible",
-    ])
+    widget::FIELDS
+        .iter()
+        // Local geometry belongs to recovery, while display assignments remain
+        // machine policy and are intentionally excluded from this baseline.
+        .chain(
+            widget::LOCAL_FIELDS
+                .iter()
+                .filter(|field| field.pointer.starts_with("/monitor_layouts/")),
+        )
+        .map(|field| field.pointer)
+        .chain([
+            "/appearance/match_wallpaper",
+            "/appearance/match_cosmic_colors",
+            "/appearance/wallpaper_color_stamp",
+            "/placement/columns",
+            "/widgets_visible",
+        ])
 }
 fn app_domain(pointer: &str) -> RecoveryDomain {
     match widget::field(pointer).map(|field| field.group) {
@@ -975,3 +985,101 @@ mod restore;
 pub use restore::{RestorePlan, apply_restore, export_baseline, plan_restore, write_export};
 pub(crate) use restore::{read_native, record_created, write_native, write_scoped};
 pub(super) use restore::{save_pre_restore, verify_plan};
+
+#[cfg(test)]
+mod auditfix_tests {
+    use super::*;
+    use crate::desktop::DesktopPatch;
+    use crate::desktop::store::{Owner, WidgetPatch, tests::Fixture};
+    use serde_json::json;
+
+    #[test]
+    fn auditfix_tx01_restore_and_undo_include_monitor_geometry_without_assignments() {
+        let fixture = Fixture::new("auditfix-monitor-restore");
+        let path = fixture.0.join("config.json");
+        let geometry = json!({"DP-1":{"position":[0.25,0.35],"size":[400,180]}});
+        let baseline = json!({"enabled_widgets":["clock"],"monitor_layouts":{"clock":geometry},"widget_monitors":{"clock":{"display":"DP-1"}}});
+        fs::write(&path, baseline.to_string()).unwrap();
+        let store = fixture.store().with_app_config(path.clone());
+        ensure_baseline(&store, BaselineKind::CurrentDesktop).unwrap();
+        let changed =
+            json!({"DP-1":{"position":[0.75,0.65],"size":[600,240]},"DP-2":{"position":[0.5,0.5]}});
+        let mut patch = WidgetPatch::new();
+        patch
+            .set(
+                "/monitor_layouts/clock",
+                Some(geometry.clone()),
+                Some(changed.clone()),
+            )
+            .unwrap();
+        patch
+            .set(
+                "/widget_monitors/clock/display",
+                Some(json!("DP-1")),
+                Some(json!("DP-2")),
+            )
+            .unwrap();
+        store
+            .apply_owned(
+                &DesktopPatch::new(),
+                Some(&patch),
+                Owner::Preferences,
+                "Arrange",
+            )
+            .unwrap();
+        let exported: serde_json::Value =
+            serde_json::from_str(&export_baseline(&store).unwrap()).unwrap();
+        assert!(exported.to_string().contains("/monitor_layouts/clock"));
+        assert!(
+            !exported
+                .to_string()
+                .contains("/widget_monitors/clock/display")
+        );
+        let plan = plan_restore(&store, &[RecoveryDomain::WidgetLayout]).unwrap();
+        let restore = apply_restore(&store, &plan).unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(raw["monitor_layouts"]["clock"], geometry);
+        assert_eq!(raw["widget_monitors"]["clock"]["display"], "DP-2");
+        let config: crate::config::Config = serde_json::from_value(raw).unwrap();
+        let effective =
+            config.on_displays(&[("clock".into(), "DP-1".into())].into_iter().collect());
+        assert_eq!(effective.widget_positions["clock"], [0.25, 0.35]);
+        assert_eq!(effective.widget_sizes["clock"], [400., 180.]);
+        store.undo_latest(&restore.id).unwrap();
+        let raw: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(raw["monitor_layouts"]["clock"], changed);
+    }
+
+    #[test]
+    fn auditfix_tx01_legacy_baseline_does_not_invent_missing_monitor_originals() {
+        let fixture = Fixture::new("auditfix-monitor-legacy");
+        let path = fixture.0.join("config.json");
+        let raw =
+            json!({"monitor_layouts":{"clock":{"DP-1":{"position":[0.75,0.65],"size":[600,240]}}}});
+        fs::write(&path, raw.to_string()).unwrap();
+        let store = fixture.store().with_app_config(path.clone());
+        let mut baseline = ensure_baseline(&store, BaselineKind::CurrentDesktop).unwrap();
+        for domain in &mut baseline.domains {
+            domain
+                .app
+                .retain(|leaf| !leaf.pointer.starts_with("/monitor_layouts/"));
+            domain.sha256 = domain_digest(domain).unwrap();
+        }
+        let manifest = store
+            .state_dir()
+            .join("desktop-recovery/original/manifest.json");
+        fs::write(&manifest, serde_json::to_vec(&baseline).unwrap()).unwrap();
+        let legacy = fs::read(&manifest).unwrap();
+        let plan = plan_restore(&store, &[RecoveryDomain::WidgetLayout]).unwrap();
+        assert!(
+            !plan
+                .widgets
+                .iter()
+                .any(|(pointer, _)| pointer.starts_with("/monitor_layouts/"))
+        );
+        apply_restore(&store, &plan).unwrap();
+        let after: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(after["monitor_layouts"], raw["monitor_layouts"]);
+        assert_eq!(fs::read(manifest).unwrap(), legacy);
+    }
+}

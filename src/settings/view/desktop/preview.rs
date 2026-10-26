@@ -1,4 +1,4 @@
-//! The miniature desktop: both bars drawn to scale from the current drafts.
+//! Schematic desktop scene: both bars follow the current editor drafts.
 use super::*;
 use cosmic::iced::Point;
 use cosmic::iced::widget::{pin, stack};
@@ -9,7 +9,11 @@ fn bar_color(background: Option<&PanelBackground>) -> Color {
         Some(PanelBackground::Light) => Color::from_rgb(0.90, 0.90, 0.92),
         Some(PanelBackground::Color([r, g, b])) => Color::from_rgb(*r, *g, *b),
         Some(PanelBackground::Dark) => Color::from_rgb(0.06, 0.06, 0.08),
-        _ => Color::from_rgb(0.16, 0.16, 0.19),
+        _ => cosmic::theme::active()
+            .current_container()
+            .component
+            .base
+            .into(),
     }
 }
 
@@ -67,10 +71,11 @@ fn preview_bar<'a>(
     offset: f32,
     accent: Color,
     on_press: Option<Message>,
+    output: &str,
 ) -> Element<'a, Message> {
     if installed_islands && draft.islands().known().is_some_and(|s| s.enabled) {
         return preview_islands(
-            draft, catalog, screen, scale, offset, accent, on_press, None, None, "",
+            draft, catalog, screen, scale, offset, accent, on_press, None, None, output, false,
         );
     }
     let (anchor, thickness, margin) = bar_metrics(draft, scale);
@@ -239,6 +244,7 @@ fn preview_islands<'a>(
     measured: Option<&dock_islands_core::Layout>,
     selected: Option<dock_islands_core::Section>,
     output: &str,
+    select_sections: bool,
 ) -> Element<'a, Message> {
     use dock_islands_core::{Section, Span};
     // Live measurements belong to the applied applets and size. Once those
@@ -275,6 +281,17 @@ fn preview_islands<'a>(
         32.,
     );
     let ratio = (major - margin * 2.) as f64 / logical.max(1.);
+    // The positions and lengths above use desktop proportions. Keep the
+    // cross-axis proportional too; the general bar preview exaggerates it
+    // and would turn small one-applet islands into tall vertical pills.
+    let thickness = thickness.min(
+        layout
+            .spans
+            .iter()
+            .flatten()
+            .map(|span| (span.length * ratio) as f32)
+            .fold(thickness, f32::min),
+    );
     let regions = draft.applets().known().cloned().unwrap_or_default();
     let color = bar_color(draft.background().known());
     let opacity = draft.opacity().known().copied().unwrap_or(0.8);
@@ -289,25 +306,35 @@ fn preview_islands<'a>(
         } else {
             (thickness, length)
         };
-        let icon_size = (thickness * 0.58).clamp(7., 20.) as u16;
-        let icons: Vec<Element<'a, Message>> = regions
-            .list(Region::ALL[i])
+        let major_length = if horizontal { w } else { h };
+        let icon_size =
+            ((thickness * 0.58).clamp(7., 20.) as u16).min((major_length - 4.).max(1.) as u16);
+        let spacing = (2. * scale * 2.).clamp(0.5, 2.);
+        let capacity = ((major_length - 4. + spacing) / (icon_size as f32 + spacing))
+            .floor()
+            .max(1.) as usize;
+        let ids = regions.list(Region::ALL[i]);
+        let icons: Vec<Element<'a, Message>> = ids
             .iter()
-            .map(|id| {
-                icon::from_name(catalog.icon(id))
-                    .size(icon_size)
-                    .icon()
-                    .into()
+            .take(capacity)
+            .enumerate()
+            .map(|(n, id)| {
+                let name = if ids.len() > capacity && n + 1 == capacity {
+                    "view-more-symbolic".to_string()
+                } else {
+                    catalog.icon(id)
+                };
+                icon::from_name(name).size(icon_size).icon().into()
             })
             .collect();
         let content: Element<'a, Message> = if horizontal {
             row::with_children(icons)
-                .spacing(2)
+                .spacing(spacing)
                 .align_y(Alignment::Center)
                 .into()
         } else {
             column::with_children(icons)
-                .spacing(2)
+                .spacing(spacing)
                 .align_x(Alignment::Center)
                 .into()
         };
@@ -347,21 +374,24 @@ fn preview_islands<'a>(
             Anchor::Left => Point::new(margin + offset, along),
             Anchor::Right => Point::new(screen[0] - w - margin - offset, along),
         };
-        let message = on_press.clone().unwrap_or_else(|| {
-            edit(Edit::Islands(
-                crate::settings::desktop::islands::Edit::Select(Section::ALL[i]),
-            ))
+        let message = on_press.clone().or_else(|| {
+            select_sections.then(|| {
+                edit(Edit::Islands(
+                    crate::settings::desktop::islands::Edit::Select(Section::ALL[i]),
+                ))
+            })
         });
-        layers.push(
-            pin(button::custom(bg)
+        let island: Element<'a, Message> = match message {
+            Some(message) => button::custom(bg)
                 .padding(0)
                 .class(super::super::home::hotspot(accent, radius))
                 .on_press(message)
                 .width(w)
-                .height(h))
-            .position(pos)
-            .into(),
-        );
+                .height(h)
+                .into(),
+            None => bg.into(),
+        };
+        layers.push(pin(island).position(pos).into());
     }
     stack(layers).width(screen[0]).height(screen[1]).into()
 }
@@ -378,6 +408,30 @@ pub(in crate::settings::view) fn bars<'a>(
     scale: f32,
     accent: Color,
     on_press: Option<fn(PanelKind) -> Message>,
+) -> Vec<Element<'a, Message>> {
+    bars_on_output(
+        installed_islands,
+        drafts,
+        catalog,
+        selected,
+        screen,
+        scale,
+        accent,
+        on_press,
+        "",
+    )
+}
+
+pub(in crate::settings::view) fn bars_on_output<'a>(
+    installed_islands: bool,
+    drafts: Vec<&PanelDraft>,
+    catalog: &AppletCatalog,
+    selected: Option<PanelKind>,
+    screen: [f32; 2],
+    scale: f32,
+    accent: Color,
+    on_press: Option<fn(PanelKind) -> Message>,
+    output: &str,
 ) -> Vec<Element<'a, Message>> {
     let mut bars: Vec<&PanelDraft> = drafts.into_iter().filter(|draft| draft.listed()).collect();
     bars.sort_by_key(|draft| std::cmp::Reverse(bar_priority(draft)));
@@ -406,6 +460,7 @@ pub(in crate::settings::view) fn bars<'a>(
                 offset,
                 accent,
                 on_press.map(|message| message(draft.kind())),
+                output,
             )
         })
         .collect()
@@ -414,49 +469,23 @@ pub(in crate::settings::view) fn bars<'a>(
 impl Settings {
     pub(super) fn desktop_preview(&self, height: f32) -> Element<'_, Message> {
         let accent = self.settings_accent();
-        let palette = self.config.palette();
         let screen_size = self.placement.screen();
         let editor = &self.desktop;
         responsive(move |available| {
-            let scale = (available.width.max(1.) / screen_size[0])
-                .min(available.height.max(1.) / screen_size[1]);
-            let screen = [screen_size[0] * scale, screen_size[1] * scale];
-            let wallpaper = container(text::body(""))
-                .width(screen[0])
-                .height(screen[1])
-                .class(cosmic::theme::Container::custom(move |_| {
-                    cosmic::iced::widget::container::Style {
-                        background: Some(Background::Gradient(
-                            cosmic::iced::gradient::Linear::new(2.4)
-                                .add_stop(
-                                    0.,
-                                    Color {
-                                        a: 1.,
-                                        ..palette.background
-                                    },
-                                )
-                                .add_stop(
-                                    1.,
-                                    Color::from_rgb(
-                                        palette.accent.r * 0.35,
-                                        palette.accent.g * 0.35,
-                                        palette.accent.b * 0.35,
-                                    ),
-                                )
-                                .into(),
-                        )),
-                        border: Border {
-                            color: Color {
-                                a: 0.3,
-                                ..palette.accent
-                            },
-                            width: 1.,
-                            radius: 9.into(),
-                        },
-                        ..Default::default()
-                    }
-                }));
-            let mut layers: Vec<Element<'_, Message>> = vec![wallpaper.into()];
+            // Use the full scene width. Bar thickness follows the output scale;
+            // the wallpaper crops to the scene, while anchors stay in view.
+            let screen = [available.width.max(1.), available.height.max(1.)];
+            let scale =
+                (screen[0] / screen_size[0].max(1.)).min(screen[1] / screen_size[1].max(1.));
+            // Reuse the already decoded wallpaper. No image IO or provider work
+            // is started by the scene, including while a local edit is pending.
+            let mut layers: Vec<Element<'_, Message>> = vec![
+                cosmic::widget::space()
+                    .width(screen[0])
+                    .height(screen[1])
+                    .into(),
+            ];
+            layers.extend(self.home_backdrop(screen));
             let drafts = PanelKind::ALL
                 .into_iter()
                 .filter_map(|kind| editor.draft(kind))
@@ -474,7 +503,7 @@ impl Settings {
                 screen,
                 scale,
                 accent,
-                None,
+                Some(|kind| edit(Edit::Select(kind))),
             ));
             if let Some(draft) = editor.current().filter(|d| {
                 editor.islands.installation.installed()
@@ -492,6 +521,7 @@ impl Settings {
                     editor.islands.geometry.as_ref(),
                     editor.islands.selected,
                     &editor.island_output(),
+                    true,
                 ));
             }
             container(stack(layers).width(screen[0]).height(screen[1]).clip(true))

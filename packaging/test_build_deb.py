@@ -26,6 +26,8 @@ class PackageTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         repo = self.root / "repo"
+        # Actual enrollment inputs are public and independently pinned.
+        shutil.copytree(builder.REPO / "packaging/updates", repo / "packaging/updates")
         files = [
             "scripts/desktop-cards", "scripts/calendar-sync.py", "scripts/project-status.py",
             "companion/panel_launcher.py", "companion/install_status.py",
@@ -97,6 +99,20 @@ class PackageTests(unittest.TestCase):
             self.assertEqual(first, second.read_bytes())
         listing = subprocess.check_output(["dpkg-deb", "-c", str(second)], text=True)
         self.assertNotIn("google-calendar-client.json", listing)
+
+    def test_default_update_payload_and_hooks_are_self_contained(self):
+        package = self.build()
+        root = self.root / "unpacked"
+        subprocess.run(["dpkg-deb", "-R", str(package), str(root)], check=True)
+        source = root / "usr/share/cosmic-ext-halcyon/updates/source.sources"
+        self.assertIn("Signed-By: /usr/share/keyrings/halcyon-archive-keyring.gpg", source.read_text())
+        self.assertFalse((root / "etc/apt").exists(), "Do not overwrite bootstrap conffiles on unpack")
+        for name in ("postinst", "postrm"):
+            script = root / "DEBIAN" / name
+            self.assertTrue(script.stat().st_mode & 0o111)
+            subprocess.run(["sh", "-n", str(script)], check=True)
+            self.assertNotIn("apt-get", script.read_text())
+            self.assertNotIn("systemctl", script.read_text())
 
     def test_invalid_version_and_empty_wallpapers_fail_before_archiving(self):
         self.args.version = "../escape"

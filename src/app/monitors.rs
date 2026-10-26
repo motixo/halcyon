@@ -11,7 +11,10 @@ impl Cards {
     pub(super) fn arrange_on_display(&mut self, display: String) -> Task<Message> {
         if self.displays.unique(&display).is_none()
             || self.layout_editor.active
-            || self.paused_layout.as_ref().is_some_and(|e| e.exit_failed)
+            || self
+                .paused_layout
+                .as_ref()
+                .is_some_and(|e| e.exit_failed || e.pending_resume.is_some())
         {
             return Task::none();
         }
@@ -59,8 +62,19 @@ impl Cards {
     pub(super) fn layout_contexts(&self) -> crate::config::monitors::Contexts {
         self.displays.contexts(&self.config)
     }
+    pub(super) fn layout_output_handles(&self) -> BTreeMap<String, crate::displays::WlOutput> {
+        Widget::ALL
+            .into_iter()
+            .filter_map(|widget| {
+                Some((
+                    widget.key().into(),
+                    self.widget_output(widget)?.handle.clone(),
+                ))
+            })
+            .collect()
+    }
     pub(super) fn effective_config(&self) -> Config {
-        self.config.on_displays(&self.layout_contexts())
+        self.displays.effective_config(&self.config)
     }
     pub(super) fn refresh_display_layouts(&mut self) {
         let config = self.effective_config();

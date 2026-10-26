@@ -98,12 +98,15 @@ impl Settings {
         self.settings_accent()
     }
 
-    /// Title, mode pill, sample window and the Light/Dark selector.
+    /// Global typography and the explicit color variant being edited.
     pub(super) fn system_appearance_header(&self) -> Element<'_, Message> {
         let accent = self.appearance_accent();
         let editor = &self.system_appearance;
         let title = split(
-            heading("Theme details", ""),
+            heading(
+                "Fonts & icons",
+                "Global desktop settings · completed choices apply directly",
+            ),
             super::windows::store_pill(editor.store(), accent),
         );
         let Some(draft) = editor.draft() else {
@@ -137,19 +140,21 @@ impl Settings {
         );
         let system =
             button::text("Open COSMIC Settings ↗").on_press(Message::OpenDesktop("appearance"));
-        let details = column::with_children(vec![title, selector, system.into()])
-            .spacing(8)
-            .width(Length::Fill);
-        let height = (self.window.height * 0.22).clamp(112., 160.);
-        // Bounded: an ultrawide window letterboxes the sample instead of
-        // crowding the selector.
-        let room = (self.window.width - 220.).max(0.) * 0.45;
-        let preview = container(sample_window(draft.preview(editor.variant), draft, height))
-            .width((height * 1.7).min(room).min(320.));
-        row::with_children(vec![preview.into(), details.into()])
-            .spacing(18)
+        column::with_children(vec![
+            title,
+            row::with_children(vec![
+                label("Colors to edit", 12., MUTED),
+                selector,
+                system.into(),
+            ])
+            .spacing(10)
             .align_y(Alignment::Center)
-            .into()
+            .wrap()
+            .into(),
+        ])
+        .spacing(10)
+        .width(Length::Fill)
+        .into()
     }
 
     pub(super) fn system_appearance_page(&self) -> Element<'_, Message> {
@@ -228,8 +233,24 @@ impl Settings {
                 ],
             ));
         }
-        items.push(self.search_target("appearance-colors", self.appearance_colors(draft)));
+        let scene = if self.scene_open() {
+            container(sample_window(draft.preview(editor.variant), draft, 128.))
+                .width(Length::Fill)
+                .max_width(360)
+                .into()
+        } else {
+            cosmic::widget::space().height(0).into()
+        };
+        items.push(self.scene_frame(
+            scene,
+            &format!(
+                "{} color preview · desktop mode stays {} until you change Mode",
+                editor.variant.title(),
+                draft.active_variant().title(),
+            ),
+        ));
         items.push(self.search_target("appearance-fonts", self.appearance_type(draft)));
+        items.push(self.search_target("appearance-colors", self.appearance_colors(draft)));
         items.push(self.appearance_window(draft));
         items.push(self.search_target("appearance-effects", self.appearance_effects(draft)));
         column::with_children(items).spacing(16).into()
@@ -348,9 +369,9 @@ impl Settings {
         let accent = self.appearance_accent();
         let editor = &self.system_appearance;
         let mut items = vec![
-            label("Desktop theme", 16., FG),
+            label("Mode & colors", 16., FG),
             field(
-                "Active theme",
+                "Mode",
                 choice(
                     &draft.mode(),
                     &SystemMode::ALL.map(|mode| (mode.title(), mode)),
@@ -362,7 +383,7 @@ impl Settings {
         if editor.variant != draft.active_variant() {
             items.push(label(
                 format!(
-                    "Editing {} colors. Your desktop remains {} until you change Active theme and apply.",
+                    "Editing {} colors. Your desktop remains {} until you change Mode.",
                     editor.variant.title(),
                     draft.active_variant().title()
                 ),
@@ -396,7 +417,7 @@ impl Settings {
         );
         if open {
             items.push(label(
-                "Surface overrides for the theme preview above. Choose the accent in Colors & theme.",
+                "Surface overrides for the theme preview above. Choose the accent in Theme & colors.",
                 11.,
                 MUTED,
             ));
@@ -683,7 +704,7 @@ impl Settings {
             Setting::Unsupported(raw) => kept(&raw),
         };
         section(vec![
-            label("Type & icons", 16., FG),
+            label("Fonts & icons", 16., FG),
             self.font_row(draft, FontRole::Interface),
             self.font_row(draft, FontRole::Monospace),
             field("Icon theme", icons),
@@ -700,7 +721,7 @@ impl Settings {
         let variant = self.system_appearance.variant;
         let width = draft.outline_width(variant);
         let mut items = vec![
-            label("Window details", 16., FG),
+            label("Window appearance", 16., FG),
             self.color_row(draft, ColorRole::Outline),
         ];
         items.push(match width {

@@ -270,3 +270,130 @@ fn ignored_removal_backups_do_not_disable_reenrollment_but_active_conflicts_do()
     );
     assert_eq!(f.measure().channel, UpdateChannel::Unknown);
 }
+
+#[test]
+fn enrollment_preserves_disabled_sources_and_partial_installations() {
+    let f = Fixture::new();
+    assert_eq!(f.measure().enrollment, Enrollment::Enrolled);
+    f.put(SOURCE, format!("{SOURCE_TEXT}Enabled: no\n").as_bytes());
+    let disabled = f.measure();
+    assert_eq!(disabled.enrollment, Enrollment::Disabled);
+    assert!(!disabled.can_enroll());
+    fs::remove_file(f.path(SOURCE)).unwrap();
+    assert_eq!(
+        f.measure().enrollment,
+        Enrollment::Disabled,
+        "deleted conffile stays disabled"
+    );
+    f.put("/var/lib/dpkg/status", b"Package: cosmic-ext-halcyon\nStatus: install ok installed\nArchitecture: amd64\nVersion: 0.2.0\n\n");
+    assert_eq!(f.measure().enrollment, Enrollment::Incomplete);
+    fs::remove_file(f.path(KEY)).unwrap();
+    fs::remove_file(f.path(PREFS)).unwrap();
+    let clean = f.measure();
+    assert_eq!(clean.enrollment, Enrollment::Available);
+    assert!(clean.can_enroll());
+    assert!(clean.same_enrollment_candidate(&f.measure()));
+    f.put(SOURCE, format!("{SOURCE_TEXT}Enabled: no\n").as_bytes());
+    assert!(!clean.same_enrollment_candidate(&f.measure()));
+}
+
+fn default_package() -> Fixture {
+    let f = Fixture::new();
+    let status = fs::read_to_string(f.path("/var/lib/dpkg/status")).unwrap();
+    f.put(
+        "/var/lib/dpkg/status",
+        format!("{}\n\n", status.split("\n\n").next().unwrap()).as_bytes(),
+    );
+    let mut files = vec![EXE.to_owned()];
+    let mut hashes = serde_json::Map::new();
+    for (name, target) in [
+        ("source.sources", SOURCE),
+        ("preferences", PREFS),
+        ("archive-keyring.gpg", KEY),
+    ] {
+        let template = format!("{DEFAULTS}/{name}");
+        f.put(&template, &fs::read(f.path(target)).unwrap());
+        hashes.insert(target.into(), digest(&f.path(target)).unwrap().into());
+        files.push(template);
+    }
+    f.put(
+        &format!("/var/lib/dpkg/info/{MAIN}.list"),
+        files.join("\n").as_bytes(),
+    );
+    f.put(
+        &format!("/var/lib/dpkg/info/{MAIN}.md5sums"),
+        files
+            .iter()
+            .map(|p| {
+                format!(
+                    "{}  {}\n",
+                    md5(&f.path(p)).unwrap(),
+                    p.trim_start_matches('/')
+                )
+            })
+            .collect::<String>()
+            .as_bytes(),
+    );
+    f.put(RECEIPT, &serde_json::to_vec(&serde_json::json!({"format":"halcyon-default-updates","version":1,"phase":"complete","files":hashes})).unwrap());
+    f
+}
+
+#[test]
+fn package_default_updates_require_verified_inputs_and_completed_receipt() {
+    let f = default_package();
+    assert!(f.measure().can_check());
+    for change in [
+        "source",
+        "pins",
+        "key",
+        "template",
+        "receipt",
+        "pending",
+        "symlink",
+        "duplicate",
+    ] {
+        let f = default_package();
+        match change {
+            "source" => f.put(SOURCE, SOURCE_TEXT.replace("noble", "other").as_bytes()),
+            "pins" => f.put(PREFS, PREFS_TEXT.replace("-1", "1001").as_bytes()),
+            "key" => f.put(KEY, &[1; 256]),
+            "template" => f.put(&format!("{DEFAULTS}/archive-keyring.gpg"), &[1; 256]),
+            "receipt" => f.put(RECEIPT, b"{}"),
+            "pending" => {
+                let value = fs::read_to_string(f.path(RECEIPT))
+                    .unwrap()
+                    .replace("complete", "pending");
+                f.put(RECEIPT, value.as_bytes());
+            }
+            "symlink" => {
+                fs::remove_file(f.path(KEY)).unwrap();
+                symlink(
+                    f.path(&format!("{DEFAULTS}/archive-keyring.gpg")),
+                    f.path(KEY),
+                )
+                .unwrap();
+            }
+            "duplicate" => f.put(
+                "/etc/apt/sources.list.d/other.sources",
+                SOURCE_TEXT.as_bytes(),
+            ),
+            _ => unreachable!(),
+        }
+        let identity = f.measure();
+        assert!(
+            !identity.can_check() && !identity.can_enroll(),
+            "{change}: {identity:?}"
+        );
+    }
+}
+
+#[test]
+fn deleted_or_disabled_default_sources_never_offer_automatic_reenrollment() {
+    let f = default_package();
+    f.put(SOURCE, format!("{SOURCE_TEXT}Enabled: no\n").as_bytes());
+    assert_eq!(f.measure().enrollment, Enrollment::Disabled);
+    fs::remove_file(f.path(SOURCE)).unwrap();
+    let identity = f.measure();
+    assert_eq!(identity.enrollment, Enrollment::Disabled);
+    assert!(!identity.can_enroll() && !identity.can_check());
+}

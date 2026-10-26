@@ -57,7 +57,17 @@ pub fn path() -> Option<PathBuf> {
 fn cached() -> Option<Snapshot> {
     let bytes = std::fs::read(path()?).ok()?;
     let state: Snapshot = serde_json::from_slice(&bytes).ok()?;
-    state.valid().then_some(state)
+    state.valid().then(|| {
+        let mut state = state;
+        // Older publishers measured effective list heights in `size` only.
+        // Capture that evidence before an automatic-size projection replaces it.
+        for g in &mut state.widgets {
+            if is_content_sized(Widget::parse(&g.key).unwrap()) && g.natural_height.is_none() {
+                g.natural_height = Some(g.size[1].max(g.natural_size.map_or(0., |s| s[1])));
+            }
+        }
+        state
+    })
 }
 
 impl Snapshot {
@@ -107,12 +117,16 @@ fn fallback(config: &Config) -> Snapshot {
                     Widget::Clock => [490., 200.],
                     Widget::Calendar => [360., 320.],
                     Widget::Weather => [360., 180.],
-                    Widget::Devbox => [360., 280.],
+                    Widget::Devbox => [360., devbox_content_height(&config.devbox, 0)],
                     Widget::Projects => [360., 200.],
                     Widget::Glance => [config.glance.auto_width(config.glance_panel()), 220.],
                     tool => crate::tools::cards::size(tool, config),
                 },
-                natural_height: (widget == Widget::Glance).then_some(220.),
+                natural_height: match widget {
+                    Widget::Glance => Some(220.),
+                    Widget::Devbox => Some(devbox_content_height(&config.devbox, 0)),
+                    _ => None,
+                },
                 position: [0., 0.],
             })
             .collect(),
@@ -231,10 +245,41 @@ pub fn placement_size(widget: Widget, size: [f32; 2]) -> [f32; 2] {
     }
 }
 
-/// A preview has one selected display; its widget coordinates remain local.
-pub fn for_display(config: &Config, display: Option<&str>, automatic: bool) -> Snapshot {
+/// Settings discovers outputs independently of the optional widget service.
+/// Reuse cached content measurements, but bind geometry and save contexts to
+/// the live registry even when no layout-state file has ever been published.
+pub fn for_display(
+    config: &Config,
+    display: Option<&str>,
+    automatic: bool,
+    displays: &crate::displays::Registry,
+) -> Snapshot {
     let mut state = cached().unwrap_or_else(|| fallback(config));
-    if let Some(name) = display
+    let live = !displays.outputs().is_empty();
+    let selected = if live {
+        state.monitors = displays
+            .outputs()
+            .iter()
+            .filter_map(|output| {
+                let key = displays.key(output)?;
+                let size = output
+                    .info
+                    .logical_size
+                    .filter(|(w, h)| *w > 0 && *h > 0)
+                    .map(|(w, h)| [w as f32, h as f32])
+                    .or_else(|| state.monitors.get(&key).copied())
+                    .unwrap_or([1920., 1080.]);
+                Some((key, size))
+            })
+            .collect();
+        state.widget_displays = displays.placements(config);
+        displays
+            .selected(display.or(config.widget_display.as_deref()))
+            .and_then(|o| displays.key(o))
+    } else {
+        display.map(str::to_owned)
+    };
+    if let Some(name) = selected.as_deref()
         && let Some(screen) = state.monitors.get(name)
     {
         state.screen = *screen;
@@ -244,7 +289,11 @@ pub fn for_display(config: &Config, display: Option<&str>, automatic: bool) -> S
             epoch: state.display.as_ref().map(|d| d.epoch).unwrap_or(0),
         });
     }
-    let mut config = config.on_displays(&state.widget_displays);
+    let mut config = if live {
+        displays.effective_config(config)
+    } else {
+        config.on_displays(&state.widget_displays)
+    };
     for g in &mut state.widgets {
         if let Some(size) = g.natural_size {
             g.size = size;
@@ -271,11 +320,78 @@ pub fn read(config: &Config) -> Snapshot {
     project(defaults(config), config)
 }
 
+fn is_content_sized(widget: Widget) -> bool {
+    matches!(widget, Widget::Devbox | Widget::Projects | Widget::Calendar)
+}
+
+/// Shared saved-viewport rule: list cards grow to their content, bounded by
+/// the output. Callers retain the saved dimensions; only effective geometry grows.
+pub fn effective_explicit_size(
+    widget: Widget,
+    saved: [f32; 2],
+    content_height: Option<f32>,
+    screen: [f32; 2],
+) -> [f32; 2] {
+    let mut size = layout::sized(widget, saved, screen);
+    if is_content_sized(widget)
+        && let Some(height) = content_height
+    {
+        size[1] = size[1].max(height.min((screen[1] - 96.).max(1.)));
+    }
+    size
+}
+
+/// System monitor content without starting a metrics sampler. Runtime supplies
+/// its GPU count; before its first snapshot Settings assumes the placeholder GPU.
+pub fn devbox_content_height(
+    preferences: &crate::config::DevboxPreferences,
+    gpu_count: usize,
+) -> f32 {
+    use crate::config::DevboxSection;
+    let history = DevboxSection::ALL.into_iter().any(|section| {
+        section.enabled(preferences)
+            && match section {
+                DevboxSection::Cpu => preferences.history.cpu,
+                DevboxSection::Memory => preferences.history.memory,
+                DevboxSection::Disk => preferences.history.disk,
+                DevboxSection::Network => preferences.history.network,
+                DevboxSection::Gpu => preferences.history.gpu,
+                _ => false,
+            }
+    });
+    let section_height = 16. + 4. + if history { 14. } else { 5. };
+    let heights: Vec<f32> = preferences
+        .ordered_sections()
+        .into_iter()
+        .filter(|section| section.enabled(preferences))
+        .map(|section| {
+            if section == DevboxSection::Gpu {
+                let count = gpu_count.max(1);
+                count as f32 * section_height + count.saturating_sub(1) as f32 * 8.
+            } else {
+                section_height
+            }
+        })
+        .collect();
+    36. + if heights.is_empty() {
+        20.
+    } else {
+        heights.iter().sum::<f32>() + heights.len().saturating_sub(1) as f32 * 8.
+    }
+}
+
 /// Project a preview from cached geometry without reading the desktop again.
 pub fn project(mut state: Snapshot, config: &Config) -> Snapshot {
     for g in &mut state.widgets {
         if let Some(size) = config.widget_sizes.get(&g.key) {
-            g.size = layout::sized(Widget::parse(&g.key).unwrap(), *size, state.screen);
+            let widget = Widget::parse(&g.key).unwrap();
+            let content = g.natural_height.or_else(|| {
+                is_content_sized(widget).then(|| {
+                    g.natural_size
+                        .map_or(g.size[1], |natural| natural[1].max(g.size[1]))
+                })
+            });
+            g.size = effective_explicit_size(widget, *size, content, state.screen);
         }
     }
     state = default_positions(state, config);
@@ -412,5 +528,36 @@ mod tests {
         let stored: Snapshot = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         let _ = std::fs::remove_file(path);
         assert_eq!(stored.screen, newer.screen);
+    }
+    #[test]
+    fn auditfix_ob03_uncached_system_monitor_and_published_lists_expand() {
+        let mut config = Config::default();
+        config.widget_sizes.insert("devbox".into(), [360., 180.]);
+        let snapshot = project(fallback(&config), &config);
+        let system = snapshot.widgets.iter().find(|g| g.key == "devbox").unwrap();
+        assert_eq!(devbox_content_height(&config.devbox, 0), 226.);
+        assert_eq!(system.size[1], 226.);
+        assert_eq!(config.widget_sizes["devbox"], [360., 180.]);
+        for w in [Widget::Devbox, Widget::Projects, Widget::Calendar] {
+            let mut snapshot = fallback(&config);
+            let g = snapshot
+                .widgets
+                .iter_mut()
+                .find(|g| g.key == w.key())
+                .unwrap();
+            g.natural_height = Some(800.);
+            config.widget_sizes.insert(w.key().into(), [360., 180.]);
+            snapshot.screen = [1920., 600.];
+            let projected = project(snapshot, &config);
+            assert_eq!(
+                projected
+                    .widgets
+                    .iter()
+                    .find(|g| g.key == w.key())
+                    .unwrap()
+                    .size[1],
+                504.
+            );
+        }
     }
 }

@@ -1,4 +1,4 @@
-//! Shared accent choices on the Wallpaper & colors page.
+//! Shared color policy, explicit coordination scope and completed color edits.
 use super::desktop::conflict_banner;
 use super::*;
 use crate::settings::wallpaper::Message as Edit;
@@ -99,7 +99,7 @@ impl Settings {
                 > 1;
         if self.page != Page::Themes {
             rows.push(group_row(
-                "Apply to",
+                "Color applies to",
                 if several {
                     format!(
                         "From {} · built-in display first",
@@ -207,7 +207,22 @@ impl Settings {
                 );
             }
         }
-        self.search_target("wallpaper-colors", group(Some("Color"), rows))
+        rows.insert(
+            0,
+            label(
+                if self.wallpaper.background_dirty() {
+                    "Local color preview · included when you apply the wallpaper"
+                } else {
+                    "Changes apply directly · complete color text with Enter"
+                },
+                12.,
+                MUTED,
+            ),
+        );
+        self.search_target(
+            "wallpaper-colors",
+            group(Some("Color source & accent"), rows),
+        )
     }
 
     /// The accent's color control and the suggested-color shortcut share one row.
@@ -245,6 +260,7 @@ impl Settings {
         row::with_children(parts)
             .spacing(8)
             .align_y(Alignment::Center)
+            .wrap()
             .into()
     }
 }

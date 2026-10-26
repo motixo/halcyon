@@ -6,6 +6,37 @@ from pathlib import Path
 import sys
 from qualify import promotion
 from bundle_contract import digest
+from runtime_compatibility import POLICY
+
+# Already published bytes, retained solely for APT metadata renewal. This is
+# deliberately independent of distribution.json and candidate-supplied policy.
+# New artifacts must pass verify() with the current policy and fresh approval.
+PUBLISHED_RELEASES = {
+    'ea237af6b49635dcb9f0fe03e1523df6aaf66fd332a2729c8a335b8d82cff292': {
+        'release': '0.2.5',
+        'policy': 'cosmic-1.10-1.11-startup-v1',
+        'approval_sha256': '563ac8ecc85fb1d6f29e66e062c7d88393d2cdc67002c05785d42a798eb0e5ab',
+    },
+}
+
+
+def verify_published(root, expected):
+    """Renew immutable historical publications without admitting new old-policy bytes."""
+    published = PUBLISHED_RELEASES.get(expected)
+    if published is None:
+        return verify(root, expected)
+    manifest = root/'release-manifest.json'
+    if digest(manifest) != expected:
+        raise ValueError('reviewed_manifest_digest_mismatch')
+    data = json.loads(manifest.read_bytes())
+    if (data.get('format') != 'halcyon-release' or data.get('version') != 1
+            or data.get('release') != published['release']
+            or data.get('compatibility_policy') != published['policy']):
+        raise ValueError('published_release_identity_mismatch')
+    artifacts(root, data)  # The pinned manifest binds every package/source/evidence byte.
+    if digest(root/'approval.json') != published['approval_sha256']:
+        raise ValueError('published_release_approval_mismatch')
+    return data
 
 
 def verify(root, expected):
@@ -15,7 +46,7 @@ def verify(root, expected):
     if data.get('format')!='halcyon-release' or data.get('version')!=1 or data.get('release')=='0.2.0':
         raise ValueError('release_manifest_invalid')
     package, main = artifacts(root,data)
-    if data.get('compatibility_policy') == 'cosmic-1.10-1.11-startup-v1':
+    if data.get('compatibility_policy') == POLICY['id']:
         from practical_release import verify as verify_practical
         verify_practical(root,data,expected)
         return data

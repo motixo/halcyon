@@ -19,22 +19,69 @@ fn directory() -> Option<PathBuf> {
 fn stale_path() -> Option<PathBuf> {
     Some(directory()?.join("calendar-stale-credentials.json"))
 }
-pub(super) fn stale_credentials() -> Vec<String> {
-    stale_path()
-        .and_then(|path| crate::tools::read_bounded(&path, 64 * 1024).ok().flatten())
-        .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
-        .unwrap_or_default()
-}
-pub(super) fn set_stale_credentials(ids: &[String]) {
-    let Some(path) = stale_path() else {
-        return;
-    };
-    let _lock = lock();
-    if ids.is_empty() {
-        let _ = std::fs::remove_file(path);
-    } else if let Ok(bytes) = serde_json::to_vec(ids) {
-        let _ = atomic(&path, &bytes);
+pub(super) fn stale_credentials() -> Result<Vec<String>, Problem> {
+    let path = stale_path().ok_or(Problem::Storage)?;
+    match crate::tools::read_bounded(&path, 64 * 1024).map_err(|_| Problem::Storage)? {
+        Some(bytes) => serde_json::from_slice(&bytes).map_err(|_| Problem::Storage),
+        None => Ok(vec![]),
     }
+}
+fn update_stale_locked(add: &[String], remove: &[String]) -> Result<(), Problem> {
+    let mut ids = stale_credentials()?;
+    ids.retain(|id| !remove.contains(id));
+    for id in add {
+        if !id.is_empty() && !ids.contains(id) {
+            ids.push(id.clone());
+        }
+    }
+    let bytes = serde_json::to_vec(&ids).map_err(|_| Problem::Storage)?;
+    if bytes.len() > 64 * 1024 {
+        return Err(Problem::Storage);
+    }
+    atomic(&stale_path().ok_or(Problem::Storage)?, &bytes)
+}
+pub(super) fn update_stale(add: &[String], remove: &[String]) -> Result<(), Problem> {
+    let _lock = lock()?;
+    update_stale_locked(add, remove)
+}
+// Keep a preparing credential out of cleanup in every process. The ID is
+// journaled before its first keyring call; after a crash the lock is released.
+pub(super) struct CredentialLease {
+    _lock: Lock,
+}
+pub(super) fn keyring_lease() -> Result<CredentialLease, Problem> {
+    let path = directory()
+        .ok_or(Problem::Storage)?
+        .join("calendar-keyring.lock");
+    Ok(CredentialLease {
+        _lock: lock_path(&path)?,
+    })
+}
+pub(super) fn active_credential() -> Result<Option<String>, Problem> {
+    let bytes = crate::tools::read_bounded(&account_path().ok_or(Problem::Storage)?, 64 * 1024)
+        .map_err(|_| Problem::Storage)?;
+    let Some(bytes) = bytes else {
+        return Ok(None);
+    };
+    let connection: Connection = serde_json::from_slice(&bytes).map_err(|_| Problem::Storage)?;
+    Ok(connection.connected().then_some(connection.credential))
+}
+pub(super) async fn wait_keyring_lease() -> Result<CredentialLease, Problem> {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        loop {
+            match keyring_lease() {
+                Err(Problem::Changed) => tokio::time::sleep(Duration::from_millis(20)).await,
+                result => return result,
+            }
+        }
+    })
+    .await
+    .map_err(|_| Problem::TimedOut)?
+}
+pub(super) async fn prepare_credential(id: &str) -> Result<CredentialLease, Problem> {
+    let lease = wait_keyring_lease().await?;
+    update_stale(&[id.to_string()], &[])?;
+    Ok(lease)
 }
 pub fn account_path() -> Option<PathBuf> {
     Some(directory()?.join("calendar-account.json"))
@@ -101,6 +148,9 @@ fn lock() -> Result<Lock, Problem> {
     let path = account_path()
         .ok_or(Problem::Storage)?
         .with_extension("lock");
+    lock_path(&path)
+}
+fn lock_path(path: &Path) -> Result<Lock, Problem> {
     private_parent(&path)?;
     let file = std::fs::OpenOptions::new()
         .create(true)
@@ -183,6 +233,14 @@ pub(super) fn replace(expected: &Connection, connection: &Connection) -> Result<
     if load_connection() != *expected {
         return Err(Problem::Changed);
     }
+    if expected.credential != connection.credential
+        && !expected.credential.is_empty()
+        && (expected.connected() || !connection.credential.is_empty())
+    {
+        // If persistence fails, cleanup still checks the active connection and
+        // must retain its credential. No asynchronous gap exists here.
+        update_stale_locked(&[expected.credential.clone()], &[])?;
+    }
     persist(connection)?;
     clear_cache();
     Ok(())
@@ -201,20 +259,6 @@ pub(super) fn disconnect(expected: &Connection) -> Result<Connection, Problem> {
     };
     replace(expected, &disconnected)?;
     Ok(disconnected)
-}
-pub fn save_selection(
-    expected: &Connection,
-    choice: &super::CalendarChoice,
-) -> Result<Connection, Problem> {
-    let connection = Connection {
-        calendar_id: choice.id.clone(),
-        calendar_name: choice.name.clone(),
-        selections: vec![choice.clone()],
-        revision: nonce()?,
-        ..expected.clone()
-    };
-    replace(expected, &connection)?;
-    Ok(connection)
 }
 pub fn save_selections(
     expected: &Connection,
@@ -241,6 +285,31 @@ pub fn save_selections(
     };
     replace(expected, &connection)?;
     Ok(connection)
+}
+/// Refresh display metadata without changing selected IDs or their order.
+/// replace() fences provider responses against concurrent selection/account edits.
+pub fn refresh_metadata(
+    expected: &Connection,
+    available: &[CalendarChoice],
+) -> Result<Connection, Problem> {
+    if expected.backend != Backend::Google {
+        return Ok(expected.clone());
+    }
+    let selected = expected.selected_calendars();
+    let refreshed: Vec<_> = selected
+        .iter()
+        .map(|old| {
+            available
+                .iter()
+                .find(|new| new.id == old.id)
+                .unwrap_or(old)
+                .clone()
+        })
+        .collect();
+    if refreshed == selected {
+        return Ok(expected.clone());
+    }
+    save_selections(expected, refreshed)
 }
 fn clear_cache() {
     if let Some(dir) = cache_directory() {

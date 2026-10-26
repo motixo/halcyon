@@ -9,6 +9,7 @@ pub enum Edit {
     Placement(Placement),
     Gap(u16),
     GapText(String),
+    GapFinished,
     Select(Section),
     Arrange,
     Done,
@@ -42,7 +43,7 @@ impl DesktopEditor {
     pub fn arranging(&self) -> bool {
         self.islands.lease.is_some()
     }
-    fn requested_island_output(&self) -> String {
+    pub fn requested_island_output(&self) -> String {
         match self.current().map(PanelDraft::output) {
             Some(Setting::Known(Output::Name(name))) => name,
             _ => String::new(),
@@ -265,6 +266,7 @@ impl DesktopEditor {
                 }
                 self.islands.gap_text = Some(text);
             }
+            Edit::GapFinished => {}
             Edit::Select(s) => {
                 self.select_island_handle(Handle::Island(s));
                 self.islands.selected = Some(s);
@@ -552,6 +554,8 @@ impl DesktopEditor {
             self.islands.geometry = status.geometry;
             if let Some(output) = status.output {
                 self.remember_island_output(output);
+            } else {
+                self.islands.measured_output = None;
             }
         }
     }

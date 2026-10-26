@@ -6,6 +6,7 @@ mod google;
 mod keyring;
 mod store;
 mod subscription;
+pub(crate) use subscription::parser_main;
 pub use subscription::{SecretText, add_subscription, remove_subscription};
 #[cfg(test)]
 mod tests;
@@ -13,7 +14,7 @@ pub use auth::{Authorization, begin_sign_in, finish_sign_in};
 pub use google::CalendarChoice;
 pub use store::cached as store_cached;
 pub use store::{
-    account_path, client_path, import_client, load_client, load_connection, save_selection,
+    account_path, client_path, import_client, load_client, load_connection, refresh_metadata,
     save_selections,
 };
 
@@ -96,7 +97,7 @@ impl Connection {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Problem {
     Disconnected,
     MissingClient,
@@ -230,18 +231,41 @@ pub async fn calendars(
 
 /// Removes credentials an earlier sign-in switch couldn't, keeping the IDs
 /// that still fail for the next try.
-pub(crate) async fn retry_stale_credentials() {
-    let stale = store::stale_credentials();
-    if stale.is_empty() {
-        return;
-    }
-    let mut left = Vec::new();
+pub(crate) async fn retry_stale_credentials() -> Result<(), Problem> {
+    retry_cleanup_with(|id| async move { keyring::remove(&id).await }).await
+}
+async fn retry_cleanup_with<F, Fut>(mut remove: F) -> Result<(), Problem>
+where
+    F: FnMut(String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), Problem>>,
+{
+    let stale = store::stale_credentials()?;
+    let mut failed = false;
     for id in stale {
-        if keyring::remove(&id).await.is_err() {
-            left.push(id);
+        let _lease = store::wait_keyring_lease().await?;
+        if store::active_credential()?.as_deref() == Some(id.as_str()) {
+            continue;
+        }
+        if remove(id.clone()).await.is_ok() {
+            // Remove only this successful ID from the latest registry. An
+            // append while the keyring was pending must survive.
+            store::update_stale(&[], &[id])?;
+        } else {
+            failed = true;
         }
     }
-    store::set_stale_credentials(&left);
+    if failed {
+        Err(Problem::Cleanup)
+    } else {
+        Ok(())
+    }
+}
+fn schedule_cleanup() {
+    tokio::spawn(async {
+        // Connection commit has already succeeded; cleanup is durable and can
+        // retry on the next explicit connect/disconnect if the keyring stalls.
+        let _ = tokio::time::timeout(Duration::from_secs(60), retry_stale_credentials()).await;
+    });
 }
 
 pub async fn disconnect(expected: Connection) -> Result<Connection, Problem> {
@@ -252,7 +276,7 @@ pub async fn disconnect(expected: Connection) -> Result<Connection, Problem> {
     // keyring. A stale request or failed local write must keep the current
     // credential. The tombstone retains only its ID so cleanup can be retried.
     let disconnected = store::disconnect(&expected)?;
-    retry_stale_credentials().await;
+    retry_stale_credentials().await?;
     if disconnected.cleanup_pending() {
         keyring::remove(&disconnected.credential)
             .await

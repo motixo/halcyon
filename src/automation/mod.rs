@@ -80,11 +80,28 @@ pub fn update(
     store: &DesktopStore,
     change: impl FnOnce(&mut Automation) -> Result<(), String>,
 ) -> Result<Automation, String> {
+    let _lock = lock_rules(store)?;
     let mut automation = load(store)?;
     change(&mut automation)?;
     let bytes = automation.to_bytes()?;
     write(store, FILE, &bytes)?;
     Ok(automation)
+}
+
+/// Rule saves and scheduled execution share this lock. Hold it from the
+/// final rule read through the profile transaction, so a saved edit cannot
+/// be overtaken by work from the previous rule revision. This is a separate
+/// file from the app config lock; acquire it before desktop writer locks.
+pub(super) fn lock_rules(store: &DesktopStore) -> Result<crate::config::ConfigLock, String> {
+    let path = store.state_file(FILE).map_err(|error| error.to_string())?;
+    crate::config::lock_config(&path)
+}
+
+/// Reset also needs the execution fence, including when the old file is
+/// damaged and cannot be loaded by `update`.
+pub fn reset(store: &DesktopStore) -> Result<(), String> {
+    let _lock = lock_rules(store)?;
+    write(store, FILE, &Automation::default().to_bytes()?)
 }
 
 /// The desktop's runtime state; damaged or missing starts fresh.

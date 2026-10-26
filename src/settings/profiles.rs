@@ -11,22 +11,23 @@ use crate::desktop::profiles::{
 };
 use crate::desktop::store::{Journal, KeyEntry, Snapshot, widget};
 use crate::desktop::wallpaper::media::{self, Pixels, Preview as Picture};
-use crate::desktop::wallpaper::{self, BgEntry, BgSource, Class};
+use crate::desktop::wallpaper::{self, BgEntry, BgSource};
 use crate::desktop::{DesktopError, DesktopPatch, DesktopStore, LatestChange, Owner};
 use crate::settings::desktop::Notice;
 use cosmic::widget::image::Handle;
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, Read, Write};
-use std::os::unix::fs::OpenOptionsExt;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
 /// Backdrop pictures kept (a few recent backgrounds, to toggle quickly).
 const BACKDROPS: usize = 4;
-/// Backdrop picture size (drawn to cover the miniature).
-pub const BACKDROP: (u32, u32) = (320, 180);
+/// Backdrops fill a Settings scene. Four stable handles cap retained CPU pixels
+/// at about 14 MiB; grid thumbnails keep their separate 320×180 bound.
+pub const BACKDROP: (u32, u32) = media::SCENE;
 
 /// What the preview shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -58,6 +59,9 @@ pub struct NameEdit {
 #[derive(Clone, Debug)]
 pub enum Message {
     Select(Selection),
+    /// Local browser/view state; never included in a desktop transaction.
+    Collection(bool),
+    Compare(bool),
     /// `true` follows the wallpaper; `false` uses the style's own color.
     ThemeColors(bool),
     ThemeScope(bool),
@@ -210,14 +214,44 @@ pub enum Backdrop {
 struct BackdropKey {
     entry: BgEntry,
     source: Option<wallpaper::automatic::Source>,
+    version: Option<PictureVersion>,
+}
+
+/// Metadata catches replacement (including equal-size files with preserved
+/// mtime), in-place edits and transitions between missing and readable files.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PictureVersion {
+    device: u64,
+    inode: u64,
+    bytes: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
 }
 
 impl BackdropKey {
     fn unanalysed(entry: BgEntry) -> Self {
+        let version = Self::version(&entry);
         Self {
             entry,
             source: None,
+            version,
         }
+    }
+    fn version(entry: &BgEntry) -> Option<PictureVersion> {
+        let BgSource::Path(path) = &entry.source else {
+            return None;
+        };
+        let metadata = fs::metadata(path).ok()?;
+        Some(PictureVersion {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            bytes: metadata.len(),
+            modified: (metadata.mtime(), metadata.mtime_nsec()),
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        })
+    }
+    fn current(&self) -> bool {
+        self.version == Self::version(&self.entry)
     }
 }
 
@@ -226,12 +260,11 @@ impl BackdropKey {
 pub struct BackdropJob {
     pub id: u64,
     key: BackdropKey,
-    pub bundled_dir: PathBuf,
 }
 
 impl BackdropJob {
     pub fn run(self) -> Message {
-        let pixels = backdrop_pixels(&self.key, &self.bundled_dir);
+        let pixels = backdrop_pixels(&self.key);
         Message::Backdrop(self.id, pixels)
     }
 }
@@ -253,8 +286,9 @@ pub fn backdrop_task<X: Into<Y> + 'static, Y: 'static>(
 
 /// The background as cosmic-bg shows it on a 16:9 display: a colour or
 /// gradient rendered, a picture scaled with its fit. Themes use their analyzed
-/// picture; other previews use a folder's first image or a bundled thumbnail.
-fn backdrop_pixels(key: &BackdropKey, bundled_dir: &Path) -> Option<Pixels> {
+/// picture; other previews use a folder's first image. Bundled pictures use the
+/// installed source too, preserving detail at the larger scene size.
+fn backdrop_pixels(key: &BackdropKey) -> Option<Pixels> {
     let entry = &key.entry;
     let (width, height) = BACKDROP;
     let path = match &entry.source {
@@ -270,14 +304,9 @@ fn backdrop_pixels(key: &BackdropKey, bundled_dir: &Path) -> Option<Pixels> {
     } else {
         path.clone()
     };
-    let pixels = match wallpaper::classify(&picture, bundled_dir, &[]) {
-        Class::Bundled(name) if key.source.is_none() && picture.is_file() => {
-            media::bundled_thumbnail(name)?
-        }
-        _ => match media::thumbnail(&picture) {
-            Picture::Ready(pixels) => pixels,
-            Picture::None(_) => return None,
-        },
+    let pixels = match media::scene_preview(&picture) {
+        Picture::Ready(pixels) => pixels,
+        Picture::None(_) => return None,
     };
     Some(media::fit_preview(
         &pixels,
@@ -347,6 +376,8 @@ pub struct ProfilesEditor {
     /// Lines from the last capture or recovery, shown with the notice.
     pub notes: Vec<String>,
     pub details: bool,
+    pub saved_collection: bool,
+    pub compare_current: bool,
     pub name: Option<NameEdit>,
     pub confirm_delete: bool,
     /// Automation rules that apply the profile being deleted.
@@ -576,11 +607,7 @@ impl ProfilesEditor {
         self.next_request = self.next_request.wrapping_add(1);
         let id = self.next_request;
         self.home_pending = Some((id, entry.clone()));
-        self.jobs.push(BackdropJob {
-            id,
-            key: entry,
-            bundled_dir: self.installed.bundled_dir.clone(),
-        });
+        self.jobs.push(BackdropJob { id, key: entry });
     }
     /// The current shared background's picture, when it has one.
     pub fn home_image(&self) -> Option<&Handle> {
@@ -739,7 +766,7 @@ impl ProfilesEditor {
     /// Changes whenever anything visible changes; used by capture mode.
     pub fn state_key(&self) -> String {
         format!(
-            "{:?}:{:?}:{:?}:{:?}:{:?}:{}:{:?}:{}:{}:{:?}:{:?}:{}:{:?}:{}",
+            "{:?}:{:?}:{:?}:{:?}:{:?}:{}:{:?}:{}:{}:{:?}:{:?}:{}:{:?}:{}:{}:{}",
             self.selection,
             self.excluded,
             self.plan,
@@ -754,6 +781,8 @@ impl ProfilesEditor {
             self.recovery.is_some(),
             self.backdrop_key,
             self.backdrop_image().is_some(),
+            self.saved_collection,
+            self.compare_current,
         )
     }
 
@@ -865,19 +894,19 @@ impl ProfilesEditor {
             profiles::plan(store, &self.installed, profile, &self.selected_domains())
         });
         let preview = preview(store, plan.as_ref());
-        let bundled_dir = self.installed.bundled_dir.clone();
         self.plan = plan;
         self.preview = Some(preview);
-        self.want_backdrop(bundled_dir);
+        self.want_backdrop();
     }
     /// The plan's background as the backdrop; its picture is requested
     /// unless it is kept or already being made.
-    fn want_backdrop(&mut self, bundled_dir: PathBuf) {
+    fn want_backdrop(&mut self) {
         self.backdrop_key = self
             .theme_source
             .as_ref()
             .and_then(|source| {
                 source.background.clone().map(|entry| BackdropKey {
+                    version: BackdropKey::version(&entry),
                     entry,
                     source: Some(source.clone()),
                 })
@@ -889,7 +918,11 @@ impl ProfilesEditor {
                     .cloned()
                     .map(BackdropKey::unanalysed)
             })
-            .or_else(|| self.home_background.clone());
+            .or_else(|| {
+                self.home_background
+                    .as_ref()
+                    .map(|key| BackdropKey::unanalysed(key.entry.clone()))
+            });
         self.backdrop = self
             .backdrop_key
             .as_ref()
@@ -919,7 +952,6 @@ impl ProfilesEditor {
         self.jobs.push(BackdropJob {
             id,
             key: key.clone(),
-            bundled_dir,
         });
     }
     fn keep_backdrop(&mut self, key: BackdropKey, pixels: Option<Pixels>) {
@@ -938,7 +970,11 @@ impl ProfilesEditor {
             .is_some_and(|(pending, _)| *pending == id)
         {
             if let Some((_, entry)) = self.home_pending.take() {
-                self.keep_backdrop(entry, pixels);
+                if entry.current() {
+                    self.keep_backdrop(entry, pixels);
+                } else {
+                    self.open_home();
+                }
             }
             return;
         }
@@ -952,10 +988,13 @@ impl ProfilesEditor {
         if entry.source.is_some() && !self.check_theme_source() {
             return;
         }
+        if !entry.current() {
+            self.want_backdrop();
+            return;
+        }
         self.keep_backdrop(entry, pixels);
         // The selection may have moved on while it was made.
-        let bundled_dir = self.installed.bundled_dir.clone();
-        self.want_backdrop(bundled_dir);
+        self.want_backdrop();
     }
 
     fn select(&mut self, selection: Selection) {
@@ -974,6 +1013,7 @@ impl ProfilesEditor {
         self.session_review = false;
         self.excluded.clear();
         self.details = false;
+        self.compare_current = false;
         self.confirm_delete = false;
         self.name = None;
         self.notes.clear();
@@ -1316,6 +1356,8 @@ impl ProfilesEditor {
     pub fn update(&mut self, message: Message) -> Outcome {
         match message {
             Message::Select(selection) => self.select(selection),
+            Message::Collection(saved) => self.saved_collection = saved,
+            Message::Compare(current) => self.compare_current = current,
             Message::ThemeColors(on) => {
                 self.select_applied();
                 if let Some(mut p) = self.profile().filter(|p| p.appearance_only).cloned() {
@@ -1733,10 +1775,22 @@ impl ProfilesEditor {
                     part.domain == crate::desktop::profiles::Domain::DesktopIcons
                         && !part.changes.is_empty()
                 });
-                if let Some(source) = &self.theme_source {
-                    let _ = wallpaper::automatic::acknowledge_analyzed(store, source);
-                } else if !self.profile().is_some_and(|p| p.appearance_only) {
-                    let _ = wallpaper::automatic::keep_manual_colors(store);
+                // Only acknowledge color/polarity choices included in this
+                // transaction. A Wallpaper-only setup must leave the new
+                // source unseen so the runtime can derive its colors.
+                let includes = |pointer| plan.widget_patch().iter().any(|(p, _)| p == pointer);
+                let defines_colors =
+                    wallpaper::automatic::read_config(store).is_ok_and(|(_, config)| {
+                        (!config.appearance.wallpaper_colors || includes("/appearance/accent"))
+                            && (config.appearance.family.is_none()
+                                || includes("/appearance/wallpaper_light"))
+                    });
+                if defines_colors {
+                    if let Some(source) = &self.theme_source {
+                        let _ = wallpaper::automatic::acknowledge_analyzed(store, source);
+                    } else if !self.profile().is_some_and(|p| p.appearance_only) {
+                        let _ = wallpaper::automatic::keep_manual_colors(store);
+                    }
                 }
                 self.undo = Some(latest);
                 self.elsewhere = None;

@@ -1,5 +1,5 @@
-//! Dock & Panel subpage: panel selector, a miniature desktop that follows the
-//! draft, basic controls, applet regions and an Advanced disclosure.
+//! Dock and panel share an object selector, a collapsible desktop scene and
+//! focused behavior, style and contents groups. Commands stay in DesktopEditor.
 use super::pages::section;
 use super::*;
 use crate::desktop::applets::AppletCatalog;
@@ -11,7 +11,9 @@ use crate::settings::desktop::Message as Edit;
 use cosmic::iced::advanced::text as advanced_text;
 
 mod applets;
+pub(super) mod inspector;
 mod islands;
+pub(super) use inspector::paired;
 mod panel;
 pub(super) mod preview;
 
@@ -35,15 +37,12 @@ pub(super) fn line<'a>(value: impl Into<String>, size: f32, color: Color) -> Ele
         .into()
 }
 
-/// A labelled control row; the control wraps under narrow widths.
+/// A labelled control with room for native choices at compact widths.
 fn field<'a>(title: &'static str, control: Element<'a, Message>) -> Element<'a, Message> {
-    row::with_children(vec![
-        container(label(title, 13., FG)).width(112).into(),
-        container(control).width(Length::Fill).into(),
-    ])
-    .spacing(12)
-    .align_y(Alignment::Center)
-    .into()
+    column::with_children(vec![label(title, 12., MUTED), control])
+        .spacing(6)
+        .width(Length::Fill)
+        .into()
 }
 
 pub(super) fn banner<'a>(
@@ -153,18 +152,18 @@ fn value_slider<'a>(
 }
 
 impl Settings {
-    /// The part of the Dock & Panel page that stays put while the controls
-    /// scroll: back link, mode, a compact miniature, title, bar selector and
-    /// the System settings link. The miniature stays in view while editing.
+    /// The scene and keyboard object selector use the same selected bar.
+    /// This header scrolls with the inspector at compact window sizes.
     pub(super) fn desktop_dock_header(&self) -> Element<'_, Message> {
         let accent = self.settings_accent();
         let editor = &self.desktop;
         let title = split(
-            heading("Dock & panel", ""),
+            heading(
+                "Dock & panel",
+                "Changes apply as you finish each adjustment.",
+            ),
             super::windows::store_pill(editor.store(), accent),
         );
-        let ready = editor.current().filter(|draft| draft.installed());
-        // Unavailable or not read yet: the body explains; nothing to select.
         if editor.store().is_none() {
             return title;
         }
@@ -200,34 +199,30 @@ impl Settings {
         );
         let system = button::text("System settings ↗")
             .on_press(Message::OpenDesktop(editor.selected.system_page()));
-        let details = column::with_children(vec![
-            title,
-            row::with_children(vec![selector, system.into()])
+        let mut parts = vec![title];
+        if let Some(draft) = editor.current().filter(|draft| draft.installed()) {
+            let scene = if self.scene_open() {
+                self.desktop_preview(self.dock_preview_height())
+            } else {
+                cosmic::widget::space().height(0).into()
+            };
+            let caption = if draft.dirty() {
+                "Current adjustment · schematic bar appearance"
+            } else {
+                "Current desktop · schematic bar appearance"
+            };
+            parts.push(self.scene_frame(scene, caption));
+        }
+        parts.push(
+            row::with_children(vec![label("Editing", 12., MUTED), selector, system.into()])
                 .spacing(12)
                 .align_y(Alignment::Center)
                 .wrap()
                 .into(),
-        ])
-        .spacing(8)
-        .width(Length::Fill);
-        let mut strip: Vec<Element<'_, Message>> = Vec::new();
-        if ready.is_some() {
-            let height = self.dock_preview_height();
-            let [width, tall] = self.placement.screen();
-            // At most half the content width (window less the 176 px sidebar
-            // and 44 px padding): an ultrawide output letterboxes instead of
-            // squeezing the title, selector and System settings.
-            let room = (self.window.width - 220.).max(0.) * 0.5;
-            strip.push(
-                container(self.desktop_preview(height))
-                    .width((height * width / tall.max(1.)).min(room))
-                    .into(),
-            );
-        }
-        strip.push(details.into());
-        row::with_children(strip)
-            .spacing(18)
-            .align_y(Alignment::Center)
+        );
+        column::with_children(parts)
+            .spacing(12)
+            .width(Length::Fill)
             .into()
     }
 
@@ -314,20 +309,20 @@ impl Settings {
             names.dedup();
             items.push(conflict_banner(names.join(", "), edit(Edit::UseCurrent)));
         }
-        if draft.kind() == PanelKind::Panel {
-            items.push(self.panel_style(draft));
-            items.push(self.panel_appearance(draft));
-            items.push(self.panel_contents(draft));
-            if self.desktop.islands.installation.installed()
-                && draft.islands().known().is_some_and(|s| s.enabled)
+        items.push(self.layout_section(draft));
+        // A missing/unhealthy host must not hide the saved Islands intent or
+        // its recovery controls. Availability is reported next to placement.
+        if self.desktop.islands.installation.installed()
+            || draft.islands().known().is_some_and(|s| s.enabled)
+        {
+            if draft.kind() == PanelKind::Dock || draft.islands().known().is_some_and(|s| s.enabled)
             {
                 items.push(self.islands_section(draft));
             }
+        }
+        if draft.kind() == PanelKind::Panel {
+            items.push(self.panel_contents(draft));
         } else {
-            items.push(self.layout_section(draft));
-            if self.desktop.islands.installation.installed() {
-                items.push(self.islands_section(draft));
-            }
             items.push(self.applets_section(draft));
             items.push(self.installed_applets(draft));
         }
@@ -335,10 +330,13 @@ impl Settings {
         column::with_children(items).spacing(16).into()
     }
 
-    /// Compact miniature: small enough that Position and Size stay in view
-    /// at 820×600 (and a 125% scaled 656×480), roomier on taller windows.
+    /// Full-width scene, with controls still near at compact window sizes.
     fn dock_preview_height(&self) -> f32 {
-        (self.window.height * 0.16).clamp(80., 112.)
+        if self.window.width >= 1120. && self.window.height >= 760. {
+            280.
+        } else {
+            180.
+        }
     }
 
     fn layout_section(&self, draft: &PanelDraft) -> Element<'_, Message> {
@@ -389,9 +387,7 @@ impl Settings {
             .width(Length::FillPortion(1))
             .into(),
         ];
-        if !self.desktop.islands.installation.installed()
-            || !draft.islands().known().is_some_and(|s| s.enabled)
-        {
+        if draft.kind() == PanelKind::Dock && !draft.islands().known().is_some_and(|s| s.enabled) {
             toggle_items.push(
                 container(self.desktop_switch(
                     if horizontal {
@@ -407,12 +403,18 @@ impl Settings {
                 .into(),
             );
         }
-        let toggles = row::with_children(toggle_items)
-            .spacing(20)
-            .align_y(Alignment::Center);
-        let mut style: Vec<Element<'_, Message>> = vec![match opacity_percent {
+        let toggles = column::with_children(toggle_items).spacing(12);
+        let mut style: Vec<Element<'_, Message>> = vec![label("Style", 16., FG)];
+        if draft.kind() == PanelKind::Panel {
+            style.push(self.panel_style(draft));
+        }
+        style.push(field(
+            "Size",
+            choice(&draft.size(), sizes, Edit::Size, accent),
+        ));
+        style.push(match opacity_percent {
             Some(percent) => value_slider(
-                "Opacity",
+                "Background opacity",
                 format!("{percent}%"),
                 0..=100,
                 percent,
@@ -421,13 +423,14 @@ impl Settings {
                 |value| Edit::Opacity(value as u8),
             ),
             None => field(
-                "Opacity",
+                "Background opacity",
                 kept(match &opacity {
                     Setting::Unsupported(raw) => raw,
                     Setting::Known(_) => "",
                 }),
             ),
-        }];
+        });
+        style.push(toggles.into());
         style.push(field(
             "Corners",
             choice(
@@ -467,16 +470,20 @@ impl Settings {
                 accent,
             ),
         ));
-        column::with_children(vec![
+        paired(
+            self.window.width >= 1120.,
             section(vec![
-                label("Layout", 16., FG),
+                label("Position & behavior", 16., FG),
+                field(
+                    "Show on display",
+                    choice(&draft.output(), outputs, Edit::Output, accent),
+                ),
                 field(
                     "Screen edge",
                     choice(&draft.anchor(), anchors, Edit::Anchor, accent),
                 ),
-                field("Size", choice(&draft.size(), sizes, Edit::Size, accent)),
                 field(
-                    "Hiding",
+                    "Visibility",
                     choice(
                         &draft.autohide(),
                         AutoHide::ALL
@@ -487,17 +494,9 @@ impl Settings {
                         accent,
                     ),
                 ),
-                field(
-                    "Display",
-                    choice(&draft.output(), outputs, Edit::Output, accent),
-                ),
-                separator(),
-                toggles.into(),
             ]),
-            section([label("Style", 16., FG)].into_iter().chain(style).collect()),
-        ])
-        .spacing(16)
-        .into()
+            section(style),
+        )
     }
 
     fn desktop_switch(

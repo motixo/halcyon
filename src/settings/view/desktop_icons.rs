@@ -1,7 +1,6 @@
 //! Desktop icons subpage: a schematic of the drafted icon size, spacing and
 //! what the desktop shows, the controls, and the deferred-refresh note.
 use super::desktop::{ERROR, WARN, banner, conflict_banner, kept};
-use super::pages::section;
 use super::windows::{recovery_banner, store_pill};
 use super::*;
 use crate::desktop::desktop_icons::{DesktopIcons, SCALE_MAX, SCALE_MIN, SCALE_STEP, Show};
@@ -136,39 +135,18 @@ impl Settings {
         };
         let config = draft.config();
         let known = config.known().copied();
+        items.push(heading().into());
         items.push(
-            row::with_children(vec![
-                container(
-                    canvas(Miniature {
-                        icons: known.unwrap_or_default(),
-                        accent,
-                    })
-                    .width(PREVIEW.0)
-                    .height(PREVIEW.1),
-                )
-                .class(cosmic::theme::Container::custom(|_| {
-                    // The neutral desktop backdrop of the Profiles miniature.
-                    cosmic::iced::widget::container::Style {
-                        background: Some(Background::Gradient(
-                            cosmic::iced::gradient::Linear::new(2.4)
-                                .add_stop(0., Color::from_rgb(0.20, 0.21, 0.24))
-                                .add_stop(1., Color::from_rgb(0.12, 0.13, 0.15))
-                                .into(),
-                        )),
-                        border: Border {
-                            color: LINE,
-                            width: 1.,
-                            radius: 12.into(),
-                        },
-                        ..Default::default()
-                    }
-                }))
+            self.scene_frame(
+                canvas(Miniature {
+                    icons: known.unwrap_or_default(),
+                    accent,
+                })
+                .width(PREVIEW.0)
+                .height(PREVIEW.1)
                 .into(),
-                heading().into(),
-            ])
-            .spacing(18)
-            .align_y(Alignment::Center)
-            .into(),
+                "Schematic · desktop items, icon size and spacing",
+            ),
         );
         if let Some(banner) = recovery_banner(
             editor.recovery(),
@@ -198,20 +176,22 @@ impl Settings {
             }
             split(label(title, 13., FG), toggle.into())
         };
-        items.push(section(vec![
-            label("Show on desktop", 16., FG),
-            show(
-                "Desktop folder",
-                Show::Folder,
-                known.map(|icons| icons.show_content),
-            ),
-            show(
-                "Mounted drives",
-                Show::Drives,
-                known.map(|icons| icons.show_mounted_drives),
-            ),
-            show("Trash", Show::Trash, known.map(|icons| icons.show_trash)),
-        ]));
+        items.push(group(
+            Some("Desktop items"),
+            vec![
+                show(
+                    "Desktop folder",
+                    Show::Folder,
+                    known.map(|icons| icons.show_content),
+                ),
+                show(
+                    "Mounted drives",
+                    Show::Drives,
+                    known.map(|icons| icons.show_mounted_drives),
+                ),
+                show("Trash", Show::Trash, known.map(|icons| icons.show_trash)),
+            ],
+        ));
         let scale = |title: &'static str, value: Option<u16>, message: fn(u16) -> Edit| {
             let value_label = match value {
                 Some(value)
@@ -239,19 +219,21 @@ impl Settings {
             }
             column::with_children(parts).spacing(6).into()
         };
-        items.push(section(vec![
-            label("Size", 16., FG),
-            scale(
-                "Icon size",
-                known.map(|icons| icons.icon_size.get()),
-                Edit::Size,
-            ),
-            scale(
-                "Spacing",
-                known.map(|icons| icons.grid_spacing.get()),
-                Edit::Spacing,
-            ),
-        ]));
+        items.push(group(
+            Some("Size & spacing"),
+            vec![
+                scale(
+                    "Icon size",
+                    known.map(|icons| icons.icon_size.get()),
+                    Edit::Size,
+                ),
+                scale(
+                    "Spacing",
+                    known.map(|icons| icons.grid_spacing.get()),
+                    Edit::Spacing,
+                ),
+            ],
+        ));
         items.push(label(REFRESH_NOTE, 12., MUTED));
         column::with_children(items).spacing(16).into()
     }

@@ -3,12 +3,14 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 import stat
 import subprocess
 import time
 import panel_launcher
+from bundle_contract import installed_package_status
 
 PACKAGE = 'cosmic-ext-halcyon-islands'
 FORMAT = 'halcyon-islands-installation'
@@ -120,7 +122,10 @@ def generation_status(result, home, library, installed=None, running=None, host=
         manifest, catalog = verify_bundle(library, 'companion-manifest.json', context=context)
         generation = digest(library / 'companion-manifest.json')
         from runtime_compatibility import enabled as family_policy, state as family_state
-        if family_policy(catalog):
+        if installed is None:
+            state = dict(state='unknown', reason='not_measured', cohort=None)
+            result['compatible'] = None
+        elif family_policy(catalog):
             # This read-only worker observation is not reusable write authority.
             state = family_state(installed, host is True) if (installed or {}).get('family') else dict(
                 state='unsupported', reason='unsupported_cosmic_family', cohort=None)
@@ -131,22 +136,32 @@ def generation_status(result, home, library, installed=None, running=None, host=
             result['compatible'] = state['state'] in ('ready', 'logout_required')
     except (OSError, ValueError, KeyError, TypeError):
         result.update(compatible=False, healthy=False)
+    management_error = None
     try:
-        selection = record(home / '.local/share/cosmic-desktop-cards/companion/selection.json')
-        active = records(home)
-        verify_owned(home, active)
+        selection_path = home / '.local/share/cosmic-desktop-cards/companion/selection.json'
+        selection = record(selection_path) if selection_path.exists() else {}
         result['enabled'] = selection.get('enabled') is True
+        active = records(home)
+        try:
+            if active or selection_path.exists():
+                verify_owned(home, active)
+        except (OSError, ValueError, KeyError, TypeError):
+            management_error = 'ownership_conflict'
+            raise
         _, _, _, pointer = selected_generation(home, context=context)
         active_generation = pointer['generation']
         current = panel_launcher.session_identity()
         deferred = current is None or current == pointer.get('defer_session')
     except (OSError, ValueError, KeyError, TypeError):
         deferred = True
-        if result['enabled'] and (home / '.local/share/cosmic-desktop-cards/companion/generation.json').exists():
+        if management_error or result['enabled'] or selection_path.exists():
+            management_error = management_error or 'active_generation_invalid'
             result['healthy'] = False
-            state = dict(state='invalid_bundle', reason='active_generation_invalid', cohort=None)
-    failed = (home / '.local/state/desktop-cards-panel/failed').exists()
-    if failed or not result['enabled']:
+            state = dict(state='invalid_bundle', reason=management_error, cohort=None)
+    failed = (panel_launcher.state_directory(home) / 'failed').exists()
+    if management_error:
+        label, reason = 'Compatibility update needed', management_error
+    elif failed or not result['enabled']:
         label = 'Compatibility update needed' if failed else 'Islands disabled'
         reason = 'previous_failure' if failed else 'disabled'
     elif state['state'] in ('unsupported', 'invalid_bundle'):
@@ -184,6 +199,46 @@ def query(package, field):
         return None
 
 
+def inspect(home, library, installed, versions, initial):
+    from bundle_contract import VerificationContext, verify_bundle
+    from runtime_identity import installed_identity, running_identity, host_identity
+    from refresh import selected_generation
+    measured = active = host = None
+    with VerificationContext() as context:
+        try:
+            manifest, catalog = verify_bundle(library, 'companion-manifest.json', context=context)
+            # Disabled management needs no OS or live-process measurement.
+            if initial['enabled']:
+                from runtime_compatibility import enabled as family_policy, family, Session
+                if family_policy(catalog):
+                    measured = family()
+                    _, selected, _, _ = selected_generation(home, context=context)
+                    owner = host_identity(selected['binary_sha256'])
+                    host = False
+                    try:
+                        observation = Session(versions=measured['package_versions'])
+                        try:
+                            if owner is not None and selected['payload_sha256'] == manifest['payload_sha256']:
+                                host = observation.inventory(owner)
+                            measured['applet_issues'] = observation.applet_issues(owner if host else None)
+                            observation.check()
+                        finally: observation.close()
+                    except (OSError, ValueError) as error:
+                        host = False
+                        code = str(error)
+                        measured['startup_error'] = code if re.fullmatch(r'[a-z_]{1,80}',code) else 'startup_check_failed'
+                else:
+                    measured = installed_identity(catalog)
+                    _, selected, _, _ = selected_generation(home, context=context)
+                    owner = host_identity(selected['binary_sha256'])
+                    active = running_identity(catalog, phase='running', host=owner) if owner else None
+                    host = owner is not None
+            result = detect(home, library, installed, versions, installed=measured,running=active,host=host,context=context)
+            context.check()
+            return result
+        except (OSError, ValueError, KeyError, TypeError):
+            return {**initial,'status':'Compatibility update needed','reason':'bundle_or_measurement_invalid','healthy':False}
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--root', type=Path, help=argparse.SUPPRESS)
@@ -195,13 +250,14 @@ def main():
     home = (args.root or Path.home()).resolve()
     if args.root:
         # Explicit fixtures never query host packages, XDG data or session IPC.
+        os.environ['XDG_STATE_HOME'] = str(home / '.local/state')
         library = args.library or home / 'package'
         versions = {}
         installed = library.is_dir()
     else:
         library = Path('/usr/lib') / PACKAGE
         versions = {} # Relevant versions are measured only by the bounded verifier.
-        installed = query(PACKAGE, '${Status}') == 'install ok installed' and regular(Path('/usr/bin/halcyon-islands'))
+        installed = installed_package_status(query(PACKAGE, '${Status}')) and regular(Path('/usr/bin/halcyon-islands'))
     if args.root or not installed:
         print(json.dumps(detect(home, library, installed, versions), separators=(',', ':')))
         return
@@ -216,46 +272,8 @@ def main():
     if args.progress or args.presence: print(json.dumps(initial,separators=(',', ':')), flush=True)
     if args.presence: return
     from verification import bounded
-    def inspect():
-        from bundle_contract import VerificationContext, verify_bundle
-        from runtime_identity import installed_identity, running_identity, host_identity
-        from refresh import selected_generation
-        measured = active = host = None
-        with VerificationContext() as context:
-            try:
-                manifest, catalog = verify_bundle(library, 'companion-manifest.json', context=context)
-                # Disabled management needs no OS or live-process measurement.
-                if initial['enabled']:
-                    from runtime_compatibility import enabled as family_policy, family, Session
-                    if family_policy(catalog):
-                        measured = family()
-                        _, selected, _, _ = selected_generation(home, context=context)
-                        owner = host_identity(selected['binary_sha256'])
-                        host = False
-                        try:
-                            observation = Session(versions=measured['package_versions'])
-                            try:
-                                if owner is not None and selected['payload_sha256'] == manifest['payload_sha256']:
-                                    host = observation.inventory(owner)
-                                measured['applet_issues'] = observation.applet_issues(owner if host else None)
-                                observation.check()
-                            finally: observation.close()
-                        except (OSError, ValueError) as error:
-                            code = str(error)
-                            measured['startup_error'] = code if re.fullmatch(r'[a-z_]{1,80}',code) else 'startup_check_failed'
-                    else:
-                        measured = installed_identity(catalog)
-                        _, selected, _, _ = selected_generation(home, context=context)
-                        owner = host_identity(selected['binary_sha256'])
-                        active = running_identity(catalog, phase='running', host=owner) if owner else None
-                        host = owner is not None
-                result = detect(home, library, installed, versions, installed=measured,running=active,host=host,context=context)
-                context.check()
-                return result
-            except (OSError, ValueError, KeyError, TypeError):
-                return {**initial,'status':'Compatibility update needed','reason':'bundle_or_measurement_invalid','healthy':False}
     try:
-        result = bounded(inspect, max(.001,deadline-time.monotonic()))
+        result = bounded(lambda: inspect(home, library, installed, versions, initial), max(.001,deadline-time.monotonic()))
     except (OSError, ValueError, TimeoutError):
         result = {**initial, 'reason':'verification_timeout'}
     print(json.dumps(result,separators=(',', ':')))

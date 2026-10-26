@@ -5,6 +5,8 @@ use crate::data::{
     WeatherSnapshot,
 };
 use crate::drawer::{self, DragResult, ReorderDrag, Sidebar, Widget};
+#[cfg(test)]
+mod auditfix_tests;
 mod autoswitch;
 mod calendar_details;
 mod clock;
@@ -595,13 +597,21 @@ impl Cards {
                     (None, None) => true,
                     _ => false,
                 });
-        if same_widgets
+        let same_geometry = same_widgets
             && match (&selected, &self.selected_output) {
                 (Some(a), Some(b)) => a.same_geometry(b),
                 (None, None) => true,
                 _ => false,
-            }
-        {
+            };
+        if same_geometry {
+            self.rebase_arrange_identity();
+        }
+        if self.pause_invalid_arrange_resume(selected.as_ref()) {
+            // The recovery request was cancelled, including its display override.
+            // Reconcile normal controls without ever arranging on the fallback.
+            return self.reconcile_output();
+        }
+        if same_geometry {
             self.selected_output = selected;
             // A newly connected, unassigned screen still belongs in Settings.
             return if self.output_known {
@@ -629,6 +639,7 @@ impl Cards {
         }
         self.cancel_layout_drag();
         if self.layout_editor.active {
+            self.layout_editor.pause_for_output_change();
             self.paused_layout = Some(std::mem::take(&mut self.layout_editor));
         }
         self.pause_note();
@@ -638,6 +649,13 @@ impl Cards {
             self.config.widget_order = drag.original_order.iter().map(|w| w.key().into()).collect();
         }
         self.sidebar.hide();
+        if self
+            .paused_layout
+            .as_ref()
+            .is_some_and(|editor| editor.exit_failed)
+        {
+            self.sidebar.show(Instant::now());
+        }
         self.display_generation += 1;
         self.selected_output = selected;
         self.output_known = false;
@@ -819,7 +837,13 @@ impl Cards {
                         self.output_known = true;
                         self.screen_size = screen;
                         let widgets = self.sync_widget_surfaces();
-                        let arrange = if std::mem::take(&mut self.pending_arrange) {
+                        let arrange = if self
+                            .paused_layout
+                            .as_ref()
+                            .is_some_and(|editor| editor.pending_resume.is_some())
+                        {
+                            self.complete_arrange_resume()
+                        } else if std::mem::take(&mut self.pending_arrange) {
                             self.arrange()
                         } else {
                             Task::none()
@@ -1308,6 +1332,53 @@ fn forecast_temperature(value: Option<&f64>) -> String {
         .unwrap_or_else(|| "—".into())
 }
 
+/// Cached readings remain useful, but must disclose both age and refresh
+/// failures. The refresh interval is the maximum age of a current reading.
+fn weather_status(
+    config: &Config,
+    updated_at: Option<&str>,
+    failed: bool,
+    now: chrono::DateTime<Local>,
+) -> Option<String> {
+    let updated = updated_at.and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok());
+    let age = updated.map(|updated| now.signed_duration_since(updated));
+    let stale = age.is_some_and(|age| {
+        age.num_seconds() < 0
+            || age.num_seconds() as u64 >= config.refresh_intervals.seconds(Widget::Weather)
+    });
+    if !failed && !stale && (updated_at.is_none() || updated.is_some()) {
+        return None;
+    }
+    let age = match age
+        .map(|age| age.num_seconds())
+        .filter(|seconds| *seconds >= 0)
+    {
+        Some(seconds) if seconds < 60 => "just now".into(),
+        Some(seconds) if seconds < 3600 => format!("{}m ago", seconds / 60),
+        Some(seconds) if seconds < 86400 => format!("{}h ago", seconds / 3600),
+        Some(seconds) => format!("{}d ago", seconds / 86400),
+        None => "time unknown".into(),
+    };
+    Some(format!(
+        "Saved · {age}{}",
+        if failed { "\nRefresh failed" } else { "" },
+    ))
+}
+
+fn weather_forecast_days(
+    daily: &data::Daily,
+    today: NaiveDate,
+) -> impl Iterator<Item = (usize, NaiveDate)> + '_ {
+    daily
+        .time
+        .iter()
+        .enumerate()
+        .filter_map(move |(index, day)| {
+            let day = NaiveDate::parse_from_str(day, "%Y-%m-%d").ok()?;
+            (day >= today).then_some((index, day))
+        })
+}
+
 fn action<'a>(value: impl Into<String>, message: Message, color: Color) -> Element<'a, Message> {
     mouse_area(
         container(label(value, 12., color))
@@ -1427,13 +1498,13 @@ fn weather_dew_point(config: &Config, current: &data::Current) -> Option<String>
 fn weather_view(
     config: &Config,
     weather: Option<&Weather>,
-    _updated_at: Option<&str>,
+    updated_at: Option<&str>,
     failed: bool,
     height: f32,
 ) -> Element<'static, Message> {
     let _style = crate::widget_style::scope(config);
     let p = config.palette();
-    let mut rows = vec![label(
+    let title = label(
         config
             .location
             .as_ref()
@@ -1441,7 +1512,19 @@ fn weather_view(
             .unwrap_or("Weather"),
         crate::widget_style::TITLE,
         p.foreground,
-    )];
+    );
+    let mut rows = vec![if let Some(status) =
+        weather.and_then(|_| weather_status(config, updated_at, failed, Local::now()))
+    {
+        spread(
+            title,
+            container(label(status, 10., p.muted))
+                .id(cosmic::widget::Id::new("weather-status"))
+                .into(),
+        )
+    } else {
+        title
+    }];
     match (&config.location, weather) {
         (_, Some(w)) => {
             let wind = format!("Wind\u{a0}{:.0}\u{a0}km/h", w.current.wind_speed_10m);
@@ -1488,25 +1571,17 @@ fn weather_view(
                 .align_y(Alignment::Center)
                 .into(),
             );
-            let forecast: Vec<Element<'_, Message>> = w
-                .daily
-                .time
-                .iter()
-                .enumerate()
+            let today = Local::now().date_naive();
+            let forecast: Vec<Element<'_, Message>> = weather_forecast_days(&w.daily, today)
                 .take(3)
                 .map(|(i, day)| {
-                    let today = Local::now().date_naive();
-                    let title = NaiveDate::parse_from_str(day, "%Y-%m-%d")
-                        .map(|date| {
-                            if date == today {
-                                "Today".into()
-                            } else if date == today + Days::days(1) {
-                                "Tomorrow".into()
-                            } else {
-                                date.format("%a %-d").to_string()
-                            }
-                        })
-                        .unwrap_or_default();
+                    let title = if day == today {
+                        "Today".into()
+                    } else if day == today + Days::days(1) {
+                        "Tomorrow".into()
+                    } else {
+                        day.format("%a %-d").to_string()
+                    };
                     let high = forecast_temperature(w.daily.temperature_2m_max.get(i));
                     let low = forecast_temperature(w.daily.temperature_2m_min.get(i));
                     let rain = w
@@ -1538,7 +1613,11 @@ fn weather_view(
                     .into()
                 })
                 .collect();
-            rows.push(row::with_children(forecast).spacing(12).into());
+            if forecast.is_empty() {
+                rows.push(label("Forecast unavailable", 10., p.muted));
+            } else {
+                rows.push(row::with_children(forecast).spacing(12).into());
+            }
         }
         (Some(_), None) => rows.push(label(
             if failed {

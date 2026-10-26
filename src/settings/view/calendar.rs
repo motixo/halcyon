@@ -89,7 +89,7 @@ impl Settings {
                         .into(),
                 );
             }
-            rows.push(row::with_children(actions).spacing(8).into());
+            rows.push(row::with_children(actions).spacing(8).wrap().into());
         } else if editor.confirm_disconnect {
             rows.push(detail("Disconnect on this computer?", "This removes the app’s cached events. Your original calendars and events stay unchanged."));
             rows.push(
@@ -103,6 +103,7 @@ impl Settings {
                         .into(),
                 ])
                 .spacing(8)
+                .wrap()
                 .into(),
             );
         } else if editor.connection.connected() {
@@ -167,7 +168,12 @@ impl Settings {
                 );
             }
             if self.help_open == Some("calendar-account") || editor.error.is_some() {
-                rows.push(row::with_children(actions).spacing(6).wrap().into());
+                // Keep the disclosed account actions beside their trigger,
+                // even when the account has a long list of calendars.
+                rows.insert(
+                    if editor.error.is_some() { 2 } else { 1 },
+                    row::with_children(actions).spacing(6).wrap().into(),
+                );
             }
         } else if editor.connection.cleanup_pending() {
             rows.push(detail(
@@ -242,6 +248,7 @@ impl Settings {
                             .into(),
                     ])
                     .spacing(8)
+                    .wrap()
                     .into(),
                 );
             } else {
@@ -253,7 +260,7 @@ impl Settings {
                 );
             }
         }
-        group(None, rows)
+        group(Some("Calendars & connection"), rows)
     }
     pub(super) fn calendar_publisher_setup(&self) -> Element<'_, Message> {
         let mut rows = vec![

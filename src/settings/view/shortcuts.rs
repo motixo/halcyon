@@ -1,6 +1,5 @@
 //! Native inspector with direct completed controls and local form validation.
 use super::desktop::{ERROR, WARN, banner, conflict_banner, line};
-use super::pages::section;
 use super::system_appearance::fill;
 use super::windows::{recovery_banner, store_pill};
 use super::*;
@@ -270,16 +269,10 @@ impl Settings {
             .collect();
         if !custom.is_empty() {
             let mut custom_items = Vec::new();
-            if filter == Filter::All {
-                custom_items.push(label("Your shortcuts", 14., FG));
-            }
             for row in custom {
-                if !custom_items.is_empty() {
-                    custom_items.push(separator());
-                }
                 custom_items.push(self.shortcut_row(row));
             }
-            items.push(section(custom_items));
+            items.push(group(Some("Your shortcuts"), custom_items));
         }
         for category in Category::ALL {
             let grouped: Vec<&Row> = matching
@@ -316,14 +309,13 @@ impl Settings {
             )];
             if open {
                 for row in grouped {
-                    group_items.push(separator());
                     group_items.push(self.shortcut_row(row));
                 }
             }
-            items.push(section(group_items));
+            items.push(group(None, group_items));
         }
         if matching.is_empty() {
-            items.push(section(vec![
+            items.push(group(Some("Commands"), vec![
                 label(if query.is_empty() && filter == Filter::Custom {
                     "Make a shortcut for something you do often.".to_string()
                 } else if query.is_empty() {
@@ -517,15 +509,7 @@ fn command_form<'a>(
     recording_error: Option<&str>,
 ) -> Element<'a, Message> {
     let editing = form.editing.is_some();
-    let mut items = vec![label(
-        if editing {
-            "Edit command"
-        } else {
-            "Add command"
-        },
-        16.,
-        FG,
-    )];
+    let mut items = Vec::new();
     // The question goes first, so it is in view without scrolling.
     if let Some(ask) = &form.ask
         && let Some(question) = question(ask)
@@ -603,5 +587,12 @@ fn command_form<'a>(
         .align_y(Alignment::Center)
         .into(),
     );
-    section(items)
+    group(
+        Some(if editing {
+            "Edit command"
+        } else {
+            "Add command"
+        }),
+        items,
+    )
 }

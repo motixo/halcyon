@@ -681,6 +681,20 @@ impl DesktopEditor {
     }
 
     fn apply(&mut self) {
+        // Live Arrange owns its draft until Done/Cancel. Ordinary control
+        // completion must not commit or disrupt that lease.
+        if self.arranging() {
+            return;
+        }
+        if self
+            .islands
+            .gap_text
+            .as_ref()
+            .is_some_and(|text| text.parse::<u16>().ok().is_none_or(|gap| gap > 64))
+        {
+            self.notice = Some(Notice::Error("Gap must be between 0 and 64 pixels".into()));
+            return;
+        }
         if self.drafts.values().any(|d| {
             d.edited().any(|key| key == "islands") && d.islands().known().is_some_and(|s| s.enabled)
         }) {
@@ -1042,6 +1056,74 @@ mod tests {
         assert_eq!(editor.island_output(), "");
         editor.edit(|d| d.set_output(Output::Name("DP-2".into())));
         assert_eq!(editor.island_output(), "DP-2");
+    }
+
+    #[test]
+    fn auditfix_runtime_refresh_keeps_requested_identity_and_clears_lost_measurement() {
+        let fixture = Fixture::new("auditfix-islands-output");
+        let mut editor = editor(&fixture);
+        for configured in [Output::Name("DP-2".into()), Output::All] {
+            editor.edit(|d| d.set_output(configured.clone()));
+            let requested = editor.requested_island_output();
+            editor.accept_runtime(islands::RuntimeStatus {
+                panel: Some(editor.selected),
+                requested_output: requested.clone(),
+                output: Some("eDP-1".into()),
+                compatible: true,
+                ..Default::default()
+            });
+            assert_eq!(editor.island_output(), "eDP-1");
+            assert_eq!(editor.requested_island_output(), requested);
+            editor.accept_runtime(islands::RuntimeStatus {
+                panel: Some(editor.selected),
+                requested_output: requested.clone(),
+                output: Some("DP-2".into()),
+                compatible: true,
+                ..Default::default()
+            });
+            assert_eq!(editor.island_output(), "DP-2");
+            editor.accept_runtime(islands::RuntimeStatus {
+                panel: Some(editor.selected),
+                requested_output: requested.clone(),
+                ..Default::default()
+            });
+            assert!(editor.islands.measured_output.is_none());
+            assert_eq!(editor.island_output(), requested);
+        }
+    }
+
+    #[test]
+    fn auditfix_ordinary_island_moves_and_gap_completion_commit_but_invalid_text_does_not() {
+        use crate::settings::Message as SettingsMessage;
+        use islands::Edit;
+        let fixture = Fixture::new("auditfix-islands-completion");
+        crate::desktop::islands::fixture_installed(&fixture.0);
+        let mut editor = editor(&fixture);
+        editor.islands.group = true;
+        let apply = |editor: &mut DesktopEditor, edit: Edit| {
+            let message = SettingsMessage::DesktopEditor(Message::Islands(edit.clone()));
+            editor.update(Message::Islands(edit));
+            if let Some(SettingsMessage::DesktopEditor(completion)) =
+                crate::settings::direct::completion(&message)
+            {
+                editor.update(completion);
+            }
+        };
+        let key = dock_islands_core::NAMESPACE;
+        apply(&mut editor, Edit::Move(1));
+        assert!(!editor.dirty());
+        assert!(fixture.read(key, "Dock").is_some());
+        apply(&mut editor, Edit::GapText("23".into()));
+        assert!(editor.dirty());
+        apply(&mut editor, Edit::GapFinished);
+        assert!(!editor.dirty());
+        let saved = fixture.read(key, "Dock").unwrap();
+        let settings: dock_islands_core::Settings = ron::from_str(&saved).unwrap();
+        assert_eq!(settings.gap, 23);
+        apply(&mut editor, Edit::GapText("99".into()));
+        apply(&mut editor, Edit::GapFinished);
+        assert_eq!(fixture.read(key, "Dock").unwrap(), saved);
+        assert!(matches!(editor.notice, Some(Notice::Error(_))));
     }
 
     #[test]

@@ -190,7 +190,7 @@ fn apply_writes_only_included_parts_and_its_undo_survives_a_restart() {
     let mut restarted = desk.editor();
     let latest = restarted.latest().cloned().expect("profile Undo kept");
     assert_eq!(latest.owner, Owner::Profile);
-    assert_eq!(latest.label, "Profile “Focus”");
+    assert_eq!(latest.label, "Profile “Deep work”");
     assert!(restarted.can_undo() && restarted.elsewhere().is_none());
     assert_eq!(
         change_domains(&latest),
@@ -277,11 +277,11 @@ fn dialog_results_complete_only_the_request_that_started_them() {
     write_export(&file, &bytes, confine.as_deref()).unwrap();
     editor.update(Message::Exported(id, Ok(Some(file.clone()))));
     assert!(!editor.busy());
-    assert!(matches!(&editor.notice, Some(Notice::Done(text)) if text.contains("“Evening”")));
+    assert!(matches!(&editor.notice, Some(Notice::Done(text)) if text.contains("“After hours”")));
     assert_eq!(*editor.selection(), Selection::Preset("halcyon"));
     assert_eq!(
         profiles::import(&fs::read(&file).unwrap()).unwrap().name,
-        "Evening",
+        "After hours",
         "the file holds the profile the export started from"
     );
 
@@ -331,13 +331,13 @@ fn equal_names_get_separate_entries_and_delete_confirms_and_removes_one() {
     // Built-ins are duplicated into the library, never changed.
     editor.update(Message::Select(Selection::Preset("focus")));
     editor.update(Message::Name(Some(NameAction::Duplicate)));
-    assert_eq!(editor.name.as_ref().unwrap().text, "Focus copy");
+    assert_eq!(editor.name.as_ref().unwrap().text, "Deep work copy");
     editor.update(Message::NameSubmit);
     let Selection::Saved(copy) = editor.selection().clone() else {
         panic!("the copy is selected");
     };
-    assert_eq!(editor.profile().unwrap().name, "Focus copy");
-    assert_eq!(profiles::preset("focus").unwrap().profile.name, "Focus");
+    assert_eq!(editor.profile().unwrap().name, "Deep work copy");
+    assert_eq!(profiles::preset("focus").unwrap().profile.name, "Deep work");
     // Rename keeps the ID; long names are allowed up to the limit.
     let long = "A".repeat(80);
     name(&mut editor, NameAction::Rename(copy.clone()), &long);
@@ -2423,4 +2423,144 @@ fn review_r1_family_selection_retains_unproven_native_roles_through_recolor() {
             }
         }
     }
+}
+
+#[test]
+fn auditfix_set02_wallpaper_only_editor_apply_keeps_colors_due_across_restart() {
+    use crate::desktop::wallpaper::automatic;
+    for broad in [false, true] {
+        let desk = Desk::new(&format!("auditfix-wallpaper-only-{broad}"));
+        solid_wallpaper(&desk, [0.02, 0.02, 0.02]);
+        let mut editor = desk.editor();
+        editor.update(Message::Select(Selection::Preset("theme-bare")));
+        editor.update(Message::ThemeColors(true));
+        finish_theme(&mut editor);
+        assert_eq!(editor.update(Message::Apply), Outcome::Changed);
+        assert!(automatic::prepare(&desk.store()).unwrap().is_none());
+        let old = automatic::read_config(&desk.store()).unwrap().1.appearance;
+        assert!(!old.wallpaper_light);
+
+        let mut profile = Profile::new("Light wallpaper").unwrap();
+        profile.wallpaper = Some(profiles::WallpaperLook {
+            background: Some(profiles::BackgroundLook {
+                source: Some(profiles::SourceLook::Color(profiles::Rgb::Hex(
+                    "#80E8A0".into(),
+                ))),
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        if broad {
+            profile.widget_style = Some(serde_json::json!({"theme": "rose"}));
+        }
+        profile.version = profile.written_version();
+        let id = ProfileLibrary::new(&desk.store()).create(&profile).unwrap();
+        editor.update(Message::Select(Selection::Saved(id)));
+        if broad {
+            editor.update(Message::Include(Domain::WidgetStyle, false));
+        }
+        assert_eq!(editor.selected_domains(), [Domain::Wallpaper].into());
+        assert_eq!(editor.update(Message::Apply), Outcome::Changed);
+        let untouched = automatic::read_config(&desk.store()).unwrap().1.appearance;
+        assert!(untouched.wallpaper_colors);
+        assert_eq!(untouched.accent, old.accent);
+        assert_eq!(untouched.wallpaper_light, old.wallpaper_light);
+
+        // Read from a fresh store, as the restarted runtime does. This goes
+        // through the editor boundary that the earlier engine test missed.
+        let store = desk.store();
+        let prepared = automatic::prepare(&store)
+            .unwrap()
+            .expect("new wallpaper must remain unseen");
+        automatic::commit(&store, prepared).unwrap();
+        let current = automatic::read_config(&store).unwrap().1.appearance;
+        assert!(current.wallpaper_light);
+        assert!(current.wallpaper_colors);
+        assert_ne!(current.accent, old.accent);
+        assert!(automatic::prepare(&store).unwrap().is_none());
+    }
+}
+
+#[test]
+fn auditfix_ux04_current_wallpaper_replacement_invalidates_cache_and_late_pixels() {
+    let desk = Desk::new("auditfix-current-picture-version");
+    let path = desk.fixture.0.join("current.png");
+    let replace = |rgb| {
+        // Atomic replacement even keeps the old mtime: inode identity must
+        // still invalidate the cache when path, size and mtime all agree.
+        let modified = fs::metadata(&path).ok().and_then(|m| m.modified().ok());
+        let replacement = path.with_file_name("replacement.png");
+        image::RgbImage::from_pixel(16, 16, image::Rgb(rgb))
+            .save(&replacement)
+            .unwrap();
+        if let Some(modified) = modified {
+            fs::File::options()
+                .write(true)
+                .open(&replacement)
+                .unwrap()
+                .set_modified(modified)
+                .unwrap();
+        }
+        fs::rename(replacement, &path).unwrap();
+    };
+    replace([20u8, 20, 20]);
+    desk.fixture.user(
+        wallpaper::NAMESPACE,
+        "all",
+        &ron::to_string(&BgEntry::new("all", BgSource::Path(path.clone()))).unwrap(),
+    );
+    let mut editor = desk.editor();
+    editor.take_jobs();
+    editor.open_home();
+    for job in editor.take_jobs() {
+        editor.update(job.run());
+    }
+    let pixel = |editor: &ProfilesEditor| {
+        let Handle::Rgba { pixels, .. } = editor.home_image().expect("current pixels") else {
+            panic!("RGBA")
+        };
+        [pixels[0], pixels[1], pixels[2]]
+    };
+    assert_eq!(pixel(&editor), [20, 20, 20]);
+    editor.open_home();
+    assert!(editor.take_jobs().is_empty(), "unchanged version is reused");
+
+    replace([240, 240, 240]);
+    editor.open_home();
+    let old_job = editor.take_jobs().pop().expect("same path, new version");
+    let old_result = old_job.run();
+    replace([80, 80, 80]);
+    editor.update(old_result);
+    assert!(
+        editor.home_image().is_none(),
+        "late decoded pixels must not become current"
+    );
+    let fresh = editor
+        .take_jobs()
+        .pop()
+        .expect("recheck queued current version");
+    editor.update(fresh.run());
+    assert_eq!(pixel(&editor), [80, 80, 80]);
+    assert_eq!(editor.selection(), &Selection::Current);
+    editor.open_home();
+    assert!(editor.take_jobs().is_empty());
+
+    // A failed decode is cached too, but repairing the same path must
+    // allow another attempt without restarting Settings.
+    fs::write(&path, b"not a PNG").unwrap();
+    editor.open_home();
+    let broken = editor.take_jobs().pop().unwrap();
+    editor.update(broken.run());
+    assert!(editor.home_image().is_none());
+    editor.open_home();
+    assert!(editor.take_jobs().is_empty());
+    replace([160, 160, 160]);
+    editor.open_home();
+    let repaired = editor
+        .take_jobs()
+        .pop()
+        .expect("repaired image is a new version");
+    editor.update(repaired.run());
+    assert_eq!(pixel(&editor), [160, 160, 160]);
+    assert!(editor.backdrops.len() <= BACKDROPS);
 }

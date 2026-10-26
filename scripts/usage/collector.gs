@@ -4,6 +4,7 @@
 const MAX_INSTALLATIONS = 20000;
 const RETENTION_DAYS = 90;
 const WIDTH = 15;
+const WRITE_BATCH_ROWS = 256;
 const HEADERS = ['Installation hash','Last active (UTC)','Version','First reported country',
   'Reporting status','Opted out at (UTC)','Status received at (UTC)','Preference revision','Choice at (UTC)',
   'First activity received since tracking (UTC)','First desktop start (client UTC; if known)',
@@ -68,6 +69,10 @@ function currentRows(rows, today) {
   for (const raw of rows) {
     if (!raw[0]) continue;
     const row = normalize(raw), previous = unique.get(row[0]);
+    // A prefix write can persist the first receipt before its paired version.
+    // Repair from that row's saved version before deduplication or a newer
+    // report replaces it; absent legacy observations remain unknown.
+    if (row[9] && !row[11] && validVersion(row[2])) row[11]=row[2];
     if (!previous) { unique.set(row[0], row); continue; }
     // A repeated/partially compacted row must not inflate active-day counts or
     // replace the earliest observation with the date of its retry.
@@ -81,7 +86,7 @@ function currentRows(rows, today) {
     const stronger = row[7] > previous[7] || row[7] === previous[7] && row[4] === 'opted_out' && previous[4] !== 'opted_out';
     if (stronger || row[7] === previous[7] && row[4] === previous[4] && Number(row[1]) > Number(previous[1])) {
       row[3] = previous[3] || row[3]; unique.set(row[0], row);
-    } else previous[3] ||= row[3];
+    } else if (!previous[3]) previous[3] = row[3];
     const selected=unique.get(row[0]); selected.splice(9,6,...metadata); refreshDays_(selected,today,days);
   }
   return Array.from(unique.values()).filter(row => {
@@ -124,7 +129,7 @@ function applyReport(rows, id, report, now) {
     row = normalize([id,'','','','enabled','','',report.revision || 0,'']); next.push(row);
   }
   row[1] = today; row[2] = report.version;
-  row[3] ||= validCountry(report.country) ? report.country : '';
+  if (!row[3]) row[3] = validCountry(report.country) ? report.country : '';
   if (!row[9]) { row[9]=now.toISOString(); row[11]=report.version; }
   if (!row[10] && report.schema === 4 && report.first_started_at !== null)
     row[10]=new Date(report.first_started_at*1000).toISOString();
@@ -234,7 +239,10 @@ function reporting_(book) {
       snapshot.getValues().forEach(([label,value],i)=>{
         // Accept empty prefixes left by interruption, but not owner edits inside
         // the reserved snapshot. A copied marker alone cannot authorize them.
-        const validValue=value === '' || (i === 0 ? typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+        // Sheets may coerce the ISO snapshot day written by setValues into a
+        // native Date cell. Accept that owned date on the next request too.
+        const validValue=value === '' || (i === 0 ? (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+          || value instanceof Date && Number.isFinite(value.getTime()))
           : i<5 && Number.isSafeInteger(value) && value>=0);
         if ((label !== REPORTING_LABELS[i] && (label !== '' || value !== '')) || !validValue)
           throw Error('Unrecognized Reporting snapshot contents');
@@ -254,14 +262,26 @@ function claimReporting_(book) {
   return sheet;
 }
 function write_(sheet, before, after) {
+  const write = (first, rows) => {
+    for (let offset=0;offset<rows.length;offset+=WRITE_BATCH_ROWS) {
+      const batch=rows.slice(offset,offset+WRITE_BATCH_ROWS);
+      sheet.getRange(first+offset,1,batch.length,WIDTH).setValues(batch);
+    }
+  };
   if (after.length === before.length && after.every((row,i)=>row[0] === before[i][0])) {
-    for (let i=0;i<after.length;i++) {
-      if (JSON.stringify(after[i]) !== JSON.stringify(before[i])) sheet.getRange(i+2,1,1,WIDTH).setValues([after[i]]);
+    // Expiry can change every retained row. Coalesce adjacent changes, retaining
+    // the small single-row write for an ordinary report with no maintenance.
+    let first=0;
+    while (first<after.length) {
+      if (JSON.stringify(after[first]) === JSON.stringify(before[first])) { first++; continue; }
+      let end=first+1;
+      while (end<after.length && JSON.stringify(after[end]) !== JSON.stringify(before[end])) end++;
+      write(first+2,after.slice(first,end)); first=end;
     }
   } else {
     if (sheet.getMaxRows() < after.length+1) sheet.insertRowsAfter(sheet.getMaxRows(),after.length+1-sheet.getMaxRows());
     const values = after.concat(Array.from({length:Math.max(0,before.length-after.length)},()=>Array(WIDTH).fill('')));
-    if (values.length) sheet.getRange(2,1,values.length,WIDTH).setValues(values);
+    write(2,values);
   }
   SpreadsheetApp.flush();
 }

@@ -4,7 +4,10 @@ use super::*;
 
 impl Settings {
     pub(super) fn preview_stage<'a>(&self, card: Element<'a, Message>) -> Element<'a, Message> {
-        self.preview_stage_padded(card, 20)
+        container(self.preview_stage_padded(card, 14))
+            .id(cosmic::widget::Id::new("widget-preview-stage"))
+            .width(Length::Fill)
+            .into()
     }
     pub(super) fn preview_stage_padded<'a>(
         &self,
@@ -55,7 +58,6 @@ impl Settings {
                 .width(Length::Fill)
                 .clip(true),
         )
-        .id(cosmic::widget::Id::new("widget-preview-stage"))
         .width(Length::Fill)
         .into()
     }
@@ -84,26 +86,40 @@ impl Settings {
         caption: &'static str,
         header: Option<Element<'a, Message>>,
     ) -> Element<'a, Message> {
-        let mut parts = vec![split(label("Preview", 12., FG), label(caption, 11., MUTED))];
+        let mut parts = Vec::new();
         if let Some(header) = header {
             parts.push(header);
         }
-        parts.push(self.preview_stage(card));
-        let preview = column::with_children(parts).spacing(10);
-        if self.window.width >= 990. {
+        if self.scene_open() {
+            let card = if self.window.width < 1100. && !caption.starts_with("Live controls") {
+                super::sample::fit(card, 120.)
+            } else {
+                card
+            };
+            parts.push(self.preview_stage(card));
+        }
+        let preview = self.scene_frame(column::with_children(parts).spacing(10).into(), caption);
+        if self.window.width >= 1100. && self.scene_open() {
             row::with_children(vec![
-                container(controls).width(Length::Fill).into(),
                 container(preview).width(360).into(),
+                container(controls).width(Length::Fill).into(),
             ])
-            .spacing(20)
+            .spacing(24)
+            .align_y(Alignment::Start)
             .into()
         } else {
-            column::with_children(vec![
-                controls,
-                container(preview).max_width(400).width(Length::Fill).into(),
-            ])
-            .spacing(20)
-            .into()
+            // Empty widgets need content before a sample. Notes always keeps
+            // its editor and Save/Revert ahead of the live checklist.
+            let needs_content = self.page == Page::Notes
+                || (self.page == Page::Calendar && !self.calendar.connection.connected())
+                || (self.page == Page::Weather && self.config.location.is_none())
+                || (self.page == Page::Projects && self.config.project_roots.is_empty());
+            let parts = if needs_content {
+                vec![controls, preview]
+            } else {
+                vec![preview, controls]
+            };
+            column::with_children(parts).spacing(20).into()
         }
     }
 }

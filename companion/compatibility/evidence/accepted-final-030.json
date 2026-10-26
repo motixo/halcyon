@@ -1,0 +1,65 @@
+{
+  "format": "halcyon-final-package-native-acceptance",
+  "version": 1,
+  "decision": "approve-focused-native",
+  "release": "0.3.0",
+  "policy_sha256": "db4409a5403c13a36eca31234793168ce21a4d6f84de6a3c9f43801c7673605b",
+  "bindings": {
+    "packages": {
+      "main": {
+        "sha256": "a161840432580b8c48dd1ab2e45d0f54d6b75137f98aef50c60ca25a33820a32",
+        "elf_sha256": "ac726a48f1fd619ccc3e5af6ece47bf5cf2151e7426840af44b0f417f04cc707"
+      },
+      "islands": {
+        "sha256": "24cb50aefc64c08ebf1f41cb3d196769b1538e945269cc3e521b6152bead7c29",
+        "elf_sha256": "11c321ed40d87a5daba4357338365b5ac4723254b99ff1b28fc9492dcbde01da"
+      }
+    },
+    "payload_sha256": "53a3c07326d79aa11822c06bc91d10d78701b1c76c87bfe8fe427e3679380298",
+    "catalog_sha256": "331d02a2d73f8e083d303665165521e6bfb4e1c8078186f3c8ef2f9688e03ccd",
+    "helpers": {
+      "panel_launcher.py": "8ee52f89a0b215c6074ebc93ff14662bcc7df5aaed6b4c73752720e949f8ed97",
+      "bundle_contract.py": "48ece65360c95f66e27bdd8ffaf4c67341e26b2d300c74304531eed5c8610b0c",
+      "runtime_identity.py": "962599de58e0be3c1cfbb92e4a39f9335e4869a51a088fd6e957c328434e8844",
+      "install_status.py": "487ccc7437c381fb0208441b305e2eb64687c0e72a3b739b12a6542d55b54558",
+      "install.py": "46e3e98cdaf11f0fd4416b5cb37ccafc2cd8d07e594647e6b48032bc8b488d74",
+      "refresh.py": "e9fcfd0320cec5e022b67ae72a6a1b9a5d63f3c98972a38c18e17f57bc400ab1",
+      "selector.py": "df6a8d1b2d9976656a12b44fa69d2d3f50239007bddf876098ad5c0e5a53aa36",
+      "panel_configuration.py": "523c44b8f643f9c207d4f2f607dca14b55b510aa4a22ec64c07452ea2531f7f6",
+      "runtime_target.py": "38e3252a3aba45c18c29c88cfbdc8beebcc1073468e67c4c73d28ac84debf931",
+      "verification.py": "370f5a6975d7ab48ebbdeb357fbe0c1d427bd45958f0352891cb4f4b47f422fe",
+      "runtime_compatibility.py": "aa440e9becf9315ecee80fa8ecca438a97baf163bdb7a5b83e0377115769a439"
+    }
+  },
+  "limitations": [
+    "physical-hardware-not-qualified",
+    "cosmic-1.10-not-native-qualified",
+    "not-full-native-matrix"
+  ],
+  "scope": {
+    "environment": "complete-login-session",
+    "cosmic_family": "1.11",
+    "graphics": "virtio-llvmpipe",
+    "image_sha256": "4b26c9e9f3430a070d0c48d781f127837b3ce300c62384179aa5a9eeb51a1cc6",
+    "cpu_acceleration": "KVM",
+    "outputs": [
+      "1280x800"
+    ],
+    "network": "none",
+    "date": "2026-10-26"
+  },
+  "observations": {
+    "installation": "passed",
+    "settings": "passed",
+    "startup": "passed",
+    "input": "passed",
+    "cleanup": "passed",
+    "stock-recovery": "passed",
+    "relogin": "passed"
+  },
+  "evidence": {
+    "file": "halcyon-0.3.0-focused-native-evidence.zip",
+    "sha256": "ad2a8c290f1d3b470d909351f10c2c12308f968b4f9ac5214d6dbd44b3f40595"
+  },
+  "review_reference": "docs/releases/0.3.0-acceptance.md"
+}

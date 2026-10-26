@@ -59,3 +59,16 @@ on first start, and leaves the old folders in place.
 `cosmic-ext-halcyon-islands` is a separate, optional package (see
 `packaging/islands/`). It only works with the exact COSMIC panel version it was
 built for and is activated per person with `halcyon-islands enable`.
+
+
+## Default system updates
+
+Upcoming main packages include reviewed update templates under
+`/usr/share/cosmic-ext-halcyon/updates/`. On a clean install, the package enables
+the signed Halcyon source once, offline. The script preserves existing bootstrap
+ownership and disabled, deleted, renamed or administrator-edited sources. It does
+not enable unattended upgrades or install/activate Islands.
+
+The public installation receipt is `/var/lib/halcyon/updates/default-source.json`.
+Package removal disables only its unchanged generated source; purge removes only
+unchanged generated trust/pin files when safe. [Ownership, opt-out and recovery](../docs/DISTRIBUTION.md#default-enrollment-ownership).

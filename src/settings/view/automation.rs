@@ -41,6 +41,12 @@ fn chip<'a>(title: String, on: bool, accent: Color, message: Message) -> Element
 fn small_icon<'a>(name: &'static str, message: Option<Message>) -> Element<'a, Message> {
     button::icon(icon::from_name(name))
         .extra_small()
+        .tooltip(match name {
+            "go-up-symbolic" => "Move rule up in priority",
+            "go-down-symbolic" => "Move rule down in priority",
+            "edit-delete-symbolic" => "Remove rule",
+            _ => "Rule action",
+        })
         .on_press_maybe(message)
         .into()
 }
@@ -55,9 +61,9 @@ impl Settings {
         let accent = self.settings_accent();
         let mut items = vec![split(
             column::with_children(vec![
-                heading("Schedules", ""),
+                heading("Schedules & display rules", ""),
                 label(
-                    "Switch setups on a schedule or when displays change.",
+                    "Choose when a saved setup becomes your desktop.",
                     12.,
                     MUTED,
                 ),
@@ -93,7 +99,7 @@ impl Settings {
         items.push(self.automation_status(&settings));
         items.push(self.automation_rules(&settings));
         if !editor.state.recent.is_empty() {
-            items.push(group_label("RECENT"));
+            items.push(group_label("Recent switches"));
             items.push(self.automation_recent());
         }
         column::with_children(items).spacing(16).into()
@@ -152,7 +158,7 @@ impl Settings {
             rows.push(
                 row::with_children(vec![
                     container(label(
-                        "Not what you wanted? The last switch can be undone like any profile.",
+                        "The last automatic setup switch is available to undo in Setups.",
                         12.,
                         MUTED,
                     ))
@@ -247,7 +253,6 @@ impl Settings {
 
     fn automation_rules(&self, settings: &crate::automation::Automation) -> Element<'_, Message> {
         let editor = &self.automation;
-        let accent = self.settings_accent();
         let writable = editor.writable();
         let mut rows: Vec<Element<'_, Message>> = Vec::new();
         let count = settings.rules.len();
@@ -287,7 +292,7 @@ impl Settings {
         }
         if rows.is_empty() {
             rows.push(label(
-                "No rules yet. A rule applies one of your profiles at a time of day or when a display connects.",
+                "No rules yet. Add a schedule for a time of day, or a display rule for a connection change.",
                 12.,
                 MUTED,
             ));
@@ -296,11 +301,11 @@ impl Settings {
             editor.draft.is_none() && writable && count < crate::automation::rules::MAX_RULES;
         rows.push(
             row::with_children(vec![
-                button::standard("Schedule")
+                button::standard("Add schedule")
                     .leading_icon(icon::from_name("list-add-symbolic").size(14))
                     .on_press_maybe(adding.then_some(edit(Edit::New(Kind::Schedule))))
                     .into(),
-                button::standard("Display")
+                button::standard("Add display rule")
                     .leading_icon(icon::from_name("list-add-symbolic").size(14))
                     .on_press_maybe(adding.then_some(edit(Edit::New(Kind::Display))))
                     .into(),
@@ -315,11 +320,11 @@ impl Settings {
             ])
             .spacing(8)
             .align_y(Alignment::Center)
+            .wrap()
             .into(),
         );
-        let _ = accent;
         column::with_children(vec![
-            group_label("RULES"),
+            group_label("Rules · highest priority first"),
             section(rows),
             label(
                 "Your own changes stay until the next switch. Missed times catch up once, after sleep or a restart.",
@@ -526,10 +531,10 @@ impl Settings {
                 .iter()
                 .any(|(known, _)| Some(known) == draft.profile.as_ref())
         {
-            profiles.push(label("The chosen profile was deleted", 12., WARN));
+            profiles.push(label("The chosen setup was deleted", 12., WARN));
         }
         items.push(field(
-            "Apply",
+            "Setup",
             row::with_children(profiles).spacing(6).wrap().into(),
         ));
         let missing = draft.missing();

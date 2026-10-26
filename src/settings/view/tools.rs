@@ -1,7 +1,6 @@
 //! Music, Notes and Focus timer are individual widget settings pages.
 //! Each starts with its on/off switch and the real desktop card.
 use super::desktop::{ERROR, WARN, banner, line};
-use super::pages::section;
 use super::*;
 use crate::config::{FocusPreferences, NotesSize};
 use crate::settings::tools::Message as Edit;
@@ -139,21 +138,29 @@ impl Settings {
         if let Some(hint) = hint {
             follow.push(label(hint, 12., MUTED));
         }
-        let items = vec![
-            section(follow),
-            section(vec![
-                switch("Album art", "", self.config.music.show_artwork, |value| {
-                    option(Widget::Music, "show_artwork", value)
-                }),
-                separator(),
-                switch(
-                    "Progress",
-                    "Click the bar to seek when the player supports it.",
-                    self.config.music.show_progress,
-                    |value| option(Widget::Music, "show_progress", value),
-                ),
-            ]),
+        let mut items = vec![
+            group(Some("Player"), follow),
+            label(
+                "Live controls play, pause or seek in your selected desktop player.",
+                12.,
+                MUTED,
+            ),
+            group(
+                Some("Music card"),
+                vec![
+                    switch("Album art", "", self.config.music.show_artwork, |value| {
+                        option(Widget::Music, "show_artwork", value)
+                    }),
+                    switch(
+                        "Progress",
+                        "Click the bar to seek when the player supports it.",
+                        self.config.music.show_progress,
+                        |value| option(Widget::Music, "show_progress", value),
+                    ),
+                ],
+            ),
         ];
+        items.push(self.widget_style_and_layout(Widget::Music));
         column::with_children(vec![
             self.widget_heading(Widget::Music, "Music"),
             self.editor_with_preview(
@@ -202,9 +209,47 @@ impl Settings {
         let readable = tools.note.is_ok();
         let editor = text_editor(&tools.content)
             .placeholder("Write anything. Start a line with [ ] for a checklist.")
-            .height(Length::Fixed(200.))
+            .height(Length::Fixed(if self.window.height < 760. {
+                150.
+            } else {
+                200.
+            }))
             .padding(12)
-            .size(14.)
+            .size(15.)
+            .class(cosmic::style::iced::TextEditor::Custom(Box::new(
+                |theme, status| {
+                    let focused = matches!(status, text_editor::Status::Focused { .. });
+                    let foreground: Color = theme.cosmic().on_bg_color().into();
+                    text_editor::Style {
+                        background: Background::Color(
+                            theme.cosmic().background(theme.transparent).base.into(),
+                        ),
+                        border: Border {
+                            color: if focused {
+                                theme.cosmic().accent.base.into()
+                            } else {
+                                theme.current_container().component.divider.into()
+                            },
+                            width: if focused || theme.theme_type.is_high_contrast() {
+                                2.
+                            } else {
+                                1.
+                            },
+                            radius: 10.into(),
+                        },
+                        placeholder: Color {
+                            a: if theme.theme_type.is_high_contrast() {
+                                1.
+                            } else {
+                                0.7
+                            },
+                            ..foreground
+                        },
+                        value: foreground,
+                        selection: theme.cosmic().accent.base.into(),
+                    }
+                },
+            )))
             .on_action(|action| edit(Edit::Note(action)))
             .key_binding(|press| {
                 use cosmic::iced::keyboard::Key;
@@ -241,15 +286,20 @@ impl Settings {
         };
         let mut note = vec![
             split(label("Note", 16., FG), label("Ctrl+S saves", 11., MUTED)),
-            container(editor).width(Length::Fill).into(),
+            container(editor)
+                .id(cosmic::widget::Id::new("note-editor"))
+                .width(Length::Fill)
+                .into(),
             row::with_children(vec![
                 container(label(state, 12., if readable { MUTED } else { WARN }))
                     .width(Length::Fill)
                     .into(),
                 button::text("Revert")
+                    .id(cosmic::widget::Id::new("note-revert"))
                     .on_press_maybe(dirty.then(|| edit(Edit::NoteRevert)))
                     .into(),
                 button::suggested("Save")
+                    .id(cosmic::widget::Id::new("note-save"))
                     .on_press_maybe((dirty && readable).then(|| edit(Edit::NoteSave)))
                     .into(),
             ])
@@ -292,54 +342,58 @@ impl Settings {
             (!dirty).then_some(on_preview as fn(cards::Action) -> Message),
             Some(self.tool_preview_size(Widget::Notes)),
         );
-        let items = vec![
-            section(note),
-            section(vec![
-                choice_row(
-                    "Automatic size",
-                    NotesSize::ALL
-                        .into_iter()
-                        .map(|size| {
-                            (
-                                size.title().to_string(),
-                                self.config.notes.size == size,
-                                (!self.config.widget_sizes.contains_key(Widget::Notes.key()))
-                                    .then(|| option(Widget::Notes, "size", size.key())),
-                            )
-                        })
-                        .collect(),
-                    accent,
-                ),
-                if self.config.widget_sizes.contains_key(Widget::Notes.key()) {
-                    split(
-                        detail(
-                            "Custom size is active",
-                            "Return to Automatic size in Layout to use these presets.",
-                        ),
-                        button::text("Edit size in Layout")
-                            .on_press(Message::Page(Page::Overview))
-                            .into(),
-                    )
-                } else {
-                    label(
-                        "The card grows with its content within this size.",
-                        11.,
-                        MUTED,
-                    )
-                },
-            ]),
+        let mut items = vec![
+            group(None, note),
+            group(
+                Some("Note size"),
+                vec![
+                    choice_row(
+                        "Automatic size",
+                        NotesSize::ALL
+                            .into_iter()
+                            .map(|size| {
+                                (
+                                    size.title().to_string(),
+                                    self.config.notes.size == size,
+                                    (!self.config.widget_sizes.contains_key(Widget::Notes.key()))
+                                        .then(|| option(Widget::Notes, "size", size.key())),
+                                )
+                            })
+                            .collect(),
+                        accent,
+                    ),
+                    if self.config.widget_sizes.contains_key(Widget::Notes.key()) {
+                        split(
+                            detail(
+                                "Custom size is active",
+                                "Return to Automatic size in Layout to use these presets.",
+                            ),
+                            button::text("Edit size in Layout")
+                                .on_press(Message::Page(Page::Overview))
+                                .into(),
+                        )
+                    } else {
+                        label(
+                            "The card grows with its content within this size.",
+                            11.,
+                            MUTED,
+                        )
+                    },
+                ],
+            ),
             label(
                 "[ ] starts a checklist item you can tick on the desktop; # starts a heading. Notes stay on this computer: presets and exports never include them.",
                 12.,
                 MUTED,
             ),
         ];
+        items.push(self.widget_style_and_layout(Widget::Notes));
         column::with_children(vec![
             self.widget_heading(Widget::Notes, "Notes"),
             self.editor_with_preview(
                 preview,
                 column::with_children(items).spacing(16).into(),
-                "Your note",
+                "Live controls · saved checklist",
             ),
         ])
         .spacing(16)
@@ -380,77 +434,82 @@ impl Settings {
             every.push(prefs.long_break_every);
             every.sort_unstable();
         }
-        let items = vec![
+        let mut items = vec![
             label(
                 if visible {
-                    "Preview controls run your desktop timer."
+                    "Live controls run your desktop timer."
                 } else {
                     "Show Focus timer to use its controls. Hiding it does not stop a running session."
                 },
                 12.,
                 MUTED,
             ),
-            section(vec![
-                label("Lengths", 16., FG),
-                choice_row(
-                    "Focus",
-                    minutes(
-                        "focus_minutes",
-                        &FocusPreferences::FOCUS_CHOICES,
-                        prefs.focus_minutes,
+            group(
+                Some("Session lengths"),
+                vec![
+                    choice_row(
+                        "Focus",
+                        minutes(
+                            "focus_minutes",
+                            &FocusPreferences::FOCUS_CHOICES,
+                            prefs.focus_minutes,
+                        ),
+                        accent,
                     ),
-                    accent,
-                ),
-                choice_row(
-                    "Break",
-                    minutes(
-                        "break_minutes",
-                        &FocusPreferences::BREAK_CHOICES,
-                        prefs.break_minutes,
+                    choice_row(
+                        "Break",
+                        minutes(
+                            "break_minutes",
+                            &FocusPreferences::BREAK_CHOICES,
+                            prefs.break_minutes,
+                        ),
+                        accent,
                     ),
-                    accent,
-                ),
-                choice_row(
-                    "Long break",
-                    minutes(
-                        "long_break_minutes",
-                        &FocusPreferences::LONG_BREAK_CHOICES,
-                        prefs.long_break_minutes,
+                    choice_row(
+                        "Long break",
+                        minutes(
+                            "long_break_minutes",
+                            &FocusPreferences::LONG_BREAK_CHOICES,
+                            prefs.long_break_minutes,
+                        ),
+                        accent,
                     ),
-                    accent,
-                ),
-                choice_row(
-                    "Long break after",
-                    every
-                        .into_iter()
-                        .map(|count| {
-                            (
-                                if count == 0 {
-                                    "Never".to_string()
-                                } else {
-                                    format!("{count} rounds")
-                                },
-                                prefs.long_break_every == count,
-                                Some(option(Widget::Focus, "long_break_every", count)),
-                            )
-                        })
-                        .collect(),
-                    accent,
-                ),
-            ]),
-            section(vec![
-                switch(
-                    "Start breaks automatically",
-                    "",
-                    prefs.auto_start_breaks,
-                    |value| option(Widget::Focus, "auto_start_breaks", value),
-                ),
-                separator(),
-                switch("Notify when time is up", "", prefs.notify, |value| {
-                    option(Widget::Focus, "notify", value)
-                }),
-            ]),
+                    choice_row(
+                        "Long break after",
+                        every
+                            .into_iter()
+                            .map(|count| {
+                                (
+                                    if count == 0 {
+                                        "Never".to_string()
+                                    } else {
+                                        format!("{count} rounds")
+                                    },
+                                    prefs.long_break_every == count,
+                                    Some(option(Widget::Focus, "long_break_every", count)),
+                                )
+                            })
+                            .collect(),
+                        accent,
+                    ),
+                ],
+            ),
+            group(
+                Some("Timer behavior"),
+                vec![
+                    switch(
+                        "Start breaks automatically",
+                        "",
+                        prefs.auto_start_breaks,
+                        |value| option(Widget::Focus, "auto_start_breaks", value),
+                    ),
+                    switch("Notify when time is up", "", prefs.notify, |value| {
+                        option(Widget::Focus, "notify", value)
+                    }),
+                ],
+            ),
         ];
+        items.push(self.widget_style_and_layout(Widget::Focus));
         column::with_children(vec![
             self.widget_heading(Widget::Focus, "Focus timer"),
             self.editor_with_preview(

@@ -1,23 +1,29 @@
 //! Settings ownership, search and the shared pending/Undo controls.
 #[cfg(test)]
 pub(super) use super::preference_undo::PreferenceUndo;
-use super::{Message, Page, Settings};
+use super::{AppSettingsPage, Message, Page, Settings};
 use cosmic::app::Task;
 
 /// What a page changes, used by navigation and search-result context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Area {
+    Appearance,
     Widgets,
     Desktop,
+    Setups,
+    Accessibility,
     App,
 }
 
 impl Area {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Appearance => "Appearance",
+            Self::Setups => "Setups",
+            Self::Accessibility => "Accessibility",
             Self::Widgets => "Widgets",
             Self::Desktop => "Desktop",
-            Self::App => "More",
+            Self::App => "App settings",
         }
     }
 }
@@ -31,12 +37,23 @@ pub struct SearchHit {
 }
 
 impl SearchHit {
+    pub(super) fn app_destination(self) -> AppSettingsPage {
+        match self.label {
+            "Settings animations" | "Edge menu" => AppSettingsPage::Interface,
+            "Privacy & usage reporting" => AppSettingsPage::Privacy,
+            "Updates & installation" => AppSettingsPage::Updates,
+            "Restore previous desktop" | "Recent changes" => AppSettingsPage::Restore,
+            "Help & diagnostics" => AppSettingsPage::Help,
+            _ => AppSettingsPage::Operation,
+        }
+    }
+
     pub fn anchor(self) -> &'static str {
         match self.label {
             "Widget readability" => "contrast-assist",
             "Settings animations" => "settings-motion",
             "Dew point" => "weather-dew-point",
-            "Reorder readings" => "devbox-reorder",
+            "Reorder readings" => "devbox-reorder-anchor",
             "CPU & temperature" => "devbox-cpu",
             "Memory usage" => "devbox-memory",
             "Disk usage" => "devbox-disk",
@@ -48,6 +65,15 @@ impl SearchHit {
             "Dock timing & spacing" => "dock-advanced",
             _ if self.advanced => "settings-advanced",
             _ => "page-start",
+        }
+    }
+}
+
+impl Settings {
+    pub(super) fn prepare_search_control(&mut self, hit: SearchHit) {
+        if hit == WIDGET_READABILITY {
+            self.material_target = crate::materials::Target::Widgets;
+            self.material_adjust = true;
         }
     }
 }
@@ -105,19 +131,33 @@ impl cosmic::iced::advanced::widget::Operation for Reveal {
     }
 }
 
+pub(super) const WIDGET_READABILITY: SearchHit = hit(
+    Page::Appearance,
+    "Widget readability",
+    "contrast readability bright wallpaper readable text",
+    true,
+);
+
 const SEARCH: &[SearchHit] = &[
+    hit(
+        Page::General,
+        "Help & diagnostics",
+        "help diagnostics support problem report status troubleshoot",
+        false,
+    ),
+    hit(
+        Page::General,
+        "Recent changes",
+        "why did my desktop change history automatic schedule undo recent changes",
+        false,
+    ),
     hit(
         Page::Themes,
         "Shared desktop themes",
         "theme soft outline paper bare colors widgets dock panel style save share",
         false,
     ),
-    hit(
-        Page::Appearance,
-        "Widget readability",
-        "contrast readability bright wallpaper readable text",
-        false,
-    ),
+    WIDGET_READABILITY,
     hit(
         Page::General,
         "Settings animations",
@@ -348,8 +388,26 @@ const SEARCH: &[SearchHit] = &[
     ),
     hit(
         Page::General,
-        "Startup & edge menu",
-        "general app settings startup login edge menu sidebar animation",
+        "Startup & background",
+        "general app settings startup login widgets background service",
+        false,
+    ),
+    hit(
+        Page::General,
+        "Edge menu",
+        "sidebar edge menu side delay animation",
+        false,
+    ),
+    hit(
+        Page::General,
+        "Privacy & usage reporting",
+        "privacy usage reporting anonymous telemetry",
+        false,
+    ),
+    hit(
+        Page::General,
+        "Updates & installation",
+        "update version installation islands addon add-on diagnostics check",
         false,
     ),
     hit(
@@ -518,10 +576,15 @@ impl Page {
     /// every other page is in the menu itself.
     pub(super) fn parent(self) -> Option<Self> {
         match self {
-            Self::DesktopAppearance => Some(Self::Themes),
+            Self::DesktopAppearance | Self::Appearance | Self::DesktopWallpaper => {
+                Some(Self::Themes)
+            }
             Self::DesktopAutomation => Some(Self::DesktopProfiles),
             Self::PendingChanges => Some(Self::General),
             Self::DesktopWindowRules | Self::DesktopWorkspaces => Some(Self::DesktopWindows),
+            Self::DesktopWindows | Self::DesktopIcons | Self::DesktopShortcuts => {
+                Some(Self::DesktopDock)
+            }
             page if page.sidebar() == Self::Widgets && page != Self::Widgets => Some(Self::Widgets),
             _ => None,
         }
@@ -530,8 +593,11 @@ impl Page {
     pub(super) fn area(self) -> Area {
         // The menu group a page sits in.
         match self.sidebar() {
-            Self::General | Self::DesktopMotion | Self::DesktopProfiles => Area::App,
-            Self::Widgets | Self::Overview | Self::Appearance => Area::Widgets,
+            Self::Themes => Area::Appearance,
+            Self::DesktopProfiles => Area::Setups,
+            Self::DesktopMotion => Area::Accessibility,
+            Self::General => Area::App,
+            Self::Widgets => Area::Widgets,
             _ => Area::Desktop,
         }
     }
@@ -702,7 +768,7 @@ mod tests {
         assert_eq!(Page::parse("desktop"), Page::DesktopDock);
         assert_eq!(Page::Calendar.parent(), Some(Page::Widgets));
         assert_eq!(Page::DesktopDock.parent(), None);
-        assert_eq!(Page::DesktopWorkspaces.sidebar(), Page::DesktopWindows);
+        assert_eq!(Page::DesktopWorkspaces.sidebar(), Page::DesktopDock);
         // Every menu entry is its own destination; only detailed editors go Back.
         for page in entries {
             assert_eq!(page.sidebar(), page, "{page:?}");
@@ -791,7 +857,7 @@ mod tests {
             assert_eq!(hit.page, Page::DesktopWallpaper, "{query}");
             assert!(!hit.advanced);
         }
-        assert_eq!(search("autostart")[0].label, "Startup & edge menu");
+        assert_eq!(search("autostart")[0].label, "Startup & background");
         assert_eq!(search("hotkeys")[0].page, Page::DesktopShortcuts);
         let hit = search("memory cache")[0];
         assert_eq!(hit.anchor(), "devbox-memory");
@@ -842,10 +908,16 @@ mod tests {
             assert!(!hit.advanced, "{query}");
         }
         let hits = search("history");
-        assert_eq!(hits.len(), 5);
+        assert_eq!(hits.len(), 6);
+        assert_eq!(
+            hits.iter()
+                .filter(|hit| hit.page == Page::Devbox && !hit.advanced)
+                .count(),
+            5
+        );
         assert!(
             hits.iter()
-                .all(|hit| hit.page == Page::Devbox && !hit.advanced)
+                .any(|hit| hit.page == Page::General && hit.label == "Recent changes")
         );
     }
 }
@@ -860,7 +932,7 @@ pub(super) fn model(page: Page) -> cosmic::widget::nav_bar::Model {
     {
         model
             .insert()
-            .text(destination.nav_title())
+            .text(destination.root_title())
             .icon(cosmic::widget::icon::from_name(destination.nav_icon()).size(18))
             .data(destination);
     }
@@ -873,5 +945,133 @@ pub(super) fn select(model: &mut cosmic::widget::nav_bar::Model, page: Page) {
         .find(|&id| model.data::<Page>(id) == Some(&page.sidebar()));
     if let Some(id) = id {
         model.activate(id);
+    }
+}
+
+/// Each root remembers its last leaf for this window; reopening still uses the
+/// existing durable last-destination key, without changing app configuration.
+pub(super) fn root_destinations(page: Page) -> [Page; 6] {
+    let mut pages = [
+        Page::Themes,
+        Page::DesktopDock,
+        Page::Widgets,
+        Page::DesktopProfiles,
+        Page::DesktopMotion,
+        Page::General,
+    ];
+    pages[page.root_index()] = page.canonical();
+    pages
+}
+
+pub(super) fn app_destination() -> AppSettingsPage {
+    crate::desktop::DesktopStore::from_env()
+        .ok()
+        .and_then(|store| {
+            std::fs::read_to_string(store.state_dir().join("settings-app-destination")).ok()
+        })
+        .and_then(|key| {
+            AppSettingsPage::ALL
+                .into_iter()
+                .find(|page| page.key() == key.trim())
+        })
+        .unwrap_or_default()
+}
+pub(super) fn remember_app_destination(page: AppSettingsPage) {
+    if super::capture_dir().is_some() && !super::preview() {
+        return;
+    }
+    if let Ok(store) = crate::desktop::DesktopStore::from_env()
+        && let Ok(path) = store.state_file("settings-app-destination")
+    {
+        if std::fs::create_dir_all(store.state_dir()).is_ok() {
+            let _ = crate::config::write_config_text(&path, Some(page.key()));
+        }
+    }
+}
+
+/// Traverse focus and then reveal it, in order; no pointer scrolling required.
+pub(super) fn keyboard_focus(backwards: bool) -> Task<Message> {
+    let focus = if backwards {
+        cosmic::iced::widget::operation::focus_previous()
+    } else {
+        cosmic::iced::widget::operation::focus_next()
+    };
+    focus.chain(cosmic::iced::runtime::task::effect(
+        cosmic::iced::runtime::Action::widget(FocusReveal::default()),
+    ))
+}
+#[derive(Default)]
+pub(super) struct FocusReveal {
+    offset: cosmic::iced::Vector,
+    scope: Option<(cosmic::widget::Id, cosmic::iced::Rectangle, f32)>,
+    pending: Option<(
+        Option<cosmic::widget::Id>,
+        cosmic::iced::Rectangle,
+        cosmic::iced::Vector,
+    )>,
+    reveal: Option<(cosmic::widget::Id, f32)>,
+}
+impl cosmic::iced::advanced::widget::Operation for FocusReveal {
+    fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn cosmic::iced::advanced::widget::Operation)) {
+        let previous = (self.offset, self.scope.clone());
+        if let Some((id, mut bounds, translation)) = self.pending.take() {
+            bounds.x -= self.offset.x;
+            bounds.y -= self.offset.y;
+            if let Some(id) = id.filter(|id| {
+                ["settings-content", "wizard-body", "wizard-widget-list"]
+                    .into_iter()
+                    .any(|key| *id == cosmic::widget::Id::new(key))
+            }) {
+                self.scope = Some((id, bounds, translation.y));
+            }
+            self.offset += translation;
+        }
+        f(self);
+        (self.offset, self.scope) = previous;
+    }
+    fn scrollable(
+        &mut self,
+        id: Option<&cosmic::widget::Id>,
+        bounds: cosmic::iced::Rectangle,
+        _: cosmic::iced::Rectangle,
+        translation: cosmic::iced::Vector,
+        _: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
+    ) {
+        self.pending = Some((id.cloned(), bounds, translation));
+    }
+    fn focusable(
+        &mut self,
+        _: Option<&cosmic::widget::Id>,
+        bounds: cosmic::iced::Rectangle,
+        state: &mut dyn cosmic::iced::advanced::widget::operation::Focusable,
+    ) {
+        if state.is_focused()
+            && let Some((id, view, scroll)) = self.scope.as_ref()
+        {
+            let top = bounds.y - self.offset.y;
+            let bottom = top + bounds.height;
+            let delta = if top < view.y + 6. {
+                top - view.y - 6.
+            } else if bottom > view.y + view.height - 6. {
+                bottom - view.y - view.height + 6.
+            } else {
+                0.
+            };
+            if delta.abs() > 0.5 {
+                self.reveal = Some((id.clone(), (scroll + delta).max(0.)));
+            }
+        }
+    }
+    fn finish(&self) -> cosmic::iced::advanced::widget::operation::Outcome<()> {
+        use cosmic::iced::advanced::widget::operation::{Outcome, scrollable};
+        self.reveal.clone().map_or(Outcome::None, |(id, y)| {
+            Outcome::Chain(Box::new(scrollable::scroll_to(
+                id,
+                scrollable::AbsoluteOffset {
+                    x: None,
+                    y: Some(y),
+                },
+            )))
+        })
     }
 }

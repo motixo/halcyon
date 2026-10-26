@@ -6,6 +6,7 @@ from pathlib import Path
 import json
 import os
 import re
+import stat
 import subprocess
 import tempfile
 
@@ -188,8 +189,15 @@ def project_title(root):
     # Only explicit product metadata overrides the stable repository folder.
     manifest = root / 'package.json'
     try:
-        if manifest.stat().st_size <= 128 * 1024:
-            data = json.loads(manifest.read_text())
+        limit = 128 * 1024
+        fd = os.open(manifest, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
+                raise ValueError('Not bounded regular project metadata')
+            encoded = stream.read(limit + 1)
+        if len(encoded) <= limit:
+            data = json.loads(encoded.decode('utf-8'))
             if isinstance(data, dict):
                 for key in ['displayName', 'productName']:
                     if title := readable_title(data.get(key)):

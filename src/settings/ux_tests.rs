@@ -60,6 +60,25 @@ fn click(app: &mut Settings, native: &mut Native, id: &str) {
     click_at(app, native, bounds.center());
 }
 
+/// Reveal a control through the page's real scrollable before checking its
+/// visible hit target. Reset first so the target starts in content coordinates.
+fn reveal(app: &Settings, native: &mut Native, id: &str) {
+    native.scroll(app.settings_view(), "settings-content", 0.);
+    let bounds = native.bounds(app.settings_view(), id);
+    if bounds.y + bounds.height > native.size.height - 64. {
+        native.scroll(
+            app.settings_view(),
+            "settings-content",
+            (bounds.y - 240.).max(0.),
+        );
+    }
+}
+
+fn reveal_click(app: &mut Settings, native: &mut Native, id: &str) {
+    reveal(app, native, id);
+    click(app, native, id);
+}
+
 #[test]
 fn review_r2_native_theme_preview_never_falls_back_to_obsolete_home_pixels() {
     if child("review_r2_native_theme_preview_never_falls_back_to_obsolete_home_pixels") {
@@ -227,7 +246,7 @@ fn dew_point_switch_saves_and_undoes_without_touching_other_preferences() {
         assert!(!app.config.weather.show_dew_point, "Existing users opt in");
         Config::save_weather(serde_json::json!({"future_reading":37})).unwrap();
         let mut native = Native::new(size);
-        click(&mut app, &mut native, "weather-dew-point-toggle");
+        reveal_click(&mut app, &mut native, "weather-dew-point-toggle");
         assert!(app.config.weather.show_dew_point);
         assert!(Config::try_load().unwrap().weather.show_dew_point);
         let stored: serde_json::Value =
@@ -278,16 +297,17 @@ fn native_task_navigation_and_widget_switches_keep_layout_drafts() {
             .find(|&id| app.nav_model.data::<Page>(id) == Some(&Page::Widgets))
             .unwrap();
         let _ = app.update(Message::NavSelected(widgets));
+        assert_eq!(
+            app.page,
+            Page::Overview,
+            "the root restores its last destination"
+        );
+        click(&mut app, &mut native, "destination-widgets");
         assert_eq!(app.page, Page::Widgets);
         assert_eq!(app.nav_model.active_data::<Page>(), Some(&Page::Widgets));
-        let clock = native.bounds(app.settings_view(), "widget-open-clock");
         let before = app.config.data_visible(Widget::Clock);
         // The switch has its own hit target, outside the button that opens settings.
-        click_at(
-            &mut app,
-            &mut native,
-            Point::new(size.width - 54., clock.center_y()),
-        );
+        click(&mut app, &mut native, "widget-toggle-clock");
         assert_eq!(app.page, Page::Widgets);
         assert_eq!(app.config.data_visible(Widget::Clock), !before);
         let _ = app.update(Message::UndoPreferences);
@@ -295,10 +315,16 @@ fn native_task_navigation_and_widget_switches_keep_layout_drafts() {
         assert_eq!(app.page, Page::Weather);
         click(&mut app, &mut native, "settings-back");
         assert_eq!(app.page, Page::Widgets);
-        // Every Desktop page is its own menu entry, without a Back link.
-        click(&mut app, &mut native, "nav-desktop-windows");
+        click(&mut app, &mut native, "nav-desktop-dock");
+        click(&mut app, &mut native, "destination-desktop-windows");
         assert_eq!(app.page, Page::DesktopWindows);
         assert!(native.try_bounds(app.view(), "settings-back").is_none());
+        assert!(
+            native
+                .try_bounds(app.view(), "destination-desktop-dock")
+                .is_some(),
+            "sibling pages use their destination tabs"
+        );
         let _ = app.update(Message::Page(Page::DesktopWorkspaces));
         assert_eq!(
             app.page,
@@ -307,23 +333,24 @@ fn native_task_navigation_and_widget_switches_keep_layout_drafts() {
         );
         assert_eq!(
             app.nav_model.active_data::<Page>(),
-            Some(&Page::DesktopWindows)
+            Some(&Page::DesktopDock)
         );
         click(&mut app, &mut native, "nav-desktop-dock");
+        assert_eq!(
+            app.page,
+            Page::DesktopWindows,
+            "the root keeps its Windows destination"
+        );
+        click(&mut app, &mut native, "destination-desktop-dock");
         assert_eq!(app.page, Page::DesktopDock);
-        let _ = app.update(Message::Page(Page::DesktopProfiles));
-        // Schedules closes the Setups page ("Switch automatically"); a tall
-        // window shows it, as this harness does not scroll.
-        let tall = Size::new(size.width, 2400.);
-        let _ = app.update(Message::Resized(tall));
-        let mut tall_native = Native::new(tall);
-        click(&mut app, &mut tall_native, "presets-schedules");
+        click(&mut app, &mut native, "nav-desktop-profiles");
+        click(&mut app, &mut native, "destination-desktop-automation");
         assert_eq!(app.page, Page::DesktopAutomation);
         assert_eq!(
             app.nav_model.active_data::<Page>(),
             Some(&Page::DesktopProfiles)
         );
-        click(&mut app, &mut tall_native, "settings-back");
+        click(&mut app, &mut native, "destination-desktop-profiles");
         assert_eq!(app.page, Page::DesktopProfiles);
         let _ = app.update(Message::Resized(size));
         let _ = app.update(Message::Page(Page::Overview));
@@ -372,14 +399,14 @@ fn split_sidebar_keyboard_navigation_keeps_focus_and_drafts() {
             repeat: false,
         })
     };
-    // Arrows walk the menu in order, across its group headings.
+    // Arrows walk the six root destinations and retain focus across changes.
     for (name, page) in [
-        (Named::ArrowDown, Page::Overview),
-        (Named::ArrowDown, Page::Appearance),
         (Named::ArrowDown, Page::DesktopProfiles),
-        (Named::ArrowUp, Page::Appearance),
-        (Named::Home, Page::DesktopWallpaper),
-        (Named::ArrowUp, Page::DesktopWallpaper),
+        (Named::ArrowDown, Page::DesktopMotion),
+        (Named::ArrowDown, Page::General),
+        (Named::ArrowUp, Page::DesktopMotion),
+        (Named::Home, Page::Themes),
+        (Named::ArrowUp, Page::Themes),
         (Named::End, Page::General),
         (Named::ArrowDown, Page::General),
     ] {
@@ -421,6 +448,8 @@ fn calendar_account_options_keep_disconnect_deliberate() {
         app.calendar.loading = false;
         let mut native = Native::new(size);
         assert!(app.help_open.is_none());
+        click(&mut app, &mut native, "scene-toggle");
+        assert!(!app.scene_open());
         click(&mut app, &mut native, "calendar-account-options");
         assert_eq!(app.help_open, Some("calendar-account"));
         click(&mut app, &mut native, "calendar-disconnect");
@@ -534,7 +563,11 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers/teal.jpg");
     std::fs::write(background,format!("(output: \"all\", source: Path({}), filter_by_theme: false, rotation_frequency: 3600, filter_method: Lanczos, scaling_mode: Zoom, sampling_method: Alphanumeric)",serde_json::to_string(&picture).unwrap())).unwrap();
     let before = std::fs::read(Config::path().unwrap()).unwrap();
-    for size in [Size::new(820., 600.), Size::new(1024., 720.)] {
+    for size in [
+        Size::new(820., 600.),
+        Size::new(1024., 720.),
+        Size::new(1280., 900.),
+    ] {
         let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
         // Complete the normal background jobs synchronously in this isolated
         // renderer; the init Task is deliberately never launched by tests.
@@ -549,6 +582,7 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
         for widget in [Widget::Weather, Widget::Devbox, Widget::Clock] {
             let _ = app.update(Message::AppearancePreview(widget));
             assert_eq!(app.appearance_preview, widget);
+            reveal(&app, &mut native, "widget-preview-stage");
             native.capture(
                 app.settings_view(),
                 &cosmic::Theme::dark(),
@@ -556,12 +590,19 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
             );
             if size.width >= 990. {
                 let stage = native.bounds(app.settings_view(), "widget-preview-stage");
+                assert!(
+                    stage.x >= 5. && stage.center_y() >= 0. && stage.center_y() < size.height,
+                    "Visible wallpaper clipping probe: {stage:?}"
+                );
                 let pixels = native.render(app.settings_view(), &cosmic::Theme::dark());
                 let index = ((stage.center_y() as usize) * size.width as usize
                     + (stage.x as usize - 5))
                     * 4;
+                // The scene sits directly on the window surface. Wallpaper
+                // must remain clipped to its stage, outside the content gutter.
+                let theme = cosmic::Theme::dark();
                 let background: cosmic::iced::Color =
-                    cosmic::Theme::dark().cosmic().bg_color().into();
+                    theme.cosmic().background(theme.transparent).base.into();
                 for (got, want) in
                     pixels[index..index + 3]
                         .iter()
@@ -569,7 +610,7 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
                 {
                     assert!(
                         (*got as f32 - want * 255.).abs() < 3.,
-                        "Wallpaper stays inside the preview stage"
+                        "Wallpaper stays inside the preview stage: stage={stage:?}, index={index}, got={got}, want={want}, background={background:?}"
                     );
                 }
             }
@@ -579,16 +620,10 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
             before,
             "Inspecting samples saves nothing"
         );
-        // Legacy controls moved below the material chooser into Advanced.
-        // The pointer driver's bounds are content coordinates, so use a tall
-        // fixture for these legacy controls; preview checks above keep both
-        // original viewports. The compact material controls have their own test.
-        let tall = Size::new(size.width, 2200.);
-        let _ = app.update(Message::Resized(tall));
-        native = Native::new(tall);
+        // Reach Advanced through the same disclosure and scrolling as a user.
         app.system_animations = false;
-        click(&mut app, &mut native, "settings-advanced");
-        click(&mut app, &mut native, "contrast-assist");
+        reveal_click(&mut app, &mut native, "settings-advanced");
+        reveal_click(&mut app, &mut native, "contrast-assist");
         assert!(Config::load().appearance.contrast_assist);
         assert_eq!(Config::load().appearance.opacity, 70);
         click(&mut app, &mut native, "settings-undo");
@@ -597,13 +632,13 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
         native = Native::new(size);
         let _ = app.update(Message::Page(Page::Devbox));
         let previous = app.config.devbox.clone();
-        click(&mut app, &mut native, "devbox-details-memory");
+        reveal_click(&mut app, &mut native, "devbox-details-memory");
         assert!(app.devbox_details.contains(&DevboxSection::Memory));
         assert_eq!(
             app.config.devbox, previous,
             "Details must not toggle the reading"
         );
-        click(&mut app, &mut native, "devbox-reorder");
+        reveal_click(&mut app, &mut native, "devbox-reorder");
         assert!(app.devbox_reordering);
         native.capture(
             app.settings_view(),
@@ -611,7 +646,7 @@ fn visual_preview_selection_reorder_and_readability_have_separate_effects() {
             &format!("polish-reorder-{}", size.width),
         );
         let original = app.config.devbox.ordered_sections();
-        click(&mut app, &mut native, "devbox-move-cpu-1");
+        reveal_click(&mut app, &mut native, "devbox-move-cpu-1");
         assert_eq!(app.config.devbox.ordered_sections()[1], DevboxSection::Cpu);
         click(&mut app, &mut native, "settings-undo");
         assert_eq!(app.config.devbox.ordered_sections(), original);
@@ -689,20 +724,48 @@ fn review_r1_gallery_keyboard_actions_are_reachable() {
         },
     };
     use cosmic::iced::runtime::user_interface::{Cache, UserInterface};
-    use cosmic::iced::{Rectangle, keyboard};
-    struct Focused(Option<Rectangle>);
+    use cosmic::iced::{Rectangle, Vector, keyboard};
+    #[derive(Default)]
+    struct Focused {
+        bounds: Option<Rectangle>,
+        viewport: Option<Rectangle>,
+        offset: Vector,
+        clip: Option<Rectangle>,
+        pending_scroll: Option<(Rectangle, Vector)>,
+    }
     impl Operation for Focused {
         fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn Operation)) {
+            let previous = (self.offset, self.clip);
+            if let Some((mut viewport, translation)) = self.pending_scroll.take() {
+                viewport.x -= self.offset.x;
+                viewport.y -= self.offset.y;
+                self.clip = Some(viewport);
+                self.offset += translation;
+            }
             f(self);
+            (self.offset, self.clip) = previous;
+        }
+        fn scrollable(
+            &mut self,
+            _: Option<&cosmic::widget::Id>,
+            bounds: Rectangle,
+            _: Rectangle,
+            translation: Vector,
+            _: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
+        ) {
+            self.pending_scroll = Some((bounds, translation));
         }
         fn focusable(
             &mut self,
             _: Option<&cosmic::widget::Id>,
-            bounds: Rectangle,
+            mut bounds: Rectangle,
             s: &mut dyn Focusable,
         ) {
             if s.is_focused() {
-                self.0 = Some(bounds);
+                bounds.x -= self.offset.x;
+                bounds.y -= self.offset.y;
+                self.bounds = Some(bounds);
+                self.viewport = self.clip;
             }
         }
     }
@@ -744,8 +807,28 @@ fn review_r1_gallery_keyboard_actions_are_reachable() {
                         _ => break,
                     }
                 }
-                let mut bounds = Focused(None);
+                let mut bounds = Focused::default();
                 ui.operate(&renderer, &mut bounds);
+                // Exercise the same ordered focus reveal used by Tab in the app.
+                // No pointer movement or wheel scrolling is permitted here.
+                let mut operation: Box<dyn Operation> =
+                    Box::new(navigation::FocusReveal::default());
+                loop {
+                    ui.operate(&renderer, operation.as_mut());
+                    match operation.finish() {
+                        OpOutcome::Chain(next) => operation = next,
+                        _ => break,
+                    }
+                }
+                let mut bounds = Focused::default();
+                ui.operate(&renderer, &mut bounds);
+                if let (Some(target), Some(viewport)) = (bounds.bounds, bounds.viewport) {
+                    assert!(
+                        target.y >= viewport.y - 0.5
+                            && target.y + target.height <= viewport.y + viewport.height + 0.5,
+                        "Keyboard focus must be visible without scrolling: {target:?} in {viewport:?}"
+                    );
+                }
                 for key in [
                     keyboard::Key::Named(keyboard::key::Named::Enter),
                     keyboard::Key::Character(" ".into()),
@@ -776,14 +859,23 @@ fn review_r1_gallery_keyboard_actions_are_reachable() {
                             Message::Profiles(profiles::Message::ThemeWallpaper(_))
                         ) && !reached.contains(&label)
                         {
-                            let bounds = bounds.0.expect("matching wallpaper has keyboard focus");
+                            let target = bounds
+                                .bounds
+                                .expect("matching wallpaper has keyboard focus");
                             assert!(
-                                bounds.x >= 0.
-                                    && bounds.y >= 0.
-                                    && bounds.x + bounds.width <= size.width
-                                    && bounds.y + bounds.height <= size.height,
-                                "primary option must be visible: {bounds:?}"
+                                target.x >= 0.
+                                    && target.y >= 0.
+                                    && target.x + target.width <= size.width
+                                    && target.y + target.height <= size.height,
+                                "primary option must be visible: {target:?}"
                             );
+                            if let Some(viewport) = bounds.viewport {
+                                assert!(
+                                    target.y >= viewport.y
+                                        && target.y + target.height <= viewport.y + viewport.height,
+                                    "primary option must be inside its scroll viewport: {target:?} in {viewport:?}"
+                                );
+                            }
                             ui.draw(
                                 &mut renderer,
                                 &cosmic::Theme::dark(),
@@ -812,7 +904,7 @@ fn review_r1_gallery_keyboard_actions_are_reachable() {
                             }
                         }
                         if reached.insert(label.clone()) {
-                            println!("{size:?}: {label}, focused bounds {:?}", bounds.0);
+                            println!("{size:?}: {label}, focused bounds {:?}", bounds.bounds);
                         }
                     }
                 }
@@ -927,9 +1019,7 @@ fn widget_fonts_list_installed_families_and_save_a_choice() {
     if child("widget_fonts_list_installed_families_and_save_a_choice") {
         return;
     }
-    // Advanced now follows the material chooser; keep all font controls in
-    // the pointer driver's content-coordinate viewport.
-    let size = Size::new(1020., 2200.);
+    let size = Size::new(1020., 720.);
     let (mut app, _) = Settings::init(Core::default(), Page::Appearance);
     let _ = app.update(Message::Resized(size));
     let mut native = Native::new(size);
@@ -939,8 +1029,8 @@ fn widget_fonts_list_installed_families_and_save_a_choice() {
             .is_none()
     );
     app.system_animations = false;
-    click(&mut app, &mut native, "settings-advanced");
-    click(&mut app, &mut native, "font-text");
+    reveal_click(&mut app, &mut native, "settings-advanced");
+    reveal_click(&mut app, &mut native, "font-text");
     assert!(
         native
             .try_bounds(app.settings_view(), "font-list-text")
@@ -1031,6 +1121,10 @@ fn calendar_subscription_form_and_selection_use_real_controls() {
         let _ = app.update(Message::Resized(size));
         let mut native = Native::new(size);
         app.calendar.subscription_form = false;
+        if app.scene_open() {
+            reveal_click(&mut app, &mut native, "scene-toggle");
+            native.scroll(app.settings_view(), "settings-content", 0.);
+        }
         click(&mut app, &mut native, "calendar-subscription-open");
         assert!(app.calendar.subscription_form);
         native.capture(

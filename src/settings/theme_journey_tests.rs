@@ -132,6 +132,50 @@ fn themes(app: &mut Settings, message: profiles::Message) {
     drive(app);
 }
 
+fn click(app: &mut Settings, native: &mut Native, id: &str) {
+    use cosmic::iced::{Event, mouse};
+    let bounds = super::tests::native_reveal(app, native, id);
+    let mut emitted = false;
+    for event in [
+        mouse::Event::CursorMoved {
+            position: bounds.center(),
+        },
+        mouse::Event::ButtonPressed(mouse::Button::Left),
+        mouse::Event::ButtonReleased(mouse::Button::Left),
+    ] {
+        for message in native
+            .event(app.settings_view(), Event::Mouse(event), bounds.center())
+            .0
+        {
+            emitted = true;
+            let _ = app.update(message);
+        }
+    }
+    assert!(emitted, "{id} emits a native input message");
+    drive(app);
+}
+
+fn reveal_text(app: &Settings, native: &mut Native, text: &str) -> cosmic::iced::Rectangle {
+    native.scroll(app.settings_view(), "settings-content", 0.);
+    let bounds = native.text_bounds(app.settings_view(), text);
+    if bounds.y + bounds.height > native.size.height - 64. {
+        native.scroll(
+            app.settings_view(),
+            "settings-content",
+            (bounds.y - 160.).max(0.),
+        );
+    }
+    let bounds = native.text_bounds(app.settings_view(), text);
+    assert!(
+        bounds.x >= 0.
+            && bounds.x + bounds.width <= native.size.width
+            && bounds.y >= 100.
+            && bounds.y + bounds.height <= native.size.height - 48.,
+        "{text} must be visible after scrolling: {bounds:?}"
+    );
+    bounds
+}
+
 fn prefix() -> String {
     std::env::var("DESKTOP_CARDS_JOURNEY_PREFIX").unwrap_or_else(|_| "journey".into())
 }
@@ -197,33 +241,36 @@ fn journey_reported_wallpaper_colors_and_outline() {
             profiles::Message::Select(profiles::Selection::Preset("theme-soft")),
         );
         capture_page(&app, size, &cosmic::Theme::dark(), "themes-soft", 3);
-        // The whole choice (the style row, color, wallpaper) fits without
-        // scrolling; the styles themselves are one click away.
+        // The preview can be collapsed; each choice remains reachable by
+        // scrolling, and the styles themselves are one click away.
         let mut native = Native::new(size);
+        click(&mut app, &mut native, "scene-toggle");
+        assert!(!app.scene_open());
         for id in [
             "theme-browse-styles",
             "theme-color-wallpaper",
             "theme-color-custom",
             "theme-matching-wallpaper",
         ] {
-            let bounds = native.bounds(app.settings_view(), id);
+            let bounds = super::tests::native_reveal(&app, &mut native, id);
             assert!(
                 bounds.y >= 0. && bounds.y + bounds.height <= size.height - 48.,
                 "{id} is visible at {size:?}: {bounds:?}"
             );
         }
-        // The browser shows the first styles without scrolling, and leaves
-        // the previewed look selected.
-        let _ = app.update(Message::StyleBrowser(true));
+        // Enter the actual style browser and keep the previewed look selected.
+        click(&mut app, &mut native, "theme-browse-styles");
+        assert!(app.style_browser);
         for id in ["styles-back", "preset-theme-soft", "preset-theme-outline"] {
-            let bounds = native.bounds(app.settings_view(), id);
+            let bounds = super::tests::native_reveal(&app, &mut native, id);
             assert!(
                 bounds.y >= 0. && bounds.y + bounds.height <= size.height - 48.,
                 "{id} is visible in the browser at {size:?}: {bounds:?}"
             );
         }
         capture_page(&app, size, &cosmic::Theme::dark(), "themes-styles", 2);
-        let _ = app.update(Message::StyleBrowser(false));
+        click(&mut app, &mut native, "styles-back");
+        assert!(!app.style_browser);
         let style = |pointer: &str| {
             app.profiles
                 .profile()
@@ -343,7 +390,7 @@ fn material_native_chooser_adjust_reset_and_undo() {
     let store = crate::desktop::DesktopStore::from_env().unwrap();
     crate::desktop::islands::fixture_installed(store.fixture_root().unwrap());
     let click = |native: &mut Native, app: &mut Settings, id: &str| {
-        let b = native.bounds(app.settings_view(), id);
+        let b = super::tests::native_reveal(app, native, id);
         assert!(
             b.y >= 0. && b.y + b.height <= native.size.height,
             "{id} {b:?}"
@@ -381,6 +428,8 @@ fn material_native_chooser_adjust_reset_and_undo() {
             &cosmic::Theme::dark(),
             &format!("materials-before-{}", size.width),
         );
+        click(&mut native, &mut app, "scene-toggle");
+        assert!(!app.scene_open());
         for kind in Kind::ALL {
             click(&mut native, &mut app, &format!("material-{}", kind.key()));
             assert_eq!(Config::load().materials.shared.unwrap().kind, kind);
@@ -393,17 +442,17 @@ fn material_native_chooser_adjust_reset_and_undo() {
         assert_eq!(Config::load().appearance, original.appearance);
         assert_eq!(Config::load().glance, original.glance);
         click(&mut native, &mut app, "material-adjust");
-        let motion = native.text_bounds(app.settings_view(), "Liquid widget motion");
+        let motion = reveal_text(&app, &mut native, "Liquid widget motion");
         assert!(
             motion.y >= 0. && motion.y + motion.height <= native.size.height - 48.,
             "Liquid widget motion fits above the footer: {motion:?}"
         );
-        let readability = native.bounds(app.settings_view(), "material-readability");
+        let readability = super::tests::native_reveal(&app, &mut native, "material-readability");
         assert!(
             readability.y + readability.height <= native.size.height - 48.,
             "Adjust fits above the footer: {readability:?}"
         );
-        let b = native.bounds(app.settings_view(), "material-transparency");
+        let b = super::tests::native_reveal(&app, &mut native, "material-transparency");
         let p = cosmic::iced::Point::new(b.x + b.width * 0.4, b.center_y());
         let (messages, _) = native.event(
             app.settings_view(),
@@ -477,7 +526,7 @@ fn material_native_chooser_adjust_reset_and_undo() {
         let _ = app.update(Message::UndoPreferences);
         assert!(Config::load().materials.shared.unwrap().opacity.is_some());
         // Real scope tabs, real chooser; a new shared choice keeps the Dock override.
-        let bounds = native.text_bounds(app.settings_view(), "Dock");
+        let bounds = reveal_text(&app, &mut native, "Dock");
         let p = bounds.center();
         let _ = native.event(
             app.settings_view(),

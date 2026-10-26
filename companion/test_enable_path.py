@@ -27,21 +27,36 @@ refresh.verify_bundle=lambda path,*args,**kw: real_verify(path,*args,**{**kw,'ow
 cohort=sys.argv[3]
 runtime_identity.installed_identity=lambda _: {'format':'halcyon-installed-runtime','version':1,'scope':'islands-runtime','verified':True,'targets':[cohort]}
 real_run=subprocess.run
-subprocess.run=lambda args,**kw: subprocess.CompletedProcess(args,0,'install ok installed\\n0.2.1','') if args[0]=='/usr/bin/dpkg-query' else real_run(args,**kw)
+subprocess.run=lambda args,**kw: subprocess.CompletedProcess(args,0,os.environ.get('TEST_PACKAGE_STATUS','install ok installed')+'\\n0.2.1','') if args[0]=='/usr/bin/dpkg-query' else real_run(args,**kw)
 entry=runpy.run_path(sys.argv[1]);entry['main'].__globals__['LIBRARY']=library
 sys.argv=[sys.argv[1],'enable']
 sys.exit(entry['main']())
 ''')
-            for case in ('missing','reversed','normal'):
+            for case in ('missing','reversed','normal','held','partial_held','custom_failed','unused_default_failed'):
                 with self.subTest(case=case):
                     home=root/case;home.mkdir();local=str(home/'.local/bin')
-                    path={'missing':'/usr/bin','reversed':'/usr/bin:'+local,'normal':local+':/usr/bin'}[case]
+                    path={'missing':'/usr/bin','reversed':'/usr/bin:'+local}.get(case,local+':/usr/bin')
                     env={**os.environ,'HOME':str(home),'XDG_DATA_HOME':str(home/'.local/share'),'XDG_CONFIG_HOME':str(home/'.config'),'XDG_STATE_HOME':str(home/'.local/state'),'XDG_CURRENT_DESKTOP':'COSMIC','XDG_SESSION_ID':'isolated-test','PATH':path}
+                    if case in ('held','partial_held'):
+                        env['TEST_PACKAGE_STATUS']='hold ok installed' if case=='held' else 'hold ok unpacked'
+                    if case in ('custom_failed','unused_default_failed'):
+                        state=home/'custom-state';env['XDG_STATE_HOME']=str(state)
+                        failed=(state if case=='custom_failed' else home/'.local/state')/'desktop-cards-panel/failed'
+                        failed.parent.mkdir(parents=True);failed.touch()
                     run=subprocess.run([sys.executable,str(harness),str(cli),str(library),catalog['cohorts'][0]['runtime_target']['id']],env=env,text=True,capture_output=True,timeout=20)
-                    if case=='normal':
+                    if case in ('normal','held','unused_default_failed'):
                         self.assertEqual(run.returncode,0,run.stderr)
                         self.assertEqual(json.loads(run.stdout)['state'],'staged')
                         self.assertEqual((home/'.local/bin/cosmic-panel').read_bytes(),(library/'selector.py').read_bytes())
+                    elif case=='partial_held':
+                        self.assertNotEqual(run.returncode,0)
+                        self.assertEqual(json.loads(run.stdout)['reason'],'package_absent')
+                        self.assertFalse((home/'.local/bin/cosmic-panel').exists())
+                    elif case=='custom_failed':
+                        self.assertNotEqual(run.returncode,0)
+                        self.assertIn('previous Islands failure',run.stderr)
+                        self.assertFalse((home/'.local/bin/cosmic-panel').exists())
+                        self.assertTrue(failed.exists())
                     else:
                         self.assertNotEqual(run.returncode,0)
                         self.assertIn('PATH must put ~/.local/bin before /usr/bin',run.stderr)

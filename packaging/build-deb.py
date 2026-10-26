@@ -4,6 +4,8 @@
 import argparse
 import gzip
 import hashlib
+import importlib.util
+import json
 import math
 import os
 from pathlib import Path
@@ -20,6 +22,33 @@ APP_ID = "io.github.profilaz3.Halcyon"
 MAINTAINER = "profilaz3 <261673162+profilaz3@users.noreply.github.com>"
 HOMEPAGE = "https://github.com/profilaz3/halcyon"
 ICON_SIZES = (48, 64, 128, 256, 512)
+
+
+def update_defaults(root, control):
+    """Ship offline enrollment inputs; retain separate bootstrap ownership."""
+    updates = REPO / "packaging/updates"
+    spec = importlib.util.spec_from_file_location("halcyon_enrollment", updates / "build-deb.py")
+    enrollment = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(enrollment)
+    key = (updates / "halcyon-archive-keyring.gpg").read_bytes()
+    manifest = json.loads((updates / "archive-key.json").read_text())
+    if hashlib.sha256(key).hexdigest() != manifest["sha256"]:
+        raise ValueError("archive public key does not match reviewed manifest")
+    source, prefs = enrollment.configuration()
+    target = root / "usr/share/cosmic-ext-halcyon/updates"
+    target.mkdir(parents=True)
+    for name, data in (("source.sources", source.encode()), ("preferences", prefs.encode()),
+                       ("archive-keyring.gpg", key)):
+        (target / name).write_bytes(data)
+    helper = (updates / "defaults.py").read_text()
+    for name in ("postinst", "postrm"):
+        # postrm still works after /usr payloads have been removed. If Python
+        # was removed too, retain public trust/config files without breaking APT.
+        optional = 'command -v python3 >/dev/null 2>&1 || exit 0\n' if name == "postrm" else ""
+        (control / name).write_text('#!/bin/sh\nset -eu\n' + optional +
+            '/usr/bin/python3 -I - "$@" <<\'HALCYON_UPDATES_PY\'\n' + helper +
+            '\nHALCYON_UPDATES_PY\n')
+        (control / name).chmod(0o755)
 
 
 def install(source, destination, mode=0o644):
@@ -126,14 +155,15 @@ def build(args):
                 with gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed:
                     compressed.write((REPO / "packaging/man" / name).read_bytes())
 
-        depends = dependencies(binary, scratch)
-        # Debian Policy: regular files rounded up to KiB, plus 1 KiB per directory.
-        installed_size = sum(
-            math.ceil(path.stat().st_size / 1024) if path.is_file() else 1
-            for path in root.rglob("*")
-        )
         control = root / "DEBIAN"
         control.mkdir()
+        update_defaults(root, control)
+        depends = dependencies(binary, scratch)
+        # Debian Policy: regular files rounded up to KiB, plus 1 KiB per directory.
+        installed_size = 1 + sum(
+            math.ceil(path.stat().st_size / 1024) if path.is_file() else 1
+            for path in usr.rglob("*")
+        )
         (control / "control").write_text(
             f"Package: {PACKAGE}\nVersion: {args.version}\nArchitecture: amd64\n"
             "Section: x11\nPriority: optional\n"
@@ -148,6 +178,8 @@ def build(args):
             " clock, date, weather, system monitor, calendar, projects, music, notes\n"
             " and a focus timer. Changes can be undone, and your applets, their order\n"
             " and your panel position stay yours.\n"
+            " Fresh installations enable the signed Halcyon system update source.\n"
+            " Existing disabled or administrator-modified sources are preserved.\n"
         )
         (control / "md5sums").write_text("".join(
             f"{hashlib.md5(path.read_bytes()).hexdigest()}  {path.relative_to(root)}\n"

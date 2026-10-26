@@ -1,3 +1,19 @@
+## Large Settings scenes — 2026-10-25
+
+The visual comfort pass uses a separate 1280×720 bound for full-width wallpaper
+scenes. Gallery thumbnails remain 320×180. Scene decoding still runs in the
+existing background job and shares the four-entry stable-handle cache: at most
+about 14 MiB of retained CPU pixel data, plus renderer-managed GPU resources.
+Source-version checks and stale-result rejection are unchanged. There is no
+image decoding in view construction and no new polling subscription.
+
+The same PNG/JPEG, file-byte, image-side and allocation limits govern both paths.
+Bundled scenes now read the installed image rather than enlarging a compiled
+thumbnail; the isolated validation fixture supplies repository assets under its
+own prefix. Small source images are not enlarged by the decoder. See the
+[visual comfort review](../.task-settings-comfort-evidence/REVIEW.md) for validation.
+This is a resolution/memory tradeoff, not a new frame-time or battery claim.
+
 ## Settings renderer — 2026-10-24
 
 The 0.2.5 build explicitly selected libcosmic features without `wgpu`, leaving

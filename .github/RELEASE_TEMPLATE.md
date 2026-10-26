@@ -12,23 +12,22 @@ Desktop widgets and themes for **COSMIC on Pop!_OS 24.04**.
 
 ${CHANGES}
 
-## Materials
+## Appearance and Setups
 
-Appearance offers Frosted, Clear glass, Smoked glass and Liquid, with shared or
-per-surface choices, transparency, tint, Widget readability and Undo. Liquid has
-optional brief widget edge motion; native bar highlights stay static. Materials
-preserve your color choices. They do not provide optical refraction or a blur-strength
-slider. The four native comparisons and chooser are in the
-[README](https://github.com/${REPOSITORY}/blob/${TAG}/README.md#glass-materials).
+Choose a complete setup or change individual parts. Review its wallpaper, colors,
+widget layout, dock and panel before applying. Islands compositions require the
+matching active companion; standard-panel layouts remain available.
 
-## Daily activity reporting
+Surface finishes use decorative transparency, tint, edges and highlights. They do
+not provide optical refraction or native backdrop blur.
 
-Starting with 0.2.0, Halcyon sends **automatic daily activity reports** while
-the desktop widgets run. Reports go to Google and contain a random installation ID, app
-version, approximate first country and report format version. Country.is supplies
-the country from the public IP; Halcyon discards the IP. No widget content is sent. Reporting is
-always on and has no settings toggle, including after upgrading.
-[Privacy details](https://github.com/${REPOSITORY}/blob/${TAG}/docs/PRIVACY.md).
+## Privacy
+
+Usage sharing is on by default and can be turned off in setup or **App settings →
+Privacy**. While enabled, Halcyon attempts a daily activity report with a random
+installation ID, app version, approximate first country and first desktop start.
+No widget content or hardware details are included.
+[Privacy and current delivery status](https://github.com/${REPOSITORY}/blob/${TAG}/docs/PRIVACY.md).
 
 ## Install or update
 
@@ -42,8 +41,10 @@ Open **Halcyon** from the application launcher. Installing the package alone
 does not change your desktop or start the widgets. Existing settings are
 preserved when updating.
 
-Updates currently use downloads from GitHub Releases. This package does not
-add an APT repository or enable automatic updates.
+Fresh package installations enable Halcyon's signed system-update source by
+default. APT/COSMIC Store manages future updates using your OS settings. Existing
+disabled, deleted or modified sources are preserved. Islands remains optional.
+[Update settings, disabling the source and older-install enrollment](https://github.com/${REPOSITORY}/blob/${TAG}/docs/DISTRIBUTION.md).
 
 ### Updating Islands
 
@@ -51,7 +52,7 @@ For Islands layouts **or Dock/Panel glass materials**, also install the matching
 add-on package from this release:
 
 [Companion package](https://github.com/${REPOSITORY}/releases/download/${TAG}/cosmic-ext-halcyon-islands_${VERSION}_amd64.deb) ·
-[Full corresponding source](https://github.com/${REPOSITORY}/releases/download/${TAG}/halcyon-islands-${VERSION}-source.tar.gz)
+[Full corresponding source](https://github.com/${REPOSITORY}/releases/download/${TAG}/halcyon-${VERSION}-corresponding-source.tar.gz)
 
 ```sh
 sudo apt install ./cosmic-ext-halcyon-islands_${VERSION}_amd64.deb
@@ -60,37 +61,30 @@ halcyon-islands enable
 
 Then log out and back in. The `enable` step refreshes your per-user copy;
 installing the package alone does not update that copy or restart the panel.
-The add-on checks reviewed COSMIC source combinations and performs bounded startup
-checks. Unknown sources or failed checks select the stock panel; saved layouts are kept.
+The add-on checks supported COSMIC families and performs bounded native startup
+checks. Unsupported families or failed checks select the stock panel; saved layouts are kept.
 Widget materials work without the add-on. Bar materials need this updated active
-companion even when the bars use Native layout.
+companion even when the bars use Standard layout.
 
 ## Before you start
 
 - **Platform:** Pop!_OS 24.04 with COSMIC on 64-bit Intel or AMD PCs.
   `amd64` means x86-64 and supports both manufacturers; this is not an ARM build.
 - **Google Calendar:** ${CALENDAR}
-- **Islands:** optional, distributed separately, and qualified for reviewed COSMIC
-  1.10/1.11 source combinations. The 1.10 checks used its compositor with host
-  libraries/applets, not a clean 1.10 OS. Unknown future sources need validation.
+- **Islands:** optional and distributed separately. Admission supports bounded
+  startup attempts on COSMIC 1.10/1.11. Physical hardware and a clean 1.10 OS
+  are not qualified. The compatibility documentation records the tested scope;
+  unknown future sources need validation.
   [Compatibility, activation and removal](https://github.com/${REPOSITORY}/blob/${TAG}/packaging/islands/README.md).
 - **Checksums:** download the matching `.sha256` file beside your package
   and check it with `sha256sum -c filename.sha256`.
 
 ## Explore Halcyon
 
-![Halcyon desktop with coordinated widgets and optional Islands](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-purple.png)
+![Setups in native Halcyon Settings](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/030/setups.png)
 
-<table>
-  <tr>
-    <td width="50%"><img src="https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-paper.png" alt="Light desktop" width="100%"></td>
-    <td width="50%"><img src="https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/desktop-mist.png" alt="Transparent widgets" width="100%"></td>
-  </tr>
-</table>
-
-![Colors and theme settings with automatic wallpaper colors enabled](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/settings-colors.png)
+![Help and diagnostics](https://raw.githubusercontent.com/${REPOSITORY}/${TAG}/docs/screenshots/030/help.png)
 
 [Features and setup](https://github.com/${REPOSITORY}/blob/${TAG}/README.md) ·
 [Package details](https://github.com/${REPOSITORY}/blob/${TAG}/packaging/README.md) ·
 [License and dependency notices](https://github.com/${REPOSITORY}/blob/${TAG}/THIRD_PARTY.md)
-

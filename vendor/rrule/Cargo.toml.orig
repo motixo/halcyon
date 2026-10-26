@@ -1,0 +1,45 @@
+[package]
+name = "rrule"
+description = "A pure Rust implementation of recurrence rules as defined in the iCalendar RFC."
+version = "0.14.0"
+documentation = "https://docs.rs/rrule"
+repository = "https://github.com/fmeringdal/rust-rrule"
+authors = ["Fredrik Meringdal", "Ralph Bisschops <ralph.bisschops.dev@gmail.com>"]
+readme = "../README.md"
+keywords = ["calendar", "rrule", "ical"]
+categories = ["date-and-time"]
+license.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chrono = "0.4.39"
+chrono-tz = "0.10.1"
+log = "0.4.25"
+regex = { version = "1.11.1", default-features = false, features = ["perf", "std"] }
+clap = { version = "4.5.26", optional = true, features = ["derive"] }
+thiserror = "2.0.11"
+serde_with = { version = "3.12.0", optional = true }
+
+[dev-dependencies]
+serde_json = "1.0.135"
+orig_serde = { package = "serde", version = "1.0.217", default-features = false, features = ["derive"] }
+
+[[bin]]
+name = "rrule"
+required-features = ["cli-tool"]
+
+[features]
+default = []
+
+# Allows the enabling of the `by_easter` field and `BYEASTER` parser.
+by-easter = []
+
+# Required only for building CLI `rrule` tool.
+cli-tool = ["clap"]
+
+# Enable serde for some of the public structs.
+serde = ["serde_with", "chrono/serde", "chrono-tz/serde"]
+
+# Allows EXRULE's to be used in the `RRuleSet`.
+exrule = []

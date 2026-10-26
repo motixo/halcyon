@@ -19,7 +19,7 @@ COMPANION = HERE.parent.parent / 'companion'
 sys.path.insert(0, str(COMPANION))
 import panel_launcher
 from bundle_contract import (HELPERS, canonical, identity, verify_bundle,
-                             valid_catalog, read_catalog_bytes, digest)
+                             valid_catalog, read_catalog_bytes, digest, release_catalog)
 
 PACKAGE = 'cosmic-ext-halcyon-islands'
 MAINTAINER = 'profilaz3 <261673162+profilaz3@users.noreply.github.com>'
@@ -61,7 +61,8 @@ def build(binary, manifest, version, out, licenses=None, catalog=None):
         for name in HELPERS:
             stage_file(COMPANION / name, library / name, 0o755 if name in ('install.py', 'panel_launcher.py', 'selector.py') else 0o644)
         catalog_data = read_catalog_bytes(catalog or COMPANION / 'compatibility/catalog.json')
-        admitted = valid_catalog(json.loads(catalog_data))
+        admitted = release_catalog(json.loads(catalog_data))
+        catalog_data = canonical(admitted)
         (library / 'catalog.json').write_bytes(catalog_data)
         (library / 'catalog.json').chmod(0o644)
         del catalog_data

@@ -28,12 +28,12 @@ fn opening_reads_only_and_offers_every_profile_and_display() {
     assert_eq!(
         names,
         [
-            "Halcyon",
-            "Calm",
-            "Evening",
-            "Focus",
-            "Paper",
-            "Rosé",
+            "Everyday",
+            "Slow morning",
+            "After hours",
+            "Deep work",
+            "Writing desk",
+            "Studio",
             "Clean desktop"
         ]
     );
@@ -71,7 +71,7 @@ fn the_first_rule_turns_automation_on_and_later_edits_restart_it() {
     assert!(settings.enabled && settings.since >= before);
     assert_eq!(settings.rules.len(), 1);
     let rule = &settings.rules[0];
-    assert_eq!(rule.name, "Evening");
+    assert_eq!(rule.name, "After hours");
     assert_eq!(rule.when.summary(true), "Weekdays at 19:00");
     assert!(rule.enabled && rule.since >= before);
     assert!(

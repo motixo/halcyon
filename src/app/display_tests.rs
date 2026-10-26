@@ -595,3 +595,75 @@ fn multi_monitor_widget_surfaces_measure_independently_and_restore_after_hotplug
     assert!(cards.card_input_rects(Widget::Weather).is_empty());
     assert_eq!(cards.placed_position(Widget::Weather), [-10000., 0.]);
 }
+
+#[test]
+fn review030_arrange_reconciles_other_display_in_both_probe_orders() {
+    if isolated(
+        "app::display_tests::review030_arrange_reconciles_other_display_in_both_probe_orders",
+    ) {
+        return;
+    }
+    for primary_first in [true, false] {
+        let config = Config::save_changes(serde_json::json!({
+            "enabled_widgets":["weather","devbox"],
+            "widget_display":"DP-1",
+            "widget_monitors":{"devbox":{"display":"DP-2"}}
+        }))
+        .unwrap();
+        let wire = Wire::new();
+        let (mut cards, _) = Cards::init(Core::default(), config);
+        send(
+            &mut cards,
+            Message::OutputChanged(
+                OutputEvent::Created(Some(info(Some("DP-1"), (1920, 1080)))),
+                wire.output(1),
+            ),
+        );
+        send(
+            &mut cards,
+            Message::OutputChanged(
+                OutputEvent::Created(Some(info(Some("DP-2"), (1280, 720)))),
+                wire.output(2),
+            ),
+        );
+        ready(&mut cards, [1920., 1080.]);
+        let _ = cards.arrange_on_display("DP-2".into());
+        let extra = cards.extra_probes[0].id;
+        let mut created = Vec::new();
+        if primary_first {
+            ready(&mut cards, [1280., 720.]);
+            assert!(cards.layout_editor.active);
+            created.extend(send(
+                &mut cards,
+                Message::SurfaceResized(extra, cosmic::iced::Size::new(1920., 1080.)),
+            ));
+        } else {
+            send(
+                &mut cards,
+                Message::SurfaceResized(extra, cosmic::iced::Size::new(1920., 1080.)),
+            );
+            created.extend(ready(&mut cards, [1280., 720.]));
+        }
+        assert!(cards.layout_editor.active);
+        let weather = created
+            .iter()
+            .rev()
+            .find(|s| s.namespace == "halcyon-weather")
+            .expect("other display surface rebuilt after its probe");
+        assert!(weather.margin.left >= 0 && weather.margin.top >= 0);
+        assert!(weather.input_zone.as_ref().is_some_and(|r| !r.is_empty()));
+        assert_eq!(
+            weather.size.unwrap().0.unwrap(),
+            cards.widget_size(Widget::Weather)[0].ceil() as u32 + cards.shadow_px().1
+        );
+        let devbox = created
+            .iter()
+            .rev()
+            .find(|s| s.namespace == "halcyon-devbox")
+            .unwrap();
+        assert!(
+            devbox.margin.left < -9000,
+            "editing display remains owned by overlay"
+        );
+    }
+}

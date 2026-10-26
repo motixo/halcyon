@@ -18,7 +18,16 @@ impl Settings {
             .spacing(12)
             .align_y(Alignment::Center)
             .into(),
-            label("Only used to count installations.", 12., MUTED),
+            label(
+                "Reports app version, first start, country and daily activity. Never widget content.",
+                12.,
+                MUTED,
+            ),
+            label(
+                "Turning this off stops activity reporting and queues a final preference update.",
+                12.,
+                MUTED,
+            ),
         ];
         if self.usage_busy {
             controls.push(label("Saving choice…", 12., MUTED));
@@ -29,6 +38,12 @@ impl Settings {
         column::with_children(controls).spacing(8).into()
     }
     pub(in crate::settings) fn privacy_section(&self) -> Element<'_, Message> {
-        section(vec![heading("Privacy", ""), self.usage_control()])
+        section(vec![
+            detail(
+                "Usage reporting",
+                "Your choice is independent of themes and saved setups.",
+            ),
+            self.usage_control(),
+        ])
     }
 }

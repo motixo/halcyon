@@ -285,19 +285,6 @@ async fn prepare(auth: &Authorization) -> Result<(Connection, Credential), Probl
         },
     ))
 }
-/// Removes a credential that is no longer used; if the keyring refuses,
-/// remembers its ID so a later sign-in or disconnect removes it.
-pub(super) async fn forget(id: &str) {
-    if id.is_empty() || keyring::remove(id).await.is_ok() {
-        return;
-    }
-    let mut stale = store::stale_credentials();
-    if !stale.iter().any(|known| known == id) {
-        stale.push(id.to_string());
-        store::set_stale_credentials(&stale);
-    }
-}
-
 async fn commit(
     auth: &Authorization,
     connection: Connection,
@@ -306,25 +293,18 @@ async fn commit(
     if auth.cancelled() {
         return Err(Problem::Cancelled);
     }
-    keyring::save(&connection.credential, &credential).await?;
+    let _lease = keyring::save_prepared(connection.credential.clone(), credential).await?;
     let saved = if auth.cancelled() {
         Err(Problem::Cancelled)
     } else {
         store::replace(&auth.0.expected, &connection)
     };
     if let Err(problem) = saved {
-        forget(&connection.credential).await;
+        // Prepared credentials remain journaled when cancellation wins.
         return Err(problem);
     }
-    if matches!(
-        auth.0.expected.backend,
-        Backend::Google | Backend::Subscription
-    ) {
-        forget(&auth.0.expected.credential).await;
-    }
-    // Credentials left behind by an earlier switch get another try now that
-    // the keyring is open.
-    super::retry_stale_credentials().await;
+    drop(_lease);
+    super::schedule_cleanup();
     Ok(connection)
 }
 

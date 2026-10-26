@@ -1162,8 +1162,10 @@ fn a_moved_wallpaper_leaves_out_only_that_part() {
     assert_eq!(fixture.tree(), before, "a coordinated setup is atomic");
     let line = status::outcome_line(
         &Outcome {
+            transaction: None,
             at: 0,
             due: Due {
+                revision: None,
                 rule: "r1".into(),
                 profile: ProfileRef::Saved(id.as_str().into()),
                 name: "Evening".into(),
@@ -1301,6 +1303,7 @@ fn the_status_says_what_happens_next_and_why() {
     // Waiting for Settings: both ways out are named.
     let mut waiting = state.clone();
     let due = Due {
+        revision: None,
         rule: "r2".into(),
         profile: ProfileRef::Preset("evening".into()),
         name: "Evening".into(),
@@ -1309,6 +1312,7 @@ fn the_status_says_what_happens_next_and_why() {
     };
     waiting.pending = Some(due.clone());
     waiting.record(Outcome {
+        transaction: None,
         at: due.at,
         due: due.clone(),
         effect: Effect::Waiting {
@@ -1332,6 +1336,7 @@ fn the_status_says_what_happens_next_and_why() {
     // Applying them was a change of the person's own: kept, and said why.
     let kept = status::outcome_line(
         &Outcome {
+            transaction: None,
             at: due.at + 180,
             due,
             effect: Effect::KeptManual {
@@ -1721,6 +1726,7 @@ mod runtime_loop {
         let mut automator = Automator::with_store(Some(fixture.store()));
         let now = Instant::now();
         let due = |rule: &str, name: &str, cause: Cause, at: DateTime<Utc>| Due {
+            revision: None,
             rule: rule.into(),
             profile: ProfileRef::Preset(name.to_lowercase()),
             name: name.into(),
@@ -1887,16 +1893,22 @@ mod runtime_loop {
 
 #[test]
 fn task2_queued_schedule_is_superseded_by_restore_but_future_event_runs() {
-    let f = Fixture::new("schedule-restore");
-    let store = f.store().with_app_config(f.0.join("config.json"));
-    std::fs::write(store.app_config().unwrap(), "{}").unwrap();
+    // A real fitted Presentation needs the installed bar defaults. Keep
+    // the post-Restore assertion about an actual successful future switch.
+    let (_f, store) = desk("schedule-restore");
     crate::desktop::recovery::ensure_baseline(
         &store,
         crate::desktop::recovery::BaselineKind::CurrentDesktop,
     )
     .unwrap();
+    let settings = update(&store, |settings| {
+        *settings = on(vec![schedule("r1", 10, 0, Days::EVERY, "Presentation")]);
+        Ok(())
+    })
+    .unwrap();
     let due = decide::Due {
-        rule: "a".into(),
+        revision: Some(decide::Revision::new(&settings, &settings.rules[0])),
+        rule: "r1".into(),
         profile: ProfileRef::Preset("presentation".into()),
         name: "Clean desktop".into(),
         cause: decide::Cause::Schedule("2026-10-23T10:00:00".into()),
@@ -1921,20 +1933,30 @@ fn task2_queued_schedule_is_superseded_by_restore_but_future_event_runs() {
         held: Default::default(),
         epoch: store.restore_epoch().unwrap(),
     };
-    assert!(!matches!(job.run(&store)[0].1, Ran::KeptManual(_)));
+    let results = job.run(&store);
+    assert!(
+        matches!(results[0].1, Ran::Applied { .. } | Ran::AlreadySet),
+        "{results:?}"
+    );
 }
 #[test]
 fn task2r1_journal_before_epoch_recovery_supersedes_queued_schedule() {
-    let f = Fixture::new("schedule-restore");
-    let store = f.store().with_app_config(f.0.join("config.json"));
-    std::fs::write(store.app_config().unwrap(), "{}").unwrap();
+    // A real fitted Presentation needs the installed bar defaults. Keep
+    // the post-Restore assertion about an actual successful future switch.
+    let (f, store) = desk("schedule-restore");
     crate::desktop::recovery::ensure_baseline(
         &store,
         crate::desktop::recovery::BaselineKind::CurrentDesktop,
     )
     .unwrap();
+    let settings = update(&store, |settings| {
+        *settings = on(vec![schedule("r1", 10, 0, Days::EVERY, "Presentation")]);
+        Ok(())
+    })
+    .unwrap();
     let due = decide::Due {
-        rule: "a".into(),
+        revision: Some(decide::Revision::new(&settings, &settings.rules[0])),
+        rule: "r1".into(),
         profile: ProfileRef::Preset("presentation".into()),
         name: "Clean desktop".into(),
         cause: decide::Cause::Schedule("2026-10-23T10:00:00".into()),
@@ -1952,7 +1974,7 @@ fn task2r1_journal_before_epoch_recovery_supersedes_queued_schedule() {
     .unwrap();
     store.inject(Some(crate::desktop::store::Fault::InterruptBeforeEpoch));
     assert!(crate::desktop::recovery::apply_restore(&store, &plan).is_err());
-    let store = f.store().with_app_config(f.0.join("config.json"));
+    let store = f.store().with_app_config(f.0.join("app/config.json"));
     store.recover().unwrap();
     assert!(matches!(job.run(&store)[0].1, Ran::KeptManual(_)));
     let mut future = due;
@@ -1962,5 +1984,209 @@ fn task2r1_journal_before_epoch_recovery_supersedes_queued_schedule() {
         held: Default::default(),
         epoch: store.restore_epoch().unwrap(),
     };
-    assert!(!matches!(job.run(&store)[0].1, Ran::KeptManual(_)));
+    let results = job.run(&store);
+    assert!(
+        matches!(results[0].1, Ran::Applied { .. } | Ran::AlreadySet),
+        "{results:?}"
+    );
+}
+
+#[test]
+fn auditfix_set04_pending_revision_survives_restart_only_when_unchanged() {
+    for edit in [
+        "unchanged",
+        "time",
+        "days",
+        "display",
+        "rule_since",
+        "activation",
+        "disabled",
+        "missing",
+        "legacy",
+    ] {
+        let (fixture, store) = desk(&format!("auditfix-pending-{edit}"));
+        update(&store, |settings| {
+            *settings = on(vec![schedule("r1", 7, 0, Days::EVERY, "Presentation")]);
+            Ok(())
+        })
+        .unwrap();
+        let settings = load(&store).unwrap();
+        let mut state = State::default();
+        tick(&settings, &mut state, at(2026, 10, 18, 6, 59));
+        let event = decide(
+            &settings,
+            &mut state,
+            &Cet,
+            at(2026, 10, 18, 7, 0),
+            None,
+            || None,
+        )
+        .due
+        .pop()
+        .unwrap();
+        state.pending = Some(event.clone());
+        if edit == "legacy" {
+            state.pending.as_mut().unwrap().revision = None;
+        }
+        save_state(&store, &state).unwrap();
+        update(&store, |settings| {
+            match edit {
+                "time" => {
+                    settings.rules[0].when = Trigger::Schedule {
+                        time: Time::new(9, 0).unwrap(),
+                        days: Days::EVERY,
+                    }
+                }
+                // Same since and an occurrence still included by the new rule:
+                // full trigger identity, not occurrence membership, matters.
+                "days" => {
+                    settings.rules[0].when = Trigger::Schedule {
+                        time: Time::new(7, 0).unwrap(),
+                        days: Days::WEEKEND,
+                    }
+                }
+                "display" => {
+                    settings.rules[0].when =
+                        display("r1", Change::Connect, Some("DP-2"), "Presentation").when
+                }
+                "rule_since" => settings.rules[0].since = at(2026, 10, 18, 8, 0).timestamp(),
+                "activation" => settings.since = at(2026, 10, 18, 8, 0).timestamp(),
+                "disabled" => settings.enabled = false,
+                "missing" => settings.rules.clear(),
+                _ => {}
+            }
+            Ok(())
+        })
+        .unwrap();
+        let mut restarted = runtime::Automator::with_store(Some(store.clone()));
+        let job = restarted.evaluate_with(
+            &Cet,
+            at(2026, 10, 18, 8, 5),
+            std::time::Instant::now(),
+            Vec::new,
+        );
+        if edit == "unchanged" {
+            assert_eq!(job.unwrap().due, [event]);
+        } else {
+            assert!(
+                job.is_none(),
+                "{edit} must not replay the waiting occurrence"
+            );
+            assert!(restarted.state.pending.is_none());
+            assert!(
+                load_state(&store).pending.is_none(),
+                "invalidation is durable"
+            );
+        }
+        assert!(store.latest_change().unwrap().is_none());
+        drop(fixture);
+    }
+}
+
+#[test]
+fn auditfix_set04_display_trigger_revision_invalidates_persisted_pending() {
+    let mut settings = on(vec![display(
+        "r1",
+        Change::Connect,
+        Some("DP-1"),
+        "Presentation",
+    )]);
+    let mut state = State::default();
+    watch(&settings, &mut state, at(2026, 10, 18, 7, 0), &["eDP-1"]);
+    let due = decide(
+        &settings,
+        &mut state,
+        &Cet,
+        at(2026, 10, 18, 7, 5),
+        Some(&["eDP-1".into(), "DP-1".into()]),
+        || None,
+    )
+    .due
+    .pop()
+    .unwrap();
+    state.pending = Some(due);
+    state = State::parse(&serde_json::to_vec(&state).unwrap());
+    settings.rules[0].when = display("r1", Change::Disconnect, Some("DP-2"), "Presentation").when;
+    let result = decide(
+        &settings,
+        &mut state,
+        &Cet,
+        at(2026, 10, 18, 8, 5),
+        None,
+        || None,
+    );
+    assert!(result.due.is_empty());
+    assert!(result.persist);
+    assert!(state.pending.is_none());
+}
+
+#[test]
+fn auditfix_set04_queued_job_rechecks_rules_before_actual_execution() {
+    for changed in [false, true] {
+        let (fixture, store) = desk(&format!("auditfix-queued-rule-{changed}"));
+        update(&store, |settings| {
+            *settings = on(vec![schedule("r1", 7, 0, Days::EVERY, "Presentation")]);
+            Ok(())
+        })
+        .unwrap();
+        let mut runtime = runtime::Automator::with_store(Some(store.clone()));
+        let instant = std::time::Instant::now();
+        runtime.evaluate_with(&Cet, at(2026, 10, 18, 6, 59), instant, Vec::new);
+        let job = runtime
+            .evaluate_with(&Cet, at(2026, 10, 18, 7, 0), instant, Vec::new)
+            .unwrap();
+        // Change after queueing, without a watcher reload or manual desktop
+        // write. It must be fenced by the worker, not just the pending UI.
+        if changed {
+            update(&store, |settings| {
+                settings.rules[0].when = Trigger::Schedule {
+                    time: Time::new(9, 0).unwrap(),
+                    days: Days::EVERY,
+                };
+                Ok(())
+            })
+            .unwrap();
+        }
+        let before = fixture.tree();
+        let result = job.run(&store);
+        if changed {
+            assert!(
+                matches!(&result[0].1, Ran::Failed(reason) if reason.contains("rule changed")),
+                "{result:?}"
+            );
+            assert_eq!(
+                fixture.tree(),
+                before,
+                "no profile, journal, history or widget write"
+            );
+        } else {
+            assert!(matches!(&result[0].1, Ran::Applied { .. }), "{result:?}");
+        }
+    }
+}
+
+#[test]
+fn auditfix_set04_rule_saves_and_reset_share_execution_lock() {
+    let (_fixture, store) = desk("auditfix-rule-execution-lock");
+    update(&store, |settings| {
+        *settings = on(vec![schedule("r1", 7, 0, Days::EVERY, "Presentation")]);
+        Ok(())
+    })
+    .unwrap();
+    let before = std::fs::read(path(&store, FILE)).unwrap();
+    let lock = lock_rules(&store).unwrap();
+    // A UI save must return busy while the execution fence is held; it
+    // cannot publish a revised rule inside an older rule's transaction.
+    let saved = crate::config::with_nonblocking_locks(|| {
+        update(&store, |settings| {
+            settings.rules[0].since = 42;
+            Ok(())
+        })
+    });
+    assert!(saved.is_err());
+    assert!(crate::config::with_nonblocking_locks(|| reset(&store)).is_err());
+    assert_eq!(std::fs::read(path(&store, FILE)).unwrap(), before);
+    drop(lock);
+    reset(&store).unwrap();
+    assert_eq!(load(&store).unwrap(), Automation::default());
 }

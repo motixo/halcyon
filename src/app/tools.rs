@@ -294,6 +294,8 @@ impl Cards {
     fn note_lifted(&self) -> bool {
         self.tools.draft.as_ref().is_some_and(|draft| draft.typing)
             && self.config.widget_visible(Widget::Notes)
+            && self.widget_available(Widget::Notes)
+            && self.placed_position(Widget::Notes)[0] >= 0.
             && !(self.layout_editor.active && self.arranging_widget(Widget::Notes))
     }
 
@@ -495,6 +497,9 @@ impl Cards {
                     });
                     self.tools.note_problem = None;
                 }
+                if !self.note_lifted() {
+                    self.pause_note();
+                }
                 return self.note_editing(self.note_lifted());
             }
             Action::NoteAction(action) => {
@@ -688,13 +693,26 @@ impl Cards {
         }
         // Every sync places Music as it should be now.
         self.tools.music_shown = self.tool_shown(Widget::Music);
+        // Placement can hide Notes even while its saved visibility is on.
+        // Keep the draft paused until an explicit Resume after room returns.
+        let release_note = !self.note_lifted() && self.tools.draft.is_some();
+        if release_note {
+            self.pause_note();
+        }
         let mut tasks = Vec::new();
         for widget in Widget::TOOLS {
             let size = self.tool_surface_size(widget);
+            let release = if widget == Widget::Notes && release_note {
+                self.note_editing(false)
+            } else {
+                Task::none()
+            };
             if self.tools.geometry.get(&widget) != Some(&size) {
                 self.tools.geometry.insert(widget, size);
                 tasks.push(
-                    destroy_layer_surface(self.widget_id(widget)).chain(self.tool_surface(widget)),
+                    release
+                        .chain(destroy_layer_surface(self.widget_id(widget)))
+                        .chain(self.tool_surface(widget)),
                 );
                 continue;
             }
@@ -706,13 +724,13 @@ impl Cards {
                 [-10000., 0.]
             };
             let mi = self.shadow_px().0;
-            tasks.push(set_margin(
+            tasks.push(release.chain(set_margin(
                 self.widget_id(widget),
                 point[1].round() as i32 - mi,
                 0,
                 0,
                 point[0].round() as i32 - mi,
-            ));
+            )));
         }
         tasks
     }
@@ -1436,3 +1454,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod auditfix_tests;

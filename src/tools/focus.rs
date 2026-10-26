@@ -239,17 +239,24 @@ impl Session {
             return None;
         }
         let ended = self.phase;
-        if ended == Phase::Focus {
-            // Rounds count on the day they finish.
-            if self.day != today {
-                self.day = today.to_string();
+        if ended == Phase::Focus
+            && let Some(finished) = chrono::DateTime::from_timestamp_millis(ends_at)
+        {
+            // A persisted round may be observed days after it expired. Count
+            // the local expiry date, never the date of restart or resume.
+            let completed_on = finished
+                .with_timezone(&chrono::Local)
+                .format("%Y-%m-%d")
+                .to_string();
+            if self.day != completed_on {
+                self.day = completed_on;
                 self.rounds = 0;
             }
             self.rounds = self.rounds.saturating_add(1);
         }
         self.status = Status::Done;
         let next = self.next_phase(preferences, today);
-        let recent = now - ends_at <= LATE_NOTICE_MS;
+        let recent = now.saturating_sub(ends_at) <= LATE_NOTICE_MS;
         if ended == Phase::Focus && preferences.auto_start_breaks && recent {
             // The break starts from the moment focus ended.
             self.begin(next, ends_at, preferences);
@@ -331,6 +338,15 @@ mod tests {
     const MIN: i64 = 60_000;
     const DAY: &str = "2026-10-18";
 
+    fn at(offset: i64) -> i64 {
+        use chrono::TimeZone;
+        chrono::Local
+            .with_ymd_and_hms(2026, 10, 18, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis()
+            + offset
+    }
+
     fn prefs() -> FocusPreferences {
         FocusPreferences::default()
     }
@@ -339,29 +355,29 @@ mod tests {
     fn a_round_runs_pauses_resumes_and_finishes_against_the_wall_clock() {
         let p = prefs();
         let mut s = Session::default();
-        assert_eq!(s.remaining(0, &p), 25 * MIN);
-        s.toggle(1_000, &p, DAY);
+        assert_eq!(s.remaining(at(0), &p), 25 * MIN);
+        s.toggle(at(1_000), &p, DAY);
         assert_eq!(
             s.status,
             Status::Running {
-                ends_at: 1_000 + 25 * MIN
+                ends_at: at(1_000 + 25 * MIN)
             }
         );
-        assert_eq!(s.remaining(1_000 + 5 * MIN, &p), 20 * MIN);
+        assert_eq!(s.remaining(at(1_000 + 5 * MIN), &p), 20 * MIN);
         // Pausing keeps the remaining time however long the pause lasts.
-        s.toggle(1_000 + 5 * MIN, &p, DAY);
+        s.toggle(at(1_000 + 5 * MIN), &p, DAY);
         assert_eq!(
             s.status,
             Status::Paused {
                 remaining: 20 * MIN
             }
         );
-        assert_eq!(s.tick(1_000 + 90 * MIN, &p, DAY), None);
-        s.toggle(100 * MIN, &p, DAY);
-        assert_eq!(s.remaining(100 * MIN, &p), 20 * MIN);
-        assert_eq!(s.tick(120 * MIN - 1, &p, DAY), None);
+        assert_eq!(s.tick(at(1_000 + 90 * MIN), &p, DAY), None);
+        s.toggle(at(100 * MIN), &p, DAY);
+        assert_eq!(s.remaining(at(100 * MIN), &p), 20 * MIN);
+        assert_eq!(s.tick(at(120 * MIN - 1), &p, DAY), None);
         assert_eq!(
-            s.tick(120 * MIN, &p, DAY),
+            s.tick(at(120 * MIN), &p, DAY),
             Some(Event::Finished {
                 phase: Phase::Focus,
                 next: Phase::Break
@@ -369,18 +385,18 @@ mod tests {
         );
         assert_eq!(s.status, Status::Done);
         assert_eq!(s.rounds_today(DAY), 1);
-        assert_eq!(s.remaining(120 * MIN, &p), 0);
+        assert_eq!(s.remaining(at(120 * MIN), &p), 0);
         // Start the break from the finished state.
-        s.toggle(121 * MIN, &p, DAY);
+        s.toggle(at(121 * MIN), &p, DAY);
         assert_eq!(s.phase, Phase::Break);
-        assert_eq!(s.remaining(121 * MIN, &p), 5 * MIN);
+        assert_eq!(s.remaining(at(121 * MIN), &p), 5 * MIN);
     }
 
     #[test]
     fn every_fourth_round_earns_a_long_break_and_skips_do_not_count() {
         let p = prefs();
         let mut s = Session::default();
-        let mut now = 0;
+        let mut now = at(0);
         for round in 1..=4 {
             assert_eq!(s.phase, Phase::Focus);
             s.toggle(now, &p, DAY);
@@ -427,16 +443,16 @@ mod tests {
             ..prefs()
         };
         let mut s = Session::default();
-        s.toggle(0, &p, DAY);
+        s.toggle(at(0), &p, DAY);
         // Back from a long suspend: done, quietly, and no break auto-starts.
-        assert_eq!(s.tick(3 * 3_600_000, &p, DAY), None);
+        assert_eq!(s.tick(at(3 * 3_600_000), &p, DAY), None);
         assert_eq!(s.status, Status::Done);
         // A recent end auto-starts the break from the moment focus ended.
         let mut s = Session::default();
-        s.toggle(0, &p, DAY);
-        assert!(s.tick(25 * MIN + 500, &p, DAY).is_some());
+        s.toggle(at(0), &p, DAY);
+        assert!(s.tick(at(25 * MIN + 500), &p, DAY).is_some());
         assert_eq!(s.phase, Phase::Break);
-        assert_eq!(s.remaining(25 * MIN + 500, &p), 5 * MIN - 500);
+        assert_eq!(s.remaining(at(25 * MIN + 500), &p), 5 * MIN - 500);
     }
 
     #[test]
@@ -496,6 +512,79 @@ mod tests {
         std::fs::write(&path, vec![b' '; MAX_BYTES + 1]).unwrap();
         assert_eq!(Session::load_from(&path), Session::default());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn auditfix_w04_persisted_expiry_counts_its_local_day_once_after_restart() {
+        use chrono::TimeZone;
+        let p = FocusPreferences {
+            auto_start_breaks: true,
+            ..prefs()
+        };
+        let expiry = chrono::Local
+            .with_ymd_and_hms(2026, 10, 24, 23, 50, 0)
+            .unwrap()
+            .timestamp_millis();
+        let now = chrono::Local
+            .with_ymd_and_hms(2026, 10, 25, 12, 0, 0)
+            .unwrap()
+            .timestamp_millis();
+        let dir = std::env::temp_dir().join(format!("halcyon-auditfix-w04-{}", std::process::id()));
+        let path = dir.join("focus.json");
+        let mut session = Session {
+            day: "2026-10-24".into(),
+            rounds: 3,
+            status: Status::Running { ends_at: expiry },
+            ..Session::default()
+        };
+        session.save_to(&path).unwrap();
+        session = Session::load_from(&path);
+        assert_eq!(session.tick(now, &p, "2026-10-25"), None);
+        assert_eq!(session.status, Status::Done);
+        assert_eq!(session.rounds_today("2026-10-24"), 4);
+        assert_eq!(session.rounds_today("2026-10-25"), 0);
+        assert_eq!(session.next_phase(&p, "2026-10-25"), Phase::Break);
+        session.save_to(&path).unwrap();
+        session = Session::load_from(&path);
+        assert_eq!(session.tick(now + MIN, &p, "2026-10-25"), None);
+        assert_eq!(session.rounds, 4, "restarts cannot count the expiry twice");
+        session.reset(&p);
+        session.toggle(now, &p, "2026-10-25");
+        assert_eq!(
+            session.tick(now + 25 * MIN, &p, "2026-10-25"),
+            Some(Event::Finished {
+                phase: Phase::Focus,
+                next: Phase::Break,
+            })
+        );
+        assert_eq!(session.rounds_today("2026-10-25"), 1);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn auditfix_w04_round_crossing_midnight_counts_the_expiry_day_and_notifies() {
+        use chrono::TimeZone;
+        let p = prefs();
+        let start = chrono::Local
+            .with_ymd_and_hms(2026, 10, 24, 23, 40, 0)
+            .unwrap()
+            .timestamp_millis();
+        let mut session = Session {
+            day: "2026-10-24".into(),
+            rounds: 3,
+            ..Session::default()
+        };
+        session.toggle(start, &p, "2026-10-24");
+        let end = session.ends_at().unwrap();
+        assert_eq!(
+            session.tick(end + 500, &p, "2026-10-25"),
+            Some(Event::Finished {
+                phase: Phase::Focus,
+                next: Phase::Break,
+            })
+        );
+        assert_eq!(session.day, "2026-10-25");
+        assert_eq!(session.rounds_today("2026-10-25"), 1);
     }
 
     #[test]

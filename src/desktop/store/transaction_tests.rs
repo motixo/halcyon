@@ -888,3 +888,169 @@ fn an_owned_widget_change_waits_for_the_shared_configuration_lock() {
     worker.join().unwrap().unwrap();
     assert!(fs::read_to_string(&config_path).unwrap().contains("rose"));
 }
+
+#[test]
+fn auditfix_tx02_cancel_receipt_retires_only_it_and_preserves_newer_undo() {
+    let case = Case::new("auditfix-cancel-history");
+    let store = case.store();
+    let (patch, widgets) = case.patch();
+    let look = store
+        .apply_owned(&patch, Some(&widgets), Owner::Profile, "Setup")
+        .unwrap();
+    let mut city = WidgetPatch::new();
+    let old_city = case.json()["location"].clone();
+    city.set(
+        "/location",
+        Some(old_city),
+        Some(json!({"name":"Elsewhere","latitude":3.,"longitude":4.})),
+    )
+    .unwrap();
+    let city = store
+        .apply_owned(
+            &DesktopPatch::new(),
+            Some(&city),
+            Owner::Preferences,
+            "Weather city",
+        )
+        .unwrap();
+    let mut startup = WidgetPatch::new();
+    startup.set("/onboarded", None, Some(json!(true))).unwrap();
+    let startup = store
+        .apply_owned(
+            &DesktopPatch::new(),
+            Some(&startup),
+            Owner::Preferences,
+            "Settings",
+        )
+        .unwrap();
+    store.undo_change(&look).unwrap();
+    let history = store.history_file().unwrap().unwrap();
+    assert!(
+        !history
+            .history
+            .iter()
+            .chain(std::iter::once(&history))
+            .any(|entry| entry.id == look.id)
+    );
+    assert_eq!(history.id, startup.id);
+    assert_eq!(history.history.last().unwrap().id, city.id);
+    assert_eq!(
+        history.recent.last().unwrap().action,
+        activity::Action::Undone
+    );
+    assert_eq!(case.json()["theme"], "teal");
+    assert_eq!(case.json()["location"]["name"], "Elsewhere");
+    store.undo_latest(&startup.id).unwrap();
+    store.undo_latest(&city.id).unwrap();
+    assert!(store.latest_change().unwrap().is_none());
+}
+
+#[test]
+fn auditfix_tx02_receipt_retirement_rolls_back_with_history_on_failure_or_interrupt() {
+    for fault in [
+        Fault::FailRecord,
+        Fault::InterruptBeforeRecord,
+        Fault::InterruptAfterRecord,
+    ] {
+        let case = Case::new("auditfix-cancel-atomic");
+        let store = case.store();
+        let (patch, widget) = case.patch();
+        let look = store
+            .apply_owned(&patch, Some(&widget), Owner::Profile, "Setup")
+            .unwrap();
+        let mut later = WidgetPatch::new();
+        later.set("/onboarded", None, Some(json!(true))).unwrap();
+        let newer = store
+            .apply_owned(
+                &DesktopPatch::new(),
+                Some(&later),
+                Owner::Preferences,
+                "Newer",
+            )
+            .unwrap();
+        let before_config = case.text();
+        let before_history = fs::read(case.undo()).unwrap();
+        store.inject(Some(fault));
+        assert!(store.undo_change(&look).is_err());
+        drop(store);
+        let restarted = case.store();
+        if restarted.journal_path().exists() {
+            restarted.recover().unwrap();
+        }
+        assert_eq!(case.text(), before_config);
+        assert_eq!(fs::read(case.undo()).unwrap(), before_history);
+        assert_eq!(restarted.latest_change().unwrap().unwrap().id, newer.id);
+        restarted.undo_change(&look).unwrap();
+        restarted.undo_latest(&newer.id).unwrap();
+        assert!(restarted.latest_change().unwrap().is_none());
+    }
+}
+
+#[test]
+fn auditfix_tx02_conflicting_receipt_keeps_both_history_and_newer_actions() {
+    let case = Case::new("auditfix-cancel-conflict");
+    let store = case.store();
+    let (patch, widget) = case.patch();
+    let look = store
+        .apply_owned(&patch, Some(&widget), Owner::Profile, "Setup")
+        .unwrap();
+    let mut later = WidgetPatch::new();
+    later.set("/onboarded", None, Some(json!(true))).unwrap();
+    store
+        .apply_owned(
+            &DesktopPatch::new(),
+            Some(&later),
+            Owner::Preferences,
+            "Newer",
+        )
+        .unwrap();
+    let mut raw = case.json();
+    raw["theme"] = json!("ocean");
+    fs::write(&case.config, raw.to_string()).unwrap();
+    let config = case.text();
+    let history = fs::read(case.undo()).unwrap();
+    assert!(store.undo_change(&look).is_err());
+    assert_eq!(case.text(), config);
+    assert_eq!(fs::read(case.undo()).unwrap(), history);
+}
+
+#[test]
+fn auditfix_tx02_older_receipt_uses_its_own_derived_expectations() {
+    let case = Case::new("auditfix-cancel-derived");
+    let store = case.store();
+    let mut first = WidgetPatch::new();
+    first
+        .set("/clock/format_24h", None, Some(json!(true)))
+        .unwrap();
+    let receipt = store
+        .apply_owned(&DesktopPatch::new(), Some(&first), Owner::Profile, "Setup")
+        .unwrap();
+    let mut derived = WidgetPatch::new();
+    derived
+        .set("/clock/format_24h", Some(json!(true)), Some(json!(false)))
+        .unwrap();
+    store
+        .apply_action(
+            &DesktopPatch::new(),
+            Some(&derived),
+            Owner::Preferences,
+            "Derived",
+            Source::Derived,
+        )
+        .unwrap();
+    let mut newer = WidgetPatch::new();
+    newer.set("/onboarded", None, Some(json!(true))).unwrap();
+    let newer = store
+        .apply_owned(
+            &DesktopPatch::new(),
+            Some(&newer),
+            Owner::Preferences,
+            "Newer",
+        )
+        .unwrap();
+    store.undo_change(&receipt).unwrap();
+    assert!(case.json().pointer("/clock/format_24h").is_none());
+    assert_eq!(store.latest_change().unwrap().unwrap().id, newer.id);
+    store.undo_latest(&newer.id).unwrap();
+    assert!(store.latest_change().unwrap().is_none());
+}

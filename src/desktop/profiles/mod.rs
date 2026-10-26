@@ -36,9 +36,16 @@ pub use library::{ProfileEntry, ProfileId, ProfileLibrary};
 pub use plan::{
     Asset, DomainPlan, Installed, ProfilePlan, apply, apply_as, plan, planned_wallpaper_source,
 };
-pub use presets::{CLEAN, Preset, fitted, islands_available, missing, preset, presets};
+#[cfg(test)]
+pub(crate) use presets::islands_composition;
+pub use presets::{
+    CLEAN, Preset, fitted, islands_available, islands_description, missing, occasion, preset,
+    presets,
+};
 
 #[cfg(test)]
 mod desktop_tests;
 #[cfg(test)]
 mod tests;
+
+pub(crate) use plan::preview_panel_style;

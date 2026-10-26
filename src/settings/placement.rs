@@ -99,7 +99,14 @@ impl Geometry {
         Self::on_display(config, None)
     }
     fn on_display(config: &Config, display: Option<&str>) -> Self {
-        let snapshot = crate::layout_state::for_display(config, display, false);
+        Self::on_live_display(config, display, &crate::displays::Registry::default())
+    }
+    fn on_live_display(
+        config: &Config,
+        display: Option<&str>,
+        displays: &crate::displays::Registry,
+    ) -> Self {
+        let snapshot = crate::layout_state::for_display(config, display, false, displays);
         let output = snapshot.display.as_ref().and_then(|d| d.output.as_ref());
         Self {
             visible: Widget::ALL
@@ -111,13 +118,14 @@ impl Geometry {
                 })
                 .map(|widget| widget.key().into())
                 .collect(),
-            defaults: crate::layout_state::for_display(config, display, true),
+            defaults: crate::layout_state::for_display(config, display, true, displays),
             snapshot,
         }
     }
 }
 
 pub(super) struct PlacementEditor {
+    displays: crate::displays::Registry,
     pub(super) display: Option<String>,
     contexts: crate::config::monitors::Contexts,
     snapshot: Snapshot,
@@ -239,6 +247,7 @@ impl PlacementEditor {
     fn from_geometry(config: &Config, geometry: Geometry) -> Self {
         let config = config.on_displays(&geometry.snapshot.widget_displays);
         Self {
+            displays: Default::default(),
             display: geometry
                 .snapshot
                 .display
@@ -290,8 +299,16 @@ impl PlacementEditor {
         self.drag.is_some()
     }
 
+    pub(super) fn update_displays(
+        &mut self,
+        config: &Config,
+        displays: &crate::displays::Registry,
+    ) {
+        self.displays = displays.clone();
+        self.refresh(config);
+    }
     pub(super) fn refresh(&mut self, config: &Config) {
-        let next = Geometry::on_display(config, self.display.as_deref());
+        let next = Geometry::on_live_display(config, self.display.as_deref(), &self.displays);
         let next_contexts = if config.multi_monitor() || next.snapshot.monitors.len() > 1 {
             next.snapshot.widget_displays.clone()
         } else {
@@ -311,7 +328,14 @@ impl PlacementEditor {
         let inside = self.inside;
         let screen = self.snapshot.screen;
         let actions = std::mem::take(&mut self.session_actions);
-        *self = Self::from_geometry(config, next);
+        let displays = std::mem::take(&mut self.displays);
+        let effective = if displays.outputs().is_empty() {
+            config.clone()
+        } else {
+            displays.effective_config(config)
+        };
+        *self = Self::from_geometry(&effective, next);
+        self.displays = displays;
         self.session_actions = actions;
         self.selected =
             selected.filter(|key| Widget::parse(key).is_some_and(|w| config.widget_visible(w)));
@@ -1208,7 +1232,9 @@ impl Settings {
             .choices(self.config.widget_display.as_deref())
             .into_iter()
             .map(|(title, value)| {
-                let selected = value == self.config.widget_display;
+                let selected = self
+                    .displays
+                    .same_choice(value.as_deref(), self.config.widget_display.as_deref());
                 let enabled = value
                     .as_deref()
                     .is_none_or(|name| self.displays.unique(name).is_some());
@@ -2500,5 +2526,122 @@ mod tests {
         assert!(!reopened.dragging());
         reopened.cancel();
         assert!(!reopened.dirty());
+    }
+}
+
+#[cfg(test)]
+mod review030_tests {
+    use super::super::{Message as SettingsMessage, Page};
+    use super::*;
+    use crate::displays::{
+        OutputEvent,
+        test_support::{Wire, info, isolated},
+    };
+    use cosmic::{Application, app::Core};
+
+    fn outputs(app: &mut Settings) -> Wire {
+        let wire = Wire::new();
+        for (id, name, size) in [(1, "DP-1", (1920, 1080)), (2, "DP-2", (1280, 720))] {
+            let _ = app.update(SettingsMessage::DisplayOutput(
+                OutputEvent::Created(Some(info(Some(name), size))),
+                wire.output(id),
+            ));
+        }
+        wire
+    }
+
+    #[test]
+    fn review030_live_layout_without_snapshot_can_select_move_save_and_guard_hotplug() {
+        if isolated(
+            "settings::placement::review030_tests::review030_live_layout_without_snapshot_can_select_move_save_and_guard_hotplug",
+        ) {
+            return;
+        }
+        let _ = std::fs::remove_file(crate::layout_state::path().unwrap());
+        Config::save_changes(serde_json::json!({"enabled_widgets":["weather"],"widget_monitors":{"weather":{"display":"DP-2"}}})).unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::WidgetLayout);
+        let _wire = outputs(&mut app);
+        let _ = app.update_placement(Message::Select("weather".into()));
+        assert_eq!(app.placement.display.as_deref(), Some("DP-2"));
+        assert_eq!(app.placement.screen(), [1280., 720.]);
+        assert!(app.placement.geometry("weather").is_some());
+        assert_eq!(app.placement.contexts, app.displays.contexts(&app.config));
+        let _ = app.update_placement(Message::Nudge([-1, 0], false));
+        assert!(app.placement.dirty());
+        let moved = app.placement.positions["weather"];
+        let _ = app.update_placement(Message::Save);
+        assert!(!app.error, "{}", app.status);
+        assert!(!app.placement.dirty());
+        assert_eq!(
+            Config::load().monitor_layouts["weather"]["DP-2"].position,
+            Some(moved)
+        );
+        let _ = app.update_placement(Message::Nudge([-1, 0], false));
+        let output = app.displays.unique("DP-2").unwrap().handle.clone();
+        let _ = app.update(SettingsMessage::DisplayOutput(OutputEvent::Removed, output));
+        let _ = app.update_placement(Message::Save);
+        assert!(app.error && app.placement.dirty());
+        assert_eq!(
+            Config::load().monitor_layouts["weather"]["DP-2"].position,
+            Some(moved)
+        );
+    }
+
+    #[test]
+    fn review030_clock_shortcut_selects_target_monitor_and_moves_clock_or_glance() {
+        if isolated(
+            "settings::placement::review030_tests::review030_clock_shortcut_selects_target_monitor_and_moves_clock_or_glance",
+        ) {
+            return;
+        }
+        for glance in [false, true] {
+            Config::save_changes(serde_json::json!({
+                "enabled_widgets":["clock"], "glance":{"enabled":glance},
+                "widget_positions":{}, "monitor_layouts":{},
+                "widget_monitors":{"clock":{"display":"DP-2"},"glance":{"display":"DP-2"}}
+            }))
+            .unwrap();
+            let (mut app, _) = Settings::init(Core::default(), Page::Clock);
+            let _wire = outputs(&mut app);
+            app.select_monitor_preview("DP-1".into());
+            let _ = app.update(SettingsMessage::EditWidgetLayout(Widget::Clock));
+            let key = if glance { "glance" } else { "clock" };
+            assert_eq!(app.placement.display.as_deref(), Some("DP-2"));
+            assert_eq!(app.placement.selected.as_deref(), Some(key));
+            assert!(app.placement.geometry(key).is_some());
+            let before = app.placement.position(key).unwrap();
+            let _ = app.update_placement(Message::Nudge([1, 0], false));
+            assert!(app.placement.dirty());
+            assert_ne!(app.placement.position(key).unwrap(), before);
+        }
+    }
+
+    #[test]
+    fn review030_monitor_only_layout_blocks_automatic_reordering() {
+        if isolated(
+            "settings::placement::review030_tests::review030_monitor_only_layout_blocks_automatic_reordering",
+        ) {
+            return;
+        }
+        Config::save_changes(serde_json::json!({
+            "enabled_widgets":["weather","devbox"],
+            "widget_positions":{}, "widget_sizes":{},
+            "monitor_layouts":{
+                "weather":{"DP-1":{"position":[0.2,0.2]}},
+                "devbox":{"DP-2":{"size":[400.,300.]}}
+            }
+        }))
+        .unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::Overview);
+        let before = app.config.ordered_right_cards();
+        assert!(app.config.has_custom_positions());
+        let _ = app.update(SettingsMessage::Move(Widget::Weather, 1));
+        let _ = app.update(SettingsMessage::DragStart(Widget::Weather));
+        assert!(app.reorder.source.is_none());
+        assert_eq!(Config::load().ordered_right_cards(), before);
+        app.config = Config::save_changes(serde_json::json!({"monitor_layouts":{}})).unwrap();
+        assert!(!app.config.has_custom_positions());
+        let _ = app.update(SettingsMessage::Move(Widget::Weather, 1));
+        assert_ne!(Config::load().ordered_right_cards(), before);
     }
 }

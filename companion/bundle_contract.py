@@ -32,6 +32,14 @@ CONFIGURATION_SOURCE = {
 }
 
 
+def installed_package_status(value):
+    """dpkg's requested action (including hold) is separate from installed state."""
+    fields = value.split() if isinstance(value, str) else []
+    return (len(fields) == 3
+            and fields[0] in ('unknown', 'install', 'hold', 'deinstall', 'purge')
+            and fields[1:] == ['ok', 'installed'])
+
+
 class FrozenList(list):
     def __init__(self, values): super().__init__(freeze(v) for v in values)
     def _deny(self, *args, **kwargs): raise TypeError('immutable_catalog')
@@ -183,6 +191,17 @@ def read_catalog(path, expected_sha256=None, cache=None):
     result = Catalog(_json_object(data))
     if cache is not None: cache[key] = result
     return result
+
+
+def release_catalog(catalog):
+    """Keep historical attestation in source, outside family-policy startup IO.
+
+    Validate before projecting: an unknown policy must never become an empty,
+    permissive catalog. Legacy exact-cohort packages retain their full records.
+    The current startup policy is already authoritative over historical cohorts.
+    """
+    valid_catalog(catalog)
+    return {**catalog, 'cohorts': []} if 'startup_policy' in catalog else catalog
 
 
 def cohort_id(cohort):

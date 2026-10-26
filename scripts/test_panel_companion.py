@@ -1,5 +1,6 @@
 """Panel selection and restoration without using the live desktop."""
 import importlib.util
+import errno
 import json
 import os
 import socket
@@ -17,6 +18,14 @@ import panel_launcher as launcher
 spec = importlib.util.spec_from_file_location('panel_installer', COMPANION / 'install.py')
 installer = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(installer)
+
+
+def close_if_open(fd):
+    try:
+        os.close(fd)
+    except OSError as error:
+        if error.errno != errno.EBADF:
+            raise
 
 
 class CompanionPackaging(unittest.TestCase):
@@ -371,7 +380,7 @@ class CompanionPackaging(unittest.TestCase):
     def test_stock_restarts_a_failed_host_without_the_used_notifications_stream(self):
         reader, writer = os.pipe()
         self.addCleanup(os.close, reader)
-        self.addCleanup(os.close, writer)
+        self.addCleanup(close_if_open, writer)
         runs = self.root / 'runs'
         # Fails the first time, then exits as at logout; records whether it
         # received the notifications stream each time.
@@ -383,6 +392,9 @@ class CompanionPackaging(unittest.TestCase):
                 patch.object(launcher, 'RESTART_DELAYS', (0,)):
             self.assertEqual(launcher.stock_host(child, (writer,)), 0)
         self.assertEqual(runs.read_text().splitlines(), [str(writer), '-'])
+        with self.assertRaises(OSError) as closed:
+            os.fstat(writer)
+        self.assertEqual(closed.exception.errno, errno.EBADF)
 
     def test_stock_gives_up_after_the_limit(self):
         child = self.fixture('broken', 'sys.exit(3)\n')
@@ -409,7 +421,14 @@ class CompanionPackaging(unittest.TestCase):
                     with self.subTest(operation=operation, started=started, session_socket=session_socket):
                         child_env = {**env, **({'PANEL_NOTIFICATIONS_FD': '80', 'WAYLAND_SOCKET': '81'} if session_socket else {})}
                         locks = []
+                        retired = []
                         real_open = os.open
+                        real_close = os.close
+                        def close(fd):
+                            if fd in (80, 81):
+                                retired.append(fd)
+                            else:
+                                real_close(fd)
                         def opened(path, flags, mode):
                             fd = real_open(path, flags, mode)
                             locks.append(fd)
@@ -419,6 +438,7 @@ class CompanionPackaging(unittest.TestCase):
                                 patch.object(launcher, 'prepare_launch', return_value=lambda child: True), \
                                 patch.object(launcher, 'runtime_compatible', return_value=True), \
                                 patch.object(launcher.os, 'open', opened), \
+                                patch.object(launcher.os, 'close', close), \
                                 patch.object(launcher.os, 'fstat'), patch.object(launcher.os, 'set_inheritable'), \
                                 patch.object(Path, operation, side_effect=error), \
                                 patch.object(launcher, 'run_host', return_value=(1, False, False),
@@ -432,12 +452,16 @@ class CompanionPackaging(unittest.TestCase):
                         args, kwargs = stock.call_args
                         self.assertEqual(args[0], launcher.STOCK)
                         self.assertTrue(kwargs['keep_running'])
-                        if session_socket and started:
-                            self.assertEqual(args[1], (81,))
+                        if started:
+                            self.assertEqual(args[1], ())
                             self.assertNotIn('PANEL_NOTIFICATIONS_FD', kwargs['env'])
+                            self.assertNotIn('WAYLAND_SOCKET', kwargs['env'])
+                            self.assertEqual(kwargs['env'], env)
+                            self.assertEqual(set(retired), {80, 81} if session_socket else set())
                         else:
                             self.assertEqual(args[1], (80, 81) if session_socket else ())
                             self.assertIsNone(kwargs['env'])
+                            self.assertEqual(retired, [])
 
     def test_unpersisted_stock_choice_survives_clean_host_exits(self):
         with patch.object(launcher, 'run_host', side_effect=[(0, False, False), (0, True, False)]) as run, \

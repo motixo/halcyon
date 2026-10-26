@@ -20,7 +20,14 @@ impl Settings {
                                         .filter(|f| f.kind == kind)
                                         .unwrap_or_else(|| Finish::new(kind)),
                                 ),
-                                label(kind.title(), 13., FG),
+                                split(
+                                    label(kind.title(), 14., FG),
+                                    label(
+                                        if chosen { "✓" } else { "" },
+                                        14.,
+                                        self.settings_accent(),
+                                    ),
+                                ),
                                 if self.material_adjust {
                                     cosmic::widget::space().height(0).into()
                                 } else {
@@ -31,7 +38,7 @@ impl Settings {
                                             Kind::Smoked => "Quiet & dense",
                                             Kind::Liquid => "Polished & rounded",
                                         },
-                                        10.,
+                                        12.,
                                         MUTED,
                                     )
                                 },
@@ -56,6 +63,8 @@ impl Settings {
                 .into_iter()
                 .filter(|t| {
                     self.desktop.islands.installation.installed()
+                        || self.config.materials.get(*t).is_some()
+                        || *t == target
                         || matches!(t, Target::Shared | Target::Widgets)
                 })
                 .map(|t| {
@@ -90,17 +99,70 @@ impl Settings {
         } else {
             "Follows the shared material"
         };
+        let scene = if self.scene_open() {
+            self.preview_stage(
+                container(
+                    container(super::sample::fit(
+                        self.card_preview(),
+                        if self.window.height < 760. {
+                            110.
+                        } else {
+                            180.
+                        },
+                    ))
+                    .width(Length::Fill)
+                    .max_width(360),
+                )
+                .width(Length::Fill)
+                .align_x(Alignment::Center)
+                .into(),
+            )
+        } else {
+            cosmic::widget::space().height(0).into()
+        };
         let mut rows = vec![
-            split(
-                heading("Appearance", ""),
-                button::text("Colors & theme")
-                    .on_press(Message::Page(Page::Themes))
-                    .into(),
+            heading(
+                "Surface finishes",
+                "Choices apply directly. Adjustments finish when you release the slider.",
             ),
-            scopes,
+            column::with_children(vec![
+                split(label("Applies to", 14., FG), scopes),
+                label(state, 13., MUTED),
+            ])
+            .spacing(8)
+            .into(),
             chooser.into(),
+            self.scene_frame(scene, "Sample widget · decorative surface finish"),
+            row::with_children(vec![
+                label("Preview widget", 12., MUTED),
+                segmented(
+                    [Widget::Weather, Widget::Devbox, Widget::Clock]
+                        .into_iter()
+                        .map(|w| {
+                            (
+                                w.title().into(),
+                                self.appearance_preview == w,
+                                Some(Message::AppearancePreview(w)),
+                            )
+                        })
+                        .collect(),
+                    self.settings_accent(),
+                ),
+            ])
+            .spacing(12)
+            .align_y(Alignment::Center)
+            .wrap()
+            .into(),
             split(
-                label(state, 12., MUTED),
+                label(
+                    if self.material_draft.is_some() {
+                        "Adjusting selected surface"
+                    } else {
+                        "Customize the selected surface"
+                    },
+                    12.,
+                    MUTED,
+                ),
                 row::with_children(vec![
                     container(
                         button::text(if self.material_adjust {
@@ -141,8 +203,8 @@ impl Settings {
                 self.material_slider("Transparency", format!("{}%", 100 - finish.opacity()), 0..=55, 100 - finish.opacity(), true),
                 self.material_slider("Color tint", format!("{}%", finish.tint), 0..=100, finish.tint, false),
                 split(label("Liquid widget motion", 12., FG), toggler(self.config.material_motion).on_toggle(Message::MaterialMotion).into()),
-                split(self.help("material-readability", "Widget readability", "Adds enough opacity for small text on bright or busy wallpaper. Your transparency setting is kept."),
-                    container(toggler(self.config.appearance.contrast_assist).on_toggle(Message::ContrastAssist)).id(cosmic::widget::Id::new("material-readability")).into()),
+                self.search_target("contrast-assist", split(self.help("material-readability", "Widget readability", "Adds enough opacity for small text on bright or busy wallpaper. Your transparency setting is kept."),
+                    container(toggler(self.config.appearance.contrast_assist).on_toggle(Message::ContrastAssist)).id(cosmic::widget::Id::new("material-readability")).into())),
             ]));
         }
         rows.push(label(
@@ -158,23 +220,26 @@ impl Settings {
             11.,
             MUTED,
         ));
-        rows.push(self.preview_stage(self.card_preview()));
-        rows.push(split(
-            label("Real widget preview · sample data", 11., MUTED),
-            segmented(
-                [Widget::Weather, Widget::Devbox, Widget::Clock]
-                    .into_iter()
-                    .map(|w| {
-                        (
-                            w.title().into(),
-                            self.appearance_preview == w,
-                            Some(Message::AppearancePreview(w)),
-                        )
-                    })
-                    .collect(),
-                self.settings_accent(),
-            ),
-        ));
+        if matches!(target, Target::Dock | Target::Panel)
+            && let Some(status) = self.desktop.islands.availability_message()
+        {
+            rows.push(desktop::banner(
+                status,
+                desktop::WARN,
+                vec![
+                    button::text("Setup & updates")
+                        .on_press(Message::OpenIslandsGuide)
+                        .into(),
+                    button::text("Check again")
+                        .on_press(Message::DesktopEditor(
+                            crate::settings::desktop::Message::Islands(
+                                crate::settings::desktop::islands::Edit::Check,
+                            ),
+                        ))
+                        .into(),
+                ],
+            ));
+        }
         rows.push(self.page_settings_advanced(Page::Appearance, vec![self.legacy_widget_style()]));
         column::with_children(rows)
             .spacing(12)

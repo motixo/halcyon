@@ -105,6 +105,12 @@ impl PageDraft for crate::desktop::workspaces::WorkspacesDraft {
     fn plan(&self) -> Plan {
         self.plan()
     }
+    fn stale(&self, fresh: &Snapshot) -> Vec<ConfigKey> {
+        self.stale(fresh)
+    }
+    fn rechecks() -> bool {
+        true
+    }
 }
 
 impl PageDraft for crate::desktop::window_rules::WindowRulesDraft {
@@ -649,6 +655,39 @@ mod tests {
     use crate::desktop::workspaces::{TypingAction, WorkspaceLayout, WorkspacesDraft};
 
     const COMP: &str = "com.system76.CosmicComp";
+
+    #[test]
+    fn auditfix_workspace_apply_and_resume_refuse_changed_system_defaults() {
+        for resume in [false, true] {
+            for changed in [
+                "(workspace_mode:Global,workspace_layout:Horizontal,workspace_wraparound:true)",
+                "(workspace_mode:OutputBound,future_member:42)",
+            ] {
+                let fixture = Fixture::new("auditfix-workspaces-inherited");
+                fixture.system(COMP, "workspaces", "(workspace_mode:OutputBound)");
+                let mut editor = DraftEditor::<WorkspacesDraft>::with_store(
+                    Owner::Workspaces,
+                    "Workspaces",
+                    fixture.store(),
+                );
+                editor.edit(|draft| draft.set_wraparound(false));
+                let saved = editor.draft().unwrap().clone();
+                fixture.system(COMP, "workspaces", changed);
+                if resume {
+                    editor.restore_session(saved).unwrap();
+                    assert_eq!(
+                        editor.draft().unwrap().conflicts(),
+                        &[crate::desktop::workspaces::key()]
+                    );
+                }
+                let before = fixture.tree();
+                assert!(!editor.apply());
+                assert_eq!(fixture.tree(), before);
+                assert!(fixture.read(COMP, "workspaces").is_none());
+                assert!(matches!(editor.notice, Some(Notice::Error(_))));
+            }
+        }
+    }
 
     /// An Apply-time conflict writes nothing, keeps the earlier Undo and
     /// says whether any edits remain. Workspaces edits one grouped key, so

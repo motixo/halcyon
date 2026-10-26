@@ -1,6 +1,5 @@
-//! Wallpaper & colors: the selected display's preview, shared accent
-//! choices and background gallery. One draft and one Apply/Undo footer
-//! cover both the background and app-owned colors.
+//! Local wallpaper candidates, explicit display scope and a cached scene.
+//! The existing editor applies the wallpaper and linked colors together.
 use super::desktop::{ERROR, WARN, banner, conflict_banner, kept, line};
 use super::pages::section;
 use super::system_appearance::fill;
@@ -114,9 +113,9 @@ impl Settings {
         self.settings_accent()
     }
 
-    /// Large wallpaper columns from this window width.
+    /// Room for display controls beside a compact picture.
     fn wallpaper_wide(&self) -> bool {
-        self.window.width >= 990.
+        self.window.width >= 1120.
     }
 
     /// The selected display's draft background, as COSMIC will draw it, with
@@ -277,7 +276,7 @@ impl Settings {
                     .into(),
             ));
         }
-        Some(group(None, rows))
+        Some(group(Some("Wallpaper display"), rows))
     }
 
     /// Theme mode and fonts are a separate System appearance draft, so they
@@ -318,7 +317,10 @@ impl Settings {
     /// Page title with the store note (fixture or preview mode only).
     pub(super) fn wallpaper_header(&self) -> Element<'_, Message> {
         row::with_children(vec![
-            heading("Wallpaper", ""),
+            heading(
+                "Wallpaper",
+                "Choose locally, then Apply wallpaper to confirm.",
+            ),
             store_pill(self.wallpaper.store(), self.wallpaper_accent()),
         ])
         .spacing(8)
@@ -534,32 +536,45 @@ impl Settings {
         items.extend(self.colors_conflicts());
 
         let enabled = blocked_target.is_none();
-        // Content width: window less sidebar and page padding.
-        let content = (self.window.width - 184. - 44.).max(320.);
-        // The picture beside what it applies to; colors live in Colors & theme.
+        let content = (self.window.width - 300.).max(260.);
+        let scene = if self.scene_open() {
+            // A bounded picture leaves the gallery close to the candidate.
+            // The paired layout splits the page after the sidebar, page
+            // padding and column gap; the scene adds 14 px padding per side.
+            // Size both picture axes from that actual space so a narrow paired
+            // column cannot squeeze a 440 px picture into a taller aspect ratio.
+            let width = if self.wallpaper_wide() {
+                ((self.window.width - 184. - 44. - 16.) / 2. - 28.).min(440.)
+            } else {
+                content.min(340.)
+            };
+            self.wallpaper_preview(width)
+        } else {
+            cosmic::widget::space().height(0).into()
+        };
+        let target = match editor.target() {
+            Target::Shared => "Shared wallpaper".to_string(),
+            Target::Output(name) => display_name(name),
+        };
+        let caption = format!(
+            "{} · {target}",
+            if editor.background_dirty() {
+                "Previewing wallpaper · local until Apply wallpaper"
+            } else {
+                "Current wallpaper"
+            }
+        );
+        let preview = self.scene_frame(scene, &caption);
         let mut side = vec![self.wallpaper_choose()];
         if let Some(displays) = self.wallpaper_displays() {
             side.push(displays);
         }
         side.push(self.wallpaper_related());
-        let side = column::with_children(side).spacing(14);
-        if self.wallpaper_wide() {
-            let preview = (content * 0.56).min(560.);
-            items.push(
-                row::with_children(vec![
-                    container(self.wallpaper_preview(preview))
-                        .width(preview)
-                        .into(),
-                    side.width(Length::Fill).into(),
-                ])
-                .spacing(24)
-                .align_y(Alignment::Start)
-                .into(),
-            );
-        } else {
-            items.push(self.wallpaper_preview(content.min(520.)));
-            items.push(side.into());
-        }
+        items.push(super::desktop::paired(
+            self.wallpaper_wide(),
+            preview,
+            column::with_children(side).spacing(14).into(),
+        ));
         items.push(self.wallpaper_gallery(enabled, false));
         column::with_children(items).spacing(16).into()
     }
@@ -1013,18 +1028,26 @@ impl Settings {
         }
         let error = match editor.notice() {
             Some(Notice::Error(error)) => error.as_str(),
-            _ => "Local wallpaper preview",
+            _ => "Previewing wallpaper · desktop unchanged until Apply",
         };
         container(
             row::with_children(vec![
-                container(label(error, 12., MUTED))
-                    .width(Length::Fill)
-                    .into(),
+                container(label(
+                    error,
+                    12.,
+                    if matches!(editor.notice(), Some(Notice::Error(_))) {
+                        ERROR
+                    } else {
+                        MUTED
+                    },
+                ))
+                .width(Length::Fill)
+                .into(),
                 button::text("Cancel")
                     .id(cosmic::widget::Id::new("wallpaper-discard"))
                     .on_press(edit(Edit::Discard))
                     .into(),
-                button::suggested("Use wallpaper")
+                button::suggested("Apply wallpaper")
                     .id(cosmic::widget::Id::new("wallpaper-apply"))
                     .on_press_maybe(editor.can_apply().then_some(edit(Edit::Apply)))
                     .into(),

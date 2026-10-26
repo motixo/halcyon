@@ -4,7 +4,7 @@ The package contains a panel payload, a versioned local compatibility catalog,
 read-only diagnostics and a user-session bootstrap. Installation never enables
 Islands or restarts a bar. No package script writes a user home.
 
-**0.2.5 supports attempted startup on COSMIC 1.10 and 1.11.** GPU and kernel
+**0.3.0 supports attempted startup on COSMIC 1.10 and 1.11.** GPU and kernel
 versions do not need to match the test VM. Package integrity, native interfaces,
 configured applets and startup readiness are checked, with stock-panel fallback
 on failure. The recorded complete-session test used COSMIC 1.11 with software
@@ -31,7 +31,8 @@ upgrade from 0.2.0 may therefore need a second login. There is no network fetch 
 forced live swap. The selector resolves one immutable verified generation, and
 Disable unwinds the original restore chain across updates.
 
-A failure marker at `~/.local/state/desktop-cards-panel/failed` keeps the standard
+A failure marker at `$XDG_STATE_HOME/desktop-cards-panel/failed` (normally
+`~/.local/state/desktop-cards-panel/failed`) keeps the standard
 panel selected. Updates and Disable do not clear it. Diagnose the native failure
 before an intentional retry; automatic staging is not consent to retry a crash.
 External edits and unsupported XDG layouts block automatic migration rather than
@@ -39,7 +40,11 @@ being overwritten. Keep the installer records if manually managing a source
 installation. After package removal, retained generations include `install.py`
 for guarded newest-first restoration of those records.
 
-See [the compatibility contract](../../docs/COMPATIBILITY.md) for signed archive
+See [the compatibility contract](https://github.com/profilaz3/halcyon/blob/v0.3.0/docs/COMPATIBILITY.md) for signed archive
 trust, native qualification, exact artifact identity, generation recovery and
-reproducible regression commands. This package does not enroll an APT source. Until repository enrollment is
-available, update both packages from GitHub Releases.
+reproducible regression commands. Fresh installations of the main Halcyon package
+enable the signed APT source by default; the Islands package does not change that
+choice. Existing disabled or modified sources stay unchanged. See
+[system updates](https://github.com/profilaz3/halcyon/blob/v0.3.0/docs/DISTRIBUTION.md)
+for enrollment and disabling the source. Both packages also remain available from
+GitHub Releases.

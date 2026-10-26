@@ -10,16 +10,18 @@
     whole desktop a coordinated look: wallpaper, colors, windows, dock and panel.</p>
     <p>Choose a starter look in a short first-run setup, then make it your own.</p>
     <ul>
-      <li>Six complete starter looks with wallpapers and matching colors.</li>
+      <li>Six desktop setups with wallpaper, colors, widget layout and optional Islands compositions.</li>
       <li>Clock, date, weather, system monitor, calendar, projects, music, notes
-      and focus timer widgets that never overlap.</li>
+      and focus timer widgets with adjustable placement and sizing.</li>
       <li>Thirteen widget styles, from soft cards and frosted glass to outlines,
       paper and terminal, with a matching dock and panel.</li>
-      <li>Reversible changes that preserve your applets, their order, panel
-      position and the widgets you set up.</li>
+      <li>Review included parts before applying a setup, and undo eligible changes
+      without overwriting unrelated edits.</li>
+      <li>Fresh packages enable signed system updates; existing disabled or
+      modified update sources are preserved.</li>
     </ul>
     <p>No account is needed. Share usage data is on by default and can be turned
-    off in setup or App settings. While enabled, Halcyon sends Google a daily
+    off in setup or App settings. While enabled, Halcyon attempts to send Google a daily
     activity report with a random installation ID, app version and approximate
     first country. Country.is supplies the country from the public IP; Halcyon
     does not store the IP or send widget content. Turning reporting off stops
@@ -41,7 +43,15 @@
   </provides>
   <content_rating type="oars-1.1"/>
   <releases>
-    <!-- 0.2.5 is unreleased; draft notes: docs/releases/0.2.5.md. -->
+    <release version="0.3.0" date="2026-10-26">
+      <description><ul>
+        <li>Redesigned native Settings and six desktop Setups with optional Islands layouts.</li>
+        <li>Choose and order widgets during setup, with placement for each display.</li>
+        <li>Connect calendars and read-only iCal feeds, with calendar selection and Busy privacy mode.</li>
+        <li>Enable signed system updates for new installations while preserving existing choices.</li>
+        <li>Add local diagnostics and recent changes, with safer layout and interrupted-change recovery.</li>
+      </ul></description>
+    </release>
     <release version="0.2.0" date="2026-10-23">
       <description><ul>
         <li>Add four shared glass materials, surface overrides and saved Liquid widget motion.</li>
@@ -66,20 +76,20 @@
   </releases>
   <screenshots>
     <screenshot type="default">
-      <caption>Desktop widgets, coordinated colors and optional Islands</caption>
-      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/desktop-purple.png</image>
+      <caption>Choose a desktop setup and review its included parts</caption>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/030/setups.png</image>
     </screenshot>
     <screenshot>
-      <caption>Light desktop with clock, agenda, system monitor and music</caption>
-      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/desktop-paper.png</image>
+      <caption>Help and local component status</caption>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/030/help.png</image>
     </screenshot>
     <screenshot>
       <caption>Colors and theme with automatic wallpaper colors</caption>
-      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/settings-colors.png</image>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/030/appearance.png</image>
     </screenshot>
     <screenshot>
       <caption>Dock and panel appearance, placement and Islands controls</caption>
-      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/settings-panel.png</image>
+      <image>https://raw.githubusercontent.com/profilaz3/halcyon/main/docs/screenshots/030/dock-panel.png</image>
     </screenshot>
   </screenshots>
   <branding>

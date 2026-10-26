@@ -25,7 +25,7 @@
 //! - **What counts as a manual change** is what the desktop can see: see
 //!   `runtime::manual_at`.
 use super::clock::{self, wall};
-use super::rules::{Automation, DisplayWhen, ProfileRef, Trigger};
+use super::rules::{Automation, DisplayWhen, ProfileRef, Rule, Trigger};
 use chrono::{DateTime, Duration, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -54,9 +54,47 @@ pub struct Due {
     pub cause: Cause,
     /// The moment it became due.
     pub at: i64,
+    /// Identity of the rule/activation that produced this occurrence.
+    /// Older history remains readable; unversioned waiting work is retired.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<Revision>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Revision {
+    activation: i64,
+    rule_since: i64,
+    trigger: Trigger,
+}
+
+impl Revision {
+    pub fn new(automation: &Automation, rule: &Rule) -> Self {
+        Self {
+            activation: automation.since,
+            rule_since: rule.since,
+            trigger: rule.when.clone(),
+        }
+    }
 }
 
 impl Due {
+    /// Validate both persisted waits and queued jobs against current rules.
+    /// Trigger identity also fences edits made within the same Unix second.
+    pub fn is_current(&self, automation: &Automation, now: i64) -> bool {
+        automation.enabled
+            && automation.paused_at(now).is_none()
+            && self.at >= automation.since
+            && automation.rule(&self.rule).is_some_and(|rule| {
+                rule.enabled
+                    && rule.profile == self.profile
+                    && self.at >= rule.since
+                    && self.revision.as_ref() == Some(&Revision::new(automation, rule))
+            })
+            && !automation.paused.is_some_and(|pause| match self.cause {
+                Cause::Schedule(_) => pause.stops_schedule(self.at),
+                Cause::Display(_) => !pause.skip && pause.covers(self.at),
+            })
+    }
     /// "19:00" or "AOC 24G2W1G5 connected".
     pub fn reason(&self, h24: bool) -> String {
         match &self.cause {
@@ -105,6 +143,12 @@ pub enum Effect {
 /// One line of history.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Outcome {
+    #[serde(
+        default,
+        deserialize_with = "read_transaction",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub transaction: Option<String>,
     pub at: i64,
     pub due: Due,
     pub effect: Effect,
@@ -185,6 +229,7 @@ impl State {
         };
         if pending != *by {
             self.record(Outcome {
+                transaction: None,
                 at: now,
                 due: pending,
                 effect: Effect::Replaced {
@@ -266,6 +311,7 @@ pub fn decide<Tz: TimeZone>(
             let at = clock::unix(clock::instant(tz, local));
             if active && counts(rule.since, at) {
                 let due = Due {
+                    revision: Some(Revision::new(automation, rule)),
                     rule: rule.id.clone(),
                     profile: rule.profile.clone(),
                     name: rule.name.clone(),
@@ -278,6 +324,7 @@ pub fn decide<Tz: TimeZone>(
                 {
                     Some(manual) => {
                         state.record(Outcome {
+                            transaction: None,
                             at: now_unix,
                             due,
                             effect: Effect::KeptManual { manual_at: manual },
@@ -313,6 +360,7 @@ pub fn decide<Tz: TimeZone>(
                     let seen = before.at >= automation.since && before.at >= rule.since;
                     if active && seen && when.fired(&before.names, &current) {
                         decision.due.push(Due {
+                            revision: Some(Revision::new(automation, rule)),
                             rule: rule.id.clone(),
                             profile: rule.profile.clone(),
                             name: rule.name.clone(),
@@ -342,11 +390,10 @@ pub fn decide<Tz: TimeZone>(
     if let Some(newer) = decision.due.last() {
         decision.persist |= state.replace_pending(newer, now_unix);
     } else if !active
-        || state.pending.as_ref().is_some_and(|pending| {
-            automation
-                .rule(&pending.rule)
-                .is_none_or(|rule| !rule.enabled || rule.profile != pending.profile)
-        })
+        || state
+            .pending
+            .as_ref()
+            .is_some_and(|pending| !pending.is_current(automation, now_unix))
     {
         decision.persist |= state.pending.take().is_some();
     }
@@ -362,6 +409,7 @@ pub fn still_due(due: &Due, manual_at: Option<DateTime<Utc>>, now: i64) -> Resul
         .filter(|manual| kept_manual(*manual, due.at))
     {
         Some(manual) => Err(Outcome {
+            transaction: None,
             at: now,
             due: due.clone(),
             effect: Effect::KeptManual { manual_at: manual },
@@ -450,4 +498,19 @@ pub fn next_check<Tz: TimeZone>(
             .min()
             .unwrap_or(minute),
     )
+}
+
+fn read_transaction<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_str()
+        .filter(|s| {
+            !s.is_empty()
+                && s.len() <= 96
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"._-".contains(&b))
+        })
+        .map(str::to_owned))
 }

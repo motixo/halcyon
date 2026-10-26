@@ -1,11 +1,14 @@
 """Issue #12: ordinary native applet discovery, separate from exact qualification."""
 import json
+import mmap
 import os
 from pathlib import Path
 import shutil
+import time
 import unittest
 from unittest.mock import patch
-from panel_configuration import Snapshot
+from panel_configuration import Snapshot, Watch
+from verification import Admission
 import test_panel_configuration as config_fixture
 import test_practical_compatibility as runtime_fixture
 
@@ -64,6 +67,101 @@ class Configured(config_fixture.Configuration):
         self.assertTrue(s.changed())
 
 class Startup(runtime_fixture.Processes):
+    def admission(self):
+        # Real Session inventory and the real fork/FD-transfer boundary.
+        def factory():
+            observation = self.observation()
+            if not observation.inventory():
+                observation.close()
+                return None
+            def admitted(child): return observation.inventory(child)
+            def invalidated():
+                try: observation.check(); return False
+                except (OSError, ValueError): return True
+            admitted.configuration = observation.configuration
+            admitted.invalidated = invalidated
+            admitted.changed = observation.configuration.changed
+            admitted.accepted = lambda: None
+            admitted.close = observation.close
+            return admitted
+        admission = Admission(factory, time.monotonic()+3)
+        self.addCleanup(admission.close)
+        return admission
+
+    def test_admission_follows_symlinked_launchers_and_desktop_entries(self):
+        # Both ancestor and leaf links are native-valid, including /bin/sh.
+        self.setbar('Panel',IDS[:2])
+        launcher_dir = self.root/'launcher-link'; launcher_dir.symlink_to('/usr/bin',target_is_directory=True)
+        target = self.root/'custom.desktop'
+        self.write(target,'[Desktop Entry]\nExec='+str(launcher_dir/'sh')+' -c true\n')
+        entry = self.data/('applications/'+IDS[0]+'.desktop'); entry.symlink_to(target)
+        self.write(self.data/('applications/'+IDS[1]+'.desktop'),'[Desktop Entry]\nExec=/bin/sh -c true\n')
+        s = self.observation()
+        self.assertTrue(all('issue' not in a for a in s.configuration.applets.values()))
+        admission = self.admission()
+        self.assertFalse(admission.invalidated())
+        # Editing the target and replacing the link both invalidate admission.
+        target.write_text('[Desktop Entry]\nExec='+str(launcher_dir/'sh')+' -c false\n')
+        self.assertTrue(admission.invalidated())
+        admission = self.admission()
+        entry.unlink(); entry.symlink_to(target)
+        self.assertTrue(admission.invalidated())
+        admission = self.admission()
+        launcher_dir.unlink(); launcher_dir.symlink_to('/usr/bin',target_is_directory=True)
+        self.assertTrue(admission.invalidated())
+
+    def test_failed_optional_registration_and_transfer_do_not_reject_host(self):
+        self.setbar('Panel',[IDS[0]])
+        executable = self.root/'optional-applet'; shutil.copy2('/usr/bin/sleep',executable)
+        self.write(self.data/('applications/'+IDS[0]+'.desktop'),'[Desktop Entry]\nExec='+str(executable)+' 60\n')
+        original = Watch._add
+        for transfer_only in (False, True):
+            watched = set()
+            triggered = mmap.mmap(-1, 1)
+            self.addCleanup(triggered.close)
+            def fail(watch, path, directory):
+                if Path(path) == executable:
+                    watched.add(watch.fd)
+                    if not transfer_only or len(watched) >= 3:
+                        triggered[0] = 1
+                        raise OSError('fixture optional watch failure')
+                return original(watch,path,directory)
+            with self.subTest(transfer_only=transfer_only), patch.object(Watch,'_add',fail):
+                admission = self.admission()
+                self.assertFalse(admission.invalidated())
+                self.assertEqual(triggered[0],1,'fault must reach the intended watch boundary')
+                admission.close()
+        with patch.object(Watch,'_add',side_effect=OSError('required watch failure')):
+            with self.assertRaises(ValueError): self.admission()
+
+    def test_optional_desktop_directory_links_and_watch_failures(self):
+        entries = self.data/'applications'
+        target = self.root/'desktop-entries'; entries.rename(target)
+        entries.symlink_to(target,target_is_directory=True)
+        observation = self.observation()
+        self.assertNotIn('issue',observation.configuration.applets['com.system76.CosmicAppletAudio'])
+        admission = self.admission()
+        entries.unlink(); entries.symlink_to(target,target_is_directory=True)
+        self.assertTrue(admission.invalidated())
+        original = Watch._add
+        def fail(watch,path,directory):
+            if Path(path)==entries: raise OSError('optional desktop directory watch failed')
+            return original(watch,path,directory)
+        with patch.object(Watch,'_add',fail):
+            admission = self.admission()
+            self.assertFalse(admission.invalidated())
+
+    def test_failed_watch_is_not_registered_for_replay(self):
+        watch = Watch(); self.addCleanup(watch.close)
+        with patch.object(watch,'_add',side_effect=OSError('registration failed')):
+            with self.assertRaises(OSError): watch.add(self.root/'optional',entry=True,optional=True)
+        self.assertEqual(watch.registrations,set())
+        self.assertEqual(watch.optional_registrations,set())
+
+    def test_admission_still_refuses_missing_required_core(self):
+        actor = self.actors.pop(); actor.kill(); actor.wait(timeout=2)
+        with self.assertRaisesRegex(ValueError,'prelaunch_not_eligible'): self.admission()
+
     def test_reported_ids_reach_core_readiness_without_any_child(self):
         self.setbar('Panel',IDS)
         for n,name in enumerate(IDS):

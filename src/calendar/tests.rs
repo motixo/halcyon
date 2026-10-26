@@ -208,14 +208,14 @@ fn calendar_cache_cannot_cross_accounts_calendars_or_logout() {
     ] {
         assert_eq!(path.metadata().unwrap().permissions().mode() & 0o777, 0o600);
     }
-    let changed = store::save_selection(
+    let changed = store::save_selections(
         &connection,
-        &CalendarChoice {
+        vec![CalendarChoice {
             id: "shared@example.com".into(),
             name: "Team".into(),
             primary: false,
             color: String::new(),
-        },
+        }],
     )
     .unwrap();
     assert!(store::cached(&changed, month).is_none());
@@ -248,7 +248,22 @@ fn calendar_cache_cannot_cross_accounts_calendars_or_logout() {
         store::save_cache(&changed, month, &data),
         Err(Problem::Changed)
     );
-    let changed = multiple;
+    let mut refreshed_choices = multiple.selected_calendars();
+    refreshed_choices[0].name = "Renamed team".into();
+    refreshed_choices[0].color = "#123abc".into();
+    let refreshed = store::refresh_metadata(&multiple, &refreshed_choices).unwrap();
+    assert_eq!(refreshed.calendar_name, "Renamed team");
+    assert_eq!(refreshed.selections[0].color, "#123abc");
+    assert_eq!(refreshed.selections[1].id, multiple.selections[1].id);
+    assert_eq!(
+        store::refresh_metadata(&multiple, &refreshed_choices),
+        Err(Problem::Changed)
+    );
+    assert_eq!(
+        store::refresh_metadata(&refreshed, &refreshed_choices).unwrap(),
+        refreshed
+    );
+    let changed = refreshed;
     let disconnected = store::disconnect(&changed).unwrap();
     assert!(!disconnected.connected());
     assert_eq!(store::load_connection(), disconnected);
@@ -294,6 +309,22 @@ pub(super) fn require_private_keyring() {
     assert!(!store::preview());
 }
 
+pub(super) async fn drain_cleanup() {
+    for _ in 0..100 {
+        retry_stale_credentials().await.unwrap();
+        let active = store::active_credential().unwrap();
+        if store::stale_credentials()
+            .unwrap()
+            .iter()
+            .all(|id| Some(id.as_str()) == active.as_deref())
+        {
+            return;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    panic!("private keyring cleanup did not finish");
+}
+
 fn sample_credential() -> Credential {
     Credential {
         refresh_token: "test-only-refresh".into(),
@@ -335,14 +366,14 @@ async fn private_disconnect_rejects_stale_accounts_before_removing_credentials()
         .await
         .unwrap();
     store::replace(&store::load_connection(), &connection).unwrap();
-    let selected = store::save_selection(
+    let selected = store::save_selections(
         &connection,
-        &CalendarChoice {
+        vec![CalendarChoice {
             id: "team".into(),
             name: "Team".into(),
             primary: false,
             color: String::new(),
-        },
+        }],
     )
     .unwrap();
     assert_eq!(disconnect(connection).await, Err(Problem::Changed));
@@ -490,5 +521,147 @@ fn calendar_upgrade_and_privacy_preserve_times_without_exposing_details() {
     assert!(
         summer.chronological_order(&winter).is_lt(),
         "repeated daylight-saving hour uses actual instants"
+    );
+}
+
+#[tokio::test]
+async fn credential_journal_survives_cancellation_races_and_storage_failures() {
+    const CHILD: &str = "HALCYON_CLEANUP_FIXTURE";
+    if std::env::var_os(CHILD).is_none() {
+        let dir = std::env::temp_dir().join(format!("halcyon-cleanup-{}", store::nonce().unwrap()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let output = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "calendar::tests::credential_journal_survives_cancellation_races_and_storage_failures", "--nocapture"])
+            .env(CHILD, "1").env("DESKTOP_CARDS_CONFIG", dir.join("config.json"))
+            .output().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    // Simulated keyring creation continues after the outer caller is dropped.
+    let (finish, waiting) = tokio::sync::oneshot::channel();
+    let creating = keyring::prepare_with("pending".into(), async move {
+        waiting.await.unwrap();
+        Ok(())
+    });
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), creating)
+            .await
+            .is_err()
+    );
+    assert!(
+        store::stale_credentials()
+            .unwrap()
+            .contains(&"pending".into())
+    );
+    assert!(
+        store::keyring_lease().is_err(),
+        "in-flight creation keeps its lease"
+    );
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(20),
+            retry_cleanup_with(|_| async { panic!("cannot clean an in-flight creation") })
+        )
+        .await
+        .is_err()
+    );
+    finish.send(()).unwrap();
+    tokio::task::yield_now().await;
+    let lease = store::keyring_lease().unwrap();
+    drop(lease);
+    // A deletion deadline leaves its intent intact. A concurrent append must
+    // survive the eventual read-modify-write that removes the completed ID.
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(20),
+            retry_cleanup_with(|_| std::future::pending::<Result<(), Problem>>())
+        )
+        .await
+        .is_err()
+    );
+    retry_cleanup_with(|id| async move {
+        assert_eq!(id, "pending");
+        store::update_stale(&["concurrent".into()], &[])?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+    assert_eq!(store::stale_credentials().unwrap(), vec!["concurrent"]);
+    // Foreground creation waits for cleanup instead of reporting a fictitious
+    // changed account. It proceeds as soon as the existing lease is released.
+    let cleaning = store::keyring_lease().unwrap();
+    let mut queued = Box::pin(keyring::prepare_with("queued".into(), async { Ok(()) }));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(20), &mut queued)
+            .await
+            .is_err()
+    );
+    drop(cleaning);
+    drop(queued.await.unwrap());
+    retry_cleanup_with(|_| async { Ok(()) }).await.unwrap();
+    let current = sample_connection();
+    store::replace(&Connection::default(), &current).unwrap();
+    store::update_stale(&[current.credential.clone()], &[]).unwrap();
+    retry_cleanup_with(|id| async move {
+        assert_ne!(id, "credential-a", "never remove the active credential");
+        Ok(())
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        store::stale_credentials().unwrap(),
+        vec![current.credential.clone()]
+    );
+    let lease_path = store::account_path()
+        .unwrap()
+        .with_file_name("calendar-keyring.lock");
+    std::fs::remove_file(&lease_path).unwrap();
+    std::fs::create_dir(&lease_path).unwrap();
+    assert_eq!(
+        retry_cleanup_with(|_| async { Ok(()) }).await,
+        Err(Problem::Storage)
+    );
+    std::fs::remove_dir(&lease_path).unwrap();
+    // Lock failure must be surfaced without changing durable intent.
+    use std::os::fd::AsRawFd;
+    let lock = std::fs::File::open(store::account_path().unwrap().with_extension("lock")).unwrap();
+    assert_eq!(
+        unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+        0
+    );
+    assert_eq!(
+        store::update_stale(&["lost".into()], &[]),
+        Err(Problem::Changed)
+    );
+    drop(lock);
+    let stale = store::account_path()
+        .unwrap()
+        .with_file_name("calendar-stale-credentials.json");
+    let original = std::fs::read(&stale).unwrap();
+    std::fs::remove_file(&stale).unwrap();
+    std::fs::create_dir(&stale).unwrap();
+    let replacement = Connection {
+        credential: "next".into(),
+        revision: "next".into(),
+        ..current.clone()
+    };
+    assert_eq!(
+        store::replace(&current, &replacement),
+        Err(Problem::Storage)
+    );
+    assert_eq!(store::load_connection(), current);
+    std::fs::remove_dir(&stale).unwrap();
+    std::fs::write(&stale, original).unwrap();
+    store::replace(&current, &replacement).unwrap();
+    assert!(
+        store::stale_credentials()
+            .unwrap()
+            .contains(&current.credential)
     );
 }

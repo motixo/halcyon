@@ -37,15 +37,48 @@ class Watch:
             raise OSError(ctypes.get_errno(), 'inotify unavailable')
         self.paths = {}
         self.registrations = set()
+        self.optional_registrations = set()
         self.dirty = False
 
-    def add(self, path, directory=False, *, entry=False):
+    def add(self, path, directory=False, *, entry=False, optional=False):
         path = Path(path)
-        self.registrations.add((str(path), directory, entry))
-        # Following arbitrary symlink config trees would require also watching
-        # every link target/ancestor. Decline that scope rather than guessing.
-        if any(p.is_symlink() for p in (path.parents if entry else (path, *path.parents))):
+        registration = (str(path), directory, entry)
+        if entry:
+            self._entry(path, directory)
+        elif any(p.is_symlink() for p in (path, *path.parents)):
             raise ValueError('configuration_symlink_unsupported')
+        else:
+            self._add(path, directory)
+        # Failed optional discovery must never become a required transfer.
+        if optional and registration not in self.registrations:
+            self.optional_registrations.add(registration)
+        elif not optional:
+            self.optional_registrations.discard(registration)
+        self.registrations.add(registration)
+
+    def _entry(self, path, directory):
+        # Observe each link before reading it, including merged-/usr ancestors,
+        # and the resolved target. Keep strict config-tree validation separate.
+        if not path.is_absolute(): raise ValueError('configuration_relative_path')
+        pending = deque(path.parts[1:]); resolved = Path(path.anchor); links = 0
+        while pending:
+            component = pending.popleft()
+            if component == '..':
+                resolved = resolved.parent
+                continue
+            candidate = resolved/component
+            self._add(candidate, False)
+            if candidate.is_symlink():
+                links += 1
+                if links > 40: raise ValueError('configuration_symlink_limit')
+                target = Path(os.readlink(candidate))
+                if target.is_absolute(): resolved = Path(target.anchor)
+                pending.extendleft(reversed(target.parts[1:] if target.is_absolute() else target.parts))
+            else:
+                resolved = candidate
+        self._add(resolved, directory)
+
+    def _add(self, path, directory):
         parent, name = (path, None) if directory and path.is_dir() else (path.parent, path.name)
         while not parent.is_dir():
             name, parent = parent.name, parent.parent
@@ -263,8 +296,8 @@ class Snapshot:
         try: return output_names(self.env) != self.outputs
         except (OSError, ValueError, KeyError): return True
 
-    def read(self, path):
-        path = Path(path); self.watch.add(path)
+    def read(self, path, *, optional=False):
+        path = Path(path); self.watch.add(path, entry=optional, optional=optional)
         if not path.exists(): self.records[str(path)] = None; return None
         if not path.is_file() or path.stat().st_size > 65536: raise ValueError('configuration_file')
         data = path.read_bytes(); self.records[str(path)] = hashlib.sha256(data).hexdigest()
@@ -300,8 +333,8 @@ class Snapshot:
         except UnicodeDecodeError: return False
         return islands_settings_enabled(text)
 
-    def directory(self, path):
-        self.watch.add(path, directory=True)
+    def directory(self, path, *, optional=False):
+        self.watch.add(path, directory=True, entry=optional, optional=optional)
         if not path.exists(): self.records[str(path)] = None; return False
         if not path.is_dir(): raise ValueError('configuration_directory')
         return True
@@ -310,7 +343,7 @@ class Snapshot:
         """Observe the native loader's input; never execute it or gate the host."""
         if path is None: return dict(issue='desktop_entry_missing')
         try:
-            fields = desktop(self.read(path))
+            fields = desktop(self.read(path, optional=True))
             command = fields.get('Exec')
             if not command: return dict(issue='desktop_exec_missing')
             # The pinned native host uses Rust Shlex, then Command, not a shell.
@@ -325,13 +358,13 @@ class Snapshot:
                     if not Path(directory).is_absolute():
                         return dict(issue='desktop_exec_unresolved')
                     choice = Path(directory)/argv[0]
-                    self.watch.add(choice, entry=True)
+                    self.watch.add(choice, entry=True, optional=True)
                     if choice.is_file() and os.access(choice, os.X_OK):
                         executable = choice; break
                 if executable is None: return dict(issue='applet_executable_missing')
-            self.watch.add(executable, entry=True)
+            self.watch.add(executable, entry=True, optional=True)
             resolved = executable.resolve(strict=True)
-            self.watch.add(resolved)
+            self.watch.add(resolved, optional=True)
             if not resolved.is_file() or not os.access(executable, os.X_OK):
                 return dict(issue='applet_executable_missing')
             # Wrappers may replace themselves or delegate outside the host tree.
@@ -406,8 +439,13 @@ class Snapshot:
             directory = pending.popleft()
             if directory in seen: continue
             seen.add(directory)
-            if not self.directory(directory): continue
-            for path in sorted(directory.iterdir()):
+            try:
+                if not self.directory(directory, optional=self.policy is None): continue
+                children = sorted(directory.iterdir())
+            except (OSError, ValueError):
+                if self.policy is not None: raise
+                continue  # Optional applet discovery cannot reject the host.
+            for path in children:
                 visited += 1
                 if visited > 10000: raise ValueError('desktop_inventory_limit')
                 if path.is_dir(): pending.appendleft(path)

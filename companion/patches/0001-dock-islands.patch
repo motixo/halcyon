@@ -35,7 +35,7 @@
 + "serde",
 + "serde_json",
  ]
- 
+
  [[package]]
 --- a/Cargo.toml
 +++ b/Cargo.toml
@@ -51,7 +51,7 @@
 +++ b/cosmic-panel-bin/Cargo.toml
 @@ -9,6 +9,9 @@
  path = "src/main.rs"
- 
+
  [dependencies]
 +dock-islands-core = { path = "../dock-islands-core" }
 +serde_json = "1"
@@ -110,7 +110,7 @@
          loop_handle,
 @@ -59,6 +63,7 @@
  }
- 
+
  pub struct Background {
 +    pub label: Option<String>,
      pub id: id::Id,
@@ -122,11 +122,11 @@
      pub border_width: f32,
 +    pub material: Option<dock_islands_core::material::Finish>,
  }
- 
+
  impl Program for Background {
 @@ -80,9 +86,27 @@
          let [top_left, top_right, bottom_right, bottom_left] = radius_arr;
- 
+
          let color = self.color;
 +        let material = self.material;
 +        let background: cosmic::iced::Background = if let Some(finish) = material {
@@ -151,7 +151,7 @@
 +        } else {
 +            0.
 +        };
- 
+
          // for a single edge, avoide the corner radius (panel won't have curved corner in this mode
          // anyways)
 @@ -94,7 +118,15 @@
@@ -172,7 +172,7 @@
              Element::from(
                  if line_horizontal { rule::horizontal(line) } else { rule::vertical(line) }.class(
 @@ -118,11 +150,17 @@
- 
+
                  container::Style {
                      text_color: Some(cosmic.background(theme.transparent).on.into()),
 -                    background: Some(Color::from(color).into()),
@@ -235,9 +235,9 @@
 +        false,
 +    )
 +}
---- /dev/null
+--- a/cosmic-panel-bin/src/islands.rs
 +++ b/cosmic-panel-bin/src/islands.rs
-@@ -0,0 +1,1081 @@
+@@ -0,0 +1,1113 @@
 +//! Desktop Cards companion extension. Stock panel schemas remain unchanged.
 +use crate::iced::elements::CosmicMappedInternal;
 +use crate::iced::elements::background::{BackgroundElement, PanelBorder, background_element};
@@ -373,7 +373,9 @@
 +        // Never reuse the input region: it also contains reveal/drag handles.
 +        let blur_region = if frosting {
 +            self.compositor_state.as_ref().and_then(|c| sctk::compositor::Region::new(c).ok())
-+        } else { None };
++        } else {
++            None
++        };
 +        if let Some(corners) = &self.corner_radius_wlr {
 +            corners.set_radius(0, 0, 0, 0);
 +            corners.set_padding(0, 0, 0, 0);
@@ -603,7 +605,10 @@
 +                    | notify::EventKind::Remove(_)
 +            )
 +            && e.paths.iter().any(|p| {
-+                p.components().any(|part| part.as_os_str() == dock_islands_core::NAMESPACE || part.as_os_str() == dock_islands_core::material::NAMESPACE)
++                p.components().any(|part| {
++                    part.as_os_str() == dock_islands_core::NAMESPACE
++                        || part.as_os_str() == dock_islands_core::material::NAMESPACE
++                })
 +            })
 +        {
 +            let _ = watch_tx.send(crate::PanelCalloopMsg::Islands(Event::Reload));
@@ -821,13 +826,26 @@
 +            }
 +            match load_settings(&panel) {
 +                Ok(settings) if settings == expected => {
++                    // Reconcile both enabling a previously invisible bar and
++                    // disabling its fallback before acknowledging live state.
++                    reconcile_outputs(state);
 +                    let mut found = false;
 +                    for p in state.space.space_list.iter_mut().filter(|p| p.config.name == panel) {
 +                        p.end_island_lease();
 +                        p.set_islands(settings.clone());
 +                        found = true;
 +                    }
-+                    if found {
++                    // A disabled named-output bar is correctly absent when
++                    // its configured monitor is disconnected. That is a
++                    // completed application, not a failed live acknowledgment.
++                    let hidden_by_configuration = !settings.enabled
++                        && state.space.config.config_list.iter().any(|config| {
++                            config.name == panel
++                                && matches!(&config.output,
++                                cosmic_panel_config::CosmicPanelOuput::Name(name)
++                                if !state.space.outputs.iter().any(|o| o.1.name() == *name))
++                        });
++                    if found || hidden_by_configuration {
 +                        Response::Applied { settings }
 +                    } else {
 +                        Response::Error("Settings saved, but no matching panel is active".into())
@@ -1222,17 +1240,28 @@
 +        let CosmicPanelOuput::Name(ref wanted) = original.output else {
 +            continue;
 +        };
-+        if !load_settings(&original.name).is_ok_and(|s| s.enabled) {
-+            continue;
-+        }
++        let enabled = load_settings(&original.name).is_ok_and(|s| s.enabled);
 +        let target = state
 +            .space
 +            .outputs
 +            .iter()
 +            .find(|o| o.1.name() == *wanted)
-+            .or_else(|| state.space.outputs.iter().min_by_key(|o| dock_islands_core::output_order(&o.1.name())))
++            .or_else(|| {
++                enabled
++                    .then(|| {
++                        state
++                            .space
++                            .outputs
++                            .iter()
++                            .min_by_key(|o| dock_islands_core::output_order(&o.1.name()))
++                    })
++                    .flatten()
++            })
 +            .map(|o| o.1.name());
 +        let Some(target) = target else {
++            // Standard mode on an absent named display has no surface. Retire
++            // any temporary Islands fallback, including after Undo/recovery.
++            state.space.space_list.retain(|p| p.config.name != original.name);
 +            continue;
 +        };
 +        state.space.space_list.retain(|p| {
@@ -1306,8 +1335,11 @@
 +fn load_material(panel: &str) -> Option<dock_islands_core::material::Finish> {
 +    let layout = settings_path(panel).ok()?;
 +    let root = layout.parent()?.parent()?.parent()?;
-+    let data = fs::read(root.join(dock_islands_core::material::NAMESPACE).join("v1").join(panel)).ok()?;
-+    if data.len() > 4096 { return None; }
++    let data =
++        fs::read(root.join(dock_islands_core::material::NAMESPACE).join("v1").join(panel)).ok()?;
++    if data.len() > 4096 {
++        return None;
++    }
 +    let record: dock_islands_core::material::BarMaterial = ron::de::from_bytes(&data).ok()?;
 +    record.validate().ok()?;
 +    Some(record.finish)
@@ -1319,7 +1351,7 @@
 +        false
 +    }
 +}
---- /dev/null
+--- a/cosmic-panel-bin/src/islands_probe.rs
 +++ b/cosmic-panel-bin/src/islands_probe.rs
 @@ -0,0 +1,37 @@
 +//! A bounded launcher preflight (the parent enforces the timeout). Loading this
@@ -1370,7 +1402,7 @@
  mod notifications;
  mod space;
 @@ -37,6 +39,7 @@
- 
+
  #[derive(Debug)]
  pub enum PanelCalloopMsg {
 +    Islands(islands::Event),
@@ -1379,7 +1411,7 @@
      MinimizeRect { output: String, applet_info: MinimizeApplet },
 @@ -70,6 +73,10 @@
  }
- 
+
  fn main() -> Result<()> {
 +    // Before logger/config loading: this path must never write native defaults.
 +    if std::env::args().nth(1).as_deref() == Some("--islands-probe") {
@@ -1391,7 +1423,7 @@
 @@ -114,6 +121,7 @@
      let (applet_tx, mut applet_rx) = mpsc::channel(200);
      let (calloop_tx, calloop_rx): (Sender<PanelCalloopMsg>, _) = calloop::channel::channel();
- 
+
 +    islands::serve(calloop_tx.clone())?;
      let event_loop = calloop::EventLoop::try_new()?;
      let handle = event_loop.handle();
@@ -1419,12 +1451,12 @@
 +        }
 +        self.islands.last_major = major;
          self.remap_attempts = self.remap_attempts.saturating_sub(1);
- 
+
          let make_indices_contiguous =
 @@ -199,7 +207,7 @@
          let is_dock = !self.config.expand_to_edges()
              || self.animate_state.as_ref().is_some_and(|a| !(a.cur.expanded > 0.5));
- 
+
 -        if is_dock {
 +        if is_dock && !self.islands.settings.enabled {
              windows_center = windows_left
@@ -1442,7 +1474,7 @@
 @@ -419,7 +427,13 @@
          .to_logical(self.scale)
          .to_i32_round();
- 
+
 -        let actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
 +        let mut actual_size_constrained = self.constrain_dim(self.actual_size, Some(gap as u32));
 +        let arrange_extra = self.arrange_extra();
@@ -1455,9 +1487,9 @@
              self.actual_size.h = actual_size_constrained.h;
          } else {
 @@ -474,7 +488,7 @@
- 
+
          let mut center_pos = layer_major as f64 / 2. - center_sum / 2.;
- 
+
 -        let left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
 +        let mut left_pos = container_lengthwise_pos as f64 + padding_u32 as f64;
          let mut right_pos = new_list_dim_length as f64
@@ -1475,7 +1507,7 @@
 @@ -512,7 +526,7 @@
          }
          .min(layer_major as f64);
- 
+
 -        let target_right_len = if !has_center {
 +        let mut target_right_len = if !has_center {
              (layer_major as f64
@@ -1600,7 +1632,7 @@
              self.is_dirty = true;
              self.needs_layout = true;
 @@ -546,7 +661,9 @@
- 
+
              if left_overflow < suggested_size {
                  self.relax_overflow_left(left_overflow.unsigned_abs(), &mut left_overflow_button);
 -            } else if left_overflow > 0 {
@@ -1624,7 +1656,7 @@
 @@ -570,6 +689,10 @@
              }
          }
- 
+
 +        if let Some(geometry) = island_geometry {
 +            self.islands.geometry = geometry;
 +            self.normalize_island_selection();
@@ -1639,7 +1671,7 @@
 -            PanelAnchor::Bottom | PanelAnchor::Right => 0,
 +            PanelAnchor::Bottom | PanelAnchor::Right => arrange_extra as u16,
          } as i32;
- 
+
          if let Some(right_button) = right_overflow_button {
              let size = right_button.geometry().size.to_f64();
              let crosswise_pos = if self.config.is_horizontal() {
@@ -1657,7 +1689,7 @@
 +                        size.w as u32,
 +                    )
              };
- 
+
              let loc = if self.config().is_horizontal() {
 @@ -614,17 +743,27 @@
              layer_major.saturating_sub(container_length) < 2 * self.logical_layer_end_overlap;
@@ -1749,7 +1781,7 @@
 @@ -791,6 +942,16 @@
          }
          self.space.refresh();
- 
+
 +        if self.islands.settings.enabled {
 +            self.layout_island_backgrounds(new_dim.w, new_dim.h, new_logical_crosswise_dim)?;
 +            self.reorder_overflow_space(OverflowSection::Left);
@@ -1826,7 +1858,7 @@
 +                self.islands.overflow_sizes.push((w.0.clone(), diff as f64));
 +            }
              overflow = overflow.saturating_sub(diff);
- 
+
              let x_i = overflow_cnt % 8;
 --- a/cosmic-panel-bin/src/space/panel_space.rs
 +++ b/cosmic-panel-bin/src/space/panel_space.rs
@@ -1857,7 +1889,7 @@
              anchor_gap: 0,
 @@ -717,19 +719,25 @@
      }
- 
+
      pub fn bg_color(&self) -> [f32; 4] {
 -        if let Some(animatable_state) = self.animate_state.as_ref() {
 +        let native = if let Some(animatable_state) = self.animate_state.as_ref() {
@@ -1874,7 +1906,7 @@
 +            color
 +        })
      }
- 
+
      pub fn border_radius(&self) -> u32 {
 -        if let Some(animatable_state) = self.animate_state.as_ref() {
 +        let radius = if let Some(animatable_state) = self.animate_state.as_ref() {
@@ -1885,12 +1917,12 @@
 +        } else { self.config.border_radius };
 +        if self.islands.material.is_some_and(|f| f.kind == dock_islands_core::material::Kind::Liquid) { radius.max(24) } else { radius }
      }
- 
+
      pub fn gap(&self) -> u16 {
 @@ -794,6 +802,26 @@
              return;
          };
- 
+
 +        if self.islands.lease.is_some()
 +            || (self.islands.settings.enabled
 +                && (!self.popups.is_empty() || self.overflow_popup.is_some()))
@@ -1917,7 +1949,7 @@
 @@ -1098,7 +1126,7 @@
          }
      }
- 
+
 -    fn set_margin(
 +    pub(crate) fn set_margin(
          anchor: PanelAnchor,
@@ -1925,7 +1957,7 @@
          additional_gap: i32,
 @@ -1138,6 +1166,29 @@
          }
- 
+
          (w, h).into()
 +    }
 +
@@ -1951,7 +1983,7 @@
 +        }
 +        dim
      }
- 
+
      fn apply_animation_state(&mut self) {
 @@ -1377,7 +1428,7 @@
                      if height <= 0 {
@@ -1959,7 +1991,7 @@
                      }
 -                    let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 +                    let dim = self.constrain_layer_dim((width, height).into(), Some(self.gap() as u32));
- 
+
                      if first {
                          if self.additional_gap != 0 {
 @@ -1519,7 +1570,7 @@
@@ -1968,7 +2000,7 @@
                  }
 -                let dim = self.constrain_dim((width, height).into(), Some(self.gap() as u32));
 +                let dim = self.constrain_layer_dim((width, height).into(), Some(self.gap() as u32));
- 
+
                  if let (Some(renderer), Some(egl_surface)) =
                      (renderer.as_mut(), self.egl_surface.as_mut())
 @@ -1888,6 +1939,9 @@
@@ -2007,7 +2039,7 @@
              let not_visible = self.config.autohide_enabled()
 @@ -212,7 +216,7 @@
                          }
- 
+
                          w.toplevel().map(|t| {
 -                            let configured_size = t
 +                            let mut configured_size = t
@@ -2017,7 +2049,7 @@
 @@ -232,6 +236,42 @@
                                      r
                                  });
- 
+
 +                            if self.islands.settings.enabled {
 +                                let client = t.wl_surface().client();
 +                                let section =
@@ -2060,7 +2092,7 @@
 @@ -259,24 +299,25 @@
                      .flatten()
                      .collect_vec();
- 
+
 -                if let Some(bg) = self.background_element.as_ref().map(|e| {
 -                    let pos = e.with_program(|p| p.logical_pos);
 -                    e.render_elements(
@@ -2097,14 +2129,58 @@
                      elements.extend(bg);
 -                };
 +                }
- 
+
                  let _res =
                      my_renderer.render_output(renderer, &mut f, age, &elements, clear_color)?;
 --- a/cosmic-panel-bin/src/space/wrapper_space.rs
 +++ b/cosmic-panel-bin/src/space/wrapper_space.rs
-@@ -460,9 +460,9 @@
+@@ -48,8 +48,9 @@
+ use smithay::desktop::utils::bbox_from_surface_tree;
+ use smithay::desktop::{PopupManager, Space, Window};
+ use smithay::output::Output;
++use smithay::reexports::wayland_server::backend::ClientId;
+ use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface as s_WlSurface;
+-use smithay::reexports::wayland_server::{self, DisplayHandle, Resource};
++use smithay::reexports::wayland_server::{self, Client, DisplayHandle, Resource};
+ use smithay::utils::{Logical, Rectangle, Size};
+ use smithay::wayland::compositor::{SurfaceAttributes, with_states};
+ use smithay::wayland::fractional_scale::with_fractional_scale;
+@@ -57,6 +58,7 @@
+ use smithay::wayland::shell::xdg::{PopupSurface, PositionerState, SurfaceCachedState};
+ use tokio::sync::oneshot;
+ use tracing::{error, error_span, info, info_span, trace};
++use wayland_protocols::wp::security_context::v1::client::wp_security_context_v1::WpSecurityContextV1;
+ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
+
+ use crate::iced::elements::{CosmicMappedInternal, PanelSpaceElement};
+@@ -66,6 +68,24 @@
+ use super::PanelSpace;
+ use super::layout::OverflowSection;
+ use super::panel_space::HoverId;
++
++// Each process callback owns the current client ID for one configured occurrence.
++// Advance it on every replacement: names and vector indices are not identities.
++fn replace_restarted_client(
++    clients: &mut [PanelClient],
++    current: &mut ClientId,
++    replacement: Client,
++    security_context: Option<WpSecurityContextV1>,
++) -> Option<ClientId> {
++    let occurrence = clients
++        .iter_mut()
++        .find(|entry| entry.client.as_ref().is_some_and(|client| client.id() == *current))?;
++    let retired = current.clone();
++    *current = replacement.id();
++    occurrence.client = Some(replacement);
++    occurrence.security_ctx = security_context;
++    Some(retired)
++}
+
+ struct SpaceFocus<T> {
+     target: T,
+@@ -460,9 +480,9 @@
              let locales = freedesktop_desktop_entry::get_languages_from_env();
- 
+
              for path in Iter::new(freedesktop_desktop_entry::default_paths()) {
 -                // This way each applet is at most started once,
 -                // even if multiple desktop files in different directories match
@@ -2115,6 +2191,157 @@
                      desktop_ids.iter().position(|(PanelClient { name, .. }, ..)| {
                          Some(OsString::from(name).as_os_str()) == path.file_stem()
                      })
+@@ -545,14 +565,10 @@
+                 let requests_wayland_display =
+                     panel_client.requests_wayland_display.unwrap_or(false);
+
+-                let mut exec_iter = Shlex::new(panel_client.exec.as_deref().unwrap());
+-                let exec = exec_iter.next().expect("exec parameter must contain at least on word");
+-
+-                let mut args = Vec::new();
+-                for arg in exec_iter {
+-                    trace!("child argument: {}", &arg);
+-                    args.push(arg);
+-                }
++                let Some((exec, mut args)) = applet_command(panel_client.exec.as_deref().unwrap()) else {
++                    error!("Invalid launch command for applet {}", panel_client.name);
++                    continue;
++                };
+                 let mut fds = Vec::with_capacity(2);
+                 let mut applet_env = Vec::new();
+                 applet_env.push((
+@@ -610,6 +626,7 @@
+                     panic!("Failed to get client");
+                 };
+                 let client_id = client.id();
++                let current_client = Arc::new(Mutex::new(client.id()));
+                 let client_id_info = client.id();
+                 let client_id_err = client.id();
+                 let security_context_manager_clone = security_context_manager.clone();
+@@ -659,7 +676,7 @@
+                         }
+                     })
+                     .with_on_exit(move |mut pman, key, err_code, is_restarting| {
+-                        let client_id_clone = client_id.clone();
++                        let current_client = current_client.clone();
+                         let id_clone = id_clone.clone();
+
+                         if let Some(err_code) = err_code {
+@@ -755,21 +772,20 @@
+                                 }
+                             }
+
+-                            if let Some(old_client) = my_list
+-                                .lock()
+-                                .unwrap()
+-                                .iter_mut()
+-                                .find(|PanelClient { name, .. }| name == &id_clone)
+-                            {
+-                                old_client.client = Some(c);
+-                                old_client.security_ctx = security_context;
+-                                info!("Replaced the client socket");
+-                            } else {
+-                                error!("Failed to find matching client... {}", &id_clone)
+-                            }
+-                            let _ = applet_tx_clone
+-                                .send(AppletMsg::ClientSocketPair(client_id_clone))
+-                                .await;
++                            let retired = replace_restarted_client(
++                                &mut my_list.lock().unwrap(),
++                                &mut current_client.lock().unwrap(),
++                                c,
++                                security_context,
++                            );
++                            let Some(retired) = retired else {
++                                error!("Failed to find matching applet occurrence: {}", &id_clone);
++                                _ = pman.stop_process(key).await;
++                                return;
++                            };
++                            info!("Replaced the client socket");
++                            let _ =
++                                applet_tx_clone.send(AppletMsg::ClientSocketPair(retired)).await;
+
+                             applet_env.retain(|(k, _)| k.as_str() != "WAYLAND_SOCKET");
+                             applet_env.push((
+@@ -1844,3 +1860,66 @@
+         // TODO handle the preferred transform
+     }
+ }
++
++// A malformed optional applet must not terminate the entire panel host.
++fn applet_command(command: &str) -> Option<(String, Vec<String>)> {
++    let mut words = Shlex::new(command);
++    let executable = words.next()?;
++    let args: Vec<_> = words.by_ref().collect();
++    (!words.had_error && !executable.is_empty()).then_some((executable, args))
++}
++
++#[cfg(test)]
++mod applet_command_tests {
++    use super::applet_command;
++
++    #[test]
++    fn optional_applet_commands_preserve_arguments_and_reject_malformed_input() {
++        assert_eq!(applet_command("applet --mode 'two words'"),
++            Some(("applet".into(), vec!["--mode".into(), "two words".into()])));
++        for command in ["", "  ", "# comment", "\"\"", "applet 'unfinished"] {
++            assert!(applet_command(command).is_none(), "{command:?}");
++        }
++    }
++}
++
++#[cfg(test)]
++mod restart_tests {
++    use super::*;
++
++    #[test]
++    fn duplicate_applet_second_occurrence_restarts_twice_in_place() {
++        let display = wayland_server::Display::<GlobalState>::new().unwrap();
++        let mut handle = display.handle();
++        let (first, first_socket) = get_client_sock(&mut handle);
++        let (second, second_socket) = get_client_sock(&mut handle);
++        let first_id = first.id();
++        let mut current = second.id();
++        let mut section = vec![
++            PanelClient::new("same.applet".into(), None, first, Some(first_socket)),
++            PanelClient::new("same.applet".into(), None, second, Some(second_socket)),
++        ];
++        // Keep the client-side sockets alive like launch-pad's inherited FDs.
++        let mut sockets = Vec::new();
++        for _ in 0..2 {
++            let old = current.clone();
++            let (replacement, socket) = get_client_sock(&mut handle);
++            let next = replacement.id();
++            sockets.push(socket);
++            assert_eq!(
++                replace_restarted_client(&mut section, &mut current, replacement, None),
++                Some(old)
++            );
++            assert_eq!(section.len(), 2);
++            assert_eq!(section[0].client.as_ref().unwrap().id(), first_id);
++            assert_eq!(section[1].client.as_ref().unwrap().id(), next);
++            assert_eq!(current, next);
++        }
++        // A callback from a removed occurrence must not claim its namesake.
++        section.remove(1);
++        let (replacement, socket) = get_client_sock(&mut handle);
++        sockets.push(socket);
++        assert!(replace_restarted_client(&mut section, &mut current, replacement, None).is_none());
++        assert_eq!(section[0].client.as_ref().unwrap().id(), first_id);
++    }
++}
+--- a/cosmic-panel-bin/src/space_container/wrapper_space.rs
++++ b/cosmic-panel-bin/src/space_container/wrapper_space.rs
+@@ -152,6 +152,9 @@
+             Some(n) => n,
+             None => anyhow::bail!("Output missing name"),
+         };
++        // An output update with no matching panel can revisit new_output.
++        // Keep one physical record even when no surface is configured here.
++        self.outputs.retain(|o| o.0 != c_output);
+         self.outputs.push((c_output.clone(), s_output.clone(), output_info.clone()));
+
+         let cur = self.cur_theme();
 --- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/keyboard.rs
 +++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/keyboard.rs
 @@ -115,6 +115,9 @@
@@ -2129,73 +2356,119 @@
              .seats
 --- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/output.rs
 +++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/output.rs
-@@ -52,7 +52,13 @@
-             xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
-         };
- 
+@@ -9,7 +9,6 @@
+ use smithay::reexports::wayland_server::backend::GlobalId;
+ use smithay::utils::Transform;
+ use tracing::{error, info, warn};
+-use xdg_shell_wrapper_config::WrapperConfig;
+
+ use crate::xdg_shell_wrapper::client_state::ClientState;
+ use crate::xdg_shell_wrapper::server_state::ServerState;
+@@ -46,13 +45,9 @@
+             ..
+         } = self;
+
+-        let config = space.config();
+-        let configured_outputs = match config.outputs() {
+-            xdg_shell_wrapper_config::WrapperOutput::All => info.name.iter().cloned().collect(),
+-            xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
+-        };
+-
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref()) {
-+        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
-+            || space
-+                .config
-+                .config_list
-+                .iter()
-+                .any(|c| crate::islands::load_settings(&c.name).is_ok_and(|s| s.enabled))
++        // Physical output inventory is independent of the current bar style.
++        // new_output creates surfaces only for matching native configurations.
 +        {
              // construct a surface for an output if possible
              let s_output = c_output_as_s_output(display_handle, &info);
- 
-@@ -71,6 +77,7 @@
+
+@@ -71,6 +66,7 @@
                  warn!("{}", err);
              }
          }
 +        crate::islands::reconcile_outputs(self);
      }
- 
+
      fn update_output(
-@@ -104,7 +111,12 @@
-             xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
-         };
- 
+@@ -93,26 +89,17 @@
+                     viewporter_state,
+                     ..
+                 },
+-            server_state: ServerState { display_handle, .. },
+             space,
+             ..
+         } = self;
+
+-        let config = space.config();
+-        let configured_outputs = match config.outputs() {
+-            xdg_shell_wrapper_config::WrapperOutput::All => info.name.iter().cloned().collect(),
+-            xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
+-        };
+-
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
-+        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
-+            || space
-+                .config
-+                .config_list
-+                .iter()
-+                .any(|c| crate::islands::load_settings(&c.name).is_ok_and(|s| s.enabled)))
-             && let Some(saved_output) = self.client_state.outputs.iter_mut().find(|o| o.0 == output)
-         {
+-            && let Some(saved_output) = self.client_state.outputs.iter_mut().find(|o| o.0 == output)
+-        {
++        if let Some(saved_output) = self.client_state.outputs.iter_mut().find(|o| o.0 == output) {
              let res = space.update_output(output.clone(), saved_output.1.clone(), info.clone());
-@@ -128,6 +140,7 @@
+             if let Err(err) = res {
+                 error!("{}", err);
+             } else if matches!(res, Ok(false)) {
+-                let s_output = c_output_as_s_output(display_handle, &info);
+-
++                // No surface currently matches this physical output. Reuse
++                // its registered server object when checking for new panels.
+                 if let Err(err) = space.new_output(
+                     compositor_state,
+                     fractional_scaling_manager.as_ref(),
+@@ -121,13 +108,14 @@
+                     conn,
+                     qh,
+                     Some(output),
+-                    Some(s_output.0),
++                    Some(saved_output.1.clone()),
+                     Some(info),
+                 ) {
+                     warn!("{}", err);
                  }
              }
          }
 +        crate::islands::reconcile_outputs(self);
      }
- 
+
      fn output_destroyed(
-@@ -152,7 +165,12 @@
- 
-         info!("configured outputs {:?}", &configured_outputs);
- 
+@@ -137,29 +125,16 @@
+         output: wl_output::WlOutput,
+     ) {
+         info!("output destroyed {:?}", &output);
+-        let info = match self.output_state().info(&output) {
+-            Some(info) if info.name.is_some() => info,
+-            _ => return,
+-        };
+         let GlobalState { space, .. } = self;
+-
+-        let config = space.config();
+-        let configured_outputs = match config.outputs() {
+-            xdg_shell_wrapper_config::WrapperOutput::All => info.name.iter().cloned().collect(),
+-            xdg_shell_wrapper_config::WrapperOutput::Name(list) => list,
+-        };
+-        info!("output destroyed {:?}", info.name.as_ref());
+-
+-        info!("configured outputs {:?}", &configured_outputs);
+-
 -        if configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
-+        if (configured_outputs.iter().any(|configured| Some(configured) == info.name.as_ref())
-+            || space
-+                .config
-+                .config_list
-+                .iter()
-+                .any(|c| crate::islands::load_settings(&c.name).is_ok_and(|s| s.enabled)))
-             && let Some(saved_output) = self.client_state.outputs.iter().position(|o| o.0 == output)
-         {
+-            && let Some(saved_output) = self.client_state.outputs.iter().position(|o| o.0 == output)
+-        {
++        // Removal must not depend on current configuration or still-available
++        // output metadata: this object was admitted to the physical inventory.
++        if let Some(saved_output) = self.client_state.outputs.iter().position(|o| o.0 == output) {
              let (c, s, _) = self.client_state.outputs.remove(saved_output);
-@@ -160,6 +178,7 @@
+             if let Err(err) = space.output_leave(c, s) {
                  warn!("{}", err);
              }
          }
 +        crate::islands::reconcile_outputs(self);
      }
  }
- 
+
 --- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
 +++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/handlers/pointer.rs
 @@ -71,6 +71,9 @@
@@ -2230,7 +2503,7 @@
 +            return;
 +        }
          let (_, touch) = get_touch_handle(self, touch);
- 
+
          touch.up(
 @@ -97,6 +105,11 @@
          id: i32,
@@ -2242,11 +2515,11 @@
 +            return;
 +        }
          let (seat_name, touch) = get_touch_handle(self, touch);
- 
+
          if let Some(surface) = self.client_state.touch_surfaces.get(&id)
 @@ -143,6 +156,12 @@
      }
- 
+
      fn cancel(&mut self, _conn: &Connection, _qh: &QueueHandle<Self>, touch: &WlTouch) {
 +        for panel in &mut self.space.space_list {
 +            if panel.islands.touch.take().is_some() {
@@ -2257,7 +2530,30 @@
          let (_, touch) = get_touch_handle(self, touch);
          touch.cancel(self);
      }
---- /dev/null
+--- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/state.rs
++++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/state.rs
+@@ -1,7 +1,5 @@
+ use crate::space_container::SpaceContainer;
+-use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::{
+-    self, ExtBackgroundEffectManager,
+-};
++use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::ExtBackgroundEffectManager;
+ use crate::xdg_shell_wrapper::server_state::ServerState;
+ use crate::xdg_shell_wrapper::shared_state::GlobalState;
+ use crate::xdg_shell_wrapper::space::WrapperSpace;
+@@ -317,8 +315,9 @@
+                 data_device_manager: DataDeviceManagerState::bind(&globals, &qh)
+                     .expect("data device manager is not available"),
+                 overlap_notify: overlap_notify.ok(),
+-                ext_background_effect_manager:
+-                    ext_background_effect::ExtBackgroundEffectManager::new(&globals, &qh).ok(),
++                // Decorative materials only: do not bind or advertise native
++                // backdrop effects to hosted applets/popups on unvalidated paths.
++                ext_background_effect_manager: None,
+                 cosmic_corner_radius_manager: registry_state
+                     .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
+                     .ok(),
+--- a/dock-islands-core/Cargo.toml
 +++ b/dock-islands-core/Cargo.toml
 @@ -0,0 +1,10 @@
 +[package]
@@ -2270,12 +2566,12 @@
 +serde = { version = "1", features = ["derive"] }
 +serde_json = "1"
 +
---- /dev/null
+--- a/dock-islands-core/rustfmt.toml
 +++ b/dock-islands-core/rustfmt.toml
 @@ -0,0 +1,2 @@
 +edition = "2024"
 +use_small_heuristics = "Default"
---- /dev/null
+--- a/dock-islands-core/src/lib.rs
 +++ b/dock-islands-core/src/lib.rs
 @@ -0,0 +1,650 @@
 +//! Versioned settings, wire contract and logical geometry shared by the two
@@ -2928,7 +3224,7 @@
 +        name.to_owned(),
 +    )
 +}
---- /dev/null
+--- a/dock-islands-core/src/material.rs
 +++ b/dock-islands-core/src/material.rs
 @@ -0,0 +1,135 @@
 +//! Color-independent finishes. Separate namespace leaves version-1 layouts readable.
@@ -3066,7 +3362,7 @@
 +        assert!(record.validate().is_err());
 +    }
 +}
---- /dev/null
+--- a/dock-islands-core/src/tests.rs
 +++ b/dock-islands-core/src/tests.rs
 @@ -0,0 +1,187 @@
 +use super::*;
@@ -3256,64 +3552,13 @@
 +    let _ = settings.layout("DP-2");
 +    assert_eq!(serde_json::to_vec(&settings).unwrap(), before);
 +}
---- a/cosmic-panel-bin/src/xdg_shell_wrapper/client/state.rs
-+++ b/cosmic-panel-bin/src/xdg_shell_wrapper/client/state.rs
-@@ -1,7 +1,5 @@
- use crate::space_container::SpaceContainer;
--use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::{
--    self, ExtBackgroundEffectManager,
--};
-+use crate::xdg_shell_wrapper::client::handlers::ext_background_effect::ExtBackgroundEffectManager;
- use crate::xdg_shell_wrapper::server_state::ServerState;
- use crate::xdg_shell_wrapper::shared_state::GlobalState;
- use crate::xdg_shell_wrapper::space::WrapperSpace;
-@@ -317,8 +315,9 @@
-                 data_device_manager: DataDeviceManagerState::bind(&globals, &qh)
-                     .expect("data device manager is not available"),
-                 overlap_notify: overlap_notify.ok(),
--                ext_background_effect_manager:
--                    ext_background_effect::ExtBackgroundEffectManager::new(&globals, &qh).ok(),
-+                // Decorative materials only: do not bind or advertise native
-+                // backdrop effects to hosted applets/popups on unvalidated paths.
-+                ext_background_effect_manager: None,
-                 cosmic_corner_radius_manager: registry_state
-                     .bind_one::<CosmicCornerRadiusManagerV1, _, _>(&qh, 1..=2, ())
-                     .ok(),
---- a/cosmic-panel-bin/src/space/wrapper_space.rs
-+++ b/cosmic-panel-bin/src/space/wrapper_space.rs
-@@ -548,8 +548,4 @@
--                let mut exec_iter = Shlex::new(panel_client.exec.as_deref().unwrap());
--                let exec = exec_iter.next().expect("exec parameter must contain at least on word");
--
--                let mut args = Vec::new();
--                for arg in exec_iter {
--                    trace!("child argument: {}", &arg);
--                    args.push(arg);
--                }
-+                let Some((exec, mut args)) = applet_command(panel_client.exec.as_deref().unwrap()) else {
-+                    error!("Invalid launch command for applet {}", panel_client.name);
-+                    continue;
-+                };
-@@ -1846,0 +1843,22 @@
-+
-+// A malformed optional applet must not terminate the entire panel host.
-+fn applet_command(command: &str) -> Option<(String, Vec<String>)> {
-+    let mut words = Shlex::new(command);
-+    let executable = words.next()?;
-+    let args: Vec<_> = words.by_ref().collect();
-+    (!words.had_error && !executable.is_empty()).then_some((executable, args))
-+}
-+
-+#[cfg(test)]
-+mod applet_command_tests {
-+    use super::applet_command;
-+
-+    #[test]
-+    fn optional_applet_commands_preserve_arguments_and_reject_malformed_input() {
-+        assert_eq!(applet_command("applet --mode 'two words'"),
-+            Some(("applet".into(), vec!["--mode".into(), "two words".into()])));
-+        for command in ["", "  ", "# comment", "\"\"", "applet 'unfinished"] {
-+            assert!(applet_command(command).is_none(), "{command:?}");
-+        }
-+    }
-+}
+--- a/cosmic-panel-bin/src/space_container/space_container.rs
++++ b/cosmic-panel-bin/src/space_container/space_container.rs
+@@ -267,6 +267,7 @@
+         } as isize;
+
+         if force_output.is_none()
++            && output_count > 0
+             && self.space_list.iter_mut().any(|s| {
+                 let ret = if matches!(entry.output, CosmicPanelOuput::All) {
+                     entry.output = s.config.output.clone();

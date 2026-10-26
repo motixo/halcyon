@@ -117,7 +117,10 @@ impl Settings {
                 .and_then(|o| o.name())
                 .map(str::to_owned)
                 .unwrap_or(title);
-            let b = if value == self.config.widget_display {
+            let b = if self
+                .displays
+                .same_choice(value.as_deref(), self.config.widget_display.as_deref())
+            {
                 button::suggested(title)
             } else {
                 button::standard(title)
@@ -160,7 +163,10 @@ impl Settings {
                         .map(str::to_owned)
                         .unwrap_or(title)
                 };
-                let button = if value == choice.display {
+                let button = if self
+                    .displays
+                    .same_choice(value.as_deref(), choice.display.as_deref())
+                {
                     button::suggested(title)
                 } else {
                     button::standard(title)

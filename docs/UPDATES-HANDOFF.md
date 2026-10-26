@@ -58,3 +58,54 @@ preserved byte-for-byte. APT trust/retention/bootstrap tests do not fabricate na
 UI or hardware acceptance. Final public URL/signature/bootstrap acceptance uses
 `scripts/apt/smoke.py` after the parent-approved Pages deployment; it does not touch
 host APT, global trust or the live desktop.
+
+
+## Local 0.3.0 enrollment flow
+
+The development Settings build separates clean manual packages, deliberately
+disabled sources, partial enrollment and verified enrollment. Only a clean,
+verified manual installation offers **Enable system updates…**. Files are the
+exact two pinned bootstrap assets from `scripts/apt/distribution.json`, downloaded
+with HTTPS, restricted redirects, size/hash limits and private staging.
+
+`InstallFiles(0, [keyring, source])` uses the OS local-package authorization route.
+This is not a retry that disables a failed repository trust check. Both packages
+passed the real Noble PackageKit backend in a disposable Ubuntu 24.04 container;
+private-bus tests cover early signals, denied authorization, cancellation and
+changed files. Host APT was not changed. A graphical PolicyKit prompt as a normal
+user remains a real-device acceptance check.
+
+Progress distinguishes preparation, authorization handoff, installation and final
+verification. There is no application password field. Halcyon does not cancel or
+kill an installation after handing it to PackageKit; cancellation before install
+belongs to the system authorization dialog. If the bus disappears or Settings
+closes, staging is retained and a new inspection determines the outcome. Manual
+instructions use the same verified files; they do not imply enrollment succeeded.
+
+Successful checks retain a last-successful timestamp for the current window,
+including after a failed attempt. Stable verified versions link to their own
+release tag. COSMIC Store still opens its main window; select Updates there.
+
+
+## Default enrollment for upcoming packages
+
+The subsequent user decision makes system-update enrollment the default for clean
+main-package installs and clean upgrades of older unenrolled manual packages.
+`packaging/updates/defaults.py` performs one-time, offline creation from the
+reviewed package payload, publishes the source after its key/pins, and records a
+public receipt. It never starts apt/dpkg, changes OS unattended-update policy,
+installs Islands, starts user services or edits home directories.
+
+Existing bootstrap files and ownership, explicit disable/delete and administrator
+configuration are preserved. The Rust identity adapter accepts either the verified
+bootstrap or verified main-package templates/receipt; modified, incomplete and
+unknown states cannot offer a successful check. The previous interactive installer
+remains available for eligible older manual installations. Public bootstrap assets
+and distribution pins are unchanged.
+
+Validation: 22 Rust checks, 20 Python checks and nine isolated, network-disabled
+package scenarios passed. These cover fresh/manual upgrades, bootstrap migration,
+opt-outs, administrator edits, removal and purge. Main package scenarios use a
+stub executable; the production Rust release build passed separately. Exact
+limitations: `.task-default-updates-evidence/acceptance.json`.
+The feature is local; no installed workstation package or published release was changed.

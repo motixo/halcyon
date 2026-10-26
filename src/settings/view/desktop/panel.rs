@@ -25,7 +25,7 @@ impl Settings {
             return section(vec![self.panel_picker(draft, region)]);
         }
         let mut blocks = vec![split(
-            label("Panel contents", 16., FG),
+            label("Contents", 16., FG),
             button::text("Add applets")
                 .leading_icon(icon::from_name("list-add-symbolic").size(16))
                 .on_press_maybe(
@@ -114,7 +114,11 @@ impl Settings {
                     .into()
             })
             .collect();
-        blocks.push(row::with_children(lanes).spacing(8).into());
+        blocks.push(if self.window.width >= 1120. {
+            row::with_children(lanes).spacing(8).into()
+        } else {
+            column::with_children(lanes).spacing(8).into()
+        });
         if let Some(slot) = editor
             .focus
             .filter(|s| s.index < regions.list(s.region).len())
@@ -212,16 +216,14 @@ impl Settings {
         } else {
             cosmic::iced::mouse::Interaction::Grab
         });
-        let compact = self.window.width < 900.;
-        let mut content = vec![
+        // Names remain visible alongside the pointer and keyboard controls.
+        let content = vec![
             icon::from_name(editor.catalog.icon(id))
                 .size(18)
                 .icon()
                 .into(),
+            line(name.clone(), 11., if known { FG } else { MUTED }),
         ];
-        if !compact {
-            content.push(line(name.clone(), 11., if known { FG } else { MUTED }));
-        }
         let chip = button::custom(
             row::with_children(content)
                 .spacing(5)
@@ -246,7 +248,7 @@ impl Settings {
         self.panel_drop_target(
             row::with_children(vec![handle.into(), chip.into()])
                 .align_y(Alignment::Center)
-                .width(if compact { 48 } else { 114 })
+                .width(140)
                 .into(),
             slot,
         )
@@ -428,122 +430,6 @@ impl Settings {
         column::with_children(items).spacing(10).into()
     }
 
-    pub(super) fn panel_appearance(&self, draft: &PanelDraft) -> Element<'_, Message> {
-        let accent = self.settings_accent();
-        let mut items = vec![label("Appearance & behavior", 16., FG)];
-        let mut sizes: Vec<_> = PanelSize::CHOICES
-            .into_iter()
-            .map(|size| (size.title(), size))
-            .collect();
-        if let Setting::Known(custom @ PanelSize::Custom(_)) = draft.size() {
-            sizes.push((custom.title(), custom));
-        }
-        items.push(field(
-            "Size",
-            choice(&draft.size(), sizes, Edit::Size, accent),
-        ));
-        if let Setting::Known(opacity) = draft.opacity() {
-            let percent = (opacity * 100.).round().clamp(0., 100.) as u32;
-            items.push(value_slider(
-                "Transparency",
-                format!("{}%", 100 - percent),
-                0..=100,
-                100 - percent,
-                1,
-                accent,
-                |v| Edit::Opacity((100 - v) as u8),
-            ));
-        } else if let Setting::Unsupported(raw) = draft.opacity() {
-            items.push(field("Transparency", kept(&raw)));
-        }
-        items.push(field(
-            "Auto-hide",
-            choice(
-                &draft.autohide(),
-                AutoHide::ALL
-                    .into_iter()
-                    .map(|mode| (mode.title().into(), mode))
-                    .collect(),
-                Edit::AutoHide,
-                accent,
-            ),
-        ));
-        // Native edge and display choices remain available for existing panels.
-        items.push(field(
-            "Screen edge",
-            choice(
-                &draft.anchor(),
-                Anchor::ALL
-                    .into_iter()
-                    .map(|a| (a.title().into(), a))
-                    .collect(),
-                Edit::Anchor,
-                accent,
-            ),
-        ));
-        let mut outputs = vec![("All displays".into(), Output::All)];
-        outputs.extend(
-            self.desktop
-                .outputs
-                .iter()
-                .map(|n| (n.clone(), Output::Name(n.clone()))),
-        );
-        match draft.output() {
-            Setting::Known(Output::Name(n)) if !self.desktop.outputs.contains(&n) => {
-                outputs.push((format!("{n} (not connected)"), Output::Name(n)))
-            }
-            Setting::Known(Output::Active) => {
-                outputs.push(("Active display".into(), Output::Active))
-            }
-            _ => {}
-        }
-        items.push(field(
-            "Display",
-            choice(&draft.output(), outputs, Edit::Output, accent),
-        ));
-        items.push(self.desktop_switch(
-            "Floating",
-            "Gap from the screen edge",
-            draft.floating(),
-            Edit::Floating,
-        ));
-        items.push(field(
-            "Corners",
-            choice(
-                &draft.radius(),
-                vec![
-                    ("Square".into(), 0),
-                    ("Rounded".into(), 12),
-                    ("Pill".into(), MAX_RADIUS),
-                ],
-                Edit::RadiusChoice,
-                accent,
-            ),
-        ));
-        if let Setting::Known(radius) = draft.radius()
-            && ![0, 12, MAX_RADIUS].contains(&radius)
-        {
-            items.push(label(
-                format!("Custom radius {radius} px · adjust in Advanced"),
-                11.,
-                MUTED,
-            ));
-        }
-        let mut backgrounds = vec![
-            ("Theme".into(), PanelBackground::ThemeDefault),
-            ("Dark".into(), PanelBackground::Dark),
-            ("Light".into(), PanelBackground::Light),
-        ];
-        if let Setting::Known(c @ PanelBackground::Color(_)) = draft.background() {
-            backgrounds.push(("Custom color".into(), c));
-        }
-        items.push(field(
-            "Background",
-            choice(&draft.background(), backgrounds, Edit::Background, accent),
-        ));
-        section(items)
-    }
-
     pub(super) fn panel_style(&self, draft: &PanelDraft) -> Element<'_, Message> {
         let Setting::Known(islands) = draft.islands() else {
             return section(vec![field("Style", kept("Unsupported island settings"))]);
@@ -566,7 +452,12 @@ impl Settings {
             ),
         ];
         if !self.desktop.islands.installation.installed() {
-            options.truncate(1);
+            if islands.enabled {
+                options[1].0 = "Islands · host unavailable".into();
+                options[1].2 = None;
+            } else {
+                options.truncate(1);
+            }
         }
         if !islands.enabled && draft.extend().known() != Some(&true) {
             options.push(("Compact · kept".into(), true, None));

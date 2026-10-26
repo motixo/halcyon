@@ -1,6 +1,6 @@
 //! Layout edits widgets on their wallpaper. Decorative windows and shell bars
 //! belong to their own settings previews, not the widget placement canvas.
-//! Layout changes stay in a shared draft until Save layout.
+//! Completed gestures keep the existing direct-apply and session Undo path.
 use super::*;
 
 /// A part of the picture you can click: outlined on hover or keyboard focus.
@@ -39,7 +39,7 @@ impl Settings {
     pub(super) fn overview_page(&self) -> Element<'_, Message> {
         if self.setup_requested {
             return column::with_children(vec![
-                button::text("Back to Layout")
+                button::text("Back to Layout and displays")
                     .leading_icon(icon::from_name("go-previous-symbolic").size(14))
                     .id(cosmic::widget::Id::new("setup-back"))
                     .on_press(Message::SetupOpen(false))
@@ -52,11 +52,51 @@ impl Settings {
         // Leave room for the selected widget's inspector and keyboard hint,
         // including native window decoration, without resizing mid-gesture.
         let height = (self.window.height - 440.).clamp(120., 420.);
-        let mut parts = vec![heading("Layout", "")];
+        let mut parts = vec![heading(
+            "Layout and displays",
+            "Select a widget to move, resize or open its content settings.",
+        )];
         if self.needs_setup() {
             parts.push(self.setup_prompt());
         }
         parts.push(self.placement_editor(height));
+        // Use the same selection message as the canvas. Keep every visible
+        // widget reachable even when cards overlap or a display is disconnected.
+        parts.push(group(
+            Some("Select a widget"),
+            vec![
+                row::with_children(
+                    Widget::ALL
+                        .into_iter()
+                        .filter(|widget| self.config.widget_visible(*widget))
+                        .map(|widget| {
+                            let selected = self.placement.selected() == Some(widget);
+                            button::custom(
+                                row::with_children(vec![
+                                    icon::from_name(widget.icon()).size(16).icon().into(),
+                                    text::body(widget.title()).into(),
+                                ])
+                                .spacing(8)
+                                .align_y(Alignment::Center),
+                            )
+                            .id(cosmic::widget::Id::new(format!(
+                                "layout-select-{}",
+                                widget.key()
+                            )))
+                            .class(nav_style(selected, self.settings_accent()))
+                            .selected(selected)
+                            .on_press(Message::Placement(
+                                crate::settings::placement::Message::Select(widget.key().into()),
+                            ))
+                            .into()
+                        })
+                        .collect::<Vec<_>>(),
+                )
+                .spacing(6)
+                .wrap()
+                .into(),
+            ],
+        ));
         // Manual placement makes automatic column ordering irrelevant.
         if !self.config.has_custom_positions() && !self.placement.dirty() {
             parts.push(self.home_column_order());
@@ -102,12 +142,15 @@ impl Settings {
             None => container(text::body(""))
                 .width(size[0])
                 .height(size[1])
-                .class(cosmic::theme::Container::custom(|_| {
+                .class(cosmic::theme::Container::custom(|theme| {
                     cosmic::iced::widget::container::Style {
                         background: Some(Background::Gradient(
                             cosmic::iced::gradient::Linear::new(2.4)
-                                .add_stop(0., Color::from_rgb(0.22, 0.21, 0.27))
-                                .add_stop(1., Color::from_rgb(0.11, 0.11, 0.14))
+                                .add_stop(0., theme.cosmic().primary(theme.transparent).base.into())
+                                .add_stop(
+                                    1.,
+                                    theme.cosmic().background(theme.transparent).base.into(),
+                                )
                                 .into(),
                         )),
                         border: Border {

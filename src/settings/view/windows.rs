@@ -1,6 +1,5 @@
 //! Native inspector with direct completed controls and local form validation.
 use super::desktop::{ERROR, WARN, banner, conflict_banner, kept};
-use super::pages::section;
 use super::system_appearance::fill;
 use super::*;
 use crate::desktop::DesktopStore;
@@ -108,7 +107,7 @@ impl Settings {
         let mut items: Vec<Element<'_, Message>> = Vec::new();
         if let Some(error) = editor.unavailable() {
             items.push(split(
-                heading("Windows", ""),
+                heading("Windows & workspaces", ""),
                 store_pill(self.windows.store(), accent),
             ));
             items.push(banner(
@@ -120,7 +119,7 @@ impl Settings {
         }
         let Some(draft) = editor.draft() else {
             items.push(split(
-                heading("Windows", ""),
+                heading("Windows & workspaces", ""),
                 store_pill(self.windows.store(), accent),
             ));
             items.push(label("Reading window settings…", 12., MUTED));
@@ -200,7 +199,7 @@ impl Settings {
         };
         let details = column::with_children(vec![
             split(
-                heading("Windows", ""),
+                heading("Windows & workspaces", ""),
                 store_pill(self.windows.store(), accent),
             ),
             label(summary, 12., MUTED),
@@ -213,22 +212,25 @@ impl Settings {
         .spacing(4)
         .width(Length::Fill);
         let height = (self.window.height * 0.17).clamp(84., 120.);
-        row::with_children(vec![
-            container(tiling_schematic(
-                tiled, outer, inner, hint, outline, accent, height,
-            ))
-            .width(height * 1.7)
-            .into(),
+        column::with_children(vec![
             details.into(),
+            self.scene_frame(
+                container(tiling_schematic(
+                    tiled, outer, inner, hint, outline, accent, height,
+                ))
+                .max_width(520)
+                .width(Length::Fill)
+                .into(),
+                "Schematic · tiling, gaps and active window outline",
+            ),
         ])
-        .spacing(18)
-        .align_y(Alignment::Center)
+        .spacing(16)
         .into()
     }
 
     fn windows_tiling(&self, draft: &WindowsDraft) -> Element<'_, Message> {
         let accent = self.windows_accent();
-        let mut items = vec![label("Tiling", 16., FG)];
+        let mut items = Vec::new();
         items.push(match draft.flag(Behavior::Autotile) {
             Setting::Known(on) => row_of(
                 "Automatic tiling",
@@ -307,7 +309,7 @@ impl Settings {
             .on_press(Message::Page(Page::DesktopWindowRules))
             .into(),
         );
-        section(items)
+        group(Some("Tiling"), items)
     }
 
     fn windows_gaps(&self, draft: &WindowsDraft) -> Element<'_, Message> {
@@ -389,13 +391,13 @@ impl Settings {
                 MUTED,
             ));
         }
-        section(items)
+        group(Some("Window gaps"), items)
     }
 
     fn windows_focus(&self, draft: &WindowsDraft) -> Element<'_, Message> {
         let accent = self.windows_accent();
         let editor = &self.windows;
-        let mut items = vec![label("Focus & pointer", 16., FG)];
+        let mut items = Vec::new();
         items.push(flag_row(
             draft,
             Behavior::FocusFollowsCursor,
@@ -444,7 +446,6 @@ impl Settings {
             "Pointer follows focus",
             Some("Move the pointer to a window focused with the keyboard"),
         ));
-        items.push(separator());
         let snap = draft.edge_snap();
         items.push(match &snap {
             Setting::Known(px) => row_of(
@@ -524,22 +525,24 @@ impl Settings {
                 Setting::Unsupported(_) => {}
             }
         }
-        section(items)
+        group(Some("Focus & pointer"), items)
     }
 }
 
 fn windows_controls<'a>(draft: &WindowsDraft) -> Element<'a, Message> {
-    section(vec![
-        label("Window controls", 16., FG),
-        flag_row(
-            draft,
-            Behavior::ActiveHint,
-            "Active window outline",
-            Some("Outline the focused window in the accent color"),
-        ),
-        flag_row(draft, Behavior::ShowMinimize, "Minimize button", None),
-        flag_row(draft, Behavior::ShowMaximize, "Maximize button", None),
-    ])
+    group(
+        Some("Window controls"),
+        vec![
+            flag_row(
+                draft,
+                Behavior::ActiveHint,
+                "Active window outline",
+                Some("Outline the focused window in the accent color"),
+            ),
+            flag_row(draft, Behavior::ShowMinimize, "Minimize button", None),
+            flag_row(draft, Behavior::ShowMaximize, "Maximize button", None),
+        ],
+    )
 }
 
 /// A screen with windows: tiled side by side within the gaps, or two

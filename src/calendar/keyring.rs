@@ -102,3 +102,27 @@ pub(super) async fn remove(id: &str) -> Result<(), Problem> {
     }
     Ok(())
 }
+
+/// Creation may outlive a cancelled caller at the D-Bus service. Keep both the
+/// journal and lease until that request actually completes, even if the outer
+/// subscription timeout drops its future. A dropped result releases the lease
+/// and leaves the unused ID available for retry cleanup.
+pub(super) async fn save_prepared<T: Serialize + Send + Sync + 'static>(
+    id: String,
+    credential: T,
+) -> Result<store::CredentialLease, Problem> {
+    let save_id = id.clone();
+    prepare_with(id, async move { save(&save_id, &credential).await }).await
+}
+pub(super) async fn prepare_with(
+    id: String,
+    creation: impl std::future::Future<Output = Result<(), Problem>> + Send + 'static,
+) -> Result<store::CredentialLease, Problem> {
+    let lease = store::prepare_credential(&id).await?;
+    tokio::spawn(async move {
+        creation.await?;
+        Ok(lease)
+    })
+    .await
+    .map_err(|_| Problem::Keyring)?
+}
