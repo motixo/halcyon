@@ -17,8 +17,9 @@ The source installer’s missing Ridge PNG was fixed during this review.
 
 **[0.4.0 is published](https://github.com/profilaz3/halcyon/releases/tag/v0.4.0)**
 with matching packages, corresponding source, verification records and checksums.
-Signed APT publication is in progress. The wizard navigation repair is included;
-later concepts retain the 0.5 working target.
+The signed APT feed selects 0.4.0. A clean client verified the download and
+rejected a missing signing key; prior archive versions remain available. The
+wizard navigation repair is included; later concepts retain the 0.5 working target.
 
 The final package upgrade preserved preferences byte for byte. Packaging checks,
 offline source resolution and 60 final-package Settings captures passed. The
