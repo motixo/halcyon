@@ -1205,46 +1205,34 @@ impl Settings {
                     return Task::none();
                 }
                 let baseline = self.placement.save_baseline();
-                let revision = crate::desktop::store::revision();
-                match Config::save_layout_on_displays(
-                    &self.placement.contexts,
-                    &self.placement.positions,
-                    &baseline,
-                    &self.placement.sizes,
-                    &self.placement.size_baseline(),
-                    &self.placement.materialized,
-                    PlacementPreferences {
-                        snap: self.placement.snap,
-                        // Opening a legacy layout leaves it clean. Upgrade its
-                        // stored preference only with an explicit draft save.
-                        columns: PlacementPreferences::FINE_COLUMNS,
-                    },
-                    PlacementPreferences {
-                        snap: self.placement.saved_snap,
-                        columns: self.placement.saved_columns,
-                    },
-                ) {
+                let (result, receipts) = crate::desktop::actions::with_receipts(|| {
+                    Config::save_layout_on_displays(
+                        &self.placement.contexts,
+                        &self.placement.positions,
+                        &baseline,
+                        &self.placement.sizes,
+                        &self.placement.size_baseline(),
+                        &self.placement.materialized,
+                        PlacementPreferences {
+                            snap: self.placement.snap,
+                            // Opening a legacy layout leaves it clean. Upgrade its
+                            // stored preference only with an explicit draft save.
+                            columns: PlacementPreferences::FINE_COLUMNS,
+                        },
+                        PlacementPreferences {
+                            snap: self.placement.saved_snap,
+                            columns: self.placement.saved_columns,
+                        },
+                    )
+                });
+                self.placement.session_actions.extend(receipts);
+                match result {
                     Ok(config) => {
                         self.config = config;
                         let resize_mode = self.placement.resize_mode;
                         self.placement.cancel();
                         self.placement.refresh(&self.config);
                         self.placement.resize_mode = resize_mode;
-                        if crate::desktop::store::revision() != revision {
-                            if let Ok(store) = crate::desktop::actions::history_store() {
-                                if let Ok(Some(action)) = store.latest_change() {
-                                    if self
-                                        .placement
-                                        .session_actions
-                                        .last()
-                                        .is_none_or(|old| old.id != action.id)
-                                    {
-                                        self.placement.session_actions.push(action);
-                                    }
-                                }
-                            }
-                        }
-                        self.automation.layout_saved();
                         self.status = "Layout saved".into();
                         self.error = false;
                     }
@@ -1602,6 +1590,52 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cancel_arrangement_keeps_a_second_writers_interleaved_commit() {
+        use cosmic::Application;
+        if crate::displays::test_support::isolated(
+            "settings::placement::tests::cancel_arrangement_keeps_a_second_writers_interleaved_commit",
+        ) {
+            return;
+        }
+        Config::save_changes(
+            serde_json::json!({"enabled_widgets":["weather"], "placement":{"snap":true}}),
+        )
+        .unwrap();
+        let (mut app, _) = Settings::init(
+            cosmic::app::Core::default(),
+            super::super::Page::WidgetLayout,
+        );
+        let _ = app.update_placement(Message::Snap(false));
+        crate::test_env::AFTER_PREFERENCE_COMMIT.with(|slot| {
+            *slot.borrow_mut() = Some(Box::new(|| {
+                std::thread::spawn(|| {
+                    crate::desktop::actions::in_action("Other writer", || {
+                        Config::save_changes(serde_json::json!({"calendar_private":true})).unwrap();
+                    });
+                })
+                .join()
+                .unwrap();
+            }))
+        });
+        crate::desktop::actions::in_action("Widget arrangement", || {
+            let _ = app.update_placement(Message::Save);
+        });
+        assert!(!app.error, "{}", app.status);
+        assert_eq!(app.placement.session_actions.len(), 1);
+        let store = crate::desktop::actions::history_store().unwrap();
+        let other = store.latest_change().unwrap().unwrap();
+        assert_ne!(app.placement.session_actions[0].id, other.id);
+        assert!(!Config::load().placement.snap);
+        let _ = app.update_placement(Message::Cancel);
+        assert!(!app.error, "{}", app.status);
+        assert!(Config::load().placement.snap);
+        assert!(Config::load().calendar_private);
+        store.undo_change(&other).unwrap();
+        assert!(!Config::load().calendar_private);
+        assert!(Config::load().placement.snap);
+    }
+
     #[test]
     fn fb08_geometry_epoch_cancels_only_inflight_gesture_and_keeps_prior_draft() {
         if run_isolated(

@@ -1233,21 +1233,51 @@ pub struct ProjectServer {
     pub port: u16,
     pub web: bool,
 }
-pub async fn fetch_projects() -> Result<ProjectsData, String> {
+pub async fn fetch_projects(roots: Vec<String>) -> Result<ProjectsData, String> {
     tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        use std::process::Stdio;
+        let input = serde_json::to_vec(&roots).map_err(|_| "Invalid project folders")?;
+        if roots.len() > 128 || input.len() > crate::config::MAX_CONFIG_BYTES {
+            return Err("Too many project folders".into());
+        }
         let helper =
             crate::paths::helper("project-status.py").ok_or("Project status unavailable")?;
         let config = crate::config::Config::path().ok_or("Project configuration unavailable")?;
-        let output = std::process::Command::new("/usr/bin/timeout")
+        let mut child = std::process::Command::new("/usr/bin/timeout")
             .args(["25s", "/usr/bin/python3"])
             .arg(helper)
+            .arg("--roots-stdin")
             .env("DESKTOP_CARDS_CONFIG", config)
-            .output()
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
             .map_err(|e| e.to_string())?;
+        // The deadline process remains owned and reaped even if input delivery
+        // fails. Taking/dropping stdin also gives the bounded helper its EOF.
+        let sent = child
+            .stdin
+            .take()
+            .expect("piped project input")
+            .write_all(&input);
+        let output = child.wait_with_output().map_err(|e| e.to_string())?;
+        sent.map_err(|_| "Could not send project folders".to_string())?;
         if !output.status.success() {
             return Err("Project status unavailable".into());
         }
-        serde_json::from_slice(&output.stdout).map_err(|_| "Invalid project status response".into())
+        #[derive(Deserialize)]
+        struct Reply {
+            requested_roots: Vec<String>,
+            #[serde(flatten)]
+            data: ProjectsData,
+        }
+        let reply: Reply = serde_json::from_slice(&output.stdout)
+            .map_err(|_| "Invalid project status response".to_string())?;
+        if reply.requested_roots != roots {
+            return Err("Project status belongs to different folders".into());
+        }
+        Ok(reply.data)
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1289,11 +1319,15 @@ mod tests {
     #[test]
     fn project_helper_receives_resolved_config_path() {
         if let Ok(expected) = std::env::var("HALCYON_PROJECT_ROUTE_FIXTURE") {
+            let roots = vec!["requested A".to_string()];
             let data = tokio::runtime::Runtime::new()
                 .unwrap()
-                .block_on(fetch_projects())
+                .block_on(fetch_projects(roots.clone()))
                 .unwrap();
-            assert_eq!(data.updated_at, expected);
+            let observed: serde_json::Value = serde_json::from_str(&data.updated_at).unwrap();
+            assert_eq!(observed["config"], expected);
+            assert_eq!(observed["args"], serde_json::json!(["--roots-stdin"]));
+            assert_eq!(observed["roots"], serde_json::json!(roots));
             return;
         }
         struct Fixture(std::path::PathBuf);
@@ -1312,8 +1346,10 @@ mod tests {
         std::fs::create_dir_all(helper.parent().unwrap()).unwrap();
         std::fs::write(
             &helper,
-            r#"import json, os
-print(json.dumps({'updated_at': os.environ['DESKTOP_CARDS_CONFIG'], 'projects': []}))
+            r#"import json, os, sys
+roots = json.load(sys.stdin)
+observed = {'config': os.environ['DESKTOP_CARDS_CONFIG'], 'args': sys.argv[1:], 'roots': roots}
+print(json.dumps({'updated_at': json.dumps(observed), 'projects': [], 'requested_roots': roots}))
 "#,
         )
         .unwrap();

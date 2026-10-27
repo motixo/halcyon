@@ -14,6 +14,43 @@ import practical_release as policy
 import release_gate
 
 class Release(unittest.TestCase):
+    def test_activation_cli_matches_the_source_embedded_by_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            cli = Path(temporary)/'halcyon-islands'
+            cli.write_bytes((policy.ROOT/'packaging/islands/halcyon-islands').read_bytes())
+            self.assertEqual(policy.verify_activation_cli(cli), digest(cli))
+            cli.write_bytes(cli.read_bytes()+b'\n# changed helper\n')
+            with self.assertRaisesRegex(ValueError, 'activation_cli_source_mismatch'):
+                policy.verify_activation_cli(cli)
+    def test_release_gate_checks_cargo_and_real_main_control_before_approval(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root/'Cargo.toml').write_text('[package]\nversion="0.4.0"\n')
+            tree = root/'tree'; (tree/'DEBIAN').mkdir(parents=True)
+            for name in ('islands.deb', 'source.tar'):
+                (root/name).write_bytes(b'fixture only')
+            cases = [('cosmic-ext-halcyon','0.4.0','amd64','0.4.0',True),
+                     ('cosmic-ext-halcyon','0.4.0-1','amd64','0.4.0',False),
+                     ('cosmic-ext-halcyon','0.4.1','amd64','0.4.0',False),
+                     ('cosmic-ext-halcyon-dev','0.4.0','amd64','0.4.0',False),
+                     ('cosmic-ext-halcyon','0.4.0','arm64','0.4.0',False),
+                     ('cosmic-ext-halcyon','0.4.1','amd64','0.4.1',False)]
+            for package, version, arch, release, valid in cases:
+                with self.subTest(package=package, version=version, arch=arch, release=release):
+                    (tree/'DEBIAN/control').write_text(f'Package: {package}\nVersion: {version}\nArchitecture: {arch}\nMaintainer: Fixture <f@example.invalid>\nDescription: isolated fixture\n')
+                    subprocess.run(['dpkg-deb','--build',str(tree),str(root/'main.deb')],check=True,stdout=subprocess.DEVNULL)
+                    data = dict(format='halcyon-release',version=1,release=release,
+                        compatibility_policy=policy.POLICY['id'],islands_package='islands.deb',
+                        artifacts={name:dict(kind=kind,sha256=digest(root/name)) for name,kind in
+                                   [('main.deb','main-deb'),('islands.deb','islands-deb'),('source.tar','corresponding-source')]})
+                    manifest=root/'release-manifest.json'; manifest.write_bytes(canonical(data))
+                    with patch.object(release_gate,'ROOT',root), patch.object(policy,'verify') as verify:
+                        if valid:
+                            self.assertEqual(release_gate.verify(root,digest(manifest)),data)
+                            verify.assert_called_once()
+                        else:
+                            with self.assertRaises(ValueError): release_gate.verify(root,digest(manifest))
+                            verify.assert_not_called()
     def test_scoped_final_review_binds_artifacts_and_only_its_release(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary); proof=root/'checks.zip'; proof.write_bytes(b'SYNTHETIC TEST ONLY')
@@ -183,8 +220,9 @@ class Release(unittest.TestCase):
                 manifest.write_bytes(canonical(data))
                 return digest(manifest)
             expected = write()
-            with patch.object(policy, 'verify') as verify, patch.object(release_gate, 'promotion', side_effect=AssertionError('wrong verifier')):
+            with patch.object(policy, 'verify') as verify, patch.object(release_gate, 'promotion', side_effect=AssertionError('wrong verifier')), patch.object(release_gate, 'verify_main_package') as version_check:
                 self.assertEqual(release_gate.verify(root, expected), data)
+                version_check.assert_called_once_with(release_gate.ROOT, root/'main.deb', data['release'])
                 verify.assert_called_once_with(root, data, expected)
                 verify.side_effect = ValueError('practical_release_not_explicitly_approved')
                 with self.assertRaisesRegex(ValueError, 'not_explicitly_approved'):

@@ -12,8 +12,9 @@
 | D06 | Local preview/share output cannot run live actions | Safe browsing and public previews must not operate the desktop or leak personal content |
 | D07 | Keep Islands optional and capability-specific | Native panel orientation does not imply companion support or current health |
 | D08 | 0.5 is a working target; no version bump in this planning task | Choose release scope from validated useful increments |
+| D16 | For 0.5 sun-based schedules, follow the Weather widget's city when enabled; offer a manual city when it is off and calculate event times locally | Reuse the configured location, avoid duplicate setup and keep saved-location scheduling independent of weather refreshes; [FB21 plan](FB21-PLAN.md) |
 
-D01 and D08 reflect the user's 2026-10-26 request. D02–D07 preserve existing contracts or the accepted concept direction.
+D01 and D08 reflect the user's 2026-10-26 request. D02–D07 preserve existing contracts or the accepted concept direction. D16 records the user's 2026-10-27 location-source decision for the 0.5 plan.
 
 ## Reviewed foundation decisions
 
@@ -30,7 +31,7 @@ D01 and D08 reflect the user's 2026-10-26 request. D02–D07 preserve existing c
 | --- | --- | --- |
 | D13 | Ridge fit/scale alignment and layer input: prepared asset pairs, known transforms, plain-clock fallback | FB14 |
 | D14 | Portable asset transport and lifecycle: stage immutable assets, commit references with recoverable ownership, preserve Undo references | FB18 |
-| D15 | Schedule/moment conflict precedence, sun-time source and local privacy: retain existing event/catch-up behavior; fixed times before optional sun times | FB15 |
+| D15 | FB15 fixed-time scheduling is implemented. FB21 now specifies singleton Weather/manual location separation, city-local occurrence dates, optional-zone migration and commit-time location fencing. Event definitions, calculation method and COSMIC automatic-mode interaction still need implementation review | FB21 |
 
 ## Deferred by design
 

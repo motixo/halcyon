@@ -268,3 +268,33 @@ owns its separate files and the coordinated build; this work did not edit
 PackageKit behavior was checked against its [v1.2.8 APT backend](https://github.com/PackageKit/PackageKit/blob/v1.2.8/backends/apt/apt-job.cpp)
 (`init`, `checkTrusted`, `checkChangedPackages`, `installPackages`) and
 [InstallFiles dispatch](https://github.com/PackageKit/PackageKit/blob/v1.2.8/backends/apt/pk-backend-apt.cpp).
+
+
+## Coordinated updates — architecture contract, 2026-10-27
+
+Future UI work should present one observation of Halcyon and optional Islands,
+using the existing identity checks, package manager and guarded activation helper.
+The current fixes enforce supported package pairs; they do not implement a new
+combined updater.
+
+- Distinguish installed package versions, available candidates, the running main
+  executable, the selected Islands generation and the generation actually running.
+  An installed package is not proof that its enabled payload is staged or active.
+- Keep absent Islands optional and preserve an explicitly disabled installation.
+  Compare installed pairs against the release pin, including Debian revisions;
+  do not assume the two version strings must always be equal.
+- Prefer COSMIC Store/APT for the package operation. Recheck installed identities
+  afterward, then offer guarded staging for an enabled companion and accurate
+  restart/login status. Report a mismatched pair or partial failure beside the
+  affected component. Do not report both components current from the main result.
+- Retain the separate lifetime policies: PackageKit owns an installation after
+  handoff; Halcyon owns and reaps its activation helper. Reconcile uncertain
+  outcomes before offering another action.
+- Add an in-app PackageKit upgrade transaction only if the Store handoff still
+  causes measured usability problems. Reuse the existing transport and scoped
+  simulation; no second installer, update service or ownership journal.
+
+Acceptance must cover absent/disabled Islands, matching and unsupported pairs,
+partial installs, an old running main executable, installed-but-unstaged Islands,
+activation interruption and final active-generation confirmation. This is a
+future contract, not installation or release qualification.

@@ -618,10 +618,13 @@ The recorded 1787-package software-graphics guest and old frozen-package runs
 are baseline inputs, not acceptance of this change. Artifact retention currently
 expires October 30; the parent must preserve it before running final acceptance.
 
-`release.yml` now verifies reviewed immutable candidate artifacts, rather than
-building and automatically publishing fresh bytes on a tag. Group 4 supplies the
-restricted publication step after combined acceptance. `release_gate.py` requires
-main+companion+corresponding source hashes and exact integrated native approval.
+Release assembly and review run locally against retained final artifacts.
+Run `scripts/compatibility/release_gate.py --artifacts /path/to/final-artifacts
+--manifest-sha256 REVIEWED_SHA256` before publication. No tag-triggered build or
+intermediate Actions promotion artifact is part of this path. Signed APT
+publication and renewal use `apt-publish.yml`; follow [APT operations](APT-OPERATIONS.md).
+`release_gate.py` requires main, companion and corresponding-source hashes and
+the acceptance or review required by the selected release policy.
 A `system_updates_acceptance: passed` string grants nothing. `inputs` is a derived
 identity envelope repeated exactly in request, raw observations, result and
 approval: package/manifest/payload/catalog, candidate ID and full candidate hash,

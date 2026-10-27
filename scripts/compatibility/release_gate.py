@@ -7,6 +7,9 @@ import sys
 from qualify import promotion
 from bundle_contract import digest
 from runtime_compatibility import POLICY
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'packaging'))
+from version_policy import verify_main_package
 
 # Already published bytes, retained solely for APT metadata renewal. This is
 # deliberately independent of distribution.json and candidate-supplied policy.
@@ -57,10 +60,12 @@ def verify(root, expected):
         raise ValueError('release_manifest_invalid')
     package, main = artifacts(root,data)
     if data.get('compatibility_policy') == POLICY['id']:
+        verify_main_package(ROOT, root/main, data['release'])
         from practical_release import verify as verify_practical
         verify_practical(root,data,expected)
         return data
     if data.get('compatibility_policy') is not None: raise ValueError('unknown_release_policy')
+    verify_main_package(ROOT, root/main, data['release'])
     promotion(root/package,root/'native-evidence',root/'approval.json',root/main)
     return data
 

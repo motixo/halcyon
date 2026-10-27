@@ -631,3 +631,7 @@ fn material(value: &Value) -> bool {
     serde_json::from_value::<Option<crate::materials::Finish>>(value.clone())
         .is_ok_and(|f| f.is_none_or(|f| f.validate().is_ok()))
 }
+
+#[cfg(test)]
+#[path = "widget_tests.rs"]
+mod tests;

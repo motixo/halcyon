@@ -2,7 +2,7 @@
 //! fake displays and isolated fixture stores. Nothing reads the real clock,
 //! displays or settings.
 use super::decide::Effect;
-use super::run::{Ran, run};
+use super::run::Ran;
 use super::*;
 use crate::desktop::profiles::{
     self, Domain, Installed, Profile, ProfileLibrary, SourceLook, WallpaperLook,
@@ -12,6 +12,22 @@ use crate::desktop::store::tests::Fixture;
 use chrono::{
     DateTime, Duration, FixedOffset, MappedLocalTime, NaiveDate, NaiveDateTime, TimeZone, Utc,
 };
+
+// Tests that exercise the runner directly supply the same explicit admission
+// boundary as Job::run; production commits never synthesize missing guards.
+fn run(
+    store: &crate::desktop::DesktopStore,
+    installed: &Installed,
+    target: &ProfileRef,
+    name: &str,
+    held: &std::collections::BTreeSet<Domain>,
+) -> Ran {
+    crate::desktop::actions::scheduled_epoch(
+        store.restore_epoch().unwrap(),
+        store.manual_at(),
+        || super::run::run(store, installed, target, name, held),
+    )
+}
 
 /// Central European time with 2026's changes: 02:00 → 03:00 on March 29,
 /// 03:00 → 02:00 on October 25 (both at 01:00 UTC).
@@ -901,7 +917,10 @@ fn times_and_days_read_naturally() {
         let time = Time::parse(text).unwrap_or_else(|| panic!("{text}"));
         assert_eq!((time.hour(), time.minute()), expected, "{text}");
     }
-    for text in ["", "24:00", "7:5", "13pm", "noon", "19:60", "1:2:3"] {
+    for text in [
+        "", "24:00", "7:5", "13pm", "noon", "19:60", "1:2:3", "1日", "日1", "🕐", "é12", "１２",
+        "١٢", "7:日", "1日pm",
+    ] {
         assert_eq!(Time::parse(text), None, "{text}");
     }
     assert_eq!(Time::new(19, 5).unwrap().format(false), "7:05 PM");
@@ -991,7 +1010,7 @@ fn held_parts_count_only_while_their_settings_window_runs() {
     let store = fixture.store();
     assert!(read_hold(&store).is_empty());
     let parts = [Domain::Dock, Domain::Wallpaper].into_iter().collect();
-    write_hold(&store, &parts, None).unwrap();
+    write_hold(&store, &parts).unwrap();
     assert_eq!(read_hold(&store), parts);
     let expired = serde_json::to_vec(&Hold {
         expires: now() - 1,
@@ -1015,7 +1034,7 @@ fn held_parts_count_only_while_their_settings_window_runs() {
     .unwrap();
     std::fs::write(path(&store, HOLD_FILE), stale).unwrap();
     assert!(read_hold(&store).is_empty());
-    write_hold(&store, &Default::default(), None).unwrap();
+    write_hold(&store, &Default::default()).unwrap();
     assert!(!path(&store, HOLD_FILE).exists());
 }
 
@@ -1045,6 +1064,59 @@ fn desk(name: &str) -> (Fixture, crate::desktop::DesktopStore) {
 
 fn config_text(fixture: &Fixture) -> String {
     std::fs::read_to_string(fixture.0.join("app/config.json")).unwrap()
+}
+
+#[test]
+fn scheduled_preset_keeps_applied_design_choices_and_rejects_damaged_design() {
+    use crate::desktop::store::{DesktopPatch, WidgetPatch};
+    let (fixture, store) = desk("automation-applied-design");
+    let path = store.app_config().unwrap();
+    let target = ProfileRef::Preset("carbon".into());
+    store.migrate_design().unwrap();
+    let frozen = config_text(&fixture);
+    let mut patch = WidgetPatch::new();
+    patch.set("/devbox/cpu", None, Some(false.into())).unwrap();
+    store
+        .apply_owned(
+            &DesktopPatch::new(),
+            Some(&patch),
+            Owner::Preferences,
+            "CPU off",
+        )
+        .unwrap();
+    let fitted = super::run::load(&store, &target, "Carbon").unwrap();
+    assert!(
+        fitted
+            .widget_style
+            .as_ref()
+            .unwrap()
+            .get("devbox")
+            .is_none()
+    );
+    let installed = Installed::discover(&store);
+    assert!(matches!(
+        run(&store, &installed, &target, "Carbon", &Default::default()),
+        Ran::Applied { .. }
+    ));
+    let applied = crate::config::read_config_text(path).unwrap().unwrap();
+    assert!(
+        !crate::config::Config::from_bytes(applied.as_bytes())
+            .unwrap()
+            .devbox
+            .cpu
+    );
+    assert_eq!(
+        config_text(&fixture),
+        frozen,
+        "the migrated source is provenance, not applied state"
+    );
+    std::fs::write(crate::design::storage::path(path), b"damaged").unwrap();
+    assert!(super::run::load(&store, &target, "Carbon").is_err());
+    // Only a genuinely absent configuration may use defaults.
+    let missing = fixture
+        .store()
+        .with_app_config(fixture.0.join("absent.json"));
+    assert!(super::run::load(&missing, &target, "Carbon").is_ok());
 }
 
 #[test]
@@ -1586,7 +1658,7 @@ mod runtime_loop {
     #[test]
     fn applying_the_held_dock_draft_keeps_it_and_skips_the_waiting_switch() {
         let (fixture, store) = desk("runtime-hold-apply");
-        write_hold(&store, &held(), None).unwrap();
+        write_hold(&store, &held()).unwrap();
         let now = Instant::now();
         let mut automator = waiting(&fixture, &store, now);
         // The person applies their Dock draft (Dock & Panel's own Apply).
@@ -1601,7 +1673,7 @@ mod runtime_loop {
             .unwrap();
         let mut rest = held();
         rest.remove(&Domain::Dock);
-        write_hold(&store, &rest, None).unwrap();
+        write_hold(&store, &rest).unwrap();
         assert!(automator.reload());
         let after = fixture.tree();
         assert!(
@@ -1637,19 +1709,66 @@ mod runtime_loop {
     }
 
     #[test]
-    fn a_saved_widget_layout_counts_as_applying_the_held_draft() {
-        let (fixture, store) = desk("runtime-hold-layout");
-        write_hold(&store, &held(), None).unwrap();
+    fn architecture_current_layout_save_uses_durable_manual_history() {
+        let (fixture, store) = desk("current-layout-hold");
+        write_hold(&store, &held()).unwrap();
         let now = Instant::now();
         let mut automator = waiting(&fixture, &store, now);
-        // Layout saves leave no latest-change record; Settings stamps the
-        // hold instead when it saves a held layout.
-        write_hold(
+        let mut widgets = crate::desktop::store::WidgetPatch::new();
+        widgets
+            .set(
+                "/widget_positions/clock",
+                None,
+                Some(serde_json::json!([0.2, 0.3])),
+            )
+            .unwrap();
+        crate::desktop::actions::commit(
             &store,
-            &BTreeSet::new(),
-            Some(utc(2020, 1, 1, 19, 2).timestamp()),
+            &crate::desktop::DesktopPatch::new(),
+            Some(&widgets),
+            Owner::Preferences,
+            "Widget arrangement",
+            crate::desktop::store::Source::Manual,
         )
         .unwrap();
+        assert!(store.manual_at().is_some());
+        write_hold(&store, &BTreeSet::new()).unwrap();
+        assert!(hold_applied(&store).is_none());
+        assert!(!path(&store, HOLD_FILE).exists());
+        automator.reload();
+        assert!(
+            automator
+                .evaluate_with(&utc0(), utc(2020, 1, 1, 19, 3), now, Vec::new)
+                .is_none()
+        );
+        assert!(matches!(
+            automator.state.last().unwrap().effect,
+            Effect::KeptManual { .. }
+        ));
+    }
+
+    #[test]
+    fn a_legacy_layout_stamp_survives_upgrade_and_keeps_the_waiting_switch() {
+        let (fixture, store) = desk("runtime-hold-layout");
+        write_hold(&store, &held()).unwrap();
+        let now = Instant::now();
+        let mut automator = waiting(&fixture, &store, now);
+        // An older release left this stamp without a store history entry.
+        let stamped = utc(2020, 1, 1, 19, 2).timestamp();
+        write(
+            &store,
+            HOLD_FILE,
+            &serde_json::to_vec(&Hold {
+                expires: super::super::now().saturating_add(10),
+                pid: std::process::id(),
+                parts: vec![],
+                applied: Some(stamped),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        write_hold(&store, &BTreeSet::new()).unwrap();
+        assert_eq!(hold_applied(&store), Some(stamped));
         assert!(automator.reload());
         assert!(
             automator
@@ -1796,7 +1915,7 @@ mod runtime_loop {
             vec![schedule("r1", 19, 0, Days::EVERY, "Presentation")],
         );
         let held = held();
-        write_hold(&store, &held, None).unwrap();
+        write_hold(&store, &held).unwrap();
         let mut automator = Automator::with_store(Some(fixture.store()));
         let now = Instant::now();
         automator.evaluate_with(&utc0(), utc(2026, 10, 18, 18, 59), now, Vec::new);
@@ -1852,7 +1971,7 @@ mod runtime_loop {
             vec![schedule("r1", 19, 0, Days::EVERY, "Presentation")],
         );
         assert!(store.latest_change().unwrap().is_none());
-        write_hold(&store, &held, None).unwrap();
+        write_hold(&store, &held).unwrap();
         let mut automator = Automator::with_store(Some(fixture.store()));
         automator.evaluate_with(&utc0(), utc(2020, 1, 1, 18, 0), now, Vec::new);
         let job = automator

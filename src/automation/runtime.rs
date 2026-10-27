@@ -42,7 +42,7 @@ impl Job {
         let mut results = Vec::new();
         for due in self.due {
             let expected = store.manual_at();
-            let manual = manual_at(store, None);
+            let manual = manual_at(store);
             let ran = if store.restore_epoch().ok() != Some(self.epoch) {
                 Ran::KeptManual(chrono::Utc::now().timestamp())
             } else if let Some(at) = manual.filter(|at| at.timestamp() >= due.at) {
@@ -302,8 +302,7 @@ impl Automator {
             }
             wakes.extend(self.next_display_check);
         }
-        let applied = self.state.applied.clone();
-        let manual_at = || manual_at(store, applied.as_deref());
+        let manual_at = || manual_at(store);
         let decision = decide::decide(
             &settings,
             &mut self.state,
@@ -403,14 +402,10 @@ impl Automator {
     }
 }
 
-/// When someone last changed the desktop through Halcyon, as far as
-/// can be seen: the store's latest-change record (an Apply on a Pop!_OS
-/// page or a profile Apply), unless it is automation's own, and a widget
-/// layout Settings saved while a switch waited for it (the hold says so).
-/// An Undo removes the record, so it isn't seen; neither are changes made
-/// outside Halcyon.
-fn manual_at(store: &DesktopStore, applied: Option<&str>) -> Option<DateTime<Utc>> {
-    let _ = applied;
+/// Current manual precedence belongs to the store (including Restore).
+/// Retain old layout stamps until a migration can retire them without making
+/// a previously suppressed occurrence eligible after an upgrade.
+fn manual_at(store: &DesktopStore) -> Option<DateTime<Utc>> {
     let recorded = store
         .manual_at()
         .and_then(|created| DateTime::parse_from_rfc3339(&created).ok())

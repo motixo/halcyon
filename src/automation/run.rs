@@ -58,14 +58,17 @@ pub fn load(store: &DesktopStore, target: &ProfileRef, name: &str) -> Result<Pro
             // widget choices kept. No file yet means a new person; a file
             // that can't be read must not be mistaken for one.
             let unreadable = || "Your widget settings couldn't be read.".to_string();
-            let config = match store.app_config().map(std::fs::read) {
-                Some(Ok(bytes)) => {
-                    crate::config::Config::from_bytes(&bytes).map_err(|_| unreadable())?
+            let text = store
+                .app_config()
+                .map(crate::config::read_config_text)
+                .transpose()
+                .map_err(|_| unreadable())?
+                .flatten();
+            let config = match text {
+                Some(text) => {
+                    crate::config::Config::from_bytes(text.as_bytes()).map_err(|_| unreadable())?
                 }
-                Some(Err(error)) if error.kind() != std::io::ErrorKind::NotFound => {
-                    return Err(unreadable());
-                }
-                _ => crate::config::Config::default(),
+                None => crate::config::Config::default(),
             };
             Ok(profiles::fitted(
                 preset,

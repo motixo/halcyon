@@ -361,11 +361,13 @@ impl Settings {
             let idle = self.reorder.source.is_none();
             parts.push(
                 button::icon(icon::from_name("go-up-symbolic"))
+                    .tooltip(format!("Move {} up", widget.title()))
                     .on_press_maybe((index > 0 && idle).then_some(Message::Move(widget, -1)))
                     .into(),
             );
             parts.push(
                 button::icon(icon::from_name("go-down-symbolic"))
+                    .tooltip(format!("Move {} down", widget.title()))
                     .on_press_maybe(
                         (index + 1 < order_len && idle).then_some(Message::Move(widget, 1)),
                     )
@@ -374,6 +376,7 @@ impl Settings {
         }
         parts.push(
             button::icon(icon::from_name("go-next-symbolic"))
+                .tooltip(format!("{} settings", widget.title()))
                 .on_press(Message::Page(widget_page(widget)))
                 .into(),
         );
@@ -721,7 +724,8 @@ impl Settings {
                 column::with_children(vec![
                     self.scene_frame(
                         self.preview_stage(super::sample::fit(
-                            self.samples.projects_view().map(|_| Message::Preview),
+                            crate::app::settings_projects_preview(&self.config)
+                                .map(|_| Message::Preview),
                             150.,
                         )),
                         "Sample projects",
@@ -800,9 +804,9 @@ impl Settings {
             }
             let mut reading = vec![self.devbox_metric_row(metric, index, order.len())];
             let visible = metric.enabled(&self.config.devbox);
-            let searched = self
-                .search_selected
-                .is_some_and(|hit| hit.anchor() == format!("devbox-{}", metric.key()));
+            let searched = self.search_selected.is_some_and(|hit| {
+                hit.open == crate::settings::navigation::SearchOpen::Metric(metric)
+            });
             {
                 let open = (visible || searched)
                     && self.devbox_details.contains(&metric)

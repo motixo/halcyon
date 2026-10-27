@@ -12,7 +12,7 @@ fn islands_needs_verified_package_and_preserves_source_choices() {
         ..Identity::default()
     };
     assert!(identity.can_install_islands());
-    assert!(!identity.can_enroll());
+    assert!(identity.enrollment != Enrollment::Available);
     for channel in [UpdateChannel::Source, UpdateChannel::Unknown] {
         identity.channel = channel;
         assert!(!identity.can_install_islands());
@@ -23,6 +23,57 @@ fn islands_needs_verified_package_and_preserves_source_choices() {
     assert!(!original.same_package(&identity));
     identity.installed_version = Some("0.0.1".into());
     assert!(!identity.can_install_islands());
+}
+
+#[test]
+fn activation_eligibility_uses_measured_version_and_exact_helper() {
+    let fixture = Fixture::new();
+    let base = fs::read_to_string(fixture.path("/var/lib/dpkg/status"))
+        .unwrap()
+        .replace(
+            "Version: 0.2.0",
+            &format!("Version: {}", env!("CARGO_PKG_VERSION")),
+        );
+    let expected = crate::settings::updates::enrollment::islands_version().unwrap();
+    for (version, helper, result) in [
+        (
+            expected.as_str(),
+            &include_bytes!("../../../packaging/islands/halcyon-islands")[..],
+            IslandsMatch::Ready,
+        ),
+        (
+            "99.0.0",
+            &include_bytes!("../../../packaging/islands/halcyon-islands")[..],
+            IslandsMatch::VersionMismatch,
+        ),
+        (
+            expected.as_str(),
+            &b"changed helper"[..],
+            IslandsMatch::HelperMismatch,
+        ),
+    ] {
+        fixture.put("/var/lib/dpkg/status", format!("{base}Package: cosmic-ext-halcyon-islands\nStatus: install ok installed\nArchitecture: amd64\nVersion: {version}\n\n").as_bytes());
+        fixture.put("/usr/bin/halcyon-islands", helper);
+        fs::set_permissions(
+            fixture.path("/usr/bin/halcyon-islands"),
+            fs::Permissions::from_mode(0o755),
+        )
+        .unwrap();
+        fixture.put(
+            "/var/lib/dpkg/info/cosmic-ext-halcyon-islands.list",
+            b"/usr/bin/halcyon-islands\n",
+        );
+        let measured = fixture.measure();
+        assert_eq!(measured.islands_match, result);
+        assert_eq!(measured.can_enable_islands(), result == IslandsMatch::Ready);
+        assert_eq!(
+            measured.islands_activation_notice().is_none(),
+            result == IslandsMatch::Ready
+        );
+    }
+    fixture.put("/var/lib/dpkg/status", base.as_bytes());
+    assert_eq!(fixture.measure().islands_match, IslandsMatch::Absent);
+    assert!(!fixture.measure().can_enable_islands());
 }
 
 #[test]
@@ -320,7 +371,7 @@ fn enrollment_preserves_disabled_sources_and_partial_installations() {
     f.put(SOURCE, format!("{SOURCE_TEXT}Enabled: no\n").as_bytes());
     let disabled = f.measure();
     assert_eq!(disabled.enrollment, Enrollment::Disabled);
-    assert!(!disabled.can_enroll());
+    assert!(disabled.enrollment != Enrollment::Available);
     fs::remove_file(f.path(SOURCE)).unwrap();
     assert_eq!(
         f.measure().enrollment,
@@ -333,10 +384,8 @@ fn enrollment_preserves_disabled_sources_and_partial_installations() {
     fs::remove_file(f.path(PREFS)).unwrap();
     let clean = f.measure();
     assert_eq!(clean.enrollment, Enrollment::Available);
-    assert!(clean.can_enroll());
-    assert!(clean.same_enrollment_candidate(&f.measure()));
     f.put(SOURCE, format!("{SOURCE_TEXT}Enabled: no\n").as_bytes());
-    assert!(!clean.same_enrollment_candidate(&f.measure()));
+    assert_eq!(f.measure().enrollment, Enrollment::Disabled);
 }
 
 fn default_package() -> Fixture {
@@ -423,7 +472,7 @@ fn package_default_updates_require_verified_inputs_and_completed_receipt() {
         }
         let identity = f.measure();
         assert!(
-            !identity.can_check() && !identity.can_enroll(),
+            !identity.can_check() && identity.enrollment != Enrollment::Available,
             "{change}: {identity:?}"
         );
     }
@@ -437,5 +486,22 @@ fn deleted_or_disabled_default_sources_never_offer_automatic_reenrollment() {
     fs::remove_file(f.path(SOURCE)).unwrap();
     let identity = f.measure();
     assert_eq!(identity.enrollment, Enrollment::Disabled);
-    assert!(!identity.can_enroll() && !identity.can_check());
+    assert!(identity.enrollment != Enrollment::Available && !identity.can_check());
+}
+
+#[test]
+fn current_release_never_offers_legacy_bootstrap_after_partial_enrollment() {
+    let f = default_package();
+    fs::remove_file(f.path(RECEIPT)).unwrap();
+    for path in [SOURCE, KEY, PREFS] {
+        fs::remove_file(f.path(path)).unwrap();
+        let measured = f.measure();
+        assert_eq!(
+            measured.enrollment,
+            Enrollment::Incomplete,
+            "{path}: {measured:?}"
+        );
+        assert!(!measured.can_check());
+    }
+    assert!(f.path(DEFAULTS).exists());
 }

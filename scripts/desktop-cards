@@ -191,11 +191,30 @@ def dialog(*args):
     result = subprocess.run(['zenity', *args], text=True, capture_output=True)
     return result.stdout.strip() if result.returncode == 0 else None
 
+def city_results(response):
+    raw = response.read(64 * 1024 + 1)
+    if len(raw) > 64 * 1024:
+        raise RuntimeError('City search response is too large.')
+    payload = json.loads(raw)
+    if not isinstance(payload, dict) or not isinstance(payload.get('results', []), list):
+        raise RuntimeError('Could not read city search results.')
+    def valid(place):
+        if not isinstance(place, dict):
+            return False
+        if any(not isinstance(place.get(key, ''), str) or len(place.get(key, '').encode()) > 256
+               for key in ('name', 'admin1', 'country')) or not place.get('name', '').strip():
+            return False
+        return all(isinstance(place.get(key), (int, float)) and not isinstance(place[key], bool)
+                   and -bound <= place[key] <= bound for key, bound in (('latitude', 90), ('longitude', 180)))
+    return [place for place in payload.get('results', []) if valid(place)][:8]
+
 def set_weather(query, interactive=False):
+    if len(query) > 256:
+        raise RuntimeError('City name is too long.')
     url = 'https://geocoding-api.open-meteo.com/v1/search?' + urllib.parse.urlencode(
         {'name': query, 'count': 8, 'language': 'en', 'format': 'json'})
     with urllib.request.urlopen(url, timeout=20) as response:
-        results = json.load(response).get('results', [])
+        results = city_results(response)
     if not results:
         raise RuntimeError('No matching city found. Try a nearby town or a different spelling.')
     if len(results) > 1:

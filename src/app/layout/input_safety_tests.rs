@@ -1123,7 +1123,7 @@ fn auditfix_state01_pending_resume_removal_keeps_draft_receipts_and_recovery_cho
                 let task = cards.update(request);
                 auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
             }
-            assert!(!cards.layout_editor.active && !cards.pending_arrange);
+            assert!(!cards.layout_editor.active && cards.pending_arrange.is_none());
             assert!(cards.arrange_display.is_none());
             assert_eq!(
                 cards.selected_output.as_ref().unwrap().name(),
@@ -1259,7 +1259,7 @@ fn auditfix_state01_pending_resume_geometry_or_context_change_returns_to_recover
         ));
         auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
         auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
-        assert!(!cards.layout_editor.active && !cards.pending_arrange);
+        assert!(!cards.layout_editor.active && cards.pending_arrange.is_none());
         assert!(cards.arrange_display.is_none());
         assert_eq!(
             cards.selected_output.as_ref().unwrap().name(),
@@ -1306,10 +1306,9 @@ fn auditfix_state01_pending_resume_recovery_choices_cancel_probe_and_preserve_co
             let committed = Config::load().monitor_layouts["weather"]["DP-2"].position;
             let old_probe = cards.ids[5];
             if conflict {
-                let mut raw: serde_json::Value = serde_json::from_slice(
-                    &std::fs::read(Config::path().unwrap()).unwrap(),
-                )
-                .unwrap();
+                let mut raw: serde_json::Value =
+                    serde_json::from_slice(&std::fs::read(Config::path().unwrap()).unwrap())
+                        .unwrap();
                 raw["monitor_layouts"]["weather"]["DP-2"]["position"] =
                     serde_json::json!([0.95, 0.95]);
                 Config::save_changes(serde_json::json!({
@@ -1331,7 +1330,7 @@ fn auditfix_state01_pending_resume_recovery_choices_cancel_probe_and_preserve_co
             ));
             auditfix_no_arrange_capture(&emitted(&mut cards, task).1);
             auditfix_no_arrange_capture(&auditfix_measure_outputs(&mut cards));
-            assert!(!cards.layout_editor.active && !cards.pending_arrange);
+            assert!(!cards.layout_editor.active && cards.pending_arrange.is_none());
             assert!(cards.arrange_display.is_none());
             assert_eq!(
                 cards.selected_output.as_ref().unwrap().name(),

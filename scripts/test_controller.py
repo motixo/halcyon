@@ -20,6 +20,17 @@ controller = importlib.util.module_from_spec(spec)
 loader.exec_module(controller)
 
 class ControllerTests(unittest.TestCase):
+    def test_geocoding_reads_and_results_are_bounded(self):
+        with self.assertRaisesRegex(RuntimeError, 'too large'):
+            controller.city_results(io.BytesIO(b' ' * (64 * 1024 + 1)))
+        valid = dict(name='Zagreb',latitude=45.8,longitude=16)
+        rows = [{**valid, 'name':'x'*257}, {**valid,'latitude':91}, {**valid,'longitude':True}, *([valid]*20)]
+        self.assertEqual(controller.city_results(io.BytesIO(json.dumps(dict(results=rows)).encode())), [valid]*8)
+        with patch.object(controller.urllib.request, 'urlopen') as fetch:
+            with self.assertRaisesRegex(RuntimeError, 'too long'):
+                controller.set_weather('x'*257)
+            fetch.assert_not_called()
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)

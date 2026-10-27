@@ -139,7 +139,9 @@ impl Time {
                 let minute = if minute.is_empty() { "0" } else { minute };
                 (hour.to_string(), minute.to_string())
             }
-            None if digits.len() == 4 => (digits[..2].to_string(), digits[2..].to_string()),
+            None if digits.len() == 4 && digits.bytes().all(|b| b.is_ascii_digit()) => {
+                (digits[..2].to_string(), digits[2..].to_string())
+            }
             None if (1..=2).contains(&digits.len()) => (digits.clone(), "0".into()),
             None => return None,
         };

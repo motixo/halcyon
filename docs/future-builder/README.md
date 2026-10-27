@@ -1,13 +1,14 @@
 # Halcyon future builder
 
-Design the foundations for expressive desktops, reusable widgets and visual editing before building the full editor. **0.5 is a working target, not a release commitment.** The application remains version 0.3.0.
+Design the foundations for expressive desktops, reusable widgets and visual editing before building the full editor. **0.5 is the next working target, not a release-date commitment.** The published application is version 0.4.0.
 
-Direction accepted on 2026-10-26: shared styling, varied desktop compositions, visual editing, personal widgets and portable setups. FB05–FB19 are implemented and locally validated: shared styling, Clock choices, shared Clock/Weather presentation and measurement, keyed provider demand, and layout/input integration. All planned feature implementations are complete in their documented bounded scope. FB20 local package checks pass; physical and live release acceptance remains open.
+Direction accepted on 2026-10-26: shared styling, varied desktop compositions, visual editing, personal widgets and portable setups. FB05–FB19 are implemented and locally validated: shared styling, Clock choices, shared Clock/Weather presentation and measurement, keyed provider demand, and layout/input integration. The original feature implementations are complete in their documented bounded scope. See the [0.4.0 package verification](../releases/0.4.0-acceptance.md) for release evidence. FB21 adds planned sun-based appearance schedules for 0.5, following the Weather widget's city when enabled.
 
 ## Start here
 
 | File | Purpose |
 | --- | --- |
+| [0.5 sun-based schedules](FB21-PLAN.md) | Planned sun events, Weather city reuse, local calculations and appearance-only changes |
 | [Settings structural pass](STRUCTURAL-PASS.md) | Responsive native editors, compact help, navigation and validation |
 | [Architecture](ARCHITECTURE.md) | Component boundaries, data flow, ownership and migration |
 | [Reviewed contracts](CONTRACTS.md) | Legacy setup behavior, later instance migration, override and reset rules |

@@ -48,7 +48,8 @@ class Pipeline(unittest.TestCase):
         self.package=self.root/'islands.deb';shutil.copy2(built,self.package)
         self.main=self.root/'main.deb'
         main_tree=self.root/'main-tree';(main_tree/'DEBIAN').mkdir(parents=True);(main_tree/'usr/bin').mkdir(parents=True)
-        (main_tree/'DEBIAN/control').write_text('Package: cosmic-ext-halcyon\nVersion: 0.2.1~synthetic\nArchitecture: amd64\nMaintainer: Fixture <fixture@example.invalid>\nDescription: SYNTHETIC NOT NATIVE\n')
+        (main_tree/'DEBIAN/control').write_text('Package: cosmic-ext-halcyon\nVersion: 0.2.1\nArchitecture: amd64\nMaintainer: Fixture <fixture@example.invalid>\nDescription: SYNTHETIC NOT NATIVE\n')
+        (self.root/'Cargo.toml').write_text('[package]\nversion="0.2.1"\n')
         (main_tree/'usr/bin/halcyon').write_bytes(b'SYNTHETIC MAIN EXECUTABLE NOT NATIVE')
         subprocess.run(['dpkg-deb','--root-owner-group','--build',str(main_tree),str(self.main)],check=True,stdout=subprocess.DEVNULL)
         self.original_main=self.main.read_bytes()
@@ -91,7 +92,8 @@ observed['main']={'installed':r['main'],'running':{'executable':r['main']['execu
         self.manifest.write_bytes(canonical(dict(format='halcyon-release',version=1,release='0.2.1',system_updates_acceptance='passed',islands_package='islands.deb',artifacts={name:dict(sha256=digest(self.root/name),kind=kind) for name,kind in [('main.deb','main-deb'),('islands.deb','islands-deb'),('source.tar','corresponding-source')]})))
 
     def gate(self):
-        return release_gate.verify(self.root,digest(self.manifest))
+        with patch.object(release_gate, 'ROOT', self.root):
+            return release_gate.verify(self.root,digest(self.manifest))
 
     def test_actual_run_promotion_release_reject_repack_outside_bundle(self):
         qualify.promotion(self.package,self.evidence,self.approval,self.main);self.gate()

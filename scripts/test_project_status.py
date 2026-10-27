@@ -1,5 +1,6 @@
 """Repository scans never run helpers configured by a discovered project."""
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,41 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('projects', Path(__file__).with_name('project-status.py'))
 projects = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(projects)
+
+
+class ProjectRequestInputs(unittest.TestCase):
+    def test_request_snapshot_survives_a_to_b_and_a_to_b_to_a(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'config.json'
+            requested = [str(Path(directory) / 'A')]
+            for current in ([str(Path(directory) / 'B')], requested):
+                config.write_text(json.dumps({'project_roots': current}))
+                with patch.dict(os.environ, {'DESKTOP_CARDS_CONFIG': str(config)}), \
+                     patch.object(projects, 'discover', return_value=[]) as discover, \
+                     patch.object(projects, 'listeners', side_effect=AssertionError('No process scan')):
+                    self.assertEqual(projects.scan(requested)['projects'], [])
+                    discover.assert_called_once_with(requested)
+
+    def test_app_wire_uses_snapshot_and_echoes_its_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / 'config.json'
+            config.write_text('broken mutable configuration must not be read')
+            requested = [str(Path(directory) / 'absent-A')]
+            result = subprocess.run(
+                [sys.executable, projects.__file__, '--roots-stdin'],
+                input=json.dumps(requested).encode(), capture_output=True, timeout=5,
+                env={**os.environ, 'DESKTOP_CARDS_CONFIG': str(config)})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            reply = json.loads(result.stdout)
+            self.assertEqual(reply['requested_roots'], requested)
+            self.assertEqual(reply['projects'], [])
+
+    def test_request_input_is_bounded_and_typed(self):
+        self.assertEqual(projects.read_roots(io.BytesIO(b'[]')), [])
+        for payload in (b'null', b'{}', b'[1]', b'"folder"',
+                        json.dumps(['x'] * 129).encode(), b' ' * (1024 * 1024 + 1)):
+            with self.subTest(size=len(payload)), self.assertRaises(ValueError):
+                projects.read_roots(io.BytesIO(payload))
 
 
 class SafeProjectStatus(unittest.TestCase):

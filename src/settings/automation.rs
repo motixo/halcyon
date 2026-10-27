@@ -208,9 +208,6 @@ pub struct AutomationEditor {
     pub undoable: bool,
     /// The parts in the hold file this window wrote.
     hold_written: BTreeSet<Domain>,
-    /// When a held widget layout was last saved here, and the value written.
-    layout_saved: Option<i64>,
-    layout_written: Option<i64>,
     /// Whether automation runs, as last read (`None`: not read yet).
     running: Option<bool>,
 }
@@ -431,17 +428,8 @@ impl AutomationEditor {
                     .is_some_and(|store| automation::load(store).is_ok_and(|s| s.running())),
             );
         }
-        self.running == Some(true) || !self.hold_written.is_empty() || self.layout_written.is_some()
+        self.running == Some(true) || !self.hold_written.is_empty()
     }
-    /// The widget layout was saved. When a switch was held for it, the
-    /// desktop is told (the next `sync_hold`), so the waiting switch keeps
-    /// the person's layout like any other applied draft.
-    pub fn layout_saved(&mut self) {
-        if self.hold_written.contains(&Domain::WidgetLayout) {
-            self.layout_saved = Some(automation::now());
-        }
-    }
-
     /// Declares the parts with unapplied Settings drafts while automation
     /// runs (written only when they change; an empty set removes the file).
     /// Without automation nothing is written.
@@ -452,29 +440,26 @@ impl AutomationEditor {
         let Some(store) = self.store().filter(|store| store.writable()) else {
             return;
         };
-        let (wanted, saved) = if self.running == Some(true) {
-            (parts, self.layout_saved)
+        let wanted = if self.running == Some(true) {
+            parts
         } else {
-            (BTreeSet::new(), None)
+            BTreeSet::new()
         };
-        if (!wanted.is_empty() || wanted != self.hold_written || saved != self.layout_written)
-            && automation::write_hold(store, &wanted, saved).is_ok()
+        if (!wanted.is_empty() || wanted != self.hold_written)
+            && automation::write_hold(store, &wanted).is_ok()
         {
             self.hold_written = wanted;
-            self.layout_written = saved;
         }
     }
-    /// The window is closing: nothing is held any more. A held layout it
-    /// saved stays stamped (`write_hold` keeps it), so a switch still
-    /// waiting, or one a stopped desktop finds on restart, keeps it too.
+    /// Release the live lease. Manual saves already have durable store history;
+    /// write_hold also preserves any stamp left by an older Settings version.
     pub fn release_hold(&mut self) {
-        if (!self.hold_written.is_empty() || self.layout_written.is_some())
+        if !self.hold_written.is_empty()
             && let Some(store) = self.store().filter(|store| store.writable())
         {
-            let _ = automation::write_hold(store, &BTreeSet::new(), None);
+            let _ = automation::write_hold(store, &BTreeSet::new());
         }
         self.hold_written.clear();
-        self.layout_written = None;
     }
 
     pub fn update(&mut self, message: Message, h24: bool) {

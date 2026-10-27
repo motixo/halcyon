@@ -167,8 +167,24 @@ pub fn commit(
     }
     let mut patch = patch.clone();
     if source == Source::Scheduled {
-        patch.manual_guard = SCHEDULE.with(|slot| slot.borrow().clone());
-        patch.epoch_guard = EPOCH.with(|v| v.get());
+        // Missing scope is a programming error, not permission to overwrite a
+        // newer manual choice. Some(None) is the valid empty-history baseline.
+        patch.manual_guard =
+            Some(SCHEDULE.with(|slot| slot.borrow().clone()).ok_or_else(|| {
+                DesktopError::InvalidValue {
+                    key: None,
+                    message: "Scheduled action lacks its manual-change guard".into(),
+                }
+            })?);
+        patch.epoch_guard =
+            Some(
+                EPOCH
+                    .with(|v| v.get())
+                    .ok_or_else(|| DesktopError::InvalidValue {
+                        key: None,
+                        message: "Scheduled action lacks its Restore generation".into(),
+                    })?,
+            );
     }
     let label = if source == Source::Manual {
         action_label(&patch, owner, label)
@@ -349,6 +365,12 @@ pub(crate) fn preferences_guarded(
             receipts.push(receipt);
         }
     });
+    #[cfg(test)]
+    if let Some(after) =
+        crate::test_env::AFTER_PREFERENCE_COMMIT.with(|slot| slot.borrow_mut().take())
+    {
+        after();
+    }
     config::parse_config_text(config::read_config_text(path)?.as_deref())
 }
 
@@ -598,4 +620,53 @@ pub fn cancel_arrangement(actions: &[LatestChange]) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod architecture_tests {
+    use super::*;
+    use crate::desktop::store::tests::Fixture;
+    #[test]
+    fn scheduled_commit_requires_both_guards_and_accepts_empty_history() {
+        let fixture = Fixture::new("scheduled-action-guards");
+        let config = fixture.0.join("config.json");
+        std::fs::write(&config, b"{}").unwrap();
+        let store = fixture.store().with_app_config(config);
+        let mut widgets = WidgetPatch::new();
+        widgets
+            .set("/clock/show_date", None, Some(Value::Bool(false)))
+            .unwrap();
+        let write = || {
+            commit(
+                &store,
+                &DesktopPatch::new(),
+                Some(&widgets),
+                Owner::Preferences,
+                "Scheduled fixture",
+                Source::Scheduled,
+            )
+        };
+        let before = fixture.tree();
+        assert!(matches!(write(), Err(DesktopError::InvalidValue { .. })));
+        assert_eq!(fixture.tree(), before);
+        assert!(matches!(
+            scheduled(None, write),
+            Err(DesktopError::InvalidValue { .. })
+        ));
+        assert_eq!(fixture.tree(), before);
+        EPOCH.with(|slot| slot.set(Some(0)));
+        let epoch_only = write();
+        EPOCH.with(|slot| slot.set(None));
+        assert!(matches!(epoch_only, Err(DesktopError::InvalidValue { .. })));
+        assert_eq!(fixture.tree(), before);
+        assert!(store.manual_at().is_none());
+        scheduled_epoch(store.restore_epoch().unwrap(), None, write).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&std::fs::read(store.app_config().unwrap()).unwrap())
+                .unwrap()["clock"]["show_date"],
+            false
+        );
+        // Both scopes must be cleared once the admitted operation finishes.
+        assert!(matches!(write(), Err(DesktopError::InvalidValue { .. })));
+    }
 }

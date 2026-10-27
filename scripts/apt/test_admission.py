@@ -21,13 +21,19 @@ class Admission(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='halcyon-admission-fixture-')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        # Exercise the real package/Cargo identity gate with coherent fixture
+        # inputs. Only native approval is mocked by the tests below.
+        (self.root/'Cargo.toml').write_text('[package]\nversion="0.2.1"\n')
+        source_root = patch.object(build_archive.release_gate, 'ROOT', self.root)
+        source_root.start()
+        self.addCleanup(source_root.stop)
         self.keyhome = self.root/'keys'
         _, public = key(self.keyhome)
         self.addCleanup(lambda: execute(['gpgconf', '--homedir', self.keyhome, '--kill', 'gpg-agent']))
         self.candidate = self.root/'candidate'
         self.candidate.mkdir()
         self.artifacts = {}
-        debs = [package(self.candidate, name, '0.2.1~fixture') for name in archive.PACKAGES[:2]]
+        debs = [package(self.candidate, name, '0.2.1') for name in archive.PACKAGES[:2]]
         # Build trees are not release evidence; keep only final fixture artifacts.
         import shutil
         for path in self.candidate.glob('*-tree'):
@@ -45,7 +51,7 @@ class Admission(unittest.TestCase):
         (self.candidate/'native-evidence').mkdir()
         (self.candidate/'native-evidence/raw.txt').write_text('NO NATIVE OBSERVATION: UNIT FIXTURE')
         (self.candidate/'approval.json').write_text('{}')
-        self.manifest = dict(format='halcyon-release', version=1, release='0.2.1~fixture',
+        self.manifest = dict(format='halcyon-release', version=1, release='0.2.1',
                              islands_package=debs[1].name, artifacts=self.artifacts,
                              system_updates_acceptance='passed')
         self.refresh_review()

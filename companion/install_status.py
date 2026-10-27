@@ -115,7 +115,7 @@ def generation_status(result, home, library, installed=None, running=None, host=
         with VerificationContext() as operation:
             return generation_status(result, home, library, installed, running, host, operation)
     from bundle_contract import verify_bundle, classify_compatibility
-    from refresh import selected_generation, records, verify_owned
+    from journal import selected_generation, records, verify_owned
     state = dict(state='invalid_bundle', reason='bundle_not_verified', cohort=None)
     generation = active_generation = None
     try:
@@ -202,7 +202,7 @@ def query(package, field):
 def inspect(home, library, installed, versions, initial):
     from bundle_contract import VerificationContext, verify_bundle
     from runtime_identity import installed_identity, running_identity, host_identity
-    from refresh import selected_generation
+    from journal import selected_generation
     measured = active = host = None
     with VerificationContext() as context:
         try:

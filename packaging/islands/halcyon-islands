@@ -22,16 +22,14 @@ def read_json(path):
 
 
 def records(home, installer):
-    backups = installer.safe_path(home, str(DATA / 'backups'))
+    from journal import scan, ordered
     result = []
-    for path in sorted(backups.glob('panel-*/install-record.json'), reverse=True):
-        installer.safe_path(home, str(path.relative_to(home)))
-        record = read_json(path)
+    for path, record in scan(home):
         if record.get('owner') == PACKAGE and not record.get('restored'):
             if record.get('root') != str(home):
                 raise ValueError(f'Install record belongs to another home: {path}')
             result.append((path, record))
-    return result
+    return ordered(home, result)
 
 
 def run_installer(arguments, env):

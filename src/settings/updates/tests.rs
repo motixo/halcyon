@@ -72,7 +72,7 @@ impl Default for Script {
             delay_reply: false,
             info: 2,
             flags: 0,
-            files: 2,
+            files: 1,
         }
     }
 }
@@ -253,6 +253,7 @@ fn apt() -> Identity {
         installed_version: Some("0.2.0".into()),
         architecture: Some("amd64".into()),
         store: Some("/usr/share/applications/com.system76.CosmicStore.desktop".into()),
+        islands_match: identity::IslandsMatch::Ready,
         evidence: Some("fixture verified identity".into()),
     }
 }
@@ -693,6 +694,34 @@ fn native_updates_clicks_renders_failure_unknown_and_absence() {
             &theme,
             &format!("islands-enable-{suffix}"),
         );
+        for eligibility in [
+            identity::IslandsMatch::VersionMismatch,
+            identity::IslandsMatch::HelperMismatch,
+            identity::IslandsMatch::Unknown,
+        ] {
+            app.updates.identity.as_mut().unwrap().islands_match = eligibility;
+            assert!(
+                native
+                    .try_bounds(app.settings_view(), "enable-islands")
+                    .is_none()
+            );
+            drop(app.update_updates(Message::Islands(islands::Message::Enable)));
+            assert_eq!(app.updates.islands.phase, islands::Phase::Idle);
+            assert!(
+                app.updates
+                    .identity
+                    .as_ref()
+                    .unwrap()
+                    .islands_activation_notice()
+                    .is_some()
+            );
+        }
+        drop(app.update_updates(Message::Islands(islands::Message::Recheck)));
+        assert!(
+            app.updates.identity.is_none(),
+            "Recheck must renew package measurements"
+        );
+        app.updates.identity = Some(apt());
         app.desktop.islands.installation = Installation::Absent;
         let messages = ui_click(&app, &mut native, "updates-check");
         assert!(
@@ -900,7 +929,7 @@ async fn cancellation_before_start_and_isolated_app_never_contact_the_host() {
 }
 
 #[tokio::test]
-async fn enrollment_subscribes_before_handoff_and_preserves_failures() {
+async fn installation_subscribes_before_handoff_and_preserves_failures() {
     for (error, exit, expected) in [
         (None, 1, Ok(())),
         (Some(48), 1, Err(Failure::Authorization)),
@@ -909,7 +938,7 @@ async fn enrollment_subscribes_before_handoff_and_preserves_failures() {
         (None, 2, Err(Failure::Failed)),
     ] {
         let bus = Bus::new();
-        let prepared = enrollment::fixture(bus.directory.join("bootstrap"));
+        let prepared = enrollment::fixture(bus.directory.join("islands"));
         let (_service, client, trace) = service(
             &bus,
             vec![Script {
@@ -933,14 +962,16 @@ async fn enrollment_subscribes_before_handoff_and_preserves_failures() {
     }
 }
 #[tokio::test]
-async fn enrollment_changed_or_symlinked_files_never_reach_installer() {
+async fn installation_changed_or_symlinked_files_never_reach_installer() {
     for symlink in [false, true] {
         let bus = Bus::new();
-        let prepared = enrollment::fixture(bus.directory.join("bootstrap"));
+        let prepared = enrollment::fixture(bus.directory.join("islands"));
         let (_service, client, trace) = service(&bus, vec![Script::default()]).await;
         if symlink {
             std::fs::remove_file(&prepared.paths[0]).unwrap();
-            std::os::unix::fs::symlink(&prepared.paths[1], &prepared.paths[0]).unwrap();
+            let other = bus.directory.join("other.deb");
+            std::fs::write(&other, b"external file").unwrap();
+            std::os::unix::fs::symlink(&other, &prepared.paths[0]).unwrap();
         } else {
             std::fs::write(&prepared.paths[0], b"changed").unwrap();
         }
@@ -998,8 +1029,7 @@ async fn islands_simulation_rejects_unrelated_changes_and_ambiguous_results() {
         (12, vec![], false),
     ] {
         let bus = Bus::new();
-        let prepared =
-            enrollment::fixture_kind(bus.directory.join("islands"), enrollment::Kind::Islands);
+        let prepared = enrollment::fixture(bus.directory.join("islands"));
         let (_service, client, trace) = service(
             &bus,
             vec![Script {
@@ -1036,8 +1066,7 @@ async fn islands_simulation_rejects_unrelated_changes_and_ambiguous_results() {
 async fn islands_busy_or_failed_simulation_never_starts_installation() {
     for error in [None, Some(2), Some(48), Some(5)] {
         let bus = Bus::new();
-        let prepared =
-            enrollment::fixture_kind(bus.directory.join("islands"), enrollment::Kind::Islands);
+        let prepared = enrollment::fixture(bus.directory.join("islands"));
         let (_service, client, trace) = service(
             &bus,
             vec![Script {
@@ -1079,8 +1108,7 @@ async fn islands_busy_or_failed_simulation_never_starts_installation() {
 #[tokio::test]
 async fn islands_install_uses_one_file_and_keeps_unknown_outcome() {
     let bus = Bus::new();
-    let prepared =
-        enrollment::fixture_kind(bus.directory.join("islands"), enrollment::Kind::Islands);
+    let prepared = enrollment::fixture(bus.directory.join("islands"));
     let (_service, client, _) = service(
         &bus,
         vec![Script {

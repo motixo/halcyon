@@ -1,6 +1,16 @@
 # Build sequence
 
-The target is a coherent, production-qualified customization system. 0.5 is a planning label; version assignment follows the useful, validated scope. These stages supersede the UI-first sequencing in the archived concept proposals.
+The target is a coherent, production-qualified customization system. 0.4.0 is published; 0.5 is the next working target. These stages supersede the UI-first sequencing in the archived concept proposals.
+
+## Next feature for 0.5
+
+[FB21 — Sun-based appearance schedules](FB21-PLAN.md), requested in
+[issue #14](https://github.com/profilaz3/halcyon/issues/14), extends the existing
+scheduler and FB15 Moments. Follow the Weather widget's city when enabled;
+otherwise offer a manual city. Calculate dawn, sunrise, solar noon, evening
+golden hour and sunset locally. Change appearance without moving widgets.
+Review the contracts, then calculations/scheduling, then native controls and
+final acceptance. Review and fix each stage before advancing. Status: **planned**.
 
 ## 0 Design and measure
 

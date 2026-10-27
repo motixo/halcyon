@@ -53,6 +53,85 @@ fn bound(builders: &[SctkLayerSurfaceSettings], handle: &crate::displays::WlOutp
 }
 
 #[test]
+fn pending_arrange_binds_live_output_and_never_captures_a_replacement() {
+    if isolated(
+        "app::display_tests::pending_arrange_binds_live_output_and_never_captures_a_replacement",
+    ) {
+        return;
+    }
+    for replace in [false, true] {
+        let wire = Wire::new();
+        let first = wire.output(1);
+        let requested = wire.output(2);
+        let (mut cards, _) = Cards::init(Core::default(), Config::default());
+        for (output, name) in [(first.clone(), "eDP-1"), (requested.clone(), "DP-2")] {
+            send(
+                &mut cards,
+                Message::OutputChanged(
+                    OutputEvent::Created(Some(info(Some(name), (1920, 1080)))),
+                    output,
+                ),
+            );
+        }
+        ready(&mut cards, [1920., 1080.]);
+        let task = cards.arrange_on_display("DP-2".into());
+        actions(&mut cards, task);
+        assert!(cards.pending_arrange.is_some() && !cards.output_known);
+        let old_probe = cards.ids[5];
+        if replace {
+            let mut created = send(
+                &mut cards,
+                Message::OutputChanged(OutputEvent::Removed, requested),
+            );
+            created.extend(send(
+                &mut cards,
+                Message::OutputChanged(
+                    OutputEvent::Created(Some(info(Some("DP-2"), (1920, 1080)))),
+                    wire.output(3),
+                ),
+            ));
+            created.extend(send(
+                &mut cards,
+                Message::SurfaceResized(old_probe, cosmic::iced::Size::new(1920., 1080.)),
+            ));
+            created.extend(ready(&mut cards, [1920., 1080.]));
+            assert!(cards.pending_arrange.is_none() && !cards.layout_editor.active);
+            assert!(cards.arrange_display.is_none());
+            assert!(
+                created
+                    .iter()
+                    .all(|s| s.keyboard_interactivity != KeyboardInteractivity::Exclusive)
+            );
+        } else {
+            let generation = cards.displays.generation;
+            send(
+                &mut cards,
+                Message::DisplayIdentities(
+                    generation,
+                    [("DP-2".into(), "edid:requested".into())].into(),
+                ),
+            );
+            send(
+                &mut cards,
+                Message::OutputChanged(
+                    OutputEvent::InfoUpdate(info(Some("HDMI-A-1"), (1920, 1080))),
+                    requested.clone(),
+                ),
+            );
+            let created = ready(&mut cards, [1920., 1080.]);
+            assert!(cards.pending_arrange.is_none() && cards.layout_editor.active);
+            assert_eq!(cards.selected_output.as_ref().unwrap().handle, requested);
+            let overlay: Vec<_> = created
+                .into_iter()
+                .filter(|s| s.keyboard_interactivity == KeyboardInteractivity::Exclusive)
+                .collect();
+            assert!(!overlay.is_empty());
+            bound(&overlay, &requested);
+        }
+    }
+}
+
+#[test]
 fn monitor_pinning_lifecycle_actions() {
     if isolated("app::display_tests::monitor_pinning_lifecycle_actions") {
         return;

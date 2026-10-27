@@ -76,6 +76,17 @@ unchanged generated trust/pin files when safe. [Ownership, opt-out and recovery]
 
 ## Build mode
 
+Release package `Version`, release manifest version and `Cargo.toml` must match
+exactly. Debian revisions and local suffixes belong to `--development` packages;
+the release app currently verifies its installed version against its Rust version.
+The Islands version is selected separately by `islands/download.json`; the two
+packages need a reviewed compatible pairing, not universally equal numbers.
+The main package declares `Breaks` against other Islands versions without
+installing Islands as a dependency. New companion packages require at least
+the main version they were built for. A later main release may explicitly retain
+that companion through its download pin. The final gate verifies these package
+relationships and the exact activation helper bytes, alongside existing checks.
+
 Prefer `python3 scripts/install.py` for per-user source work; it adds no APT source.
 The Debian builder requires an explicit mode:
 

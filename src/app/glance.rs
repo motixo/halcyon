@@ -1804,7 +1804,7 @@ mod tests {
         assert!(!cards.config.widget_visible(Widget::Weather));
         assert!(!cards.config.widget_visible(Widget::Calendar));
         let _ = cards.refresh_visible_data();
-        assert!(cards.weather_fetching() && cards.calendar_fetching);
+        assert!(cards.weather_fetching() && cards.calendar_fetching.is_some());
         assert!(cards.next_wake().is_some());
         cards.config.glance.show_clock = false;
         cards.config.glance.show_weather = false;

@@ -390,20 +390,27 @@ impl Settings {
                 .into(),
         ])
         .spacing(6);
+        // Keep the original welcome artwork separate from the setup previews.
+        // Contain preserves the complete bird and sunset at every window size;
+        // the decoded handle is shared across redraws and visits.
+        let artwork: Element<'a, Message> = match backdrop(true) {
+            Some(handle) => cosmic::widget::image(handle)
+                .width(Length::Fill)
+                .height(Length::Shrink)
+                .content_fit(cosmic::iced::ContentFit::Contain)
+                .border_radius(12.)
+                .into(),
+            None => cosmic::iced::widget::space().into(),
+        };
         column::with_children(vec![
             container(super::adaptive::columns(
-                column::with_children(vec![
-                    words("Sample desktop", 12., SOFT),
-                    self.wizard_widget_preview(
-                        wizard,
-                        (self.window.height - 220.).clamp(220., 360.),
-                    ),
-                ])
-                .spacing(12)
-                .into(),
+                container(artwork)
+                    .id(cosmic::widget::Id::new("wizard-welcome-art"))
+                    .width(Length::Fill)
+                    .into(),
                 intro.into(),
                 [320., 280.],
-                false,
+                true,
             ))
             .width(Length::Fill)
             .height(Length::Fill)

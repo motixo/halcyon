@@ -6,7 +6,12 @@ use cosmic::{Application, app::Core};
 
 fn fixture() -> Settings {
     std::fs::write(Config::path().unwrap(), r#"{"setup_dismissed":true,"enabled_widgets":["clock","weather","notes"],"clock":{"face":"digital","format_24h":false},"notes":{"future_content_marker":"private"},"future_preference":37}"#).unwrap();
-    Settings::init(Core::default(), Page::Overview).0
+    let store = crate::desktop::DesktopStore::from_env().unwrap();
+    crate::test_env::native_worker(store.fixture_root().unwrap(), true);
+    let (mut app, initial) = Settings::init(Core::default(), Page::Overview);
+    crate::settings::tests::settle_settings(&mut app, initial);
+    assert!(app.native_worker_needed());
+    app
 }
 fn send(app: &mut Settings, edit: Message) {
     send_settings(app, AppMessage::Canvas(edit));

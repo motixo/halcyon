@@ -10,6 +10,7 @@ import shutil
 import sys
 import tempfile
 from panel_launcher import digest, session_identity
+from journal import safe_path, scan, ordered, DATA
 
 
 def sync_directory(path):
@@ -35,18 +36,6 @@ def place(path, data, mode):
         Path(temp).unlink(missing_ok=True)
 
 
-def safe_path(root, relative):
-    path = root / relative
-    if Path(relative).is_absolute() or '..' in Path(relative).parts:
-        raise ValueError('Invalid companion install path')
-    for part in [path, *path.parents]:
-        if part == root:
-            break
-        if part.is_symlink():
-            raise ValueError('A symlink occupies a companion install path')
-    return path
-
-
 def install(root, binary, manifest, enable=False, defer_session=None, record_owner=None):
     root, binary, manifest = root.resolve(), binary.resolve(), manifest.resolve()
     record = json.loads(manifest.read_text())
@@ -68,9 +57,13 @@ def install(root, binary, manifest, enable=False, defer_session=None, record_own
 def install_contents(root, contents, record_owner=None):
     """Journal a guarded layer; used by both legacy install and generation switch."""
     paths = {rel: safe_path(root, rel) for rel in contents}
+    active = ordered(root, [(p, r) for p, r in scan(root)
+                            if r.get('root') == str(root) and not r.get('restored')])
+    previous = str(active[0][0].relative_to(root)) if active else None
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S.%fZ')
-    backup = safe_path(root, '.local/share/cosmic-desktop-cards/backups/panel-' + stamp)
-    backup.mkdir(parents=True, mode=0o700)
+    directory = safe_path(root, DATA + 'backups')
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup = Path(tempfile.mkdtemp(prefix='panel-' + stamp + '-', dir=directory))
     before, originals = {}, {}
     for rel, path in paths.items():
         if path.exists():
@@ -81,6 +74,7 @@ def install_contents(root, contents, record_owner=None):
             before[rel] = str(destination.relative_to(root))
             originals[rel] = {'sha256': digest(destination), 'mode': destination.stat().st_mode & 0o777}
     result = {
+        'journal_version': 1, 'previous': previous,
         'root': str(root), 'backup': str(backup), 'before': before, 'originals': originals,
         'installed': {rel: hashlib.sha256(data).hexdigest() for rel, (data, _) in contents.items()},
         'modes': {rel: mode for rel, (_, mode) in contents.items()},

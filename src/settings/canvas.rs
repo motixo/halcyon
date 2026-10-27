@@ -359,7 +359,6 @@ impl Settings {
                 self.canvas = None;
                 self.placement.canvas_end(&self.config);
                 self.font_menu = None;
-                self.automation.layout_saved();
                 let task = self.after_desktop_change();
                 self.status = "Canvas applied · Undo is available".into();
                 self.error = false;

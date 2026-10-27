@@ -257,6 +257,8 @@ class Wired(unittest.TestCase):
     def test_historical_v2_inventory_remains_readable_but_cannot_claim_new_policy(self):
         from bundle_contract import verify_bundle,canonical,digest,identity
         m=copy.deepcopy(self.manifest)
+        del m['files']['journal.py']
+        (self.library/'journal.py').unlink()
         del m['files']['runtime_compatibility.py']
         (self.library/'runtime_compatibility.py').unlink()
         m['payload_sha256']=identity({k:v for k,v in m['files'].items() if k!='catalog.json'})
@@ -269,6 +271,18 @@ class Wired(unittest.TestCase):
         (self.library/'manifest.json').write_bytes(canonical(m))
         verified,cat=verify_bundle(self.library)
         self.assertFalse(c.enabled(cat));self.assertEqual(verified['payload_sha256'],m['payload_sha256'])
+    def test_previous_generation_without_journal_remains_hash_verified(self):
+        from bundle_contract import verify_bundle,canonical,identity
+        m=copy.deepcopy(self.manifest)
+        del m['files']['journal.py']
+        (self.library/'journal.py').unlink()
+        m['payload_sha256']=identity({k:v for k,v in m['files'].items() if k!='catalog.json'})
+        (self.library/'manifest.json').write_bytes(canonical(m))
+        verified,_=verify_bundle(self.library)
+        self.assertEqual(verified['payload_sha256'],m['payload_sha256'])
+        (self.library/'refresh.py').write_bytes(b'tampered old helper')
+        with self.assertRaisesRegex(ValueError,'component_mismatch'):
+            verify_bundle(self.library)
     def test_unsupported_family_is_not_staged(self):
         import refresh
         (self.home/'installed-identity.json').write_text(json.dumps(dict(package_versions={**VERSIONS,'cosmic-panel':'2.0'})))

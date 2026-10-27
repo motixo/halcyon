@@ -37,6 +37,15 @@ pub enum Enrollment {
     Incomplete,
     Enrolled,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum IslandsMatch {
+    #[default]
+    Unknown,
+    Absent,
+    Ready,
+    VersionMismatch,
+    HelperMismatch,
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Identity {
     pub format_version: u32,
@@ -47,6 +56,7 @@ pub struct Identity {
     pub installed_version: Option<String>,
     pub architecture: Option<String>,
     pub store: Option<PathBuf>,
+    pub(super) islands_match: IslandsMatch,
     // Private evidence binds pre/post transaction checks to actual measured bytes.
     pub(super) evidence: Option<String>,
 }
@@ -61,11 +71,32 @@ impl Default for Identity {
             installed_version: None,
             architecture: None,
             store: None,
+            islands_match: IslandsMatch::Unknown,
             evidence: None,
         }
     }
 }
 impl Identity {
+    pub fn can_enable_islands(&self) -> bool {
+        self.can_install_islands() && self.islands_match == IslandsMatch::Ready
+    }
+    pub fn islands_activation_notice(&self) -> Option<&'static str> {
+        if !self.can_install_islands() {
+            return None;
+        }
+        match self.islands_match {
+            IslandsMatch::VersionMismatch => Some(
+                "Islands does not match this Halcyon release. Update both in your package manager.",
+            ),
+            IslandsMatch::HelperMismatch => Some(
+                "The Islands activation helper could not be verified. Reinstall Islands in your package manager.",
+            ),
+            IslandsMatch::Unknown | IslandsMatch::Absent => {
+                Some("Check again to verify the Islands installation.")
+            }
+            IslandsMatch::Ready => None,
+        }
+    }
     pub fn can_install_islands(&self) -> bool {
         self.format_version == 1
             && self.evidence.is_some()
@@ -76,18 +107,6 @@ impl Identity {
     pub fn same_package(&self, other: &Self) -> bool {
         self.can_install_islands()
             && other.can_install_islands()
-            && self.evidence == other.evidence
-            && self.installed_version == other.installed_version
-            && self.architecture == other.architecture
-    }
-    pub fn can_enroll(&self) -> bool {
-        self.channel == UpdateChannel::ManualDeb
-            && self.enrollment == Enrollment::Available
-            && self.evidence.is_some()
-    }
-    pub fn same_enrollment_candidate(&self, other: &Self) -> bool {
-        self.can_enroll()
-            && other.can_enroll()
             && self.evidence == other.evidence
             && self.installed_version == other.installed_version
             && self.architecture == other.architecture
@@ -245,13 +264,17 @@ pub(super) fn islands_version(root: &Path) -> Option<String> {
         .cloned()
 }
 pub(super) fn islands_cli_verified() -> bool {
-    let path = Path::new("/usr/bin/halcyon-islands");
     let Some(db) = Database::load(Path::new("/")) else {
         return false;
     };
+    cli_verified(Path::new("/"), &db)
+}
+fn cli_verified(root: &Path, db: &Database) -> bool {
+    let relative = "/usr/bin/halcyon-islands";
+    let path = rooted(root, relative);
     if !db
-        .record(Path::new("/"), "cosmic-ext-halcyon-islands", "list")
-        .is_some_and(|list| list.lines().any(|line| line == path.to_string_lossy()))
+        .record(root, "cosmic-ext-halcyon-islands", "list")
+        .is_some_and(|list| list.lines().filter(|line| *line == relative).count() == 1)
     {
         return false;
     }
@@ -259,11 +282,27 @@ pub(super) fn islands_cli_verified() -> bool {
         return false;
     };
     meta.is_file()
-        && meta.uid() == 0
+        && (root != Path::new("/") || meta.uid() == 0)
         && meta.mode() & 0o022 == 0
-        && read(path, 65536).is_some_and(|s| {
+        && read(&path, 65536).is_some_and(|s| {
             s.as_bytes() == include_bytes!("../../../packaging/islands/halcyon-islands")
         })
+}
+fn islands_match(root: &Path, db: &Database) -> IslandsMatch {
+    let Some(package) = db.installed("cosmic-ext-halcyon-islands", "amd64") else {
+        return if db.packages.contains_key("cosmic-ext-halcyon-islands") {
+            IslandsMatch::Unknown
+        } else {
+            IslandsMatch::Absent
+        };
+    };
+    if package.get("Version") != super::enrollment::islands_version().ok().as_ref() {
+        return IslandsMatch::VersionMismatch;
+    }
+    if !cli_verified(root, db) {
+        return IslandsMatch::HelperMismatch;
+    }
+    IslandsMatch::Ready
 }
 struct Database {
     packages: BTreeMap<String, BTreeMap<String, String>>,
@@ -522,6 +561,7 @@ pub(super) fn measure(root: &Path, proc_exe: &Path, source_binary: &Path) -> Ide
     };
     result.installed_version = Some(version.clone());
     result.architecture = Some("amd64".into());
+    result.islands_match = islands_match(root, &db);
     if deleted || running_hash != installed_hash || stamp(proc_exe) != stamp(&installed_path) {
         result.reason = "The running app was replaced or removed. Restart Halcyon to recheck.";
         return result;
@@ -584,6 +624,7 @@ pub(super) fn measure(root: &Path, proc_exe: &Path, source_binary: &Path) -> Ide
     {
         result.channel = UpdateChannel::Unknown;
         result.evidence = None;
+        result.islands_match = IslandsMatch::Unknown;
         result.reason = "Installation changed. Reopen Settings to check it again.";
     }
     result

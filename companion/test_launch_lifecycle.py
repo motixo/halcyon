@@ -128,7 +128,7 @@ class LaunchLifecycle(unittest.TestCase):
         for name in ('cosmic-comp','cosmic-session','cosmic-settings-daemon','cosmic-notifications','cosmic-applet-audio'):
             path=self.installed_root/'usr/bin'/name;shutil.copy2('/usr/bin/sleep',path)
             child=self.start_actor(path)
-            observed=runtime_identity._process(Path('/proc')/str(child.pid))
+            observed=child.fixture_identity
             self.row['runtime']['processes'][name]={**{k:observed[k] for k in ('executable','sha256','mapped')},
                 'count':'configured' if name=='cosmic-applet-audio' else 1,'lifecycle':'panel-child' if name=='cosmic-applet-audio' else 'session'}
             self.row['packages'][name]=dict(version='fixture-1',sha256='b'*64,files={'/usr/bin/'+name:digest(path)})
@@ -186,8 +186,14 @@ class LaunchLifecycle(unittest.TestCase):
         deadline=time.monotonic()+2
         while time.monotonic()<deadline:
             try:
-                if os.readlink(Path('/proc')/str(child.pid)/'exe')==str(path):
-                    runtime_identity._process(Path('/proc')/str(child.pid));return child
+                process=Path('/proc')/str(child.pid)
+                # Exec alone is too early: the dynamic loader may still alter
+                # mappings. Wait for the sleep actor to block, then retain the
+                # bounded, internally consistent measurement already obtained.
+                if (os.readlink(process/'exe')==str(path)
+                        and (process/'stat').read_text().rpartition(') ')[2].split()[0]=='S'):
+                    child.fixture_identity=runtime_identity._process(process)
+                    return child
             except (OSError,ValueError):pass
             time.sleep(.002)
         self.fail('fixture actor failed to exec')

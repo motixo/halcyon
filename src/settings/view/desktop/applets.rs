@@ -220,18 +220,21 @@ impl Settings {
         // Stable per-occurrence ids let focus follow a keyboard move.
         parts.push(
             button::icon(icon::from_name("go-up-symbolic"))
+                .tooltip("Move applet up")
                 .id(control_id(slot, AppletControl::Up))
                 .on_press_maybe((!first && idle).then_some(edit(Edit::Step(slot, -1))))
                 .into(),
         );
         parts.push(
             button::icon(icon::from_name("go-down-symbolic"))
+                .tooltip("Move applet down")
                 .id(control_id(slot, AppletControl::Down))
                 .on_press_maybe((!last && idle).then_some(edit(Edit::Step(slot, 1))))
                 .into(),
         );
         parts.push(
             button::icon(icon::from_name("list-remove-symbolic"))
+                .tooltip("Remove applet")
                 .id(control_id(slot, AppletControl::Remove))
                 .on_press_maybe(idle.then_some(edit(Edit::Remove(slot))))
                 .into(),

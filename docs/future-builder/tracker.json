@@ -3,10 +3,11 @@
   "working_target": "0.5",
   "target_is_release_commitment": false,
   "updated": "2026-10-27",
-  "phase": "FB05\u2013FB19 implemented and locally validated; FB20 local packages validated, physical/live release acceptance pending",
+  "phase": "FB05\u2013FB19 implemented; 0.4.0 published with scoped package verification; FB21 sun-based appearance schedules planned for 0.5; FB20 remains the recurring release gate",
   "implementation_started": true,
   "status_source": "This file is the canonical task status; roadmap and archived proposals do not override it.",
   "next": [
+    "FB21",
     "FB20"
   ],
   "statuses": [
@@ -331,9 +332,25 @@
         "Screen-reader acceptance",
         "Final release-identity package, reviewed companion pin and live COSMIC/Store/PolicyKit installation"
       ]
+    },
+    {
+      "id": "FB21",
+      "title": "Add sun-based appearance schedules using the Weather city",
+      "status": "planned",
+      "target": "0.5",
+      "depends_on": [
+        "FB15",
+        "FB16"
+      ],
+      "source_issue": "https://github.com/profilaz3/halcyon/issues/14",
+      "plan": "FB21-PLAN.md",
+      "exit": "Dawn, sunrise, solar noon, evening golden hour and sunset schedules reuse the enabled Weather widget city or an explicit manual city, calculate locally, and preserve geometry/content. Location lifecycle, offline use, time changes, missing events, manual overrides, migration and native UI pass the FB21 plan and final package checks.",
+      "evidence": [],
+      "owner": null,
+      "contract_review": "2026-10-27: singleton Weather or independent manual city; optional city-zone migration; city-local occurrence dates and UTC instants; location-revision fences at dispatch and commit; explicit appearance-only projection. Planned, not implemented."
     }
   ],
-  "release_gate_note": "FB20 applies to every shipping milestone and additionally requires validation of every feature included in that milestone. FB19 hosted discovery is separately deferrable; it does not block earlier releases.",
+  "release_gate_note": "FB20 applies to every shipping milestone and additionally requires validation of every feature included in that milestone. FB19 hosted discovery is separately deferrable; it does not block earlier releases. The completed 0.4.0 package verification is recorded in ../releases/0.4.0-acceptance.md; FB21 requires new implementation and acceptance for 0.5.",
   "deferred": [
     "Activity-triggered layout rearrangement",
     "Timed live desktop trials",
@@ -402,10 +419,14 @@
     {
       "date": "2026-10-27",
       "change": "Completed FB20 local artifact checks: exact dev package, private dpkg lifecycle, source upgrade/backup, 36 Python checks, six CLI compatibility scenarios, packaged native flows and source archive. Fixed omitted Ridge PNG in source installation. Physical/live shipping acceptance remains open; no host install, publish or version bump."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Added FB21 to the 0.5 plan for issue #14: sun-based appearance schedules follow the Weather widget city when enabled, with manual city fallback and local calculations. Updated planning links and the published version summary. Documentation only; no implementation, version bump or publication."
     }
   ],
   "foundation_probe_code_added": true,
   "execution_rule": "Implement in dependency order; review each implementation, fix findings and validate before advancing.",
-  "implementation_complete": true,
+  "implementation_complete": false,
   "release_eligible": false
 }

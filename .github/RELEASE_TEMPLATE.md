@@ -12,6 +12,8 @@ sudo apt install ./cosmic-ext-halcyon_${VERSION}_amd64.deb
 
 **Optional Islands:** Open **App settings → Updates → Get Islands…**, install, then choose **Enable for next login**. Log out and back in.
 
-**Google Calendar:** ${CALENDAR}
+**Calendar subscriptions:** [Setup guide](https://github.com/${REPOSITORY}/blob/${TAG}/docs/CALENDAR.md).
+
+**Google sign-in:** ${CALENDAR}
 
 Usage sharing is on by default; disable it during setup or in **App settings → Privacy**.

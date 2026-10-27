@@ -190,8 +190,9 @@ pub fn read_config(store: &DesktopStore) -> Result<(serde_json::Value, Config), 
 
 /// Only a live, bounded gesture can briefly defer automatic work.
 pub fn paused(store: &DesktopStore) -> bool {
-    // Only a live gesture lease can defer work. Recovered forms and chooser
-    // selections are private UI state and never participate.
+    // Current Settings writes only WidgetLayout leases. Retain these bounded
+    // legacy domains for an older Settings process still open during upgrade.
+    // Recovered forms and chooser selections never participate.
     crate::automation::read_hold(store).iter().any(|domain| {
         matches!(
             domain,

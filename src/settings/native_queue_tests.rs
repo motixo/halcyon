@@ -10,6 +10,7 @@ impl LockedNativeJob {
         let desktop_lock = store.state_dir().join("desktop.lock");
         // This helper only pauses discovery when BOTH actual transaction locks
         // are already held by its caller. No sleeping-before-start substitute.
+        crate::test_env::native_worker(&root, true);
         std::fs::write(
             root.join("slow-islands-probe.py"),
             format!(
@@ -301,6 +302,7 @@ fn task2r2_rendered_conflict_resolution_retains_its_review() {
     for button in ["undo-reviewed", "undo-keep-current"] {
         let (store, mut app, mut native) = queue_fixture(Page::Appearance);
         let root = store.fixture_root().unwrap();
+        crate::test_env::native_worker(root, false);
         for name in [
             "slow-islands-probe.py",
             "worker-locked",

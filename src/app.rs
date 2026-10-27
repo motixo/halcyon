@@ -96,7 +96,7 @@ mod projects;
 mod providers;
 mod settings_preview;
 pub(crate) use settings_preview::{
-    SettingsSamples, settings_devbox_preview, settings_weather_preview,
+    SettingsSamples, settings_devbox_preview, settings_projects_preview, settings_weather_preview,
     settings_weather_preview_at, settings_weather_preview_sized,
 };
 #[cfg(test)]
@@ -178,7 +178,6 @@ pub enum Message {
     WeatherCacheSaved(Result<(), String>),
     Service(bool),
     Calendar(String, String, Result<CalendarData, String>),
-    CalendarToday(String, Result<CalendarData, String>),
     PreviewCalendar(CalendarData),
     RequestCapture,
     Week(i32),
@@ -201,6 +200,7 @@ pub enum Message {
     ToolDone(Result<(), String>),
     MusicControlDone(Result<Vec<crate::tools::music::Player>, String>),
     NoteCopyDone(Result<(), String>),
+    NoteChecked(Result<crate::tools::notes::Note, crate::tools::notes::SaveError>),
     /// A note save finished: the text it saved, and the result. (Tests
     /// save inline.)
     #[cfg_attr(test, allow(dead_code))]
@@ -228,7 +228,7 @@ pub struct Cards {
     displays: crate::displays::Registry,
     selected_output: Option<crate::displays::Output>,
     arrange_display: Option<String>,
-    pending_arrange: bool,
+    pending_arrange: Option<crate::displays::WlOutput>,
     widget_outputs: Vec<Option<crate::displays::Output>>,
     extra_probes: Vec<monitors::Probe>,
     display_positions: std::collections::BTreeMap<String, [f32; 2]>,
@@ -274,12 +274,12 @@ pub struct Cards {
     calendar_details: Option<String>,
     calendar_connection: crate::calendar::Connection,
     calendar_today: Option<CalendarData>,
-    today_fetching: bool,
+    today_fetching: Option<String>,
     calendar_today_error: bool,
     calendar_preview: bool,
     next_today_calendar: Instant,
     calendar_error: bool,
-    calendar_fetching: bool,
+    calendar_fetching: Option<String>,
     next_calendar: Instant,
     month: NaiveDate,
     selected_day: NaiveDate,
@@ -331,7 +331,7 @@ impl cosmic::Application for Cards {
             displays: Default::default(),
             selected_output: None,
             arrange_display: None,
-            pending_arrange: false,
+            pending_arrange: None,
             widget_outputs: Vec::new(),
             extra_probes: Vec::new(),
             display_positions: Default::default(),
@@ -373,14 +373,14 @@ impl cosmic::Application for Cards {
             capture_key: None,
             calendar_details: None,
             calendar_today: calendar.clone(),
-            today_fetching: false,
+            today_fetching: None,
             calendar_today_error: false,
             calendar_preview: false,
             next_today_calendar: Instant::now() + calendar_refresh,
             calendar,
             calendar_connection: crate::calendar::load_connection(),
             calendar_error: false,
-            calendar_fetching: false,
+            calendar_fetching: None,
             next_calendar: Instant::now(),
             month,
             selected_day: today,
@@ -410,7 +410,7 @@ impl cosmic::Application for Cards {
             );
         }
         // Players are followed only while the Music card is shown.
-        if self.config.widget_visible(Widget::Music) && !self.layout_editor.active {
+        if self.music_demand() {
             subscriptions.push(crate::tools::music::watch().map(Message::MusicFeed));
         }
         let paths = Config::path()
@@ -666,6 +666,19 @@ impl Cards {
     fn reconcile_output(&mut self) -> Task<Message> {
         self.refresh_display_layouts();
         self.reconcile_weather(Instant::now());
+        if let Some(expected) = &self.pending_arrange {
+            // A connector or EDID alias can change on the same live output.
+            // A replacement output must never inherit a pending input capture.
+            let output = self
+                .displays
+                .outputs()
+                .iter()
+                .find(|o| &o.handle == expected);
+            self.arrange_display = output.and_then(|o| self.displays.key(o));
+            if output.is_none() {
+                self.pending_arrange = None;
+            }
+        }
         let selected = self
             .displays
             .selected(
@@ -674,6 +687,15 @@ impl Cards {
                     .or(self.config.widget_display.as_deref()),
             )
             .cloned();
+        if self
+            .pending_arrange
+            .as_ref()
+            .is_some_and(|expected| selected.as_ref().is_none_or(|o| &o.handle != expected))
+        {
+            self.pending_arrange = None;
+            self.arrange_display = None;
+            return self.reconcile_output();
+        }
         let widget_outputs: Vec<_> = Widget::ALL
             .into_iter()
             .map(|w| self.widget_output(w).cloned())
@@ -944,8 +966,8 @@ impl Cards {
                             .is_some_and(|editor| editor.pending_resume.is_some())
                         {
                             self.complete_arrange_resume()
-                        } else if std::mem::take(&mut self.pending_arrange) {
-                            self.arrange()
+                        } else if self.pending_arrange.is_some() {
+                            self.complete_pending_arrange()
                         } else {
                             Task::none()
                         };
@@ -1126,62 +1148,39 @@ impl Cards {
                 Task::none()
             }
             Message::Calendar(revision, month, result) => {
-                if revision != self.calendar_connection.revision {
+                if revision != self.calendar_connection.revision
+                    || self.calendar_preview
+                    || !self.calendar_month_pending(&month)
+                {
                     return Task::none();
                 }
-                if self.calendar_preview {
-                    return Task::none();
+                if self.calendar_fetching.as_deref() == Some(&month) {
+                    self.calendar_fetching = None;
                 }
-                self.calendar_fetching = false;
-                if month == Local::now().format("%Y-%m").to_string() {
-                    self.calendar_today_error = result.is_err();
-                    if let Ok(calendar) = &result {
-                        self.calendar_today = Some(calendar.clone());
-                    }
-                    self.next_today_calendar =
-                        Instant::now() + self.config.refresh_intervals.duration(Widget::Calendar);
+                if self.today_fetching.as_deref() == Some(&month) {
+                    self.today_fetching = None;
                 }
-                if month != self.month.format("%Y-%m").to_string() {
-                    return self.sync_widget_surfaces();
-                }
-                match result {
-                    Ok(calendar) => {
-                        self.calendar = Some(calendar);
-                        self.calendar_error = false;
-                        self.next_calendar = Instant::now()
-                            + self.config.refresh_intervals.duration(Widget::Calendar);
-                    }
-                    Err(e) => {
-                        eprintln!("{e}");
-                        self.calendar_error = true;
-                        self.next_calendar = Instant::now() + Duration::from_secs(120);
-                    }
-                }
-                self.sync_widget_surfaces()
-            }
-            Message::CalendarToday(revision, result) => {
-                if revision != self.calendar_connection.revision {
-                    return Task::none();
-                }
-                if self.calendar_preview {
-                    return Task::none();
-                }
-                self.today_fetching = false;
-                if result.as_ref().is_ok_and(|calendar| {
-                    calendar.month != Local::now().format("%Y-%m").to_string()
-                }) {
-                    self.next_today_calendar = Instant::now();
-                    return Task::none();
-                }
-                self.next_today_calendar = Instant::now()
+                let retry = Instant::now()
                     + if result.is_ok() {
                         self.config.refresh_intervals.duration(Widget::Calendar)
                     } else {
                         Duration::from_secs(120)
                     };
-                self.calendar_today_error = result.is_err();
-                if let Ok(calendar) = result {
-                    self.calendar_today = Some(calendar);
+                // One request owns each month until its cache write AND this
+                // completion finish. Both views consume that same result.
+                if month == Local::now().format("%Y-%m").to_string() {
+                    self.calendar_today_error = result.is_err();
+                    if let Ok(calendar) = &result {
+                        self.calendar_today = Some(calendar.clone());
+                    }
+                    self.next_today_calendar = retry;
+                }
+                if month == self.month.format("%Y-%m").to_string() {
+                    self.calendar_error = result.is_err();
+                    self.next_calendar = retry;
+                    if let Ok(calendar) = result {
+                        self.calendar = Some(calendar);
+                    }
                 }
                 self.sync_widget_surfaces()
             }
@@ -1197,8 +1196,8 @@ impl Cards {
                 self.calendar_home = true;
                 self.selected_day = Local::now().date_naive();
                 self.month = self.selected_day.with_day(1).unwrap();
-                self.calendar_fetching = false;
-                self.today_fetching = false;
+                self.calendar_fetching = None;
+                self.today_fetching = None;
                 self.calendar_error = false;
                 self.calendar_today_error = false;
                 self.next_calendar = Instant::now() + Duration::from_secs(3600);
@@ -1339,6 +1338,7 @@ impl Cards {
                 Task::none()
             }
             Message::NoteSaved(text, result) => self.note_saved(text, result),
+            Message::NoteChecked(result) => self.note_checked(result),
             Message::NoteCopyDone(result) => {
                 self.tools.note_problem = result.err();
                 Task::none()
@@ -1769,20 +1769,34 @@ impl Cards {
         self.calendar_today = None;
         self.calendar_error = false;
         self.calendar_today_error = false;
-        self.calendar_fetching = false;
-        self.today_fetching = false;
+        self.calendar_fetching = None;
+        self.today_fetching = None;
         self.show_earlier = false;
         self.next_calendar = Instant::now();
         self.next_today_calendar = Instant::now();
         self.sync_widget_surfaces()
     }
+    fn calendar_month_pending(&self, month: &str) -> bool {
+        self.calendar_fetching.as_deref() == Some(month)
+            || self.today_fetching.as_deref() == Some(month)
+    }
+    fn calendar_can_start(&self) -> bool {
+        self.calendar_fetching.is_none()
+            && !self.calendar_month_pending(&self.month.format("%Y-%m").to_string())
+    }
+    fn today_calendar_can_start(&self, month: &str) -> bool {
+        self.today_fetching.is_none() && !self.calendar_month_pending(month)
+    }
     fn calendar_task(&mut self) -> Task<Message> {
-        if !self.calendar_connection.connected() {
+        if !self.calendar_connection.connected() || !self.calendar_can_start() {
             return Task::none();
         }
-        let connection = self.calendar_connection.clone();
         let month = self.month.format("%Y-%m").to_string();
-        self.calendar_fetching = true;
+        self.calendar_fetching = Some(month.clone());
+        self.calendar_month_task(month)
+    }
+    fn calendar_month_task(&self, month: String) -> Task<Message> {
+        let connection = self.calendar_connection.clone();
         cosmic::task::future(async move {
             let revision = connection.revision.clone();
             let result = crate::calendar::fetch(connection, month.clone()).await;
@@ -2222,7 +2236,11 @@ impl Cards {
                     p,
                 ),
                 action(
-                    if self.calendar_fetching { "◌" } else { "↻" },
+                    if self.calendar_month_pending(&self.month.format("%Y-%m").to_string()) {
+                        "◌"
+                    } else {
+                        "↻"
+                    },
                     Message::RefreshCalendar,
                     p.muted,
                 ),
@@ -2529,6 +2547,131 @@ mod tests {
         assert!(cards.next_projects <= Instant::now());
     }
     #[test]
+    fn calendar_lanes_share_month_owner_cache_and_both_views() {
+        if crate::displays::test_support::isolated(
+            "app::tests::calendar_lanes_share_month_owner_cache_and_both_views",
+        ) {
+            return;
+        }
+        let connection = crate::calendar::Connection {
+            backend: crate::calendar::Backend::Google,
+            account: "fixture@example.invalid".into(),
+            revision: "fixture-revision".into(),
+            calendar_id: "fixture".into(),
+            ..Default::default()
+        };
+        std::fs::write(
+            crate::calendar::account_path().unwrap(),
+            serde_json::to_vec(&connection).unwrap(),
+        )
+        .unwrap();
+        let today = Local::now().date_naive();
+        let month = today.format("%Y-%m").to_string();
+        let other_day = today + Days::days(60);
+        let other_month = other_day.format("%Y-%m").to_string();
+        let finish = |cards: &mut Cards, month: &str, label: &str| {
+            let data = crate::calendar::fixture_completion(
+                &connection,
+                month,
+                CalendarData {
+                    account: connection.account.clone(),
+                    month: month.into(),
+                    updated_at: label.into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+            let _ = cards.update(Message::Calendar(
+                connection.revision.clone(),
+                month.into(),
+                Ok(data),
+            ));
+        };
+        for background_first in [false, true] {
+            let (mut cards, _) = Cards::init(
+                Core::default(),
+                Config {
+                    enabled_widgets: vec![],
+                    ..Default::default()
+                },
+            );
+            cards.config.enabled_widgets = vec!["calendar".into()];
+            let _ = cards.show_day(other_day);
+            cards.next_today_calendar = Instant::now();
+            let _ = cards.refresh_visible_data(); // Two distinct months admitted; no provider IO is executed.
+            assert_eq!(
+                cards.calendar_fetching.as_deref(),
+                Some(other_month.as_str())
+            );
+            assert_eq!(cards.today_fetching.as_deref(), Some(month.as_str()));
+            if !background_first {
+                finish(&mut cards, &other_month, "other month");
+            }
+            let _ = cards.show_day(today);
+            let _ = cards.calendar_task();
+            assert!(
+                !cards.calendar_can_start(),
+                "returning to Today must join its existing request"
+            );
+            assert_ne!(cards.calendar_fetching.as_deref(), Some(month.as_str()));
+            assert!(cards.today_fetching.is_some());
+            finish(&mut cards, &month, "first current snapshot");
+            if background_first {
+                finish(&mut cards, &other_month, "other month");
+            }
+            for data in [&cards.calendar, &cards.calendar_today] {
+                assert_eq!(data.as_ref().unwrap().updated_at, "first current snapshot");
+            }
+            assert_eq!(
+                crate::calendar::store_cached(&connection, &month)
+                    .unwrap()
+                    .updated_at,
+                "first current snapshot"
+            );
+            assert!(cards.calendar_can_start());
+            let _ = cards.calendar_task();
+            assert!(!cards.today_calendar_can_start(&month));
+            let _ = cards.show_day(other_day);
+            cards.next_today_calendar = Instant::now();
+            let _ = cards.refresh_visible_data();
+            assert!(
+                cards.today_fetching.is_none(),
+                "background refresh joins the selected lane's current-month request"
+            );
+            let _ = cards.show_day(today);
+            finish(&mut cards, &month, "new current snapshot");
+            assert_eq!(
+                cards.calendar.as_ref().unwrap().updated_at,
+                "new current snapshot"
+            );
+            assert_eq!(
+                cards.calendar_today.as_ref().unwrap().updated_at,
+                "new current snapshot"
+            );
+            assert_eq!(
+                crate::calendar::store_cached(&connection, &month)
+                    .unwrap()
+                    .updated_at,
+                "new current snapshot"
+            );
+            // Error completion is also shared, keeps cached data and schedules
+            // a bounded retry instead of leaving either consumer due in a loop.
+            let _ = cards.calendar_task();
+            let _ = cards.update(Message::Calendar(
+                connection.revision.clone(),
+                month.clone(),
+                Err("offline fixture".into()),
+            ));
+            assert!(cards.calendar_error && cards.calendar_today_error);
+            assert!(cards.next_calendar > Instant::now() + Duration::from_secs(119));
+            assert_eq!(cards.next_calendar, cards.next_today_calendar);
+            assert_eq!(
+                cards.calendar_today.as_ref().unwrap().updated_at,
+                "new current snapshot"
+            );
+        }
+    }
+    #[test]
     fn disabled_widgets_do_not_start_jobs_and_reenable_resumes_due_work() {
         use cosmic::Application;
         let config = Config {
@@ -2548,13 +2691,21 @@ mod tests {
             ..Default::default()
         };
         cards.config.project_roots = vec!["/fixture/projects".into()];
-        assert!(!cards.weather_fetching() && !cards.calendar_fetching && !cards.projects_fetching);
+        assert!(
+            !cards.weather_fetching()
+                && cards.calendar_fetching.is_none()
+                && !cards.projects_fetching
+        );
         assert!(cards.refresh_visible_data().is_empty());
         cards.config.enabled_widgets = vec!["weather".into(), "calendar".into(), "projects".into()];
         // Refresh may also reconcile calendar geometry; the fetching flags below
         // track the three data jobs independently of those local UI tasks.
         assert!(!cards.refresh_visible_data().is_empty());
-        assert!(cards.weather_fetching() && cards.calendar_fetching && cards.projects_fetching);
+        assert!(
+            cards.weather_fetching()
+                && cards.calendar_fetching.is_some()
+                && cards.projects_fetching
+        );
         // A second refresh must not queue duplicate jobs while these are in flight.
         assert!(cards.refresh_visible_data().is_empty());
     }
@@ -2574,11 +2725,11 @@ mod tests {
         cards.calendar_connection = crate::calendar::Connection::default();
         cards.calendar = None;
         cards.calendar_today = None;
-        cards.calendar_fetching = false;
-        cards.today_fetching = false;
+        cards.calendar_fetching = None;
+        cards.today_fetching = None;
         cards.projects_fetching = false;
         let _ = cards.refresh_visible_data();
-        assert!(!cards.calendar_fetching && !cards.projects_fetching);
+        assert!(cards.calendar_fetching.is_none() && !cards.projects_fetching);
         // A visible calendar still updates its date/highlights locally. Only
         // remote sync and project scanning must wait for setup.
         assert_eq!(cards.next_wake(), Some(cards.next_calendar_view));
@@ -2593,7 +2744,11 @@ mod tests {
             cards.selected_day.format("%Y-%m").to_string(),
             Ok(data.clone()),
         ));
-        let _ = cards.update(Message::CalendarToday("former-revision".into(), Ok(data)));
+        let _ = cards.update(Message::Calendar(
+            "former-revision".into(),
+            "2000-01".into(),
+            Ok(data),
+        ));
         assert!(cards.calendar.is_none() && cards.calendar_today.is_none());
     }
     fn date(year: i32, month: u32, day: u32) -> NaiveDate {
@@ -2825,8 +2980,10 @@ mod tests {
             meeting_url: Some("https://meet.google.com/example".into()),
             ..Default::default()
         };
-        let _ = cards.update(Message::CalendarToday(
+        cards.today_fetching = Some(now.format("%Y-%m").to_string());
+        let _ = cards.update(Message::Calendar(
             cards.calendar_connection.revision.clone(),
+            now.format("%Y-%m").to_string(),
             Ok(CalendarData {
                 events: vec![event],
                 month: now.format("%Y-%m").to_string(),

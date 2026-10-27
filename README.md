@@ -2,50 +2,42 @@
 
 Desktop widgets, themes and layouts for **COSMIC on Pop!_OS 24.04**.
 
-**[Download 0.4.0](https://github.com/profilaz3/halcyon/releases/download/v0.4.0/cosmic-ext-halcyon_0.4.0_amd64.deb)** · [Release notes](https://github.com/profilaz3/halcyon/releases/tag/v0.4.0) · [Report an issue](https://github.com/profilaz3/halcyon/issues)
+**[Download](https://github.com/profilaz3/halcyon/releases/latest)** · [Release notes](https://github.com/profilaz3/halcyon/releases) · [Report an issue](https://github.com/profilaz3/halcyon/issues)
 
-[![Tidal setup review in native Halcyon Settings](docs/screenshots/040/setup-preview.png)](docs/screenshots/040/setup-preview.png)
+<!-- Keep this overview stable between releases. See .github/README-MAINTENANCE.md. -->
+
+[![Tidal setup in native Halcyon Settings](docs/screenshots/040/setup-preview.png)](docs/screenshots/040/README.md)
 
 - **Widgets:** clock, weather, calendar, system monitor, music, Git projects, notes and focus timer.
-- **Layout:** move, resize and order widgets in Canvas; assign each to a display.
-- **Appearance:** wallpapers, light and dark themes, colors, fonts and surface finishes.
-- **Setups:** starter compositions, wallpaper/style/layout remixing, shared setup packages and scheduled switching.
+- **Layout:** move, resize and order widgets; choose which display they use.
+- **Appearance:** wallpapers, colors, fonts and surface finishes. Settings and setup use GPU rendering.
+- **Setups:** save, combine, share and schedule desktop configurations.
 
 ## Install
 
-1. Download **Halcyon** using the button above. Choose the main app; Islands is optional.
-2. Open the downloaded file with **COSMIC Store**, choose **Install**, and approve the system password prompt if asked.
+1. Open the [latest release](https://github.com/profilaz3/halcyon/releases/latest) and download `cosmic-ext-halcyon_<version>_amd64.deb`. Islands is optional.
+2. Open the file with **COSMIC Store**, choose **Install**, and approve the system password prompt if asked.
 3. Open **Halcyon** from the application launcher and finish setup.
 
-For 64-bit Intel and AMD PCs running Pop!_OS 24.04 with COSMIC. Stay online so the system can fetch any missing dependencies. If the Store cannot install the local file, use:
+Packages support 64-bit Intel and AMD PCs. An internet connection is needed to download any missing dependencies.
 
-```sh
-sudo apt install ~/Downloads/cosmic-ext-halcyon_0.4.0_amd64.deb
-```
+Fresh installations enable the signed update source. Install future updates through **COSMIC Store → Updates** or APT. Automatic installation follows your OS settings; existing disabled or modified sources are preserved.
 
-Setup lets you choose a look, enable widgets and arrange them. Adjust the fallback command if you saved the file elsewhere.
-
-Fresh installations enable the signed APT source by default. Future updates use APT or **COSMIC Store → Updates**, according to your OS update settings. This does not turn on automatic installation. Existing disabled or modified sources are preserved. [Update and removal instructions](docs/DISTRIBUTION.md).
-
-## Settings
-
-Settings and first-run setup use GPU rendering. Controls reflow into columns, with help beside settings that need explanation. Desktop previews show changes before Apply; Recent changes provides eligible Undo actions.
-
-[![Halcyon 0.4.0 Settings: desktop preview, wallpaper colors and light or dark mode](docs/screenshots/040/settings-wide.png)](docs/screenshots/040/settings-wide.png)
-
-[Native capture details and more screenshots](docs/screenshots/040/README.md) · [Rendering measurements](docs/PERFORMANCE.md)
+[Terminal installation, updates and removal](docs/DISTRIBUTION.md).
 
 ## Optional Islands
 
-Islands splits the dock and panel into floating applet groups and adds bar surface finishes.
+Islands splits the dock and panel into floating applet groups and adds bar surface finishes. Widgets and themes work without it.
 
-Open **App settings → Updates → Get Islands…**. Review the installation, approve the system installer, then choose **Enable for next login**. Log out and back in.
+Open **App settings → Updates → Get Islands…**, install the add-on, then choose **Enable for next login**. Log out and back in.
 
-Widgets and themes work without Islands. [Compatibility, manual installation and removal](packaging/islands/README.md).
+[Compatibility and manual installation](packaging/islands/README.md).
 
-## Calendar and privacy
+## Calendar
 
-Calendar supports read-only HTTPS/iCal subscriptions. Google Calendar requires your own OAuth client configuration; live Google sign-in validation is pending.
+Add read-only calendar subscription links from Google Calendar, Outlook or other providers. [Calendar setup guide](docs/CALENDAR.md).
+
+## Privacy
 
 Usage sharing is enabled by default. Turn it off during setup or in **App settings → Privacy**. Reports include a random installation ID, app version, approximate country and first desktop start; they exclude widget content. [Privacy details](docs/PRIVACY.md).
 

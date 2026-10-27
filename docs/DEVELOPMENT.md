@@ -5,7 +5,7 @@
 > folders are `~/.config/halcyon` and so on. Where this document still says
 > `cosmic-desktop-cards` or `desktop-cards`, read the new names;
 > [packaging/README.md](../packaging/README.md) is authoritative. Test with
-> `cargo test --bin halcyon`.
+> the serial commands in [Build and development](#build-and-development).
 
 How Halcyon (formerly Desktop Cards; the code and paths still use that name until the rename) is built and how its parts work. For what it is and how to install it, see the [README](../README.md). It ships thirteen wallpapers: seven Halcyon scenes and six procedural palette gradients (see [ASSETS.md](../ASSETS.md)).
 
@@ -238,22 +238,50 @@ desktop-cards wallpapers-install
 - Unapplied settings: `~/.local/share/cosmic-desktop-cards/settings-draft-*.json` (bounded, versioned, owner-only records; removed after Apply/Save/Discard, never included in presets)
 - Focus timer session: `~/.local/state/cosmic-desktop-cards/focus.json` (runtime state)
 
-The complete six-palette wallpaper bundle is in `assets/wallpapers/`: twelve PNGs at 3840×2160 and 1920×1080. Keep this directory and `scripts/install_wallpapers.py` in the installed source copy. Run `python3 scripts/install_wallpapers.py` from the source directory to install the bundle into `~/Pictures/Desktop Cards/`, or add `--check` to validate it without installing. Installation uses only Python's standard library, skips identical files, and replaces damaged or outdated copies atomically; unrelated pictures are preserved. Matching wallpapers are available offline, with no downloads or image-generation dependencies when selecting a theme.
+Bundled wallpaper files live in `assets/wallpapers/` and are copied by
+`scripts/install.py` and the Debian builder. `scripts/wallpapers.py` regenerates
+six palette gradients and their previews; it requires NumPy and Pillow. Use
+explicit `--output` and `--previews` directories for experiments. It has no
+`--check` mode and is not required for normal builds or installation. Matching
+bundled wallpapers remain available offline.
 
 The current display is 1920×1080 at 100% scaling. Both desktop columns are 360 pixels wide, 42 pixels from their respective screen edges, and fit between 48-pixel top/bottom margins. Calendar's height budget is independent of the right column. The overlay sidebar is 184×400 pixels and hides completely beyond the screen edge, with a separate transparent 2-pixel activation strip along the full right edge. Individual card scrolling accommodates smaller display heights and expanded content. Free positions apply to the active output; choosing separate outputs per widget is not implemented. Startup follows the graphical session and requires layer-shell support.
 
 ## Build and development
 
-Rust 1.93 or later, Wayland and xkbcommon development packages are required by the pinned libcosmic revision. Preserve `Cargo.lock` when rebuilding.
+Use Rust **1.93.0**, the version used by [CI](../.github/workflows/ci.yml), and
+preserve `Cargo.lock`. CI lists the native build and packaging dependencies and
+is the authoritative per-commit check list.
 
-```
-cargo build --release --locked
-CARGO_PROFILE_DEV_DEBUG=0 cargo test --locked
-python3 -m unittest discover -s scripts -p 'test_*.py'
+```sh
+cargo +1.93.0 build --release --locked
+CARGO_PROFILE_DEV_DEBUG=0 cargo +1.93.0 test --locked --bin halcyon -- --test-threads=1
 ```
 
-Install the optimized `target/release/cosmic-desktop-cards` binary. Development builds
-leave the native renderer unoptimized and make settings navigation noticeably slow.
+For a focused change, insert a Rust test filter before `--`, for example
+`settings::city_search::`. Keep `--test-threads=1`: some fixtures isolate
+process-wide state by re-executing the test binary. Add `--offline` when the
+locked dependencies are already cached. Reuse the same `CARGO_TARGET_DIR` and
+profile instead of rebuilding in several target directories.
+
+The optimized program is `target/release/halcyon`, or
+`$CARGO_TARGET_DIR/release/halcyon` when configured. Use that build for interactive
+performance checks; unoptimized development builds are noticeably slower.
+Per-user installation is described [above](#install), and Debian development
+packages use the [explicit development mode](../packaging/README.md#build-mode).
+
+Run the Python, collector, metadata and Islands-core checks listed in CI when
+changing those areas. The controller transaction tests need
+`HALCYON_TEST_BINARY` set to the built `halcyon` executable. Discovery in `scripts`
+alone does not include `scripts/apt`, `scripts/compatibility`, `scripts/usage`,
+`companion` or the separate packaging directories. APT tests use the isolated
+user namespace shown in CI; do not substitute a live system install.
+
+Additional acceptance is documented in [compatibility](COMPATIBILITY.md),
+[APT operations](APT-OPERATIONS.md), [usage reporting](../scripts/usage/README.md)
+and [future-builder probes](future-builder/probes/README.md). These remain
+separate from unit-test success.
+
 The settings window watches configuration and command files instead of redrawing
 on a one-second timer. A 30-second content check recovers missed filesystem events;
 unchanged files do not wake the UI. Desktop settings apply as soon as the file changes.

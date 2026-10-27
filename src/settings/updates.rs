@@ -1,4 +1,4 @@
-//! Explicit update discovery and verified source enrollment. The OS owns authentication and installation.
+//! Explicit update discovery and optional Islands installation. The OS owns authentication and installation.
 mod enrollment;
 mod identity;
 pub(super) mod islands;
@@ -29,10 +29,14 @@ pub enum Failure {
     DependencyChanges,
     ReleaseRequired,
     Activation,
+    IslandsMismatch,
 }
 impl Failure {
     pub fn label(&self) -> &'static str {
         match self {
+            Self::IslandsMismatch => {
+                "The Islands package changed or does not match this Halcyon. Update or reinstall both in your package manager, then check again."
+            }
             Self::ReleaseRequired => {
                 "Install the Halcyon release package to add Islands here. Source installations use the development guide."
             }
@@ -66,24 +70,6 @@ pub enum Check {
     Available(String),
     Failed(Failure),
 }
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum Setup {
-    #[default]
-    Idle,
-    Preparing,
-    Ready,
-    Installing,
-    Failed(Failure),
-    Enrolled,
-}
-#[derive(Clone, Copy, Debug, Default)]
-pub enum InstallPhase {
-    #[default]
-    Inspecting,
-    Authorizing,
-    Installing,
-    Verifying,
-}
 #[derive(Clone, Debug)]
 pub enum Message {
     Islands(islands::Message),
@@ -96,12 +82,6 @@ pub enum Message {
     StoreOpened(u64, Result<(), String>),
     Releases,
     Information,
-    Prepare,
-    Prepared(u64, Result<std::sync::Arc<enrollment::Prepared>, Failure>),
-    Install,
-    Installed(u64, Result<Identity, Failure>),
-    InstallPhase(u64, InstallPhase),
-    CopyInstructions,
     Notes,
 }
 #[derive(Default)]
@@ -111,11 +91,7 @@ pub struct Updates {
     pub check: Check,
     pub store_error: Option<String>,
     pub store_busy: bool,
-    pub setup: Setup,
-    pub install_phase: InstallPhase,
-    pub prepared: Option<std::sync::Arc<enrollment::Prepared>>,
     pub last_checked: Option<chrono::DateTime<chrono::Local>>,
-    pub copied: bool,
     generation: u64,
     cancellation: Option<watch::Sender<bool>>,
 }
@@ -128,13 +104,6 @@ impl Drop for Updates {
 }
 impl Updates {
     pub fn cancel(&mut self) {
-        // Installation belongs to the OS. Closing this window must not kill it.
-        if self.setup == Setup::Installing {
-            return;
-        }
-        if self.setup == Setup::Preparing {
-            self.setup = Setup::Idle;
-        }
         self.generation = self.generation.wrapping_add(1);
         if let Some(cancel) = self.cancellation.take() {
             let _ = cancel.send(true);
@@ -173,15 +142,11 @@ impl Settings {
             Message::Inspect => {
                 // Focus changes during PolicyKit authentication must not cancel
                 // the check or start another local measurement.
-                if self.updates.check == Check::Checking
-                    || self.updates.store_busy
-                    || matches!(self.updates.setup, Setup::Preparing | Setup::Installing)
-                {
+                if self.updates.check == Check::Checking || self.updates.store_busy {
                     return Task::none();
                 }
                 self.updates.cancel();
                 self.updates.identity = None;
-                self.updates.setup = Setup::Idle;
                 self.updates.check = Check::NotChecked;
                 self.updates.store_error = None;
                 let token = self.updates.generation;
@@ -237,107 +202,6 @@ impl Settings {
                     vec![RELEASES.into()],
                     "Releases opened",
                 );
-            }
-            Message::Prepare => {
-                if !self
-                    .updates
-                    .identity
-                    .as_ref()
-                    .is_some_and(Identity::can_enroll)
-                    || matches!(self.updates.setup, Setup::Preparing | Setup::Installing)
-                {
-                    return Task::none();
-                }
-                self.updates.cancel();
-                self.updates.prepared = None;
-                self.updates.copied = false;
-                let (sender, cancel) = watch::channel(false);
-                self.updates.cancellation = Some(sender);
-                self.updates.setup = Setup::Preparing;
-                let token = self.updates.generation;
-                return cosmic::task::future(async move {
-                    SettingsMessage::Updates(Message::Prepared(
-                        token,
-                        enrollment::prepare(cancel).await,
-                    ))
-                });
-            }
-            Message::Prepared(token, result)
-                if token == self.updates.generation && self.updates.setup == Setup::Preparing =>
-            {
-                self.updates.cancellation = None;
-                match result {
-                    Ok(files) => {
-                        self.updates.prepared = Some(files);
-                        self.updates.setup = Setup::Ready;
-                    }
-                    Err(error) => self.updates.setup = Setup::Failed(error),
-                }
-            }
-            Message::Install => {
-                if !matches!(self.updates.setup, Setup::Ready | Setup::Failed(_)) {
-                    return Task::none();
-                }
-                let Some(files) = self.updates.prepared.clone() else {
-                    return Task::none();
-                };
-                let Some(expected) = self.updates.identity.clone().filter(Identity::can_enroll)
-                else {
-                    return Task::none();
-                };
-                self.updates.setup = Setup::Installing;
-                self.updates.install_phase = InstallPhase::Inspecting;
-                let token = self.updates.generation;
-                return cosmic::task::stream(cosmic::iced::stream::channel(
-                    8,
-                    async move |mut output| {
-                        use cosmic::iced::futures::SinkExt;
-                        let (progress, mut receive) = tokio::sync::mpsc::unbounded_channel();
-                        let work = async move {
-                            let current = identity::inspect().await;
-                            if !expected.same_enrollment_candidate(&current) {
-                                return Err(Failure::InstallationChanged);
-                            }
-                            packagekit::install_bootstrap(files, Some(progress.clone())).await?;
-                            let _ = progress.send(InstallPhase::Verifying);
-                            let current = identity::inspect().await;
-                            if !current.can_check() {
-                                return Err(Failure::InstallationChanged);
-                            }
-                            Ok(current)
-                        };
-                        tokio::pin!(work);
-                        loop {
-                            tokio::select! {
-                                result=&mut work => { let _=output.send(SettingsMessage::Updates(Message::Installed(token,result))).await; break; },
-                                Some(phase)=receive.recv() => { if output.send(SettingsMessage::Updates(Message::InstallPhase(token,phase))).await.is_err() { break; } },
-                            }
-                        }
-                    },
-                ));
-            }
-            Message::InstallPhase(token, phase)
-                if token == self.updates.generation && self.updates.setup == Setup::Installing =>
-            {
-                self.updates.install_phase = phase
-            }
-            Message::Installed(token, result) if token == self.updates.generation => match result {
-                Ok(identity) => {
-                    self.updates.identity = Some(identity);
-                    self.updates.setup = Setup::Enrolled;
-                    self.updates.prepared = None;
-                }
-                Err(error) => self.updates.setup = Setup::Failed(error),
-            },
-            Message::CopyInstructions => {
-                if let Some(files) = &self.updates.prepared {
-                    // Manual installation may outlive this window too.
-                    files
-                        .handed_off
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
-                    self.updates.copied = true;
-                    return cosmic::iced::clipboard::write(files.instructions());
-                }
             }
             Message::Notes => {
                 if let Some(url) = self.updates.notes_url() {
@@ -430,7 +294,7 @@ impl Updates {
         let identity = self
             .identity
             .as_ref()
-            .filter(|i| i.can_check() || i.can_enroll())?;
+            .filter(|i| i.can_check() || i.can_install_islands())?;
         let version = match &self.check {
             Check::Available(v) => v,
             _ => identity.installed_version.as_ref()?,
@@ -480,7 +344,6 @@ impl Updates {
         }
         self.cancel();
         self.identity = Some(identity);
-        self.setup = Setup::Idle;
         self.check = if state == "available" {
             Check::Available("0.3.0".into())
         } else {

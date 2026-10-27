@@ -210,3 +210,58 @@ fn fb16_model_nested_key_order_is_not_an_old_writer_conflict() {
         document.migration.fingerprint
     );
 }
+
+#[test]
+fn architecture_local_design_ownership_stays_separate_from_export_scope() {
+    use crate::desktop::store::widget;
+    use std::collections::BTreeSet;
+    let mut local_design: BTreeSet<String> = [
+        "/widget_display",
+        "/weather/show_dew_point",
+        "/placement/columns",
+        "/widgets_visible",
+        "/appearance/match_wallpaper",
+        "/appearance/match_cosmic_colors",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect();
+    for widget in Widget::ALL {
+        for tail in ["display", "hide_disconnected"] {
+            local_design.insert(format!("/widget_monitors/{}/{tail}", widget.key()));
+        }
+        local_design.insert(format!("/monitor_layouts/{}", widget.key()));
+    }
+    let actual: BTreeSet<_> = widget::LOCAL_FIELDS
+        .iter()
+        .filter(|f| legacy::owned(f.pointer))
+        .map(|f| f.pointer.to_string())
+        .collect();
+    assert_eq!(actual, local_design);
+    for pointer in local_design {
+        assert!(
+            !widget::FIELDS.iter().any(|f| f.pointer == pointer),
+            "local identity leaked to portable scope: {pointer}"
+        );
+    }
+    for field in &widget::FIELDS {
+        assert!(
+            legacy::owned(field.pointer),
+            "portable field lost design ownership: {}",
+            field.pointer
+        );
+    }
+    assert!(legacy::owned("/appearance/wallpaper_color_stamp"));
+    for private in [
+        "/location",
+        "/project_roots",
+        "/calendar_private",
+        "/music/player",
+    ] {
+        assert!(widget::field(private).is_some());
+        assert!(
+            !legacy::owned(private),
+            "private preference froze into design: {private}"
+        );
+    }
+}

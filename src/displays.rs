@@ -38,7 +38,7 @@ impl Output {
 #[derive(Clone, Default, Debug)]
 pub struct Registry {
     outputs: Vec<Output>,
-    identities: std::collections::BTreeMap<String, String>,
+    identities: std::collections::BTreeMap<String, (WlOutput, String)>,
     pub generation: u64,
 }
 impl Registry {
@@ -55,14 +55,18 @@ impl Registry {
                 }
             }
         }
+        // EDID observations belong to the unique live output that was scanned,
+        // not to a connector name that a later monitor may reuse.
+        self.identities.retain(|name, (handle, _)| {
+            let mut outputs = self.outputs.iter().filter(|o| o.name() == Some(name));
+            outputs.next().is_some_and(|o| &o.handle == handle) && outputs.next().is_none()
+        });
     }
     pub fn unique(&self, name: &str) -> Option<&Output> {
-        let mut found = self.outputs.iter().filter(|o| {
-            o.name() == Some(name)
-                || o.name()
-                    .and_then(|n| self.identities.get(n))
-                    .is_some_and(|id| id == name)
-        });
+        let mut found = self
+            .outputs
+            .iter()
+            .filter(|o| o.name() == Some(name) || self.identity(o) == Some(name));
         let output = found.next()?;
         found.next().is_none().then_some(output)
     }
@@ -103,16 +107,32 @@ impl Registry {
         if generation != self.generation {
             return false;
         }
-        self.identities = identities;
+        self.identities = identities
+            .into_iter()
+            .filter_map(|(name, id)| {
+                let mut outputs = self
+                    .outputs
+                    .iter()
+                    .filter(|o| o.name() == Some(name.as_str()));
+                let output = outputs.next()?;
+                outputs
+                    .next()
+                    .is_none()
+                    .then(|| (name, (output.handle.clone(), id)))
+            })
+            .collect();
         true
+    }
+    fn identity(&self, output: &Output) -> Option<&str> {
+        let (handle, id) = self.identities.get(output.name()?)?;
+        (handle == &output.handle).then_some(id.as_str())
     }
     pub fn key(&self, output: &Output) -> Option<String> {
         let name = output.name()?;
         self.unique(name)?;
-        self.identities
-            .get(name)
+        self.identity(output)
             .filter(|id| self.unique(id).is_some())
-            .cloned()
+            .map(str::to_owned)
             .or_else(|| Some(name.into()))
     }
     pub fn widget<'a>(
@@ -211,6 +231,87 @@ pub mod test_support;
 mod tests {
     use super::*;
     use test_support::{Wire, info};
+    #[test]
+    fn physical_aliases_end_with_the_unique_live_output() {
+        let wire = Wire::new();
+        let a = wire.output(1);
+        let b = wire.output(2);
+        let mut registry = Registry::default();
+        registry.update(
+            OutputEvent::Created(Some(info(Some("DP-1"), (1920, 1080)))),
+            a.clone(),
+        );
+        registry.accept_identities(
+            registry.generation,
+            [
+                ("DP-1".into(), "edid:old".into()),
+                ("absent".into(), "edid:absent".into()),
+            ]
+            .into(),
+        );
+        // Geometry changes do not invalidate identity on the same live object.
+        registry.update(
+            OutputEvent::InfoUpdate(info(Some("DP-1"), (1280, 720))),
+            a.clone(),
+        );
+        assert_eq!(registry.unique("edid:old").unwrap().handle, a);
+        registry.update(OutputEvent::Removed, a.clone());
+        registry.update(
+            OutputEvent::Created(Some(info(Some("DP-1"), (1920, 1080)))),
+            b.clone(),
+        );
+        assert!(registry.unique("edid:old").is_none());
+        assert_eq!(
+            registry.key(registry.unique("DP-1").unwrap()).as_deref(),
+            Some("DP-1")
+        );
+        registry.update(
+            OutputEvent::Created(Some(info(Some("absent"), (1920, 1080)))),
+            a.clone(),
+        );
+        assert!(registry.unique("edid:absent").is_none());
+        registry.accept_identities(
+            registry.generation,
+            [("DP-1".into(), "edid:new".into())].into(),
+        );
+        registry.update(
+            OutputEvent::InfoUpdate(info(Some("DP-2"), (1920, 1080))),
+            b.clone(),
+        );
+        registry.update(
+            OutputEvent::InfoUpdate(info(Some("DP-1"), (1920, 1080))),
+            a.clone(),
+        );
+        assert!(
+            registry.unique("edid:new").is_none(),
+            "renaming cannot transfer an alias to another output"
+        );
+        registry.accept_identities(
+            registry.generation,
+            [("DP-1".into(), "edid:a".into())].into(),
+        );
+        registry.update(
+            OutputEvent::InfoUpdate(info(Some("DP-1"), (1920, 1080))),
+            b.clone(),
+        );
+        registry.accept_identities(
+            registry.generation,
+            [("DP-1".into(), "edid:ambiguous".into())].into(),
+        );
+        registry.update(OutputEvent::Removed, a);
+        assert!(registry.unique("edid:a").is_none() && registry.unique("edid:ambiguous").is_none());
+        registry.accept_identities(
+            registry.generation,
+            [("DP-1".into(), "edid:b".into())].into(),
+        );
+        assert_eq!(registry.unique("edid:b").unwrap().handle, b);
+        assert!(!registry.accept_identities(
+            registry.generation - 1,
+            [("DP-1".into(), "edid:old".into())].into()
+        ));
+        assert!(registry.unique("edid:old").is_none());
+    }
+
     #[test]
     fn monitor_pinning_registry_orders_live_handles_and_waits_for_metadata() {
         let wire = Wire::new();

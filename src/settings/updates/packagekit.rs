@@ -18,35 +18,12 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Package installation outlives a Settings window. Files are retained when a
 /// lost connection/timeout leaves the daemon's outcome unknown.
-pub(super) async fn install_bootstrap(
-    prepared: std::sync::Arc<super::enrollment::Prepared>,
-    progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
-) -> Result<(), Failure> {
-    if prepared.kind != super::enrollment::Kind::Updates {
-        return Err(Failure::Untrusted);
-    }
-    if super::identity::isolated() {
-        return Err(Failure::InstallationChanged);
-    }
-    let connection = timeout(STEP_TIMEOUT, Connection::system())
-        .await
-        .map_err(|_| Failure::Timeout)?
-        .map_err(|_| Failure::MissingPackageKit)?;
-    install_progress(&connection, &prepared, progress).await
-}
 #[cfg(test)]
 pub(super) async fn install_on(
     connection: &Connection,
     prepared: &super::enrollment::Prepared,
 ) -> Result<(), Failure> {
-    install_progress(connection, prepared, None).await
-}
-async fn install_progress(
-    connection: &Connection,
-    prepared: &super::enrollment::Prepared,
-    progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
-) -> Result<(), Failure> {
-    files_transaction(connection, prepared, progress, false)
+    files_transaction(connection, prepared, false)
         .await
         .map(|_| ())
 }
@@ -104,7 +81,7 @@ fn islands_local_trust_annotation_is_scoped_to_the_pinned_file() {
 }
 
 pub(super) async fn prepare_islands(prepared: &super::enrollment::Prepared) -> Result<(), Failure> {
-    if super::identity::isolated() || prepared.kind != super::enrollment::Kind::Islands {
+    if super::identity::isolated() {
         return Err(Failure::InstallationChanged);
     }
     let connection = timeout(STEP_TIMEOUT, Connection::system())
@@ -128,14 +105,14 @@ pub(super) async fn islands_preflight(
     if !active.is_empty() {
         return Err(Failure::Busy);
     }
-    let changes = files_transaction(connection, prepared, None, true).await?;
+    let changes = files_transaction(connection, prepared, true).await?;
     islands_plan(&changes, &super::enrollment::islands_version()?)
 }
 
 pub(super) async fn install_islands(
     prepared: std::sync::Arc<super::enrollment::Prepared>,
 ) -> Result<(), Failure> {
-    if super::identity::isolated() || prepared.kind != super::enrollment::Kind::Islands {
+    if super::identity::isolated() {
         return Err(Failure::InstallationChanged);
     }
     let connection = timeout(STEP_TIMEOUT, Connection::system())
@@ -145,13 +122,14 @@ pub(super) async fn install_islands(
     // Repeat the simulation immediately before authorizing; never turn a
     // previously displayed plan into an unrelated package upgrade/repair.
     islands_preflight(&connection, &prepared).await?;
-    install_progress(&connection, &prepared, None).await
+    files_transaction(&connection, &prepared, false)
+        .await
+        .map(|_| ())
 }
 
 async fn files_transaction(
     connection: &Connection,
     prepared: &super::enrollment::Prepared,
-    progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
     simulate: bool,
 ) -> Result<Vec<(u32, String)>, Failure> {
     prepared.verify()?;
@@ -213,9 +191,6 @@ async fn files_transaction(
         // These exact hash-pinned local .debs are not repository-signed packages.
         // This is the OS's explicit localinstall authorization, never a retry
         // that weakens a rejected repository trust check.
-        if let Some(progress) = &progress {
-            let _ = progress.send(super::InstallPhase::Authorizing);
-        }
         proxy
             .call::<_, _, ()>(
                 "InstallFiles",
@@ -223,9 +198,6 @@ async fn files_transaction(
             )
             .await
             .map_err(bus_error)?;
-        if let Some(progress) = &progress {
-            let _ = progress.send(super::InstallPhase::Installing);
-        }
         let mut failure = None;
         let mut packages = Vec::new();
         while let Some(message) = signals.next().await {

@@ -390,6 +390,11 @@ impl Settings {
                 } else {
                     "go-down-symbolic"
                 }))
+                .tooltip(if expanded {
+                    "Hide matching windows"
+                } else {
+                    "Show matching windows"
+                })
                 .extra_small()
                 .on_press(edit(Edit::Expand((!expanded).then(|| pair.clone()))))
                 .into(),
@@ -423,6 +428,7 @@ impl Settings {
             );
             controls.push(
                 button::icon(icon::from_name("list-remove-symbolic"))
+                    .tooltip("Remove window rule")
                     .extra_small()
                     .on_press_maybe(
                         editable.then(|| edit(Edit::Remove(pair.0.clone(), pair.1.clone()))),

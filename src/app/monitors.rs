@@ -9,8 +9,10 @@ pub(super) struct Probe {
 }
 impl Cards {
     pub(super) fn arrange_on_display(&mut self, display: String) -> Task<Message> {
-        if self.displays.unique(&display).is_none()
-            || self.layout_editor.active
+        let Some(output) = self.displays.unique(&display) else {
+            return Task::none();
+        };
+        if self.layout_editor.active
             || self
                 .paused_layout
                 .as_ref()
@@ -18,14 +20,32 @@ impl Cards {
         {
             return Task::none();
         }
+        self.pending_arrange = Some(output.handle.clone());
         self.paused_layout = None;
         self.arrange_display = Some(display);
         let migrate = self.reconcile_output();
         if self.output_known {
-            Task::batch([migrate, self.arrange()])
+            Task::batch([migrate, self.complete_pending_arrange()])
         } else {
-            self.pending_arrange = true;
             migrate
+        }
+    }
+
+    pub(super) fn complete_pending_arrange(&mut self) -> Task<Message> {
+        let Some(expected) = self.pending_arrange.take() else {
+            return Task::none();
+        };
+        if self.output_known
+            && self
+                .selected_output
+                .as_ref()
+                .is_some_and(|o| o.handle == expected)
+            && self.displays.outputs().iter().any(|o| o.handle == expected)
+        {
+            self.arrange()
+        } else {
+            self.arrange_display = None;
+            self.reconcile_output()
         }
     }
 

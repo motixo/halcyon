@@ -15,7 +15,13 @@ impl Cards {
         self.apply_config(config)
     }
     pub(super) fn next_wake(&self) -> Option<Instant> {
-        let visible = |widget| self.config.data_visible(widget);
+        let visible = |widget| {
+            if widget == Widget::Calendar {
+                self.calendar_demand()
+            } else {
+                self.provider_visible(widget)
+            }
+        };
         [
             (self.provider_visible(Widget::Clock)).then_some(self.next_clock),
             (visible(Widget::Calendar)).then_some(self.next_calendar_view),
@@ -34,13 +40,13 @@ impl Cards {
                 .then_some(self.next_projects),
             (visible(Widget::Calendar)
                 && self.calendar_connection.connected()
-                && !self.calendar_fetching)
-                .then_some(self.next_calendar),
+                && self.calendar_can_start())
+            .then_some(self.next_calendar),
             (visible(Widget::Calendar)
                 && self.calendar_connection.connected()
                 && self.month != Local::now().date_naive().with_day(1).unwrap()
-                && !self.today_fetching)
-                .then_some(self.next_today_calendar),
+                && self.today_calendar_can_start(&Local::now().format("%Y-%m").to_string()))
+            .then_some(self.next_today_calendar),
         ]
         .into_iter()
         .flatten()
@@ -154,7 +160,7 @@ impl Cards {
             tasks.push(self.reconcile_output());
         }
         tasks.push(self.wallpaper_colors_changed());
-        if !self.config.widget_visible(Widget::Music) {
+        if !self.provider_visible(Widget::Music) {
             // Followed again from scratch when shown.
             self.tools.feed = None;
         }
@@ -208,7 +214,7 @@ impl Cards {
                 self.config.refresh_intervals.duration(Widget::Clock),
             );
         }
-        if self.config.data_visible(Widget::Calendar) && now >= self.next_calendar_view {
+        if self.calendar_demand() && now >= self.next_calendar_view {
             // Local meeting highlights and midnight transitions stay timely even
             // when the Google fetch interval is long.
             self.next_calendar_view =
@@ -217,7 +223,7 @@ impl Cards {
             // Keep custom surfaces and the Settings miniature in sync as well.
             tasks.push(self.sync_widget_surfaces());
         }
-        if self.config.data_visible(Widget::Devbox) {
+        if self.provider_visible(Widget::Devbox) {
             if self.config.devbox.needs_sample()
                 && !self.metrics_fetching
                 && now >= self.next_metrics
@@ -252,29 +258,24 @@ impl Cards {
             }
         }
         tasks.extend(self.refresh_weather(now));
-        if self.config.data_visible(Widget::Projects)
+        if self.provider_visible(Widget::Projects)
             && !self.config.project_roots.is_empty()
             && !self.projects_fetching
             && now >= self.next_projects
         {
             tasks.push(self.projects_task());
         }
-        if self.config.data_visible(Widget::Calendar) && self.calendar_connection.connected() {
+        if self.calendar_demand() && self.calendar_connection.connected() {
             let today = Local::now().date_naive();
+            let month = today.format("%Y-%m").to_string();
             if self.month != today.with_day(1).unwrap()
-                && !self.today_fetching
+                && self.today_calendar_can_start(&month)
                 && now >= self.next_today_calendar
             {
-                self.today_fetching = true;
-                let connection = self.calendar_connection.clone();
-                tasks.push(cosmic::task::future(async move {
-                    Message::CalendarToday(
-                        connection.revision.clone(),
-                        crate::calendar::fetch(connection, today.format("%Y-%m").to_string()).await,
-                    )
-                }));
+                self.today_fetching = Some(month.clone());
+                tasks.push(self.calendar_month_task(month));
             }
-            if !self.calendar_fetching && now >= self.next_calendar {
+            if self.calendar_can_start() && now >= self.next_calendar {
                 tasks.push(self.calendar_task());
             }
         }
@@ -283,7 +284,10 @@ impl Cards {
     pub(super) fn projects_task(&mut self) -> Task<Message> {
         self.projects_fetching = true;
         let roots = self.config.project_roots.clone();
-        cosmic::task::future(async move { Message::Projects(roots, data::fetch_projects().await) })
+        cosmic::task::future(async move {
+            let result = data::fetch_projects(roots.clone()).await;
+            Message::Projects(roots, result)
+        })
     }
     pub(super) fn command_path() -> Option<std::path::PathBuf> {
         if std::env::var_os("DESKTOP_CARDS_CONFIG").is_some() {
@@ -334,7 +338,7 @@ impl Cards {
         }
     }
     pub(super) fn meeting_alert(&self) -> bool {
-        if !self.config.data_visible(Widget::Calendar) {
+        if !self.calendar_demand() {
             return false;
         }
         let now = Local::now();

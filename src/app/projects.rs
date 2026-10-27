@@ -668,15 +668,18 @@ fn estimated_text_lines(value: &str, size: f32, available: f32) -> f32 {
     lines
 }
 
-impl Cards {
-    pub(super) fn projects_natural_height(&self) -> f32 {
+/// Immutable inputs shared by desktop and Settings; no jobs or runtime handles.
+pub(super) struct Presentation<'a> {
+    pub config: &'a Config,
+    pub projects: Option<&'a ProjectsData>,
+    pub projects_fetching: bool,
+    pub projects_error: bool,
+    pub all_projects: bool,
+    pub expanded_projects: &'a BTreeSet<String>,
+}
+impl Presentation<'_> {
+    pub(super) fn natural_height(&self, width: f32) -> f32 {
         const CHROME: f32 = 116.; // Same header, footer, gaps and frame as projects_card.
-        let width = self
-            .explicit_size(Widget::Projects)
-            .map(|size| size[0])
-            .unwrap_or_else(|| {
-                360_f32.min((self.widget_screen(Widget::Projects)[0] - 48.).max(1.))
-            });
         let groups = self
             .projects
             .as_ref()
@@ -747,8 +750,8 @@ impl Cards {
         height.ceil().min(300.)
     }
 
-    pub(super) fn projects_card(&self) -> Element<'_, Message> {
-        let _style = crate::widget_style::scope(&self.config);
+    pub(super) fn view(&self, limit: f32, explicit: bool) -> Element<'static, Message> {
+        let _style = crate::widget_style::scope(self.config);
         let p = self.config.palette();
         let mut header = vec![spread(
             label("Projects", crate::widget_style::TITLE, p.foreground),
@@ -1007,8 +1010,6 @@ impl Cards {
         // The shared column uses the same bounded logical frame as placement
         // and input. Its contents scroll inside that frame instead of shrinking
         // the native tree behind the independently published geometry.
-        let explicit = !self.custom_layout() || self.explicit_size(Widget::Projects).is_some();
-        let limit = self.card_height(Widget::Projects);
         const CHROME: f32 = 116.; // header + footer + two gaps + frame padding
         if limit < CHROME + 44. {
             return card(
@@ -1056,6 +1057,34 @@ impl Cards {
             } else {
                 Length::Shrink
             },
+        )
+    }
+}
+
+impl Cards {
+    fn projects_presentation(&self) -> Presentation<'_> {
+        Presentation {
+            config: &self.config,
+            projects: self.projects.as_ref(),
+            projects_fetching: self.projects_fetching,
+            projects_error: self.projects_error,
+            all_projects: self.all_projects,
+            expanded_projects: &self.expanded_projects,
+        }
+    }
+    pub(super) fn projects_natural_height(&self) -> f32 {
+        let width = self
+            .explicit_size(Widget::Projects)
+            .map(|size| size[0])
+            .unwrap_or_else(|| {
+                360_f32.min((self.widget_screen(Widget::Projects)[0] - 48.).max(1.))
+            });
+        self.projects_presentation().natural_height(width)
+    }
+    pub(super) fn projects_card(&self) -> Element<'_, Message> {
+        self.projects_presentation().view(
+            self.card_height(Widget::Projects),
+            !self.custom_layout() || self.explicit_size(Widget::Projects).is_some(),
         )
     }
 }

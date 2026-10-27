@@ -17,6 +17,8 @@ sys.dont_write_bytecode = True
 HERE = Path(__file__).resolve().parent
 COMPANION = HERE.parent.parent / 'companion'
 sys.path.insert(0, str(COMPANION))
+sys.path.insert(0, str(HERE.parent))
+from version_policy import companion_depends
 import panel_launcher
 from bundle_contract import (HELPERS, canonical, identity, verify_bundle,
                              valid_catalog, read_catalog_bytes, digest, release_catalog)
@@ -106,7 +108,7 @@ def build(binary, manifest, version, out, licenses=None, catalog=None):
         if staged.read_bytes()[:4] == b'\x7fELF' and (shlibs.returncode != 0 or not native):
             raise ValueError('Cannot determine native library dependencies: ' + shlibs.stderr.strip())
         dependencies = ([native] if shlibs.returncode == 0 and native else ['libc6']) + [
-            'python3', 'cosmic-ext-halcyon'] + [
+            'python3', companion_depends(HERE.parent.parent)] + [
             name for name in panel_launcher.PACKAGES]
         size = sum(path.stat().st_size for path in staging.rglob('*') if path.is_file())
         control = staging / 'DEBIAN/control'

@@ -128,14 +128,17 @@ fn click(app: &mut Settings, native: &mut Native, id: &str) {
             .event(app.settings_view(), Event::Mouse(input), point)
             .0
         {
-            let _ = app.update(message);
+            super::tests::send_settings(app, message);
         }
     }
 }
 
 fn open(size: Size) -> (Settings, Native) {
     OPEN_WIZARD.store(true, std::sync::atomic::Ordering::Relaxed);
-    let (mut app, _) = Settings::init(Core::default(), Page::Overview);
+    let (mut app, initial) = Settings::init(Core::default(), Page::Overview);
+    if app.native_worker_needed() {
+        super::tests::settle_settings(&mut app, initial);
+    }
     let _ = app.update(Message::Resized(size));
     assert!(app.wizard.is_some());
     (app, Native::new(size))
@@ -362,6 +365,7 @@ fn every_screen_fits_and_cancel_puts_the_desktop_back() {
         return;
     }
     seed_desktop();
+    crate::test_env::native_worker(&desktop_root(), true);
     for size in [Size::new(820., 600.), Size::new(1280., 800.)] {
         let (mut app, mut native) = open(size);
         let theme = controls_theme(&app.config);
@@ -689,6 +693,7 @@ fn dock_panel_navigation_does_not_wait_for_islands_and_checks_discover_once() {
     let store = crate::desktop::DesktopStore::from_env().unwrap();
     app.desktop.islands.installation = crate::desktop::islands::Installation::discover(&store);
     let counter = root.join("check-count");
+    crate::test_env::native_worker(&root, true);
     std::fs::write(root.join("slow-islands-probe.py"), format!(
         "import pathlib,time\np=pathlib.Path({:?})\np.write_text(str(int(p.read_text())+1 if p.exists() else 1))\ntime.sleep(0.3)\nprint(pathlib.Path({:?}).read_text())\n",
         counter.to_str().unwrap(), root.join("islands-installation.json").to_str().unwrap()
@@ -1048,6 +1053,7 @@ fn onboarding_widgets_worker_serializes_apply_and_queued_back() {
     let _ = app.update(Message::Wizard(wizard::Message::Widget(Widget::Notes)));
     let _ = app.update(Message::Wizard(wizard::Message::Next));
     // The same worker admission as the installed app, on the private desktop.
+    crate::test_env::native_worker(&desktop_root(), true);
     std::fs::write(
         desktop_root().join("status-islands-probe.py"),
         "print('{}')\n",
@@ -1347,6 +1353,7 @@ fn auditfix_ob05_undo_then_cancel(worker: bool) {
     let id = store.latest_change().unwrap().unwrap().id;
     assert_ne!(Config::load().notes.enabled, before_notes);
     if worker {
+        crate::test_env::native_worker(&desktop_root(), true);
         std::fs::write(
             desktop_root().join("status-islands-probe.py"),
             "print('{}')\n",
@@ -1358,6 +1365,7 @@ fn auditfix_ob05_undo_then_cancel(worker: bool) {
         assert!(app.native_busy);
         auditfix_complete_native(&mut app, task);
         std::fs::remove_file(desktop_root().join("status-islands-probe.py")).unwrap();
+        crate::test_env::native_worker(&desktop_root(), false);
     }
     assert!(!app.error, "{}", app.status);
     assert_eq!(Config::load().notes.enabled, before_notes);
@@ -1429,6 +1437,7 @@ fn auditfix_ob06_rendered_next_cannot_apply_after_worker_navigation() {
         Message::Wizard(wizard::Message::Rendered(wizard::Step::Widgets, _, _))
     ));
     let before = wizard::widgets::raw().unwrap();
+    crate::test_env::native_worker(&desktop_root(), true);
     std::fs::write(
         desktop_root().join("status-islands-probe.py"),
         "print('{}')\n",
@@ -1452,9 +1461,11 @@ fn auditfix_ob06_rendered_next_cannot_apply_after_worker_navigation() {
     assert_eq!(step(&app), wizard::Step::Widgets);
     // A newly rendered Apply commits once; a duplicate cannot skip Weather.
     std::fs::remove_file(desktop_root().join("status-islands-probe.py")).unwrap();
+    crate::test_env::native_worker(&desktop_root(), false);
     let _ = app.update(Message::Wizard(wizard::Message::Widget(Widget::Weather)));
     let _ = app.update(Message::Wizard(wizard::Message::Next));
     let apply = Message::Wizard(app.wizard.as_ref().unwrap().rendered(wizard::Message::Next));
+    crate::test_env::native_worker(&desktop_root(), true);
     std::fs::write(
         desktop_root().join("status-islands-probe.py"),
         "print('{}')\n",
@@ -1545,6 +1556,7 @@ fn auditfix_state02_shown_undo(app: &mut Settings, id: &str, worker: bool) {
     );
     let probe = desktop_root().join("status-islands-probe.py");
     if worker {
+        crate::test_env::native_worker(&desktop_root(), true);
         std::fs::write(&probe, "print('{}')\n").unwrap();
     }
     let task = app.update(Message::UndoDesktopShown(Some(id.into())));
@@ -1552,6 +1564,7 @@ fn auditfix_state02_shown_undo(app: &mut Settings, id: &str, worker: bool) {
     if worker {
         auditfix_complete_native(app, task);
         std::fs::remove_file(probe).unwrap();
+        crate::test_env::native_worker(&desktop_root(), false);
     }
     assert!(!app.native_busy);
     assert!(app.wizard.is_none());

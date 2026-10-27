@@ -1,5 +1,22 @@
 # Planned work
 
+## Architecture follow-up
+
+Updated 2026-10-27. The [follow-up tracker](ARCHITECTURE-FOLLOWUP.md) records
+the 34 reviewed items, their fixes or plan corrections, and validation evidence.
+These changes are local and are not included in the published 0.4.0 packages.
+
+## 0.5 — Sun-based appearance schedules
+
+Planned 2026-10-27 for [issue #14](https://github.com/profilaz3/halcyon/issues/14).
+[FB21](future-builder/FB21-PLAN.md) adds dawn, sunrise, solar noon, evening golden
+hour and sunset to the existing scheduler. Use the Weather widget's city when
+enabled, with a manual city fallback when Weather is off. Calculate times locally
+and keep widget placement/content unchanged. Existing pause, manual overrides,
+Undo and recovery remain in charge. The reviewed contract covers the current
+singleton Weather binding, independent manual cities, city time zones and
+stale-location rejection at commit. **Planned; not implemented.**
+
 ## Future builder foundations
 
 Updated 2026-10-27. **FB05–FB19 are implemented, reviewed and locally validated.**

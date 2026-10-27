@@ -1,0 +1,61 @@
+{
+  "format": "halcyon-final-package-review",
+  "version": 1,
+  "decision": "approve-release",
+  "release": "0.4.1",
+  "policy_sha256": "bf468fa210858ec0e2d72ea320f4e30214cf2989ee7244901d2d68ed5cb0d4a8",
+  "bindings": {
+    "packages": {
+      "main": {
+        "sha256": "fa4fb9bd9eba3640a5fdd9ba4a5284771f49f4ffbfdba517b358f8ede2d6ce67",
+        "elf_sha256": "a9929158ff6bfd61d950b3222b627abec4ef3da0587cee811d514e8851c03704"
+      },
+      "islands": {
+        "sha256": "0536b1f07655df6e2abbe23c01ec7d3c435c0b8f9e6ada70652709e1b5ced1e6",
+        "elf_sha256": "11c321ed40d87a5daba4357338365b5ac4723254b99ff1b28fc9492dcbde01da"
+      }
+    },
+    "payload_sha256": "921e29caa0f42468fcb950fcba5a84db5ea663b4f401d60434f1d3ca108faa78",
+    "catalog_sha256": "46632398235ba85bbe9a1b36ddd3d2ea04ea9ba1ca7f9089f6584e8f359899bd",
+    "helpers": {
+      "panel_launcher.py": "8ee52f89a0b215c6074ebc93ff14662bcc7df5aaed6b4c73752720e949f8ed97",
+      "bundle_contract.py": "bf7854036c3ba5e4a7ede7b359d1beb3e727e7805b5a794ccaedf7e7b5e395dd",
+      "runtime_identity.py": "962599de58e0be3c1cfbb92e4a39f9335e4869a51a088fd6e957c328434e8844",
+      "install_status.py": "73d99107b2fde4546c4f7a613921a2062777dbe2fae1f193ed578a0fd725e0d7",
+      "journal.py": "97a5c61e85f777706c5a0bf7ae6ab012e1ba5842b77c374c9f827edba81e35a8",
+      "install.py": "db8735fef7aedc9c75ce65d0af1384f2ad9359f6220a188335c52f1b328642f4",
+      "refresh.py": "6414aaf6ecf432e8b236afdce493e318a40a734d6b0867b33b5b12f740c469e5",
+      "selector.py": "69c504b6cb094b79f08f0c6c913252864317347596f8203956f9a1486bf0c2d5",
+      "panel_configuration.py": "523c44b8f643f9c207d4f2f607dca14b55b510aa4a22ec64c07452ea2531f7f6",
+      "runtime_target.py": "38e3252a3aba45c18c29c88cfbdc8beebcc1073468e67c4c73d28ac84debf931",
+      "verification.py": "370f5a6975d7ab48ebbdeb357fbe0c1d427bd45958f0352891cb4f4b47f422fe",
+      "runtime_compatibility.py": "326bd185954617573fc1209efeda55d294076153b20cb75b20c734e9d2e48994"
+    },
+    "activation_cli_sha256": "bc6870aa79eaa3b891d77facb2649300ef8175c63536a22e78bdbbdf21a5b2f3"
+  },
+  "limitations": [
+    "physical-hardware-not-qualified",
+    "cosmic-1.10-not-native-qualified",
+    "not-full-native-matrix"
+  ],
+  "observations": {
+    "installation": "passed",
+    "settings": "passed"
+  },
+  "scope": {
+    "environment": "native-settings-and-offline-package-upgrade",
+    "cosmic_family": "1.11",
+    "image_sha256": "55a897cae379bae66e664383d698502756ebb3cc9d0b4fb0cb26c4d6cb02c3f3",
+    "settings_sizes": [
+      "820x600",
+      "1280x800"
+    ],
+    "network": "none",
+    "upgrade_from": "0.4.0"
+  },
+  "evidence": {
+    "file": "halcyon-0.4.1-validation-evidence.zip",
+    "sha256": "2d0f5a1c961b2f790e7295049a09ca0bae6e918737405767f318076f0d3a7d8f"
+  },
+  "review_reference": "docs/releases/0.4.1-acceptance.md"
+}

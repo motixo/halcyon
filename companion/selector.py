@@ -176,12 +176,18 @@ class OwnedHost:
 
 
 
+def display_identity(env):
+    # Keep the launcher's socket semantics without trusting generation helpers.
+    display = env.get('WAYLAND_DISPLAY', 'wayland-0')
+    return display if display.startswith('/') else str(Path(env.get('XDG_RUNTIME_DIR', '')) / display)
+
+
 def fallback():
     """Fail closed without importing a damaged generation or duplicating a host."""
     runtime = os.environ.get('XDG_RUNTIME_DIR')
     if not runtime:
         return 1
-    display = os.environ.get('WAYLAND_DISPLAY')
+    display = display_identity(os.environ)
     for process in Path('/proc').iterdir():
         if not process.name.isdigit() or int(process.name) == os.getpid():
             continue
@@ -190,10 +196,10 @@ def fallback():
                 continue
             if (process/'exe').resolve().name.removesuffix(' (deleted)') not in ('cosmic-panel','cosmic-panel-islands'):
                 continue
-            env = dict(item.split(b'=',1) for item in (process/'environ').read_bytes().split(b'\0') if b'=' in item)
-            if env.get(b'XDG_RUNTIME_DIR') == runtime.encode() and env.get(b'WAYLAND_DISPLAY') == (display or '').encode():
+            env = dict(item.split('=',1) for item in (process/'environ').read_bytes().decode().split('\0') if '=' in item)
+            if display_identity(env) == display:
                 return 0
-        except OSError:
+        except (OSError, UnicodeError):
             continue
     fd = os.open(Path(runtime)/'desktop-cards-panel.lock', os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW, 0o600)
     try:

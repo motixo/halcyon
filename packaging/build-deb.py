@@ -17,6 +17,8 @@ import tempfile
 
 
 REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from version_policy import require_main_version, main_breaks
 PACKAGE = "cosmic-ext-halcyon"
 APP_ID = "io.github.profilaz3.Halcyon"
 MAINTAINER = "profilaz3 <261673162+profilaz3@users.noreply.github.com>"
@@ -100,6 +102,9 @@ def build(args):
     package = PACKAGE if release_updates else PACKAGE + "-dev"
     if not re.fullmatch(r"[0-9][A-Za-z0-9.+~\-]*", args.version):
         raise ValueError("version must be a Debian version without an epoch or path separators")
+    if release_updates:
+        require_main_version(REPO, args.version)
+        breaks = main_breaks(REPO)
     binary = args.binary.resolve(strict=True)
     if not binary.is_file():
         raise ValueError("binary must be a regular file")
@@ -120,7 +125,7 @@ def build(args):
         install(REPO / "scripts/desktop-cards", usr / "bin/halcyon-ctl", 0o755)
         install(REPO / "companion/panel_launcher.py", usr / "lib" / PACKAGE / "panel_launcher.py")
         install(REPO / "companion/install_status.py", usr / "lib" / PACKAGE / "islands-status.py", 0o755)
-        for helper in ("bundle_contract.py", "runtime_identity.py", "refresh.py", "install.py", "panel_configuration.py", "runtime_target.py", "verification.py", "runtime_compatibility.py"):
+        for helper in ("bundle_contract.py", "journal.py", "runtime_identity.py", "panel_configuration.py", "runtime_target.py", "verification.py", "runtime_compatibility.py"):
             install(REPO / "companion" / helper, usr / "lib" / PACKAGE / helper)
         for name in ("calendar-sync.py", "project-status.py"):
             install(REPO / "scripts" / name, usr / "lib" / PACKAGE / name, 0o755)
@@ -173,7 +178,7 @@ def build(args):
         )
         (control / "control").write_text(
             f"Package: {package}\nVersion: {args.version}\nArchitecture: amd64\n"
-            + (f"Conflicts: {PACKAGE}\nReplaces: {PACKAGE}\n" if development else "") +
+            + (f"Conflicts: {PACKAGE}\nReplaces: {PACKAGE}\n" if development else f"Breaks: {breaks}\n") +
             "Section: x11\nPriority: optional\n"
             f"Maintainer: {MAINTAINER}\nHomepage: {HOMEPAGE}\n"
             f"Installed-Size: {installed_size}\nDepends: {depends}\n"

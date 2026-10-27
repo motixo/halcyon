@@ -266,20 +266,7 @@ impl Settings {
                 let display = self.desktop.display_snapshot();
                 let mut editor = std::mem::replace(&mut self.desktop, display);
                 let edit = edit.clone();
-                let start = if editor.selected == crate::desktop::panels::PanelKind::Dock {
-                    8
-                } else {
-                    16
-                };
-                self.native_property |= match edit {
-                    desktop::Message::Opacity(_) => 1 << start,
-                    desktop::Message::Radius(_) | desktop::Message::RadiusChoice(_) => {
-                        1 << (start + 1)
-                    }
-                    desktop::Message::Padding(_) => 1 << (start + 2),
-                    desktop::Message::Spacing(_) => 1 << (start + 3),
-                    _ => 0,
-                };
+                self.native_property |= direct::bar_property(editor.selected, &edit);
                 let property = direct::property(self, message);
                 if property != 0 {
                     self.native_property = 0;
@@ -664,6 +651,7 @@ mod review030_tests {
         let root =
             std::path::PathBuf::from(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap());
         crate::desktop::islands::fixture_installed(&root);
+        crate::test_env::native_worker(&root, true);
         std::fs::write(root.join("status-islands-probe.py"), "import pathlib\nprint((pathlib.Path(__file__).parent/'islands-installation.json').read_text())\n").unwrap();
         Config::save_changes(serde_json::json!({"theme":"teal"})).unwrap();
         let original = std::fs::read(Config::path().unwrap()).unwrap();
@@ -736,6 +724,7 @@ mod review030_tests {
             std::path::PathBuf::from(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap());
         crate::desktop::islands::fixture_installed(&root);
         // Force the actual native-worker boundary without invoking a real helper.
+        crate::test_env::native_worker(&root, true);
         std::fs::write(root.join("status-islands-probe.py"), "import pathlib\nprint((pathlib.Path(__file__).parent/'islands-installation.json').read_text())\n").unwrap();
         for restore in [true, false] {
             Config::save_changes(serde_json::json!({"theme":"teal"})).unwrap();

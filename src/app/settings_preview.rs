@@ -111,7 +111,31 @@ pub(super) fn weather_sample(today: NaiveDate) -> Weather {
     weather
 }
 
-/// Offline examples for the calendar, projects and overview; no workers,
+/// Projects preview needs only immutable sample readings and the chosen style.
+/// The caller maps every action to Preview, so links and refresh stay inactive.
+pub(crate) fn settings_projects_preview(config: &Config) -> Element<'static, Message> {
+    static SAMPLE: OnceLock<(ProjectsData, std::collections::BTreeSet<String>)> = OnceLock::new();
+    let (data, expanded) = SAMPLE.get_or_init(|| {
+        let projects=serde_json::from_value(serde_json::json!({"updated_at": Local::now().to_rfc3339(),"projects":[{
+            "path":"/sample/atlas","name":"Atlas","title":"Atlas","repository_id":"sample-atlas",
+            "group":"sample", "upstream":true, "error":false,
+            "branch":"main","changed":2,"untracked":0,"conflicts":0,"ahead":0,"behind":0,
+            "servers":[{"port":5173,"web":true}],"recent":0.0
+        }]})).expect("static project preview is valid");
+        (projects, Default::default())
+    });
+    let view = projects::Presentation {
+        config,
+        projects: Some(data),
+        projects_fetching: false,
+        projects_error: false,
+        all_projects: false,
+        expanded_projects: expanded,
+    };
+    view.view(view.natural_height(360.), false)
+}
+
+/// Offline examples for the calendar and overview; no workers,
 /// account lookup, note loading, file reads or compositor tasks are started.
 pub(crate) struct SettingsSamples {
     cards: Cards,
@@ -126,12 +150,6 @@ impl SettingsSamples {
         let calendar = Some(Self::calendar());
         let weather = None::<WeatherSnapshot>;
         let calendar_refresh = Duration::from_secs(3600);
-        let projects=serde_json::from_value(serde_json::json!({"updated_at": Local::now().to_rfc3339(),"projects":[{
-            "path":"/sample/atlas","name":"Atlas","title":"Atlas","repository_id":"sample-atlas",
-            "group":"sample", "upstream":true, "error":false,
-            "branch":"main","changed":2,"untracked":0,"conflicts":0,"ahead":0,"behind":0,
-            "servers":[{"port":5173,"web":true}],"recent":0.0
-        }]})).expect("static project preview is valid");
         let source = config;
         let config = config.clone();
         let cards = Cards {
@@ -143,7 +161,7 @@ impl SettingsSamples {
             displays: Default::default(),
             selected_output: None,
             arrange_display: None,
-            pending_arrange: false,
+            pending_arrange: None,
             widget_outputs: Vec::new(),
             extra_probes: Vec::new(),
             display_positions: Default::default(),
@@ -158,7 +176,7 @@ impl SettingsSamples {
             sidebar,
             desktop_height: 360.,
             calendar_height: 360.,
-            projects: Some(projects),
+            projects: None,
             projects_fetching: false,
             projects_error: false,
             next_projects: Instant::now(),
@@ -184,7 +202,7 @@ impl SettingsSamples {
             weather_cache: Default::default(),
             capture_key: None,
             calendar_today: calendar.clone(),
-            today_fetching: false,
+            today_fetching: None,
             calendar_today_error: false,
             calendar_preview: true,
             next_today_calendar: Instant::now() + calendar_refresh,
@@ -195,7 +213,7 @@ impl SettingsSamples {
                 ..Default::default()
             },
             calendar_error: false,
-            calendar_fetching: false,
+            calendar_fetching: None,
             next_calendar: Instant::now(),
             month,
             selected_day: today,
@@ -272,20 +290,17 @@ impl SettingsSamples {
             self.cards.calendar_card()
         }
     }
-    pub fn projects_view(&self) -> Element<'_, Message> {
-        self.cards.projects_card()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn sample_agenda_reaches_both_renderers_without_an_account() {
+    fn offline_samples_reach_calendar_glance_and_projects_renderers() {
         let mut config = Config::default();
         config.glance.enabled = true;
         config.glance.show_tomorrow = true;
-        let samples = SettingsSamples::new(&config);
+        let mut samples = SettingsSamples::new(&config);
         let today = Local::now().date_naive();
         assert_eq!(
             samples.cards.calendar.as_ref().unwrap().month,
@@ -300,10 +315,21 @@ mod tests {
                 .sum::<usize>()
                 >= 2
         );
-        assert_eq!(samples.cards.projects.as_ref().unwrap().projects.len(), 1);
         assert_eq!(
             samples.cards.config.glance.show_tomorrow,
             config.glance.show_tomorrow
         );
+        let mut native = crate::native_test::Native::new(cosmic::iced::Size::new(360., 520.));
+        for combined in [true, false] {
+            config.glance.enabled = combined;
+            samples.update(&config);
+            let pixels = native.render(samples.calendar_view(), &cosmic::Theme::dark());
+            assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] > 0));
+        }
+        // Projects now supplies its own immutable sample to the shared
+        // renderer, independently of the calendar's desktop-runtime fixture.
+        assert!(samples.cards.projects.is_none());
+        let pixels = native.render(settings_projects_preview(&config), &cosmic::Theme::dark());
+        assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] > 0));
     }
 }

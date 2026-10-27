@@ -121,3 +121,59 @@ fn fb08_logical_input_clips_fractional_and_invalid_frames() {
     assert!(input_rect([0., 0.], [f32::NAN, 180.], [400., 200.]).is_none());
     assert!(input_rect([0., 0.], [360., 180.], [f32::INFINITY, 200.]).is_none());
 }
+
+#[test]
+fn architecture_glance_input_changes_keep_surfaces_and_update_regions() {
+    if crate::displays::test_support::isolated(
+        "app::layout::foundation_tests::architecture_glance_input_changes_keep_surfaces_and_update_regions",
+    ) {
+        return;
+    }
+    use cosmic::iced::futures::StreamExt;
+    use cosmic::iced::platform_specific::runtime::wayland::layer_surface::Action as LayerAction;
+    use cosmic::iced::runtime::{Action as RuntimeAction, platform_specific, task};
+    fn layers(work: Task<Message>) -> Vec<LayerAction> {
+        let mut result = Vec::new();
+        if let Some(mut stream) = task::into_stream(work) {
+            cosmic::iced::futures::executor::block_on(async {
+                while let Some(action) = stream.next().await {
+                    match action {
+                        RuntimeAction::PlatformSpecific(platform_specific::Action::Wayland(
+                            platform_specific::wayland::Action::LayerSurface(action),
+                        )) => result.push(action),
+                        RuntimeAction::Output(message) => {
+                            panic!("unexpected deferred rebuild: {message:?}")
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
+        result
+    }
+    let mut config = Config::default();
+    config.glance.enabled = true;
+    config.glance.initialized = true;
+    config.glance.show_clock = true;
+    config.glance.show_weather = true;
+    config.glance.show_calendar = true;
+    config.widget_sizes.insert("glance".into(), [400., 900.]);
+    config.widget_positions.insert("glance".into(), [0.1, 0.1]);
+    let (mut cards, _) = Cards::init(Core::default(), config);
+    let _wire = cards.test_output_ready();
+    cards.surface_geometry = Some(cards.surface_geometry());
+    let _ = layers(cards.sync_widget_surfaces());
+    let ids = cards.ids;
+    let before = cards.card_input_rects(Widget::Glance);
+    cards.config.glance.show_weather = false;
+    let after = cards.card_input_rects(Widget::Glance);
+    assert_ne!(before, after);
+    let emitted = layers(cards.sync_widget_surfaces());
+    assert_eq!(ids, cards.ids);
+    assert!(!cards.rebuild_pending);
+    assert!(emitted.iter().any(|action| matches!(action, LayerAction::InputZone {id, ..} if *id == cards.widget_id(Widget::Glance))));
+    assert!(!emitted.iter().any(|action| matches!(
+        action,
+        LayerAction::LayerSurface { .. } | LayerAction::Destroy(_)
+    )));
+}

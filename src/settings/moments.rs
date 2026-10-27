@@ -9,6 +9,17 @@ pub enum Message {
     BaseClock(bool),
     Clock(Option<Phase>, &'static str, serde_json::Value),
 }
+/// The four Clock appearance choices shared by base settings and Moments.
+/// A rendered Moment action captures its phase before it enters the queue.
+pub(super) fn clock_style_edit(edit: &super::Message) -> Option<(&'static str, serde_json::Value)> {
+    Some(match edit {
+        super::Message::ClockFace(value) => ("face", json!(value)),
+        super::Message::ClockWeight(value) => ("weight", json!(value)),
+        super::Message::ClockItalic(value) => ("italic", json!(value)),
+        super::Message::ClockSurface(value) => ("surface", json!(value)),
+        _ => return None,
+    })
+}
 impl Settings {
     pub(super) fn moment_sample(&self) -> Config {
         let mut config = self.config.clone();
@@ -26,12 +37,8 @@ impl Settings {
             .flatten()
     }
     pub(super) fn clock_moment_edit(&self, edit: super::Message) -> super::Message {
-        let (key, value) = match edit {
-            super::Message::ClockFace(value) => ("face", json!(value)),
-            super::Message::ClockWeight(value) => ("weight", json!(value)),
-            super::Message::ClockItalic(value) => ("italic", json!(value)),
-            super::Message::ClockSurface(value) => ("surface", json!(value)),
-            other => return other,
+        let Some((key, value)) = clock_style_edit(&edit) else {
+            return edit;
         };
         super::Message::Moment(Message::Clock(self.clock_moment_target(), key, value))
     }

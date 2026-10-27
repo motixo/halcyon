@@ -130,6 +130,18 @@ impl ColorRole {
             Self::Outline => "outline",
         }
     }
+    pub fn config_key(self, variant: ThemeVariant) -> ConfigKey {
+        builder_key(
+            variant,
+            match self {
+                Self::Accent => "accent",
+                Self::Background => "bg_color",
+                Self::Primary => "primary_container_bg",
+                Self::Secondary => "secondary_container_bg",
+                Self::Outline => "window_hint",
+            },
+        )
+    }
     pub fn parse(value: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|role| role.key() == value)
     }

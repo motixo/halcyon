@@ -1,12 +1,16 @@
 # Distribution and system updates
 
-[Halcyon 0.3.0 is published](https://github.com/profilaz3/halcyon/releases/tag/v0.3.0), including the main app, optional Islands and signed APT packages.
+The main app and optional Islands package are available from
+[GitHub Releases](https://github.com/profilaz3/halcyon/releases/latest) and signed APT.
 The signed channel is `https://profilaz3.github.io/halcyon/apt`, suite `noble`,
 component `main`, architecture `amd64` (Intel and AMD x86-64 PCs).
 
-For a new installation, [download the main app](https://github.com/profilaz3/halcyon/releases/download/v0.3.0/cosmic-ext-halcyon_0.3.0_amd64.deb), open it with COSMIC Store and install it. Then open Halcyon from the launcher. [Terminal fallback](../README.md#install).
+For a new installation, open the
+[latest release](https://github.com/profilaz3/halcyon/releases/latest), download
+`cosmic-ext-halcyon_<version>_amd64.deb`, and open it with COSMIC Store to install.
+Then open Halcyon from the launcher. [Terminal fallback](#install-a-downloaded-package).
 
-**0.3.0 enables signed system updates on a clean package install.** No bootstrap
+**Release packages since 0.3.0 enable signed system updates on a clean install.** No bootstrap
 download is needed. The main package contains the reviewed public key, scoped
 source and restrictive pins. Its installation script enrolls once, offline,
 inside the original install transaction. The system may fetch ordinary missing
@@ -20,8 +24,21 @@ Halcyon never collects a password or turns on unattended installation.
 Existing enrollment, disabled/deleted sources and administrator modifications
 are preserved. A clean upgrade from an unenrolled 0.2.5 manual package enrolls;
 a previous enrollment decision is retained. Islands stays optional. Source and
-per-user installs do not add system repositories. Older verified manual packages
-retain **Enable system updates…** as an explicit recovery/enrollment path.
+per-user installs do not add system repositories. For older manual installations
+or recovery, use the explicit terminal enrollment below. The app does not
+re-enable a source that an administrator disabled or removed.
+
+## Install a downloaded package
+
+If COSMIC Store cannot install the downloaded file, open a terminal in its folder
+and run the following, replacing `VERSION` with the version in its filename:
+
+```sh
+sudo apt install ./cosmic-ext-halcyon_VERSION_amd64.deb
+```
+
+APT installs the local package and resolves missing dependencies through the
+system repositories. An internet connection is needed for those downloads.
 
 ## Enroll an older/manual installation
 
@@ -57,7 +74,7 @@ and `halcyon-update-source` from this origin. No COSMIC version holds are added.
 
 ## Install or update
 
-After explicitly enrolling a machine and refreshing its package lists:
+Once the Halcyon source is enabled and its package lists are refreshed:
 
 ```sh
 sudo apt install cosmic-ext-halcyon
@@ -65,8 +82,8 @@ sudo apt install cosmic-ext-halcyon
 
 Existing package installations update normally through APT or **COSMIC Store →
 Updates**. The app's Updates row offers an explicit check and opens COSMIC Store
-for app upgrades. The explicit enrollment flow for older manual installations installs only the two bootstrap
-packages through the OS installer. Halcyon never collects passwords. Unattended installation depends
+for app upgrades. The terminal enrollment below installs only the two bootstrap
+packages through APT. Halcyon never collects passwords. Unattended installation depends
 on the user's OS policy. Store search discovery is separate from system updates;
 AppStream metadata and icons are provided, but a native Store search trial has not
 been claimed by this deployment work.
@@ -149,7 +166,9 @@ of a removed installation can use the explicit bootstrap above. If Python itself
 has already been removed, the removal script leaves the public configuration
 intact rather than leaving an active source without its key.
 
-## In-app Islands installation (next build; not in published 0.3.0)
+## In-app Islands installation
+
+Available since Halcyon 0.4.0.
 
 Open **App settings → Updates → Get Islands…**. Halcyon downloads and verifies
 one reviewed companion package, checks the proposed system changes, then asks

@@ -28,50 +28,52 @@ impl Area {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(super) enum SearchOpen {
+    #[default]
+    None,
+    City,
+    Effects,
+    Recent,
+    Readability,
+    Metric(crate::config::DevboxSection),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SearchHit {
     pub page: Page,
     pub label: &'static str,
     pub terms: &'static str,
     pub advanced: bool,
+    anchor: &'static str,
+    destination: AppSettingsPage,
+    pub(super) open: SearchOpen,
 }
 
 impl SearchHit {
     pub(super) fn app_destination(self) -> AppSettingsPage {
-        match self.label {
-            "Settings animations" | "Edge menu" => AppSettingsPage::Interface,
-            "Privacy & usage reporting" => AppSettingsPage::Privacy,
-            "Updates & installation" => AppSettingsPage::Updates,
-            "Restore previous desktop" | "Recent changes" => AppSettingsPage::Restore,
-            "Help & diagnostics" => AppSettingsPage::Help,
-            _ => AppSettingsPage::Operation,
-        }
+        self.destination
     }
-
     pub fn anchor(self) -> &'static str {
-        match self.label {
-            "Widget readability" => "contrast-assist",
-            "Settings animations" => "settings-motion",
-            "Dew point" => "weather-dew-point",
-            "Reorder readings" => "devbox-reorder-anchor",
-            "CPU & temperature" => "devbox-cpu",
-            "Memory usage" => "devbox-memory",
-            "Disk usage" => "devbox-disk",
-            "Network activity" => "devbox-network",
-            "GPU readings" => "devbox-gpu",
-            "Fonts & icon theme" => "appearance-fonts",
-            "Custom surface colors" => "appearance-colors",
-            "Desktop effects" => "appearance-effects",
-            "Dock timing & spacing" => "dock-advanced",
-            _ if self.advanced => "settings-advanced",
-            _ => "page-start",
-        }
+        self.anchor
+    }
+    const fn at(mut self, anchor: &'static str) -> Self {
+        self.anchor = anchor;
+        self
+    }
+    const fn destination(mut self, destination: AppSettingsPage) -> Self {
+        self.destination = destination;
+        self
+    }
+    const fn open(mut self, open: SearchOpen) -> Self {
+        self.open = open;
+        self
     }
 }
 
 impl Settings {
     pub(super) fn prepare_search_control(&mut self, hit: SearchHit) {
-        if hit == WIDGET_READABILITY {
+        if hit.open == SearchOpen::Readability {
             self.material_target = crate::materials::Target::Widgets;
             self.material_adjust = true;
         }
@@ -213,7 +215,9 @@ pub(super) const WIDGET_READABILITY: SearchHit = hit(
     "Widget readability",
     "contrast readability bright wallpaper readable text",
     true,
-);
+)
+.at("contrast-assist")
+.open(SearchOpen::Readability);
 
 const SEARCH: &[SearchHit] = &[
     hit(
@@ -221,13 +225,16 @@ const SEARCH: &[SearchHit] = &[
         "Help & diagnostics",
         "help diagnostics support problem report status troubleshoot",
         false,
-    ),
+    )
+    .destination(AppSettingsPage::Help),
     hit(
         Page::General,
         "Recent changes",
         "why did my desktop change history automatic schedule undo recent changes",
         false,
-    ),
+    )
+    .destination(AppSettingsPage::Restore)
+    .open(SearchOpen::Recent),
     hit(
         Page::Themes,
         "Shared desktop themes",
@@ -240,25 +247,30 @@ const SEARCH: &[SearchHit] = &[
         "Settings animations",
         "settings animations motion transitions disclosure",
         false,
-    ),
+    )
+    .at("settings-motion")
+    .destination(AppSettingsPage::Interface),
     hit(
         Page::Devbox,
         "Reorder readings",
         "system monitor devbox reorder readings drag move order",
         false,
-    ),
+    )
+    .at("devbox-reorder-anchor"),
     hit(
         Page::Weather,
         "City & forecast",
         "weather location city forecast belgrade",
         false,
-    ),
+    )
+    .open(SearchOpen::City),
     hit(
         Page::Weather,
         "Dew point",
         "weather dew point dewpoint humidity moisture temperature daily overview",
         false,
-    ),
+    )
+    .at("weather-dew-point"),
     hit(
         Page::Weather,
         "Weather update interval",
@@ -270,31 +282,41 @@ const SEARCH: &[SearchHit] = &[
         "CPU & temperature",
         "system monitor devbox cpu temperature readings history graph sparkline",
         false,
-    ),
+    )
+    .at("devbox-cpu")
+    .open(SearchOpen::Metric(crate::config::DevboxSection::Cpu)),
     hit(
         Page::Devbox,
         "Memory usage",
         "system monitor devbox ram memory cache swap readings history graph sparkline",
         false,
-    ),
+    )
+    .at("devbox-memory")
+    .open(SearchOpen::Metric(crate::config::DevboxSection::Memory)),
     hit(
         Page::Devbox,
         "Disk usage",
         "system monitor devbox disk storage readings history graph sparkline",
         false,
-    ),
+    )
+    .at("devbox-disk")
+    .open(SearchOpen::Metric(crate::config::DevboxSection::Disk)),
     hit(
         Page::Devbox,
         "Network activity",
         "system monitor devbox network speed readings history graph sparkline",
         false,
-    ),
+    )
+    .at("devbox-network")
+    .open(SearchOpen::Metric(crate::config::DevboxSection::Network)),
     hit(
         Page::Devbox,
         "GPU readings",
         "system monitor devbox gpu graphics readings history graph sparkline",
         false,
-    ),
+    )
+    .at("devbox-gpu")
+    .open(SearchOpen::Metric(crate::config::DevboxSection::Gpu)),
     hit(
         Page::Devbox,
         "System monitor update interval",
@@ -372,19 +394,23 @@ const SEARCH: &[SearchHit] = &[
         "Fonts & icon theme",
         "desktop font typeface typography icons icon theme",
         false,
-    ),
+    )
+    .at("appearance-fonts"),
     hit(
         Page::DesktopAppearance,
         "Custom surface colors",
         "desktop surface background window color",
         true,
-    ),
+    )
+    .at("appearance-colors"),
     hit(
         Page::DesktopAppearance,
         "Desktop effects",
         "desktop effects blur frosted glass",
         true,
-    ),
+    )
+    .at("appearance-effects")
+    .open(SearchOpen::Effects),
     hit(
         Page::Clock,
         "Clock update interval",
@@ -402,7 +428,8 @@ const SEARCH: &[SearchHit] = &[
         "Dock timing & spacing",
         "dock panel timing padding spacing corners hide delay slide speed",
         true,
-    ),
+    )
+    .at("dock-advanced"),
     hit(
         Page::DesktopWallpaper,
         "Wallpaper & colors",
@@ -486,25 +513,29 @@ const SEARCH: &[SearchHit] = &[
         "Edge menu",
         "sidebar edge menu side delay animation",
         false,
-    ),
+    )
+    .destination(AppSettingsPage::Interface),
     hit(
         Page::General,
         "Privacy & usage reporting",
         "privacy usage reporting anonymous telemetry",
         false,
-    ),
+    )
+    .destination(AppSettingsPage::Privacy),
     hit(
         Page::General,
         "Updates & installation",
         "update version installation islands addon add-on diagnostics check",
         false,
-    ),
+    )
+    .destination(AppSettingsPage::Updates),
     hit(
         Page::General,
         "Restore previous desktop",
         "recovery restore reset previous wallpaper hide widgets",
         false,
-    ),
+    )
+    .destination(AppSettingsPage::Restore),
 ];
 
 const fn hit(page: Page, label: &'static str, terms: &'static str, advanced: bool) -> SearchHit {
@@ -513,6 +544,13 @@ const fn hit(page: Page, label: &'static str, terms: &'static str, advanced: boo
         label,
         terms,
         advanced,
+        anchor: if advanced {
+            "settings-advanced"
+        } else {
+            "page-start"
+        },
+        destination: AppSettingsPage::Operation,
+        open: SearchOpen::None,
     }
 }
 
@@ -829,6 +867,38 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cosmic::Application;
+    #[test]
+    fn architecture_search_routing_survives_label_changes() {
+        if crate::displays::test_support::isolated(
+            "settings::navigation::tests::architecture_search_routing_survives_label_changes",
+        ) {
+            return;
+        }
+        let (mut app, _) = Settings::init(cosmic::app::Core::default(), Page::Overview);
+        for original in SEARCH {
+            let renamed = SearchHit {
+                label: "Renamed control",
+                ..*original
+            };
+            assert_eq!(renamed.anchor(), original.anchor());
+            assert_eq!(renamed.app_destination(), original.app_destination());
+            let _ = app.handle(Message::SearchResult(renamed));
+            assert_eq!(app.page, Page::parse(renamed.page.key()));
+            if renamed.page == Page::General {
+                assert_eq!(app.app_settings_page, renamed.app_destination());
+            }
+            match renamed.open {
+                SearchOpen::City => assert!(app.city_editing),
+                SearchOpen::Effects => assert!(app.system_appearance.effects),
+                SearchOpen::Recent => assert!(app.support.recent_open),
+                SearchOpen::Readability => assert!(app.material_adjust),
+                SearchOpen::Metric(metric) => assert!(app.devbox_details.contains(&metric)),
+                SearchOpen::None => {}
+            }
+        }
+    }
+
     #[test]
     fn every_route_has_one_main_home_and_old_links_still_work() {
         let entries: Vec<Page> = Page::SIDEBAR

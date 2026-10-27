@@ -22,6 +22,8 @@ mod schedule;
 mod settings;
 mod settings_lifecycle;
 mod system_theme;
+#[cfg(test)]
+mod test_env;
 mod tools;
 mod usage;
 mod watch;

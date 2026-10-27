@@ -300,21 +300,39 @@ pub async fn fetch(
         if !connection.connected() {
             return Err(Problem::Disconnected);
         }
-        let mut data = match connection.backend {
+        let data = match connection.backend {
             Backend::Google => google::events(&connection, &month).await?,
             Backend::Legacy => legacy(&connection, &month).await?,
             Backend::Subscription => subscription::events(&connection, &month, false).await?,
             Backend::Disconnected => return Err(Problem::Disconnected),
         };
-        data.connection_revision = connection.revision.clone();
-        data.calendar_id = connection.calendar_id.clone();
-        store::save_cache(&connection, &month, &data)?;
-        Ok(data)
+        cache_fetched(&connection, &month, data)
     })
     .await
     .map_err(|_| Problem::Network)
     .and_then(|result| result);
     result.map_err(|problem| problem.to_string())
+}
+
+fn cache_fetched(
+    connection: &Connection,
+    month: &str,
+    mut data: crate::data::CalendarData,
+) -> Result<crate::data::CalendarData, Problem> {
+    data.connection_revision = connection.revision.clone();
+    data.calendar_id = connection.calendar_id.clone();
+    store::save_cache(connection, month, &data)?;
+    Ok(data)
+}
+
+// Tests inject provider completions at the real cache-publication boundary.
+#[cfg(test)]
+pub(crate) fn fixture_completion(
+    connection: &Connection,
+    month: &str,
+    data: crate::data::CalendarData,
+) -> Result<crate::data::CalendarData, String> {
+    cache_fetched(connection, month, data).map_err(|e| e.to_string())
 }
 
 async fn legacy(

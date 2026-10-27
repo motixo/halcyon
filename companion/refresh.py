@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 
 import install
+from journal import records, verify_owned, selected_generation
 from bundle_contract import canonical, digest, read_json, read_catalog_bytes, verify_bundle, installed_package_status
 from panel_launcher import session_identity
 
@@ -37,48 +38,6 @@ def locked(home):
         yield
     finally:
         os.close(fd)
-
-
-def records(home):
-    backup = install.safe_path(home, DATA + 'backups')
-    result = []
-    for path in sorted(backup.glob('panel-*/install-record.json'), reverse=True):
-        saved = read_json(install.safe_path(home, str(path.relative_to(home))))
-        if saved.get('root') != str(home) or saved.get('restored'):
-            continue
-        if saved.get('owner') != PACKAGE:
-            raise ValueError('manual_install_requires_explicit_management')
-        result.append((path, saved))
-    return result
-
-
-def verify_owned(home, active):
-    # Validate the current effective layer, not superseded values in old layers.
-    seen = set()
-    for _, saved in active:
-        if not saved.get('complete'):
-            raise ValueError('interrupted_install')
-        for relative, sha in saved['installed'].items():
-            if relative in seen:
-                continue
-            seen.add(relative)
-            path = install.safe_path(home, relative)
-            if digest(path) != sha or path.stat().st_mode & 0o777 != saved['modes'][relative] or path.stat().st_uid != os.getuid():
-                raise ValueError('external_change')
-    if SELECTOR not in seen or SELECTION not in seen:
-        raise ValueError('unowned_selection')
-
-
-def selected_generation(home, context=None):
-    pointer = read_json(install.safe_path(home, POINTER))
-    generation = pointer['generation']
-    if len(generation) != 64 or any(c not in '0123456789abcdef' for c in generation):
-        raise ValueError('invalid_generation')
-    path = install.safe_path(home, DATA + 'companion/generations/' + generation)
-    if digest(path / 'manifest.json') != generation:
-        raise ValueError('generation_identity')
-    manifest, catalog = verify_bundle(path, owner=os.getuid(), context=context)
-    return path, manifest, catalog, pointer
 
 
 def recover_interrupted(home):

@@ -40,14 +40,18 @@ impl Settings {
                 }
                 Installation::Installed { .. } => {
                     if islands::can_enable(&self.desktop.islands.installation)
-                        && self.updates.identity.as_ref().is_some_and(|id| id.can_install_islands()) {
+                        && self.updates.identity.as_ref().is_some_and(|id| id.can_enable_islands()) {
                         rows.push(label("Check compatibility and enable for your user, then log out and back in. Startup checks decide whether Islands can run.", 12., MUTED));
                         rows.push(button::suggested("Enable for next login")
                             .id("enable-islands".into()).on_press(action(AddonMessage::Enable)).into());
+                    } else if islands::can_enable(&self.desktop.islands.installation) {
+                        if let Some(notice) = self.updates.identity.as_ref().and_then(|id| id.islands_activation_notice()) {
+                            rows.push(label(notice, 12., MUTED));
+                        }
                     }
                     rows.push(row::with_children(vec![
                         button::text("Check again").on_press_maybe(
-                            (!self.installation_busy).then_some(Message::RecheckInstallation)).into(),
+                            (!self.installation_busy).then_some(action(AddonMessage::Recheck))).into(),
                         button::text("Copy diagnostics").on_press(Message::CopyIslandsDiagnostics).into(),
                         button::text("Islands").id("manage-islands".into())
                             .on_press(Message::Page(Page::DesktopDock)).into(),

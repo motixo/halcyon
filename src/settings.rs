@@ -1558,7 +1558,7 @@ impl cosmic::Application for Settings {
     }
     fn on_app_exit(&mut self) -> Option<Message> {
         self.updates.cancel();
-        if self.native_busy {
+        if self.native_busy || self.tools.saving() {
             return Some(Message::Window(WindowControl::Close));
         }
         self.flush_edits();
@@ -1578,6 +1578,7 @@ impl cosmic::Application for Settings {
         if self.config.design_problem.is_some() {
             match &message {
                 Message::Design(_)
+                | Message::Tools(tools::Message::NoteSaved(..))
                 | Message::NativeDone(_)
                 | Message::Window(_)
                 | Message::Resized(_)
@@ -1588,6 +1589,10 @@ impl cosmic::Application for Settings {
         }
         if matches!(message, Message::Window(WindowControl::Close)) {
             self.updates.cancel();
+            if self.tools.saving() {
+                self.tools.close_after_save = true;
+                return Task::none();
+            }
         }
         if let Message::Support(message) = message {
             return self.update_support(message);
@@ -1670,19 +1675,7 @@ impl cosmic::Application for Settings {
                     ) || self.wallpaper.valid_accent_input()))
             });
         if let Message::DesktopEditor(edit) = &message {
-            let start = if self.desktop.selected == crate::desktop::panels::PanelKind::Dock {
-                8
-            } else {
-                16
-            };
-            let bit = match edit {
-                desktop::Message::Opacity(_) => 1 << start,
-                desktop::Message::Radius(_) | desktop::Message::RadiusChoice(_) => 1 << (start + 1),
-                desktop::Message::Padding(_) => 1 << (start + 2),
-                desktop::Message::Spacing(_) => 1 << (start + 3),
-                _ => 0,
-            };
-            self.native_property |= bit;
+            self.native_property |= direct::bar_property(self.desktop.selected, edit);
         }
         let native_writable = match &message {
             Message::DesktopEditor(_) => self.desktop.writable(),
@@ -1954,15 +1947,11 @@ impl Settings {
                     self.app_settings_page = hit.app_destination();
                     navigation::remember_app_destination(self.app_settings_page);
                 }
-                if hit.page == Page::Weather && hit.label == "City & forecast" {
+                if hit.open == navigation::SearchOpen::City {
                     self.city_editing = true;
                 }
-                if hit.page == Page::Devbox {
-                    if let Some(metric) = DevboxSection::ALL
-                        .into_iter()
-                        .find(|metric| hit.anchor() == format!("devbox-{}", metric.key()))
-                        && !self.devbox_details.contains(&metric)
-                    {
+                if let navigation::SearchOpen::Metric(metric) = hit.open {
+                    if !self.devbox_details.contains(&metric) {
                         self.devbox_details.push(metric);
                     }
                 }
@@ -1971,7 +1960,7 @@ impl Settings {
                 }
                 if hit.advanced {
                     match hit.page {
-                        Page::DesktopAppearance if hit.label == "Desktop effects" => {
+                        Page::DesktopAppearance if hit.open == navigation::SearchOpen::Effects => {
                             self.system_appearance.effects = true
                         }
                         Page::DesktopAppearance => self.system_appearance.advanced_colors = true,
@@ -1986,7 +1975,7 @@ impl Settings {
                         self.app_settings_page,
                         AppSettingsPage::Help | AppSettingsPage::Restore
                     ) {
-                    self.support.recent_open = hit.label == "Recent changes";
+                    self.support.recent_open = hit.open == navigation::SearchOpen::Recent;
                     self.support.report = None;
                     self.load_support()
                 } else {
@@ -3285,10 +3274,13 @@ impl Settings {
             Message::Recipe(edit) => self.update_recipe(edit),
             Message::Design(edit) => return self.update_design(edit),
             Message::ClockDepth(value) => self.save_clock(json!({"depth": value})),
-            Message::ClockFace(value) => self.save_clock(json!({"face": value})),
-            Message::ClockWeight(value) => self.save_clock(json!({"weight": value})),
-            Message::ClockItalic(value) => self.save_clock(json!({"italic": value})),
-            Message::ClockSurface(value) => self.save_clock(json!({"surface": value})),
+            edit @ (Message::ClockFace(_)
+            | Message::ClockWeight(_)
+            | Message::ClockItalic(_)
+            | Message::ClockSurface(_)) => {
+                let (key, value) = moments::clock_style_edit(&edit).unwrap();
+                self.save_clock(json!({key: value}));
+            }
             Message::Theme(theme) => {
                 if self.busy {
                     return Task::none();
@@ -4266,12 +4258,14 @@ impl Settings {
             .collect()
     }
     fn begin_city_search(&mut self, generation: u64) -> Task<Message> {
-        let Some(query) = self.city_search.begin(generation) else {
+        let Some((query, registration)) = self.city_search.begin(generation) else {
             return Task::none();
         };
         let id = self.city_search.generation;
         self.cities.clear();
-        cosmic::task::future(async move { Message::Cities(id, search_cities(query).await) })
+        cosmic::task::future(async move {
+            Message::Cities(id, city_search::search(query, registration).await)
+        })
     }
     fn flush_edits(&mut self) {
         self.save_material_draft();
@@ -4370,6 +4364,14 @@ impl Settings {
     }
     fn update_tools(&mut self, message: tools::Message) -> Task<Message> {
         let (task, saved) = self.tools.update(message, &self.config);
+        let close = if matches!(&saved, Some(tools::Saved::Note(_))) {
+            let requested = std::mem::take(&mut self.tools.close_after_save);
+            requested
+                && matches!(&saved, Some(tools::Saved::Note(Ok(()))))
+                && self.tools.conflict.is_none()
+        } else {
+            false
+        };
         match saved {
             Some(tools::Saved::Tool(widget, key, value)) => {
                 match Config::save_tool(widget, json!({ key: value })) {
@@ -4383,14 +4385,26 @@ impl Settings {
                 }
             }
             Some(tools::Saved::Note(Ok(()))) if self.tools.conflict.is_none() => {
-                self.status = "Note saved".into();
+                self.status = if self.tools.dirty() {
+                    "Changes saved · new edits pending"
+                } else {
+                    "Note saved"
+                }
+                .into();
                 self.error = false;
             }
             Some(tools::Saved::Note(Ok(()))) => {}
             Some(tools::Saved::Note(Err(error))) => self.failed(error),
             None => {}
         }
-        task
+        if close {
+            Task::batch([
+                task,
+                Task::done(cosmic::Action::App(Message::Window(WindowControl::Close))),
+            ])
+        } else {
+            task
+        }
     }
     fn save_glance(&mut self, changes: serde_json::Value) {
         match Config::save_glance(changes) {
@@ -5497,34 +5511,6 @@ fn normalize_folder(input: &str) -> Result<String, String> {
         return Err("Choose a folder rather than a file".into());
     }
     Ok(path.to_string_lossy().into_owned())
-}
-async fn search_cities(query: String) -> Result<Vec<City>, String> {
-    #[derive(Deserialize)]
-    struct Response {
-        #[serde(default)]
-        results: Vec<City>,
-    }
-    let response = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|e| e.to_string())?
-        .get("https://geocoding-api.open-meteo.com/v1/search")
-        .query(&[
-            ("name", query.as_str()),
-            ("count", "10"),
-            ("language", "en"),
-            ("format", "json"),
-        ])
-        .send()
-        .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(|_| {
-            "City search is unavailable. Check your connection and try again.".to_string()
-        })?
-        .json::<Response>()
-        .await
-        .map_err(|_| "Could not read the city search results".to_string())?;
-    Ok(response.results)
 }
 fn run_command(command: PathBuf, args: Vec<String>, status: &'static str) -> Task<Message> {
     cosmic::task::future(async move {
@@ -6922,30 +6908,44 @@ mod tests {
         let live = live_tree(&root);
         let fixture = root.join("cosmic-root");
         let anchor = fixture.join("config/cosmic/com.system76.CosmicPanel.Dock/v1/anchor");
-        let (mut app, _) = Settings::init(Core::default(), Page::DesktopDock);
+        crate::test_env::native_worker(&fixture, true);
+        let (mut app, initial) = Settings::init(Core::default(), Page::DesktopDock);
+        settle_settings(&mut app, initial);
+        assert!(app.native_worker_needed());
         assert!(!anchor.exists());
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Opacity(73)));
+        send_settings(
+            &mut app,
+            Message::DesktopEditor(desktop::Message::Opacity(73)),
+        );
         assert!(
             app.desktop.dirty(),
             "an in-flight slider has no completed value"
         );
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Apply));
+        send_settings(&mut app, Message::DesktopEditor(desktop::Message::Apply));
         assert!(!app.desktop.dirty());
-        let _ = app.update(Message::DesktopEditor(desktop::Message::Anchor(
-            Anchor::Left,
-        )));
+        send_settings(
+            &mut app,
+            Message::DesktopEditor(desktop::Message::Anchor(Anchor::Left)),
+        );
         assert_eq!(std::fs::read_to_string(&anchor).unwrap(), "Left");
-        let _ = app.update(Message::Page(Page::Glance));
-        let _ = app.update(Message::Page(Page::DesktopDock));
+        send_settings(&mut app, Message::Page(Page::Glance));
+        send_settings(&mut app, Message::Page(Page::DesktopDock));
         for kind in PanelKind::ALL {
-            let _ = app.update(Message::DesktopEditor(desktop::Message::Select(kind)));
-            let _ = app.update(Message::DesktopEditor(desktop::Message::Advanced(true)));
+            send_settings(
+                &mut app,
+                Message::DesktopEditor(desktop::Message::Select(kind)),
+            );
+            send_settings(
+                &mut app,
+                Message::DesktopEditor(desktop::Message::Advanced(true)),
+            );
             let mut tree = Tree::new(app.settings_view().as_widget());
             tree.diff(app.settings_view().as_widget_mut());
         }
         drop(app);
-        let (mut app, _) = Settings::init(Core::default(), Page::Weather);
-        let _ = app.update(Message::UndoDesktop);
+        let (mut app, initial) = Settings::init(Core::default(), Page::Weather);
+        settle_settings(&mut app, initial);
+        send_settings(&mut app, Message::UndoDesktop);
         assert!(!app.error, "{}", app.status);
         assert!(!anchor.exists());
         assert_eq!(live_tree(&root), live);
@@ -7262,7 +7262,7 @@ mod tests {
         }
         assert!(app.tools.dirty());
         assert_eq!(crate::tools::notes::load().unwrap().text, "");
-        let _ = app.update(Message::Tools(Edit::NoteSave));
+        send_settings(&mut app, Message::Tools(Edit::NoteSave));
         assert!(!app.tools.dirty());
         assert_eq!(crate::tools::notes::load().unwrap().text, "[ ] Call Sam");
         assert!(
@@ -7278,9 +7278,9 @@ mod tests {
         crate::tools::notes::save("[ ] Call Sam", "[x] Call Sam").unwrap();
         let _ = app.update(Message::Tick);
         assert!(app.tools.dirty() && app.tools.conflict.is_some());
-        let _ = app.update(Message::Tools(Edit::NoteSave));
+        send_settings(&mut app, Message::Tools(Edit::NoteSave));
         assert_eq!(crate::tools::notes::load().unwrap().text, "[x] Call Sam");
-        let _ = app.update(Message::Tools(Edit::NoteKeepMine));
+        send_settings(&mut app, Message::Tools(Edit::NoteKeepMine));
         assert_eq!(crate::tools::notes::load().unwrap().text, "[ ] Call Sam!");
         assert!(app.tools.conflict.is_none() && !app.tools.dirty());
         // Saved explicit dimensions also reflow in each tool's detail preview.
@@ -7306,6 +7306,87 @@ mod tests {
         let _ = app.update(Message::Tools(Edit::Players(Err("no bus".into()))));
         let _ = app.update(Message::Page(Page::Music));
         let _ = UserInterface::build(app.settings_view(), size, cache, &mut renderer);
+    }
+
+    #[test]
+    fn notes_saves_are_async_bounded_and_keep_later_edits() {
+        if crate::displays::test_support::isolated(
+            "settings::tests::notes_saves_are_async_bounded_and_keep_later_edits",
+        ) {
+            return;
+        }
+        use crate::tools::notes;
+        use cosmic::widget::text_editor;
+        use tools::Message as Edit;
+        notes::save("", "original").unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::Notes);
+        app.tools.content = text_editor::Content::with_text("submitted");
+        let (acquired, ready) = std::sync::mpsc::channel();
+        let (release, released) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _lock = crate::config::lock_config(&notes::path().unwrap()).unwrap();
+            acquired.send(()).unwrap();
+            // Bound a regression's failure instead of hanging the whole suite.
+            let _ = released.recv_timeout(std::time::Duration::from_secs(5));
+        });
+        ready
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let before = std::time::Instant::now();
+        let task = app.update(Message::Tools(Edit::NoteSave));
+        assert!(before.elapsed() < std::time::Duration::from_secs(1));
+        assert!(app.tools.saving());
+        send_settings(&mut app, Message::Tools(Edit::NoteSave));
+        assert!(
+            app.tools.saving(),
+            "a duplicate must not own another save completion"
+        );
+        settle_settings(&mut app, task);
+        assert!(!app.tools.saving() && app.tools.problem.is_some());
+        assert_eq!(notes::load().unwrap().text, "original");
+        release.send(()).unwrap();
+        holder.join().unwrap();
+
+        let task = app.update(Message::Tools(Edit::NoteSave));
+        let _ = app.update(Message::Tools(Edit::Note(text_editor::Action::Edit(
+            text_editor::Edit::Insert('!'),
+        ))));
+        let later = app.tools.content.text();
+        settle_settings(&mut app, task);
+        assert_eq!(notes::load().unwrap().text, "submitted");
+        assert_eq!(app.tools.base, "submitted");
+        assert_eq!(app.tools.content.text(), later);
+        assert!(app.tools.dirty() && app.tools.conflict.is_none());
+
+        let task = app.update(Message::Tools(Edit::NoteSave));
+        notes::save("submitted", "external").unwrap();
+        settle_settings(&mut app, task);
+        assert!(app.tools.conflict.is_some() && app.tools.dirty());
+        assert_eq!(notes::load().unwrap().text, "external");
+        send_settings(&mut app, Message::Tools(Edit::NoteKeepMine));
+        assert!(app.tools.conflict.is_none() && !app.tools.dirty());
+
+        let current = notes::load().unwrap().text;
+        notes::save(&current, "[ ] task").unwrap();
+        app.tools.refresh();
+        let task = app.update(Message::Tools(Edit::Card(
+            crate::tools::cards::Action::NoteToggle(0),
+        )));
+        assert!(app.tools.saving());
+        send_settings(
+            &mut app,
+            Message::Tools(Edit::Card(crate::tools::cards::Action::NoteToggle(0))),
+        );
+        assert!(app.tools.saving());
+        assert!(matches!(
+            app.on_app_exit(),
+            Some(Message::Window(WindowControl::Close))
+        ));
+        let _ = app.update(Message::Window(WindowControl::Close));
+        assert!(app.tools.close_after_save);
+        settle_settings(&mut app, task);
+        assert_eq!(notes::load().unwrap().text, "[x] task");
+        assert!(!app.tools.saving() && !app.tools.close_after_save);
     }
 
     #[test]
@@ -7375,7 +7456,7 @@ mod tests {
             Some("Buy milk\n[ ] Call Sam")
         );
         // Save explains instead of replacing; Keep mine is the explicit choice.
-        let _ = app.update(Message::Tools(Edit::NoteSave));
+        send_settings(&mut app, Message::Tools(Edit::NoteSave));
         assert_eq!(notes::load().unwrap().text, "Buy milk\n[ ] Call Sam");
         // Revert during the conflict shows the note as saved now, not the
         // older text these edits started from.
@@ -7392,7 +7473,7 @@ mod tests {
             base: "Buy milk".into(),
         }))
         .unwrap();
-        let _ = app.update(Message::Tools(Edit::NoteKeepMine));
+        send_settings(&mut app, Message::Tools(Edit::NoteKeepMine));
         assert_eq!(notes::load().unwrap().text, "Oat Buy milk");
         assert!(!app.tools.dirty() && app.tools.conflict.is_none());
         assert_eq!(notes::load_draft(), None);
@@ -7402,7 +7483,7 @@ mod tests {
         let _ = app.update(Message::Tick);
         assert!(!app.tools.dirty() && app.tools.conflict.is_none());
         type_text(&mut app, "y");
-        let _ = app.update(Message::Tools(Edit::NoteSave));
+        send_settings(&mut app, Message::Tools(Edit::NoteSave));
         assert_eq!(notes::load().unwrap().text, "xyOat Buy milk");
         assert!(app.tools.conflict.is_none() && !app.tools.dirty());
         // An unsaved note is marked in the navigation and the Notes tab.
@@ -11252,6 +11333,7 @@ mod tests {
         let store = crate::desktop::DesktopStore::from_env().unwrap();
         let root = store.fixture_root().unwrap();
         crate::desktop::islands::fixture_installed(root);
+        crate::test_env::native_worker(&root, true);
         std::fs::write(root.join("status-islands-probe.py"),
             "import pathlib\nprint((pathlib.Path(__file__).parent/'islands-installation.json').read_text())\n").unwrap();
         let (mut app, initial) = Settings::init(Core::default(), Page::DesktopDock);
@@ -11297,6 +11379,7 @@ mod tests {
         crate::desktop::islands::fixture_installed(root);
         let (mut app, initial) = Settings::init(Core::default(), Page::General);
         settle_settings(&mut app, initial);
+        crate::test_env::native_worker(root, true);
         let helper = root.join("status-islands-probe.py");
         std::fs::write(
             &helper,
@@ -11638,6 +11721,7 @@ if not presence:
         settle_settings(&mut app, initial);
         send_settings(&mut app, Message::AppSettingsPage(AppSettingsPage::Updates));
         send_settings(&mut app, Message::Resized(Size::new(1024., 1800.)));
+        crate::test_env::native_worker(&root, true);
         std::fs::write(
             root.join("slow-islands-probe.py"),
             format!(
@@ -11725,6 +11809,7 @@ if not presence:
         std::fs::remove_file(store.user_path(&key)).unwrap();
         app.desktop.refresh();
         let prior = store.latest_change().unwrap().map(|v| v.id);
+        crate::test_env::native_worker(&root, true);
         std::fs::write(root.join("slow-islands-probe.py"),format!("import time,pathlib\ntime.sleep(0.6)\nc=pathlib.Path({:?})\nn=int(c.read_text())+1 if c.exists() else 1\nc.write_text(str(n))\np=pathlib.Path({:?})\nif n==3: p.write_text('{{\"format\":\"halcyon-islands-installation\",\"version\":1,\"installation\":\"absent\",\"enabled\":false}}')\nprint(p.read_text())\n",root.join("probe-count").to_str().unwrap(),root.join("islands-installation.json").to_str().unwrap())).unwrap();
         let rect = native_reveal(&app, &mut native, "native-islands-style");
         let _ = native.event(

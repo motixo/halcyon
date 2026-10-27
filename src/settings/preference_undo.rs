@@ -95,10 +95,10 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
         Message::ClockScale(_) => add(&["clock", "scale"]),
         Message::ClockVertical(_) => add(&["clock", "center_vertically"]),
         Message::ClockDepth(_) => add(&["clock", "depth"]),
-        Message::ClockFace(_) => add(&["clock", "face"]),
-        Message::ClockWeight(_) => add(&["clock", "weight"]),
-        Message::ClockItalic(_) => add(&["clock", "italic"]),
-        Message::ClockSurface(_) => add(&["clock", "surface"]),
+        edit if super::moments::clock_style_edit(edit).is_some() => {
+            let (key, _) = super::moments::clock_style_edit(edit).unwrap();
+            add(&["clock", key]);
+        }
         Message::WidgetColorSource(_) => add(&["appearance", "color_source"]),
         Message::ContrastAssist(_) => add(&["appearance", "contrast_assist"]),
         Message::WidgetSurface(_) => add(&["appearance", "surface"]),

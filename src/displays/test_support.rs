@@ -46,25 +46,30 @@ pub fn info(name: Option<&str>, size: (i32, i32)) -> OutputInfo {
 /// The real application reads only this child process's fixture preferences.
 pub fn isolated(name: &str) -> bool {
     if std::env::var("HALCYON_MONITOR_TEST").as_deref() == Ok(name) {
+        crate::test_env::assert_isolated();
         return false;
     }
     let root = std::env::temp_dir().join(format!(
-        "halcyon-monitor-{}-{}",
+        "halcyon-monitor-{}-{}-{}",
         std::process::id(),
-        name.replace(':', "_")
+        name.replace(':', "_"),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
     ));
-    std::fs::create_dir_all(&root).unwrap();
+    std::fs::create_dir(&root).unwrap();
     std::fs::write(root.join("config.json"), "{}").unwrap();
-    let status = std::process::Command::new(std::env::current_exe().unwrap())
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    crate::test_env::configure(&mut command, &root);
+    let status = command
         .args(["--exact", name, "--nocapture"])
         .env("HALCYON_MONITOR_TEST", name)
         .env("DESKTOP_CARDS_CONFIG", root.join("config.json"))
         .env("DESKTOP_CARDS_DESKTOP_ROOT", &root)
-        .env("XDG_CONFIG_HOME", root.join("config"))
-        .env("XDG_DATA_HOME", root.join("data"))
-        .env("XDG_STATE_HOME", root.join("state"))
-        .status()
-        .unwrap();
-    assert!(status.success());
+        .status();
+    std::fs::remove_dir_all(&root).unwrap();
+    assert!(status.unwrap().success());
+    assert!(!root.exists(), "fixture was not removed");
     true
 }

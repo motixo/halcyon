@@ -42,6 +42,8 @@ class IslandsPackage(unittest.TestCase):
         self.assertEqual(subprocess.run(['desktop-file-validate',str(desktop)],capture_output=True).returncode,0)
         control=self.root/'control';subprocess.run(['dpkg-deb','-e',str(self.deb),str(control)],check=True)
         self.assertEqual(sorted(p.name for p in control.iterdir()),['conffiles','control'])
+        from version_policy import companion_depends
+        self.assertIn(companion_depends(REPO), (control/'control').read_text())
     def test_reproducible_and_no_version_replacement(self):
         before=digest(self.deb)
         builder.build(self.binary,self.manifest,'0.2.1~test.1',self.root/'out',catalog=self.empty_catalog)

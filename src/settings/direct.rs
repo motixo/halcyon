@@ -168,11 +168,8 @@ pub(super) fn label(message: &Message) -> String {
         | Message::ClockFormat(_)
         | Message::ClockDate(_)
         | Message::ClockVertical(_)
-        | Message::ClockDepth(_)
-        | Message::ClockFace(_)
-        | Message::ClockWeight(_)
-        | Message::ClockItalic(_)
-        | Message::ClockSurface(_) => "Clock",
+        | Message::ClockDepth(_) => "Clock",
+        edit if moments::clock_style_edit(edit).is_some() => "Clock",
         Message::GlanceOpacity(_) | Message::GlanceStyle(_) | Message::GlanceDensity(_) => {
             "At a glance"
         }
@@ -199,14 +196,12 @@ pub(super) fn property(app: &Settings, message: &Message) -> u64 {
             app.native_property
         }
         Message::DesktopEditor(desktop::Message::Background(_)) => {
-            1 << if app.desktop.selected == crate::desktop::panels::PanelKind::Dock {
-                12
-            } else {
-                20
-            }
+            native_bar_property(app.desktop.selected, "background")
         }
         Message::SystemAppearance(system_appearance::Message::Color(role, Some(_))) => {
-            color_bit(app.system_appearance.variant, *role)
+            crate::desktop::actions::override_for_native(
+                &role.config_key(app.system_appearance.variant),
+            )
         }
         Message::SystemAppearance(system_appearance::Message::HexSubmit(role))
             if app
@@ -215,39 +210,48 @@ pub(super) fn property(app: &Settings, message: &Message) -> u64 {
                 .and_then(|text| crate::desktop::appearance::parse_hex(text, role.alpha()))
                 .is_some() =>
         {
-            color_bit(app.system_appearance.variant, *role)
+            crate::desktop::actions::override_for_native(
+                &role.config_key(app.system_appearance.variant),
+            )
         }
         Message::SaveAppearance | Message::FlushEdits | Message::Page(_) => app
             .appearance_pending
             .iter()
             .map(|control| match control {
-                AppearanceControl::Opacity => 1,
-                AppearanceControl::Corners => 2,
-                AppearanceControl::Border => 4,
+                AppearanceControl::Opacity => widget_property("opacity"),
+                AppearanceControl::Corners => widget_property("corner_radius"),
+                AppearanceControl::Border => widget_property("border_opacity"),
             })
             .fold(0, |a, b| a | b),
-        Message::WidgetSurface(Some(_)) => 1 << 3,
-        Message::ContrastAssist(_) => 1 << 4,
-        Message::AppearancePreset(..) => 7,
+        Message::WidgetSurface(Some(_)) => widget_property("surface"),
+        Message::ContrastAssist(_) => widget_property("contrast_assist"),
+        Message::AppearancePreset(..) => ["opacity", "corner_radius", "border_opacity"]
+            .into_iter()
+            .map(widget_property)
+            .fold(0, |a, b| a | b),
         _ => 0,
     }
 }
-fn color_bit(
-    variant: crate::desktop::appearance::ThemeVariant,
-    role: crate::desktop::appearance::ColorRole,
+fn widget_property(name: &str) -> u64 {
+    crate::desktop::actions::override_for_widget(&format!("/appearance/{name}"))
+}
+fn native_bar_property(kind: crate::desktop::panels::PanelKind, name: &str) -> u64 {
+    let key =
+        crate::desktop::ConfigKey::new(kind.namespace(), crate::desktop::panels::VERSION, name)
+            .expect("known panel property");
+    crate::desktop::actions::override_for_native(&key)
+}
+/// Shared by synchronous and worker admission; completion still owns the commit.
+pub(super) fn bar_property(
+    kind: crate::desktop::panels::PanelKind,
+    edit: &desktop::Message,
 ) -> u64 {
-    use crate::desktop::appearance::{ColorRole, ThemeVariant};
-    let start = if variant == ThemeVariant::Dark {
-        24
-    } else {
-        32
+    let name = match edit {
+        desktop::Message::Opacity(_) => "opacity",
+        desktop::Message::Radius(_) | desktop::Message::RadiusChoice(_) => "border_radius",
+        desktop::Message::Padding(_) => "padding",
+        desktop::Message::Spacing(_) => "spacing",
+        _ => return 0,
     };
-    1 << (start
-        + match role {
-            ColorRole::Accent => 0,
-            ColorRole::Background => 1,
-            ColorRole::Primary => 2,
-            ColorRole::Secondary => 3,
-            ColorRole::Outline => 4,
-        })
+    native_bar_property(kind, name)
 }

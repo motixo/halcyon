@@ -119,6 +119,17 @@ pub fn save(expected: &str, text: &str) -> Result<Note, SaveError> {
     save_at(&path, expected, text)
 }
 
+/// One caller-owned save off the UI thread. A competing writer is reported
+/// promptly; it cannot occupy a blocking-pool thread indefinitely waiting for
+/// the note lock. The existing compare-and-swap and durable write stay intact.
+pub async fn save_async(expected: String, text: String) -> Result<Note, SaveError> {
+    tokio::task::spawn_blocking(move || {
+        crate::config::with_nonblocking_locks(|| save(&expected, &text))
+    })
+    .await
+    .unwrap_or_else(|_| Err(SaveError::Failed("Saving stopped unexpectedly".into())))
+}
+
 pub fn save_at(path: &Path, expected: &str, text: &str) -> Result<Note, SaveError> {
     if text.len() > MAX_TEXT_BYTES {
         return Err(SaveError::Failed(format!(

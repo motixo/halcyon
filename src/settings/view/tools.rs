@@ -253,7 +253,9 @@ impl Settings {
                 }
             });
         let dirty = tools.dirty();
-        let state = if !readable {
+        let state = if tools.saving() {
+            "Saving…".to_string()
+        } else if !readable {
             "This note can’t be read; it is left as it is.".to_string()
         } else if dirty {
             format!("Unsaved · {} characters", tools.note_chars())
@@ -287,11 +289,13 @@ impl Settings {
                     .into(),
                 button::text("Revert")
                     .id(cosmic::widget::Id::new("note-revert"))
-                    .on_press_maybe(dirty.then(|| edit(Edit::NoteRevert)))
+                    .on_press_maybe((dirty && !tools.saving()).then(|| edit(Edit::NoteRevert)))
                     .into(),
                 button::suggested("Save note")
                     .id(cosmic::widget::Id::new("note-save"))
-                    .on_press_maybe((dirty && readable).then(|| edit(Edit::NoteSave)))
+                    .on_press_maybe(
+                        (dirty && readable && !tools.saving()).then(|| edit(Edit::NoteSave)),
+                    )
                     .into(),
             ])
             .spacing(10)
@@ -311,10 +315,10 @@ impl Settings {
                 WARN,
                 vec![
                     button::standard("Use the desktop’s")
-                        .on_press(edit(Edit::NoteUseSaved))
+                        .on_press_maybe((!tools.saving()).then(|| edit(Edit::NoteUseSaved)))
                         .into(),
                     button::standard("Keep mine")
-                        .on_press(edit(Edit::NoteKeepMine))
+                        .on_press_maybe((!tools.saving()).then(|| edit(Edit::NoteKeepMine)))
                         .into(),
                 ],
             ));
@@ -330,7 +334,7 @@ impl Settings {
                 problem: None,
             },
             &self.config,
-            (!dirty).then_some(on_preview as fn(cards::Action) -> Message),
+            (!dirty && !tools.saving()).then_some(on_preview as fn(cards::Action) -> Message),
             Some(self.tool_preview_size(Widget::Notes)),
         );
         let document = group(None, note);

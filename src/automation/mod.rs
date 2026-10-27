@@ -126,24 +126,16 @@ pub struct Hold {
     pub expires: i64,
     pub pid: u32,
     pub parts: Vec<String>,
-    /// When Settings last saved a held widget layout. Layout saves leave no
-    /// latest-change record, so this is how a waiting switch learns that
-    /// the person kept their own layout (Unix seconds).
+    /// Compatibility with older Settings versions that saved layout precedence
+    /// here. Current saves use the guarded store's durable manual history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub applied: Option<i64>,
 }
 
-/// Settings declares its unapplied parts (and a held layout it saved);
-/// with neither, the file is removed. A layout stamp already written is
-/// kept (the newer one wins), so the saved choice outlives the Settings
-/// window and a desktop that wasn't running to see it: like the store's
-/// latest-change record, it only ever stops switches due before it.
-pub fn write_hold(
-    store: &DesktopStore,
-    parts: &BTreeSet<Domain>,
-    applied: Option<i64>,
-) -> Result<(), String> {
-    let applied = applied.max(hold_applied(store));
+/// Renew a live drag lease, preserving a legacy applied stamp across upgrades.
+/// Current writers cannot create a second manual-precedence timestamp.
+pub fn write_hold(store: &DesktopStore, parts: &BTreeSet<Domain>) -> Result<(), String> {
+    let applied = hold_applied(store);
     if parts.is_empty() && applied.is_none() {
         return clear_hold(store);
     }
@@ -189,7 +181,7 @@ pub fn read_hold(store: &DesktopStore) -> BTreeSet<Domain> {
         .collect()
 }
 
-/// When Settings saved a held widget layout (see `Hold::applied`).
+/// Compatibility-only manual precedence from an older Settings version.
 pub fn hold_applied(store: &DesktopStore) -> Option<i64> {
     hold(store)?.applied
 }

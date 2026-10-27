@@ -120,8 +120,9 @@ impl Installation {
             Some(_root) => {
                 #[cfg(test)]
                 {
-                    return _root.join("slow-islands-probe.py").is_file()
-                        || _root.join("status-islands-probe.py").is_file();
+                    // Execution policy is explicit in a fixture; provider probe
+                    // contents must not select a different Settings lifecycle.
+                    return _root.join("native-worker-enabled").is_file();
                 }
                 #[cfg(not(test))]
                 {

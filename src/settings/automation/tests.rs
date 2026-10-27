@@ -222,23 +222,29 @@ fn settings_hold_is_written_only_while_automation_runs() {
     assert!(hold.exists());
     editor.release_hold();
     assert!(!hold.exists());
-    // A saved layout that was held is stamped, so a waiting switch keeps it;
-    // a save that wasn't held says nothing.
-    editor.layout_saved();
-    editor.sync_hold(BTreeSet::new());
-    assert!(!hold.exists());
-    let layout: BTreeSet<Domain> = [Domain::WidgetLayout].into_iter().collect();
-    editor.sync_hold(layout);
+    // A current drag renews/releases its lease without a second save stamp.
+    editor.sync_hold([Domain::WidgetLayout].into_iter().collect());
     assert_eq!(automation::hold_applied(&store), None);
-    let before = automation::now();
-    editor.layout_saved();
     editor.sync_hold(BTreeSet::new());
-    assert!(automation::read_hold(&store).is_empty());
-    assert!(automation::hold_applied(&store).is_some_and(|at| at >= before));
-    // Closing keeps only that save's time; nothing is held any more.
+    editor.release_hold();
+    assert!(!hold.exists());
+    // A stamp from an older release is preserved when the same lease renews.
+    let before = automation::now();
+    std::fs::write(
+        &hold,
+        serde_json::to_vec(&automation::Hold {
+            expires: before + 10,
+            pid: std::process::id(),
+            parts: vec![],
+            applied: Some(before),
+        })
+        .unwrap(),
+    )
+    .unwrap();
+    editor.sync_hold([Domain::WidgetLayout].into_iter().collect());
     editor.release_hold();
     assert!(automation::read_hold(&store).is_empty());
-    assert!(automation::hold_applied(&store).is_some_and(|at| at >= before));
+    assert_eq!(automation::hold_applied(&store), Some(before));
 }
 
 /// Save a held layout, close Settings before the desktop looked, and let a
@@ -306,14 +312,31 @@ fn a_saved_held_layout_outlives_settings_and_a_desktop_restart() {
     assert!(automator.state.pending.is_some());
     // The desktop stops. The person saves the layout and closes Settings.
     drop(automator);
+    let mut patch = crate::desktop::store::WidgetPatch::new();
+    patch
+        .set(
+            "/widget_positions/clock",
+            None,
+            Some(serde_json::json!([0.2, 0.3])),
+        )
+        .unwrap();
+    crate::desktop::actions::commit(
+        &desktop,
+        &crate::desktop::DesktopPatch::new(),
+        Some(&patch),
+        crate::desktop::store::Owner::Preferences,
+        "Widget arrangement",
+        crate::desktop::store::Source::Manual,
+    )
+    .unwrap();
     let layout = std::fs::read(&config).unwrap();
-    editor.layout_saved();
     editor.sync_hold([Domain::Dock].into_iter().collect());
     editor.release_hold();
     // Settings opens again with another draft before the desktop is back.
     let mut again = AutomationEditor::with_store(fixture.store());
     again.sync_hold([Domain::Appearance].into_iter().collect());
-    assert!(automation::hold_applied(&fixture.store()).is_some());
+    assert!(automation::hold_applied(&fixture.store()).is_none());
+    assert!(desktop.manual_at().is_some());
     again.release_hold();
 
     // The desktop starts again and retries what was waiting.
@@ -329,7 +352,7 @@ fn a_saved_held_layout_outlives_settings_and_a_desktop_restart() {
         Effect::KeptManual { .. }
     ));
     assert_eq!(std::fs::read(&config).unwrap(), layout);
-    // The stamp only covers switches due before it: a later one runs.
+    // The durable manual choice covers older occurrences; a later one runs.
     let later = (Utc::now() + chrono::Duration::days(2))
         .date_naive()
         .and_hms_opt(19, 0, 0)

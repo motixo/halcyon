@@ -7,7 +7,9 @@ impl Cards {
         if !self.config.data_visible(kind) {
             return false;
         }
-        let owner = if self.config.glance.enabled {
+        let owner = if self.config.glance.enabled
+            && matches!(kind, Widget::Clock | Widget::Weather | Widget::Calendar)
+        {
             Widget::Glance
         } else {
             kind
@@ -18,6 +20,16 @@ impl Cards {
             return true;
         }
         self.widget_output(owner).is_some()
+    }
+
+    /// Calendar also feeds the desktop rail's meeting indicator. Its saved
+    /// visibility remains the demand boundary even when its own output is gone.
+    pub(super) fn calendar_demand(&self) -> bool {
+        self.config.data_visible(Widget::Calendar)
+    }
+    /// Keep watching an available empty Music widget so a new player is found.
+    pub(super) fn music_demand(&self) -> bool {
+        self.provider_visible(Widget::Music) && !self.layout_editor.active
     }
 
     pub(super) fn reconcile_weather(&mut self, now: Instant) {

@@ -379,6 +379,7 @@ impl Settings {
                 }
                 controls.push(
                     button::icon(icon::from_name("list-remove-symbolic"))
+                        .tooltip("Remove shortcut")
                         .extra_small()
                         .on_press_maybe(free.then_some(edit(Edit::Remove(target))))
                         .into(),
@@ -454,6 +455,11 @@ impl Settings {
                 } else {
                     "go-down-symbolic"
                 }))
+                .tooltip(if expanded {
+                    "Hide shortcut details"
+                } else {
+                    "Show shortcut details"
+                })
                 .extra_small()
                 .on_press(edit(Edit::Expand((!expanded).then_some(ident))))
                 .into(),
@@ -497,6 +503,7 @@ impl Settings {
                 .into()
         } else {
             button::icon(icon::from_name("list-remove-symbolic"))
+                .tooltip("Remove shortcut")
                 .extra_small()
                 .on_press_maybe(free.then_some(edit(Edit::Remove(row.target()))))
                 .into()

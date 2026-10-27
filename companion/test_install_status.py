@@ -90,7 +90,13 @@ class GenerationStatus(unittest.TestCase):
                 refresh.stage_locked(home,library,fixture=True,session='old',enable=True)
             before={p:p.read_bytes() for p in home.rglob('*') if p.is_file()}
             from unittest.mock import patch
-            with patch.object(panel_launcher,'session_identity',return_value='new'):
+            import builtins
+            original_import = builtins.__import__
+            def read_only_import(name, *args, **kwargs):
+                self.assertNotIn(name, ('refresh', 'install'), 'Status imported mutation code')
+                return original_import(name, *args, **kwargs)
+            with patch.object(panel_launcher,'session_identity',return_value='new'), \
+                 patch.object(builtins, '__import__', side_effect=read_only_import):
                 status=install_status.detect(home,library,True,{},installed=known,running={})
                 self.assertEqual(status['status'],'Log out to activate')
                 self.assertNotIn(str(home),json.dumps(status))

@@ -31,6 +31,7 @@ pub enum Message {
     Option(Widget, &'static str, serde_json::Value),
     Note(text_editor::Action),
     NoteSave,
+    NoteSaved(String, Result<notes::Note, notes::SaveError>),
     NoteRevert,
     /// After a conflict: replace the newer note with this text.
     NoteKeepMine,
@@ -57,6 +58,8 @@ pub struct ToolsEditor {
     pub conflict: Option<notes::Note>,
     /// The editor opened with unsaved edits kept from last time.
     pub restored: bool,
+    saving: Option<String>,
+    pub close_after_save: bool,
     /// A draft file holds this editor's unsaved edits.
     kept: bool,
     pub focus: focus::Session,
@@ -86,6 +89,8 @@ impl Default for ToolsEditor {
             problem: None,
             conflict: None,
             restored: false,
+            saving: None,
+            close_after_save: false,
             kept: draft.is_some(),
             focus: focus::Session::load(),
             tab: Widget::Music,
@@ -120,13 +125,14 @@ impl ToolsEditor {
             .collect::<Vec<_>>()
             .join(",");
         format!(
-            "{}:{}:{}:{}:{}:{:?}:{:?}",
+            "{}:{}:{}:{}:{}:{}:{:?}:{:?}",
             self.feed.is_some(),
             players,
             self.art
                 .as_ref()
                 .is_some_and(|(_, handle)| handle.is_some()),
             self.dirty(),
+            self.saving(),
             self.conflict.is_some(),
             self.focus.phase,
             std::mem::discriminant(&self.focus.status),
@@ -134,6 +140,9 @@ impl ToolsEditor {
     }
     pub fn dirty(&self) -> bool {
         editor_text(&self.content) != self.base
+    }
+    pub fn saving(&self) -> bool {
+        self.saving.is_some()
     }
     pub fn note_chars(&self) -> usize {
         editor_text(&self.content).chars().count()
@@ -168,6 +177,9 @@ impl ToolsEditor {
     /// session, and the note unless it has unsaved edits here.
     pub fn refresh(&mut self) {
         self.focus = focus::Session::load();
+        if self.saving() {
+            return;
+        }
         let note = notes::load();
         if note == self.note {
             return;
@@ -278,15 +290,37 @@ impl ToolsEditor {
         })
     }
 
-    fn save_note(&mut self, expected: String) -> Result<(), String> {
+    fn save_note(&mut self, expected: String) -> Task<crate::settings::Message> {
+        if self.saving() {
+            return Task::none();
+        }
         let text = editor_text(&self.content);
-        match notes::save(&expected, &text) {
+        self.saving = Some(text.clone());
+        self.problem = None;
+        cosmic::task::future(async move {
+            let result = notes::save_async(expected, text.clone()).await;
+            crate::settings::Message::Tools(Message::NoteSaved(text, result))
+        })
+    }
+    fn note_saved(
+        &mut self,
+        text: String,
+        result: Result<notes::Note, notes::SaveError>,
+    ) -> Option<Saved> {
+        if self.saving.as_ref() != Some(&text) {
+            return None;
+        }
+        self.saving = None;
+        let outcome = match result {
             Ok(note) => {
+                // Edits made during this save stay in the editor. Only its
+                // baseline advances to the text that actually reached disk.
                 self.base = note.text.clone();
                 self.note = Ok(note);
                 self.problem = None;
                 self.conflict = None;
                 self.settle();
+                self.refresh();
                 Ok(())
             }
             Err(notes::SaveError::Conflict(current)) => {
@@ -298,7 +332,8 @@ impl ToolsEditor {
                 self.problem = Some(error.clone());
                 Err(error)
             }
-        }
+        };
+        Some(Saved::Note(outcome))
     }
 
     /// Applies `message`. Returns follow-up work and, for preference
@@ -309,6 +344,17 @@ impl ToolsEditor {
         config: &Config,
     ) -> (Task<crate::settings::Message>, Option<Saved>) {
         match message {
+            Message::NoteSaved(text, result) => {
+                return (Task::none(), self.note_saved(text, result));
+            }
+            Message::NoteSave
+            | Message::NoteKeepMine
+            | Message::NoteRevert
+            | Message::NoteUseSaved
+                if self.saving() =>
+            {
+                return (Task::none(), None);
+            }
             Message::MediaControlDone(result) => {
                 self.querying = false;
                 self.music_problem = result.is_err();
@@ -373,7 +419,7 @@ impl ToolsEditor {
             Message::NoteSave => {
                 if self.dirty() && self.note.is_ok() {
                     let expected = self.base.clone();
-                    return (Task::none(), Some(Saved::Note(self.save_note(expected))));
+                    return (self.save_note(expected), None);
                 }
             }
             Message::NoteRevert => {
@@ -388,10 +434,7 @@ impl ToolsEditor {
             }
             Message::NoteKeepMine => {
                 if let Some(current) = self.conflict.take() {
-                    return (
-                        Task::none(),
-                        Some(Saved::Note(self.save_note(current.text))),
-                    );
+                    return (self.save_note(current.text), None);
                 }
             }
             Message::NoteUseSaved => {
@@ -463,14 +506,13 @@ impl ToolsEditor {
             }
             Action::NoteToggle(line) => {
                 if !self.dirty()
+                    && !self.saving()
                     && let Ok(note) = &self.note
                     && let Some(text) = notes::toggle(&note.text, line)
                 {
                     let expected = note.text.clone();
                     self.content = text_editor::Content::with_text(&text);
-                    if self.save_note(expected).is_err() {
-                        self.content = text_editor::Content::with_text(&self.base);
-                    }
+                    return self.save_note(expected);
                 }
                 Task::none()
             }

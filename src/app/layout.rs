@@ -28,7 +28,6 @@ const PLACEMENT_ORDER: [Widget; 9] = [
 pub(super) struct SurfaceGeometry {
     custom: bool,
     sizes: [[u32; 2]; 6],
-    glance_input: Vec<[u32; 4]>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -491,7 +490,6 @@ impl Cards {
                     }
                 }
             }),
-            glance_input: self.glance_input_rects(),
         }
     }
     pub(super) fn sync_widget_surfaces(&mut self) -> Task<Message> {
@@ -893,7 +891,7 @@ impl Cards {
         crate::config::with_nonblocking_locks(|| {
             let task = self.finish_arrange_now(save);
             if self.arrange_display.take().is_some() {
-                self.pending_arrange = false;
+                self.pending_arrange = None;
                 task.chain(self.reconcile_output())
             } else {
                 task
@@ -953,7 +951,7 @@ impl Cards {
                 Err(error) => {
                     editor.error = Some(error);
                     if was_resuming {
-                        self.pending_arrange = false;
+                        self.pending_arrange = None;
                         self.arrange_display = None;
                         self.reconcile_output()
                     } else {
@@ -997,7 +995,7 @@ impl Cards {
         }
         editor.pending_resume = output.cloned();
         editor.exit_failed = true;
-        self.pending_arrange = false;
+        self.pending_arrange = None;
         self.arrange_display = display;
         let migrate = self.reconcile_output();
         if self.output_known {
@@ -1026,7 +1024,7 @@ impl Cards {
         editor.pending_resume = None;
         editor.exit_failed = true;
         editor.error = Some("Displays changed while resuming. Reconnect the original displays to resume, retry cancel, or keep the saved layout.".into());
-        self.pending_arrange = false;
+        self.pending_arrange = None;
         self.arrange_display = None;
         self.sidebar.show(Instant::now());
         true
@@ -1057,7 +1055,7 @@ impl Cards {
 
     fn clear_arrange_recovery(&mut self) -> Task<Message> {
         self.paused_layout = None;
-        self.pending_arrange = false;
+        self.pending_arrange = None;
         // Geometry can pause a failed gesture before finish_arrange has had
         // a chance to return the controls to the default display.
         let restore_output = self.arrange_display.take().is_some();

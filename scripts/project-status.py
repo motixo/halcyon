@@ -8,6 +8,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 import tempfile
 
 SKIP = {'.git', 'node_modules', 'target', 'dist', 'build', 'venv', '.venv', '__pycache__'}
@@ -253,14 +254,17 @@ def repository(path, sockets):
     return result
 
 
-def scan():
-    config_home = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
-    path = Path(os.environ.get('DESKTOP_CARDS_CONFIG', config_home / 'halcyon/config.json'))
-    try:
-        config = json.loads(path.read_text())
-    except (OSError, ValueError):
-        config = {}
-    roots = config.get('project_roots', [])
+def scan(roots=None):
+    # CLI callers may still use the config default. The app passes its immutable
+    # request inputs instead of asking this process to re-read mutable settings.
+    if roots is None:
+        config_home = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config')
+        path = Path(os.environ.get('DESKTOP_CARDS_CONFIG', config_home / 'halcyon/config.json'))
+        try:
+            config = json.loads(path.read_text())
+        except (OSError, ValueError):
+            config = {}
+        roots = config.get('project_roots', [])
     paths = discover(roots)
     # Empty/unavailable folders have no project servers to match. Avoid starting
     # ss and walking process metadata on every refresh of an empty widget.
@@ -274,5 +278,24 @@ def scan():
     return {'updated_at': datetime.now(timezone.utc).isoformat(), 'projects': projects}
 
 
+def read_roots(stream):
+    limit = 1024 * 1024  # same bound as the app's config reader
+    payload = stream.read(limit + 1)
+    if len(payload) > limit:
+        raise ValueError('Project folder input is too large')
+    roots = json.loads(payload)
+    if not isinstance(roots, list) or len(roots) > 128 or not all(isinstance(p, str) for p in roots):
+        raise ValueError('Invalid project folder input')
+    return roots
+
+
 if __name__ == '__main__':
-    print(json.dumps(scan()))
+    if sys.argv[1:] == ['--roots-stdin']:
+        roots = read_roots(sys.stdin.buffer)
+        result = scan(roots)
+        result['requested_roots'] = roots
+    elif not sys.argv[1:]:
+        result = scan()
+    else:
+        raise SystemExit('Unknown project status arguments')
+    print(json.dumps(result))

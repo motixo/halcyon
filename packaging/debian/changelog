@@ -1,3 +1,11 @@
+cosmic-ext-halcyon (0.4.1) unstable; urgency=medium
+
+  * Fix display recovery, calendar refresh ordering and asynchronous Notes saves.
+  * Harden Islands ownership, activation cleanup and package pairing.
+  * Improve Settings navigation, provider demand and release validation.
+
+ -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Tue, 27 Oct 2026 20:00:00 +0000
+
 cosmic-ext-halcyon (0.4.0) unstable; urgency=medium
 
   * Add setup remixing, shared setup packages, Canvas and widget recipes.

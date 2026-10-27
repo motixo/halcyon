@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -26,13 +27,18 @@ class PackageTests(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         self.root = Path(directory.name)
         repo = self.root / "repo"
+        repo.mkdir()
+        (repo / "Cargo.toml").write_text('[package]\nversion = "0.1.0"\n')
+        (repo / "packaging/islands").mkdir(parents=True)
+        (repo / "packaging/islands/download.json").write_text(json.dumps(dict(
+            format="halcyon-islands-download", version=1, main_version="0.1.0", package_version="0.0.9")))
         # Actual enrollment inputs are public and independently pinned.
         shutil.copytree(builder.REPO / "packaging/updates", repo / "packaging/updates")
         files = [
             "scripts/desktop-cards", "scripts/calendar-sync.py", "scripts/project-status.py",
             "companion/panel_launcher.py", "companion/install_status.py",
             "companion/runtime_compatibility.py",
-            "companion/bundle_contract.py", "companion/runtime_identity.py", "companion/refresh.py", "companion/install.py", "companion/panel_configuration.py", "companion/runtime_target.py", "companion/verification.py",
+            "companion/bundle_contract.py", "companion/journal.py", "companion/runtime_identity.py", "companion/refresh.py", "companion/install.py", "companion/panel_configuration.py", "companion/runtime_target.py", "companion/verification.py",
             "docs/google-calendar-setup.html", "LICENSE", "THIRD_PARTY.md", "ASSETS.md",
             "packaging/debian/copyright", "packaging/debian/changelog",
             "packaging/systemd/halcyon.service", "packaging/man/halcyon.1",
@@ -51,7 +57,7 @@ class PackageTests(unittest.TestCase):
         self.binary.write_text("#!/bin/sh\nexit 0\n")
         self.client = self.root / "client.json"
         self.client.write_text('{"installed":{"client_id":"test"}}\n')
-        self.args = argparse.Namespace(binary=self.binary, version="0.1.0~ci7",
+        self.args = argparse.Namespace(binary=self.binary, version="0.1.0",
                                        out=self.root / "out", wallpapers=None,
                                        google_client=self.client, release_updates=True,
                                        development=False)
@@ -81,6 +87,9 @@ class PackageTests(unittest.TestCase):
             self.assertIn("usr/lib/cosmic-ext-halcyon/islands-status.py", members)
             self.assertIn("usr/lib/cosmic-ext-halcyon/panel_launcher.py", members)
             self.assertIn("usr/lib/cosmic-ext-halcyon/runtime_compatibility.py", members)
+            self.assertIn("usr/lib/cosmic-ext-halcyon/journal.py", members)
+            self.assertNotIn("usr/lib/cosmic-ext-halcyon/refresh.py", members)
+            self.assertNotIn("usr/lib/cosmic-ext-halcyon/install.py", members)
             self.assertIn("usr/share/backgrounds/halcyon/scene.jpg", members)
             self.assertIn("usr/lib/systemd/user/halcyon.service", members)
             self.assertIn("usr/share/doc/cosmic-ext-halcyon/THIRD_PARTY_LICENSES.txt", members)
@@ -92,6 +101,8 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(checksum, hashlib.sha256(package.read_bytes()).hexdigest() + "  " + package.name + "\n")
         depends = subprocess.check_output(["dpkg-deb", "-f", str(package), "Depends"], text=True)
         self.assertEqual(depends.strip(), "libc6, libxkbcommon0, python3, git, systemd")
+        breaks = subprocess.check_output(["dpkg-deb", "-f", str(package), "Breaks"], text=True)
+        self.assertEqual(breaks.strip(), "cosmic-ext-halcyon-islands (<< 0.0.9), cosmic-ext-halcyon-islands (>> 0.0.9)")
 
     def test_client_is_optional_and_bundle_build_is_reproducible(self):
         self.args.google_client = None
@@ -126,12 +137,20 @@ class PackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no <name>.jpg"):
             builder.build(self.args)
 
+    def test_release_version_matches_cargo_before_any_archive_is_created(self):
+        for version in ("0.1.1", "0.1.0-1", "0.1.0~ci7"):
+            self.args.version = version
+            with self.assertRaisesRegex(ValueError, "version_must_match_Cargo"):
+                self.build()
+            self.assertFalse(self.args.out.exists())
+
     def test_package_mode_is_explicit_and_development_cannot_enroll(self):
         self.args.release_updates = False
         with self.assertRaisesRegex(ValueError, "choose --release-updates"):
             builder.build(self.args)
         self.assertFalse(self.args.out.exists())
         self.args.development = True
+        self.args.version = "0.1.0~ci7"
         package = self.build()
         self.assertEqual(package.name, "cosmic-ext-halcyon-dev_0.1.0~ci7_amd64.deb")
         root = self.root / "development"

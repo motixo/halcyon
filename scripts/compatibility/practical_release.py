@@ -10,15 +10,21 @@ import re
 from pathlib import Path
 import subprocess
 import tempfile
+import sys
 from bundle_contract import (HELPERS, digest, identity, read_json, verify_bundle,
                              read_catalog, release_catalog)
 from runtime_compatibility import POLICY, validate_bundle
 
 ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT/'packaging'))
+from version_policy import verify_pair
 ACCEPTANCE=ROOT/'companion/compatibility/evidence/accepted-runtime-40071768899.json'
 FINAL_ACCEPTANCES={'0.3.0': ROOT/'companion/compatibility/evidence/accepted-final-030.json'}
 # Explicit frozen release reviews; candidate metadata cannot choose its scope.
-FINAL_REVIEWS={'0.4.0': ROOT/'companion/compatibility/evidence/reviewed-final-040.json'}
+FINAL_REVIEWS={
+    '0.4.0': ROOT/'companion/compatibility/evidence/reviewed-final-040.json',
+    '0.4.1': ROOT/'companion/compatibility/evidence/reviewed-final-041.json',
+}
 LIMITATIONS=['physical-hardware-not-qualified','cosmic-1.10-not-native-qualified',
              'new-family-startup-helpers-not-native-qualified','not-full-native-matrix']
 FINAL_LIMITATIONS=['physical-hardware-not-qualified','cosmic-1.10-not-native-qualified',
@@ -114,12 +120,20 @@ def verify_download_pin(root, data, pin=None):
         raise ValueError('release_download_pin_mismatch')
 
 
+def verify_activation_cli(path):
+    value = digest(path)
+    if value != digest(ROOT/'packaging/islands/halcyon-islands'):
+        raise ValueError('activation_cli_source_mismatch')
+    return value
+
+
 def audit(root, data, expected):
     """Return a review request; no approval is inferred or written."""
     verify_download_pin(root, data)
     main=[n for n,v in data['artifacts'].items() if v['kind']=='main-deb']
     islands=data['islands_package']
     if len(main)!=1: raise ValueError('exact_main_package_required')
+    verify_pair(ROOT, root/main[0], root/islands)
     with tempfile.TemporaryDirectory(prefix='halcyon-release-audit-') as temporary:
         work=Path(temporary)
         for name,destination in ((islands,work/'islands'),(main[0],work/'main')):
@@ -128,11 +142,12 @@ def audit(root, data, expected):
         manifest,catalog=verify_bundle(library,'companion-manifest.json')
         validate_bundle(manifest,catalog)
         main_elf=digest(work/'main/usr/bin/halcyon')
+        cli = verify_activation_cli(work/'islands/usr/bin/halcyon-islands')
         bindings=dict(packages={
             'main':dict(sha256=digest(root/main[0]),elf_sha256=main_elf),
             'islands':dict(sha256=digest(root/islands),elf_sha256=manifest['binary_sha256'])},
             payload_sha256=manifest['payload_sha256'],catalog_sha256=digest(library/'catalog.json'),
-            helpers={name:digest(library/name) for name in HELPERS})
+            helpers={name:digest(library/name) for name in HELPERS}, activation_cli_sha256=cli)
         fresh=(final_package_review(root,data,bindings)
                if data.get('release') in FINAL_REVIEWS
                else final_native_acceptance(root,data,bindings))
@@ -144,8 +159,8 @@ def audit(root, data, expected):
         if digest(library/'catalog.json')!=identity(expected_catalog):
             raise ValueError('release_catalog_source_mismatch')
         app=work/'main/usr/lib/cosmic-ext-halcyon'
-        for name in ('bundle_contract.py','runtime_identity.py','runtime_target.py','runtime_compatibility.py',
-                     'panel_configuration.py','verification.py','refresh.py','install.py','panel_launcher.py'):
+        for name in ('bundle_contract.py','journal.py','runtime_identity.py','runtime_target.py','runtime_compatibility.py',
+                     'panel_configuration.py','verification.py','panel_launcher.py'):
             if digest(app/name)!=digest(library/name): raise ValueError('mixed_status_helpers')
         if digest(app/'islands-status.py')!=digest(library/'install_status.py'):
             raise ValueError('mixed_status_helpers')

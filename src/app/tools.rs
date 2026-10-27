@@ -47,6 +47,7 @@ pub(super) struct Tools {
     pub note: Result<notes::Note, String>,
     pub draft: Option<NoteDraft>,
     pub note_problem: Option<String>,
+    checking_note: bool,
     pub focus: focus::Session,
     /// The size each tool surface was created with.
     geometry: BTreeMap<Widget, [u32; 2]>,
@@ -66,6 +67,7 @@ impl Tools {
             note: notes::load(),
             draft: None,
             note_problem: None,
+            checking_note: false,
             focus: focus::Session::load(),
             geometry: BTreeMap::new(),
             music_shown: false,
@@ -82,6 +84,7 @@ impl Tools {
             note: Ok(notes::Note::default()),
             draft: None,
             note_problem: None,
+            checking_note: false,
             focus: focus::Session::default(),
             geometry: BTreeMap::new(),
             music_shown: false,
@@ -200,7 +203,7 @@ impl Cards {
                     problem: self.tools.note_problem.as_deref(),
                 },
                 &self.config,
-                Some(on_desktop),
+                (!self.tools.checking_note).then_some(on_desktop as fn(Action) -> Message),
                 Some(self.widget_size(widget)),
             ),
             _ => cards::focus(
@@ -281,7 +284,7 @@ impl Cards {
     }
 
     pub(super) fn reload_note(&mut self) {
-        if self.tools.draft.is_none() {
+        if self.tools.draft.is_none() && !self.tools.checking_note {
             let note = notes::load();
             if note != self.tools.note {
                 self.tools.note_problem = None;
@@ -343,6 +346,9 @@ impl Cards {
     /// holding the notes lock never freezes the widgets or traps the
     /// keyboard. The result arrives as `NoteSaved`.
     pub(super) fn save_note(&mut self) -> Task<Message> {
+        if self.tools.checking_note {
+            return Task::none();
+        }
         let Some(draft) = &mut self.tools.draft else {
             return Task::none();
         };
@@ -442,6 +448,11 @@ impl Cards {
         let now = focus::now_ms();
         let today = focus::today();
         match action {
+            Action::NoteEdit | Action::NoteSave | Action::NoteToggle(_)
+                if self.tools.checking_note =>
+            {
+                return Task::none();
+            }
             Action::Music(command) => return self.music_command(command),
             Action::MusicSeek(request) => {
                 return cosmic::task::future(async move {
@@ -516,22 +527,15 @@ impl Cards {
                 }
             }
             Action::NoteToggle(line) => {
-                if let Ok(note) = &self.tools.note
+                if self.tools.draft.is_none()
+                    && let Ok(note) = &self.tools.note
                     && let Some(text) = notes::toggle(&note.text, line)
                 {
-                    match notes::save(&note.text.clone(), &text) {
-                        Ok(note) => {
-                            self.tools.note = Ok(note);
-                            self.tools.note_problem = None;
-                        }
-                        Err(notes::SaveError::Conflict(current)) => {
-                            // Show what is saved now; the tick can be redone.
-                            self.tools.note = Ok(current);
-                        }
-                        Err(notes::SaveError::Failed(error)) => {
-                            self.tools.note_problem = Some(format!("Not saved: {error}"));
-                        }
-                    }
+                    let expected = note.text.clone();
+                    self.tools.checking_note = true;
+                    return cosmic::task::future(async move {
+                        Message::NoteChecked(notes::save_async(expected, text).await)
+                    });
                 }
             }
             Action::FocusToggle => {
@@ -557,6 +561,33 @@ impl Cards {
             }
         }
         Task::none()
+    }
+
+    pub(super) fn note_checked(
+        &mut self,
+        result: Result<notes::Note, notes::SaveError>,
+    ) -> Task<Message> {
+        if !self.tools.checking_note {
+            return Task::none();
+        }
+        self.tools.checking_note = false;
+        match result {
+            Ok(note) => {
+                self.tools.note = Ok(note);
+                self.tools.note_problem = None;
+            }
+            Err(notes::SaveError::Conflict(current)) => {
+                self.tools.note = Ok(current);
+                self.tools.note_problem = Some("Changed elsewhere. Check the item again.".into());
+            }
+            Err(notes::SaveError::Failed(error)) => {
+                self.tools.note_problem = Some(format!("Not saved: {error}"))
+            }
+        }
+        // A watch event may have arrived while the save was pending. Read the
+        // latest bounded document so that event cannot leave an older view.
+        self.reload_note();
+        self.sync_widget_surfaces()
     }
 
     /// Ends a focus round or break whose time is up: saves it and, when
@@ -599,15 +630,14 @@ impl Cards {
     pub(super) fn tools_wake(&self) -> Option<Instant> {
         let now = Instant::now();
         let wall = focus::now_ms();
-        let focus = if self.config.widget_visible(Widget::Focus) {
+        let focus = if self.provider_visible(Widget::Focus) {
             self.tools.focus.next_change(wall)
         } else {
             self.tools.focus.ends_at()
         }
         .map(|at| now + Duration::from_millis((at - wall).max(1) as u64));
         let music = self
-            .config
-            .widget_visible(Widget::Music)
+            .music_demand()
             .then_some(())
             .filter(|_| self.config.music.show_progress)
             .and_then(|_| self.current_player())
@@ -753,6 +783,63 @@ impl Cards {
 
 #[cfg(test)]
 mod tests {
+    fn finish_note_check(cards: &mut Cards, task: Task<Message>) {
+        use cosmic::iced::futures::StreamExt;
+        use cosmic::iced::runtime::{Action as RuntimeAction, task};
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let mut stream = task::into_stream(task).expect("async note save");
+                let mut completed = false;
+                while let Some(action) = stream.next().await {
+                    if let RuntimeAction::Output(cosmic::Action::App(Message::NoteChecked(
+                        result,
+                    ))) = action
+                    {
+                        let _ = cards.note_checked(result);
+                        completed = true;
+                    }
+                }
+                assert!(completed);
+            });
+    }
+
+    #[test]
+    fn checklist_save_is_async_and_keeps_concurrent_text() {
+        if crate::displays::test_support::isolated(
+            "app::tools::tests::checklist_save_is_async_and_keeps_concurrent_text",
+        ) {
+            return;
+        }
+        notes::save("", "[ ] task").unwrap();
+        let (mut cards, _) = Cards::init(Core::default(), Config::default());
+        let task = cards.update(Message::Tool(Action::NoteToggle(0)));
+        assert!(cards.tools.checking_note);
+        assert_eq!(notes::load().unwrap().text, "[ ] task");
+        assert!(
+            cosmic::iced::runtime::task::into_stream(cards.update_tool(Action::NoteToggle(0)))
+                .is_none()
+        );
+        let _ = cards.update(Message::Tool(Action::NoteEdit));
+        assert!(cards.tools.draft.is_none());
+        notes::save("[ ] task", "[ ] edited elsewhere").unwrap();
+        finish_note_check(&mut cards, task);
+        assert!(!cards.tools.checking_note);
+        assert_eq!(
+            cards.tools.note.as_ref().unwrap().text,
+            "[ ] edited elsewhere"
+        );
+        let task = cards.update(Message::Tool(Action::NoteToggle(0)));
+        finish_note_check(&mut cards, task);
+        assert_eq!(
+            cards.tools.note.as_ref().unwrap().text,
+            "[x] edited elsewhere"
+        );
+        assert_eq!(notes::load().unwrap().text, "[x] edited elsewhere");
+    }
+
     use super::*;
     use cosmic::Application;
 
@@ -893,7 +980,8 @@ mod tests {
                 assert!(cards.tools.draft.is_none());
                 assert_eq!(notes::load().unwrap().text, "[ ] oolong");
                 // Ticking saves at once and changes only the box.
-                let _ = cards.update(Message::Tool(Action::NoteToggle(0)));
+                let task = cards.update(Message::Tool(Action::NoteToggle(0)));
+                finish_note_check(&mut cards, task);
                 assert_eq!(notes::load().unwrap().text, "[x] oolong");
                 // Settings saves while the desktop edits: the first Save explains,
                 // keeps the draft, and only a second Save replaces.
