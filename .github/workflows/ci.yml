@@ -27,7 +27,7 @@ jobs:
             fonts-open-sans fonts-noto-mono \
             libfreetype-dev libinput-dev libudev-dev libdbus-1-dev libseat-dev \
             libegl1-mesa-dev libvulkan-dev libssl-dev libclang-dev \
-            dpkg-dev apt-utils gnupg util-linux appstream desktop-file-utils lintian python3 python3-yaml
+            dpkg-dev apt-utils gnupg util-linux apparmor appstream desktop-file-utils lintian python3 python3-yaml
       - name: Install Rust 1.93
         uses: dtolnay/rust-toolchain@master
         with:
@@ -52,7 +52,22 @@ jobs:
           python3 -m unittest discover -s packaging/islands -p 'test_*.py'
           PYTHONPATH=companion python3 -m unittest discover -s companion -p 'test_*.py'
           PYTHONPATH=companion:scripts/compatibility python3 -m unittest discover -s scripts/compatibility -p 'test_*.py'
-          # APT fixtures require namespace root mapped to this unprivileged user.
+          # Ubuntu 24.04 restricts unprivileged user namespaces. Grant only
+          # unshare permission to create one; keep the host-wide policy intact.
+          # https://documentation.ubuntu.com/release-notes/24.04/
+          if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ] && \
+             [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)" = 1 ]; then
+            namespace_profile="$RUNNER_TEMP/halcyon-ci-unshare"
+            cat > "$namespace_profile" <<'PROFILE'
+          abi <abi/4.0>,
+          profile halcyon-ci-unshare /usr/bin/unshare flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+            sudo apparmor_parser -r "$namespace_profile"
+            trap 'sudo apparmor_parser -R "$namespace_profile"' EXIT
+          fi
+          # The fixture refuses host root: uid 0 must map only to the runner uid.
           PYTHONPATH=companion:scripts/compatibility:scripts/apt \
             unshare --user --map-root-user python3 -m unittest discover -s scripts/apt -p 'test_*.py'
       - name: Test Rust
