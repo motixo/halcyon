@@ -12,6 +12,11 @@ from runtime_compatibility import POLICY
 # deliberately independent of distribution.json and candidate-supplied policy.
 # New artifacts must pass verify() with the current policy and fresh approval.
 PUBLISHED_RELEASES = {
+    '7b06a2331dbf250ba7e8d6a91ac8c2851569c57b5e7ea37624621daa1291c7a8': {
+        'release': '0.4.0',
+        'policy': 'cosmic-1.10-1.11-startup-v3',
+        'approval_sha256': '705e5f66b5f04cd25e8841f0616029652c52b09fac8f09536234bf7df8e951d7',
+    },
     '6e5facd7eb8cf5cda71d57022ee8f33728148ba102229d66e20c8d8ed4827351': {
         'release': '0.3.0',
         'policy': 'cosmic-1.10-1.11-startup-v2',

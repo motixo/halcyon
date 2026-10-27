@@ -15,14 +15,15 @@ and source-archive validation. Physical display/hardware, screen-reader and live
 release-installation acceptance remain open in the [tracker](future-builder/tracker.json).
 The source installer’s missing Ridge PNG was fixed during this review.
 
-The user selected **0.4.0** for these implementations. Release review and exact-package
-acceptance are in progress; 0.3.0 remains the published version until those checks pass.
-The local wizard navigation repair is included. Later concepts retain the 0.5 working target.
+**[0.4.0 is published](https://github.com/profilaz3/halcyon/releases/tag/v0.4.0)**
+with matching packages, corresponding source, verification records and checksums.
+Signed APT publication is in progress. The wizard navigation repair is included;
+later concepts retain the 0.5 working target.
 
-The final 0.4.0 package upgrade preserved preferences byte for byte. Regression
-fixes, packaging checks, offline source resolution and 60 final-package Settings
-captures passed. Exact artifacts and corresponding source are being prepared for
-publication; the installed workstation app remains unchanged.
+The final package upgrade preserved preferences byte for byte. Packaging checks,
+offline source resolution and 60 final-package Settings captures passed. The
+[package verification record](releases/0.4.0-acceptance.md) describes their scope.
+The installed workstation app remains unchanged.
 
 ## Settings structural pass
 

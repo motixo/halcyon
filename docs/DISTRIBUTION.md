@@ -108,10 +108,9 @@ reference-aware default-enrollment removal described below.
 
 ## Release identity, source and maintenance
 
-APT serves the **exact** approved 0.3.0 app/companion bytes. Its practical
-`cosmic-1.10-1.11-startup-v2` approval and documented limitations remain unchanged;
-APT delivery does not turn historical focused evidence into new native/hardware
-qualification. Published releases remain immutable.
+APT distributes the **exact** reviewed app/companion bytes from GitHub releases.
+The 0.4.0 pair uses `cosmic-1.10-1.11-startup-v3`; retained versions keep their
+original approvals and scope. Published releases remain immutable.
 
 The original release supplies corresponding source, licenses, provenance and
 focused evidence. The separate bootstrap release supplies its own corresponding
