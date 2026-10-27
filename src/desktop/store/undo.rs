@@ -156,7 +156,11 @@ impl LatestChange {
     pub(super) fn to_file(&self) -> UndoFile {
         UndoFile {
             format: FORMAT.into(),
-            version: VERSION,
+            version: if self.widget.as_ref().is_some_and(|w| w.design_v1) {
+                2
+            } else {
+                VERSION
+            },
             id: self.id.clone(),
             owner: self.owner.key().into(),
             label: self.label.clone(),
@@ -181,7 +185,9 @@ impl LatestChange {
         if file.format != FORMAT {
             return Err(invalid("The saved Undo record is not recognized."));
         }
-        if file.version != VERSION {
+        if !matches!(file.version, VERSION | 2)
+            || (file.version == VERSION && file.widget.as_ref().is_some_and(|w| w.design_v1))
+        {
             return Err(invalid(
                 "The saved Undo record comes from a different version of Halcyon.",
             ));

@@ -164,9 +164,14 @@ impl Settings {
             .into(),
         );
         if let Some(form) = &editor.form {
-            items.push(self.rule_form(form, accent));
+            items.push(self.inspector_layout(
+                self.rule_list(&rows, accent),
+                self.rule_form(form, accent),
+                "floating-rules",
+            ));
+        } else {
+            items.push(self.rule_list(&rows, accent));
         }
-        items.push(self.rule_list(&rows, accent));
         column::with_children(items).spacing(16).into()
     }
 

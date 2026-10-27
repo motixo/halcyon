@@ -1,4 +1,7 @@
 use super::*;
+#[cfg(test)]
+#[path = "layout_foundation_tests.rs"]
+mod foundation_tests;
 use cosmic::iced::platform_specific::shell::commands::layer_surface::destroy_layer_surface;
 use cosmic::iced::widget::{opaque, pin, stack};
 use cosmic::iced::{Point, keyboard, mouse};
@@ -145,17 +148,28 @@ impl Cards {
             || self.screen_size[1] < 500.
     }
     pub(super) fn widget_id(&self, widget: Widget) -> window::Id {
-        self.ids[match widget {
-            Widget::Clock => 0,
-            Widget::Weather => 1,
-            Widget::Calendar => 4,
-            Widget::Devbox => 6,
-            Widget::Projects => 7,
-            Widget::Glance => 8,
-            Widget::Music => 9,
-            Widget::Notes => 10,
-            Widget::Focus => 11,
-        }]
+        self.instance_window(&crate::design::InstanceId::legacy(widget))
+            .expect("the singleton adapter has a reserved identity for every widget")
+    }
+    /// Runtime surfaces resolve saved identities explicitly. Unsupported
+    /// duplicate IDs can never accidentally address a same-kind singleton.
+    pub(super) fn instance_window(
+        &self,
+        instance: &crate::design::InstanceId,
+    ) -> Option<window::Id> {
+        Some(
+            self.ids[match instance.legacy_kind()? {
+                Widget::Clock => 0,
+                Widget::Weather => 1,
+                Widget::Calendar => 4,
+                Widget::Devbox => 6,
+                Widget::Projects => 7,
+                Widget::Glance => 8,
+                Widget::Music => 9,
+                Widget::Notes => 10,
+                Widget::Focus => 11,
+            }],
+        )
     }
     pub(super) fn explicit_size(&self, widget: Widget) -> Option<[f32; 2]> {
         let sizes = if self.layout_editor.active {
@@ -208,10 +222,14 @@ impl Cards {
                 height.min((self.widget_screen(widget)[1] - 96.).max(1.)),
             ];
         }
-        let width: f32 = if widget == Widget::Clock { 490. } else { 360. };
+        let width: f32 = if widget == Widget::Clock {
+            crate::widget_presentation::CLOCK_SIZE[0]
+        } else {
+            crate::widget_presentation::WEATHER_SIZE[0]
+        };
         let mut height = match widget {
-            Widget::Clock => 200.,
-            Widget::Weather => 180.,
+            Widget::Clock => crate::widget_presentation::CLOCK_SIZE[1],
+            Widget::Weather => crate::widget_presentation::WEATHER_SIZE[1],
             Widget::Calendar => self.calendar_natural_height(),
             Widget::Projects => self.projects_natural_height(),
             Widget::Devbox => self.devbox_natural_height(),
@@ -344,12 +362,37 @@ impl Cards {
     /// Where a card surface takes clicks, in surface coordinates: its cards
     /// only. The transparent shadow margin and a column's empty space pass
     /// clicks through, so they never cover a tool or another card.
+    pub(super) fn arrange_hides_surface(&self, widget: Widget) -> bool {
+        self.layout_editor.active
+            && (self.arranging_widget(widget)
+                || (widget == Widget::Weather
+                    && !self.custom_layout()
+                    && self
+                        .visible_cards()
+                        .into_iter()
+                        .any(|w| self.arranging_widget(w))))
+    }
     pub(super) fn card_input_rects(&self, widget: Widget) -> Vec<[u32; 4]> {
+        if self.arrange_hides_surface(widget) {
+            return Vec::new();
+        }
         let m = crate::widget_style::shadow_margin(&self.config);
         let (mi, mu) = self.shadow_px();
         let mi = mi.max(0) as u32;
         match widget {
-            Widget::Clock => Vec::new(),
+            Widget::Clock => {
+                if !self.config.widget_visible(widget) || !self.widget_available(widget) {
+                    return Vec::new();
+                }
+                self.config
+                    .recipes
+                    .clock
+                    .as_ref()
+                    .and_then(|r| super::recipe::action_rect(r, self.widget_size(widget)))
+                    .map(|r| [r[0] + m.round() as u32, r[1] + m.round() as u32, r[2], r[3]])
+                    .into_iter()
+                    .collect()
+            }
             Widget::Glance => self
                 .glance_input_rects()
                 .into_iter()
@@ -358,17 +401,41 @@ impl Cards {
             _ if self.custom_layout() => {
                 if self.config.widget_visible(widget) && self.widget_available(widget) {
                     let size = self.widget_size(widget);
-                    vec![[mi, mi, size[0].ceil() as u32, size[1].ceil() as u32]]
+                    crate::widget_presentation::input_rect(
+                        [mi as f32; 2],
+                        size,
+                        size.map(|v| v.ceil() + mu as f32),
+                    )
+                    .into_iter()
+                    .collect()
                 } else {
                     Vec::new()
                 }
             }
-            Widget::Weather | Widget::Calendar => {
+            Widget::Weather => {
+                let cards = self.visible_cards();
+                let total = cards.iter().map(|w| self.card_height(*w)).sum::<f32>()
+                    + cards.len().saturating_sub(1) as f32 * drawer::CARD_GAP;
+                let height = (self.screen_size[1] - 96. + mu as f32).max(1.);
+                let mut top = ((height - total) / 2.).max(m);
+                cards
+                    .into_iter()
+                    .filter_map(|card| {
+                        let size = [360., self.card_height(card)];
+                        let rect = crate::widget_presentation::input_rect(
+                            [m, top],
+                            size,
+                            [360. + mu as f32, height],
+                        );
+                        top += size[1] + drawer::CARD_GAP;
+                        rect
+                    })
+                    .collect()
+            }
+            Widget::Calendar => {
                 // The column centers its cards; a little slack keeps a card
                 // that is a few pixels taller than its estimate clickable.
-                let cards = if widget == Widget::Weather {
-                    self.visible_cards()
-                } else if self.config.widget_visible(Widget::Calendar) {
+                let cards = if self.config.widget_visible(Widget::Calendar) {
                     vec![Widget::Calendar]
                 } else {
                     Vec::new()
@@ -2068,12 +2135,15 @@ mod tests {
         cards.screen_size = [1920., 1080.];
         assert!(!cards.custom_layout());
         let column = cards.card_input_rects(Widget::Weather);
-        assert_eq!(column.len(), 1);
+        assert_eq!(column.len(), cards.visible_cards().len());
         let height = 1080. - 96. + mu as f32;
         assert!((column[0][3] as f32) < height, "{column:?}");
         let visible = cards.visible_cards();
         let total: f32 = visible.iter().map(|w| cards.card_height(*w)).sum();
-        assert!(column[0][3] as f32 >= total, "every card stays clickable");
+        assert!(
+            column.iter().map(|r| r[3] as f32).sum::<f32>() >= total - 6.,
+            "every card stays clickable"
+        );
         // Hidden or offscreen surfaces take no clicks at all.
         assert!(cards.card_input_rects(Widget::Devbox).is_empty());
     }

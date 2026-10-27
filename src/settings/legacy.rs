@@ -657,7 +657,7 @@ impl Proposal {
                 c.patch(store, planned.patch().clone(), use_proposed)?;
                 c.widgets(store, planned.widget_patch().clone(), use_proposed)?;
             }
-            Kind::Layout | Kind::Automation => {
+            Kind::Layout | Kind::Canvas | Kind::Automation => {
                 return Err(
                     "An unfinished arrangement or schedule is retained. Open it to continue."
                         .into(),

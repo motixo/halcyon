@@ -1,4 +1,4 @@
-//! Noble PackageKit 1.2.8 protocol. Only reviewed bootstrap files can be installed.
+//! Noble PackageKit 1.2.8 protocol. Only hash-pinned release files can be installed.
 //! Enum numbers verified against installed libpackagekit-glib2.so.18 using its
 //! pk_exit_enum_from_string / pk_error_enum_from_string (no service calls).
 use super::{Failure, Identity};
@@ -22,6 +22,9 @@ pub(super) async fn install_bootstrap(
     prepared: std::sync::Arc<super::enrollment::Prepared>,
     progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
 ) -> Result<(), Failure> {
+    if prepared.kind != super::enrollment::Kind::Updates {
+        return Err(Failure::Untrusted);
+    }
     if super::identity::isolated() {
         return Err(Failure::InstallationChanged);
     }
@@ -43,6 +46,114 @@ async fn install_progress(
     prepared: &super::enrollment::Prepared,
     progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
 ) -> Result<(), Failure> {
+    files_transaction(connection, prepared, progress, false)
+        .await
+        .map(|_| ())
+}
+
+/// A supported COSMIC desktop already has the companion's system dependencies.
+/// Keep a larger repair/upgrade transaction in the OS package manager instead of
+/// hiding it behind an optional-component button.
+fn islands_plan(packages: &[(u32, String)], version: &str) -> Result<(), Failure> {
+    let mut installs = 0;
+    for (info, id) in packages {
+        if *info == 1 {
+            continue;
+        } // Already installed, no change.
+        let fields: Vec<_> = id.split(';').collect();
+        // apt's simulation also reports the pinned local file as untrusted.
+        // Accept that annotation only for this exact companion; never accept an
+        // unsigned repository dependency or weaken a rejected trust check.
+        if !matches!(*info, 12 | 23)
+            || fields.len() != 4
+            || fields[0] != "cosmic-ext-halcyon-islands"
+            || fields[1] != version
+            || fields[2] != "amd64"
+        {
+            return Err(Failure::DependencyChanges);
+        }
+        if *info == 12 {
+            installs += 1;
+        }
+    }
+    if installs != 1 {
+        return Err(Failure::DependencyChanges);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn islands_local_trust_annotation_is_scoped_to_the_pinned_file() {
+    let id = "cosmic-ext-halcyon-islands;0.3.0;amd64;local".to_owned();
+    assert_eq!(
+        islands_plan(&[(23, id.clone()), (12, id.clone())], "0.3.0"),
+        Ok(())
+    );
+    assert_eq!(
+        islands_plan(
+            &[(23, "dependency;1;amd64;repo".into()), (12, id.clone())],
+            "0.3.0"
+        ),
+        Err(Failure::DependencyChanges)
+    );
+    assert_eq!(
+        islands_plan(&[(23, id)], "0.3.0"),
+        Err(Failure::DependencyChanges)
+    );
+}
+
+pub(super) async fn prepare_islands(prepared: &super::enrollment::Prepared) -> Result<(), Failure> {
+    if super::identity::isolated() || prepared.kind != super::enrollment::Kind::Islands {
+        return Err(Failure::InstallationChanged);
+    }
+    let connection = timeout(STEP_TIMEOUT, Connection::system())
+        .await
+        .map_err(|_| Failure::Timeout)?
+        .map_err(|_| Failure::MissingPackageKit)?;
+    islands_preflight(&connection, prepared).await
+}
+
+pub(super) async fn islands_preflight(
+    connection: &Connection,
+    prepared: &super::enrollment::Prepared,
+) -> Result<(), Failure> {
+    let root = zbus::Proxy::new(connection, SERVICE, ROOT, SERVICE)
+        .await
+        .map_err(bus_error)?;
+    let active: Vec<OwnedObjectPath> = timeout(STEP_TIMEOUT, root.call("GetTransactionList", &()))
+        .await
+        .map_err(|_| Failure::Timeout)?
+        .map_err(bus_error)?;
+    if !active.is_empty() {
+        return Err(Failure::Busy);
+    }
+    let changes = files_transaction(connection, prepared, None, true).await?;
+    islands_plan(&changes, &super::enrollment::islands_version()?)
+}
+
+pub(super) async fn install_islands(
+    prepared: std::sync::Arc<super::enrollment::Prepared>,
+) -> Result<(), Failure> {
+    if super::identity::isolated() || prepared.kind != super::enrollment::Kind::Islands {
+        return Err(Failure::InstallationChanged);
+    }
+    let connection = timeout(STEP_TIMEOUT, Connection::system())
+        .await
+        .map_err(|_| Failure::Timeout)?
+        .map_err(|_| Failure::MissingPackageKit)?;
+    // Repeat the simulation immediately before authorizing; never turn a
+    // previously displayed plan into an unrelated package upgrade/repair.
+    islands_preflight(&connection, &prepared).await?;
+    install_progress(&connection, &prepared, None).await
+}
+
+async fn files_transaction(
+    connection: &Connection,
+    prepared: &super::enrollment::Prepared,
+    progress: Option<tokio::sync::mpsc::UnboundedSender<super::InstallPhase>>,
+    simulate: bool,
+) -> Result<Vec<(u32, String)>, Failure> {
     prepared.verify()?;
     let work = async {
         let root = zbus::Proxy::new(connection, SERVICE, ROOT, SERVICE)
@@ -89,9 +200,11 @@ async fn install_progress(
             .await
             .map_err(bus_error)?;
         prepared.verify()?;
-        prepared
-            .handed_off
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        if !simulate {
+            prepared
+                .handed_off
+                .store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         let paths: Vec<_> = prepared
             .paths
             .iter()
@@ -104,16 +217,30 @@ async fn install_progress(
             let _ = progress.send(super::InstallPhase::Authorizing);
         }
         proxy
-            .call::<_, _, ()>("InstallFiles", &(0u64, paths))
+            .call::<_, _, ()>(
+                "InstallFiles",
+                &(if simulate { 1u64 << 2 } else { 0u64 }, paths),
+            )
             .await
             .map_err(bus_error)?;
         if let Some(progress) = &progress {
             let _ = progress.send(super::InstallPhase::Installing);
         }
         let mut failure = None;
+        let mut packages = Vec::new();
         while let Some(message) = signals.next().await {
             let message = message.map_err(bus_error)?;
             match message.header().member().map(|v| v.as_str()) {
+                Some("Package") => {
+                    let (info, id, _): (u32, String, String) = message
+                        .body()
+                        .deserialize()
+                        .map_err(|_| Failure::InvalidResponse)?;
+                    if id.len() > 1024 || packages.len() >= 128 {
+                        return Err(Failure::InvalidResponse);
+                    }
+                    packages.push((info, id));
+                }
                 Some("ErrorCode") => {
                     let (code, _): (u32, String) = message
                         .body()
@@ -126,19 +253,25 @@ async fn install_progress(
                         .body()
                         .deserialize()
                         .map_err(|_| Failure::InvalidResponse)?;
-                    prepared
-                        .handed_off
-                        .store(false, std::sync::atomic::Ordering::Relaxed);
-                    return failure.map_or_else(|| exit_code(exit), Err);
+                    if !simulate {
+                        prepared
+                            .handed_off
+                            .store(false, std::sync::atomic::Ordering::Relaxed);
+                    }
+                    failure.map_or_else(|| exit_code(exit), Err)?;
+                    return Ok(packages);
                 }
                 _ => {}
             }
         }
         Err(Failure::Failed)
     };
-    timeout(Duration::from_secs(15 * 60), work)
-        .await
-        .unwrap_or(Err(Failure::Timeout))
+    timeout(
+        Duration::from_secs(if simulate { 60 } else { 15 * 60 }),
+        work,
+    )
+    .await
+    .unwrap_or(Err(Failure::Timeout))
 }
 
 pub(super) async fn cancelled(cancel: &mut watch::Receiver<bool>) {

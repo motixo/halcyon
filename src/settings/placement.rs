@@ -34,8 +34,8 @@ pub enum Message {
     Reset,
 }
 
-#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-struct EditState {
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub(super) struct EditState {
     positions: BTreeMap<String, [f32; 2]>,
     sizes: BTreeMap<String, [f32; 2]>,
     materialized: BTreeMap<String, [f32; 2]>,
@@ -157,7 +157,7 @@ pub(super) struct PlacementEditor {
 
 /// Only intentional layout work and its merge baselines survive closing.
 /// Runtime geometry, pointer state and a drag in flight are read afresh.
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(super) struct SavedPlacement {
     #[serde(default)]
     pub(super) contexts: crate::config::monitors::Contexts,
@@ -304,6 +304,17 @@ impl PlacementEditor {
         config: &Config,
         displays: &crate::displays::Registry,
     ) {
+        let before = self
+            .displays
+            .selected(self.display.as_deref().or(config.widget_display.as_deref()));
+        let after = displays.selected(self.display.as_deref().or(config.widget_display.as_deref()));
+        if !matches!((before, after), (Some(a), Some(b)) if a.same_geometry(b))
+            && (before.is_some() || after.is_some())
+        {
+            self.cancel_drag();
+            self.pointer = None;
+            self.inside = false;
+        }
         self.displays = displays.clone();
         self.refresh(config);
     }
@@ -367,10 +378,23 @@ impl PlacementEditor {
     fn reconcile(&mut self, next: Geometry) {
         if let Some(drag) = &self.drag {
             let grabbed_card_remains = next.visible.contains(&drag.key);
+            let same_frame = next.snapshot.screen == self.snapshot.screen
+                && next
+                    .snapshot
+                    .display
+                    .as_ref()
+                    .map(|d| (&d.output, d.ready, d.epoch))
+                    == self
+                        .snapshot
+                        .display
+                        .as_ref()
+                        .map(|d| (&d.output, d.ready, d.epoch));
             self.pending = Some(next);
-            if !grabbed_card_remains {
+            if !grabbed_card_remains || !same_frame {
                 // Cancelling the drag adopts the pending geometry.
                 self.cancel_drag();
+                self.pointer = None;
+                self.inside = false;
             }
             return;
         }
@@ -607,7 +631,7 @@ impl PlacementEditor {
     pub(super) fn selected(&self) -> Option<Widget> {
         self.selected.as_deref().and_then(Widget::parse)
     }
-    fn state(&self) -> EditState {
+    pub(super) fn state(&self) -> EditState {
         EditState {
             positions: self.positions.clone(),
             sizes: self.sizes.clone(),
@@ -617,7 +641,7 @@ impl PlacementEditor {
             columns: self.columns,
         }
     }
-    fn restore(&mut self, state: EditState) {
+    pub(super) fn restore(&mut self, state: EditState) {
         self.positions = state.positions;
         self.sizes = state.sizes;
         self.materialized = state.materialized;
@@ -883,8 +907,8 @@ impl Settings {
         dragging: bool,
     ) -> Element<'a, super::Message> {
         let widget = Widget::parse(&geometry.key).unwrap();
-        let accent = self.config.palette().accent;
-        let content = super::view::profiles::card(widget, size, &self.config, scale);
+        let accent = self.settings_accent();
+        let content = super::view::profiles::card(widget, size, self.canvas_config(), scale);
         // The native button supplies Tab focus and keyboard activation. Its
         // child owns pointer press, so a drag never opens a settings page.
         let body = button::custom(
@@ -942,7 +966,7 @@ impl Settings {
 
     pub(super) fn placement_inspector(&self) -> Element<'_, super::Message> {
         let editor = &self.placement;
-        let accent = self.config.palette().accent;
+        let accent = self.settings_accent();
         let Some(widget) = editor.selected() else {
             // An ordinary button for every visible card also makes selection
             // easy without a pointer, including small or overlapping cards.
@@ -964,7 +988,11 @@ impl Settings {
         let Some(size) = editor.display_size(widget.key()) else {
             return column::with_children(vec![
                 text::body(widget.title()).into(),
-                self.widget_display_controls(widget),
+                if self.canvas.is_none() {
+                    self.widget_display_controls(widget)
+                } else {
+                    text::caption("This widget is not on the selected display.").into()
+                },
                 button::text("Done")
                     .on_press(message(Message::ClearSelection))
                     .into(),
@@ -995,12 +1023,20 @@ impl Settings {
             .into()
         };
         column::with_children(vec![
-            self.widget_display_controls(widget),
+            if self.canvas.is_none() {
+                self.widget_display_controls(widget)
+            } else {
+                text::caption("Local draft · arrows move the selection").into()
+            },
             row::with_children(vec![
                 label(widget.title(), 13., accent),
-                button::text("Customize")
-                    .on_press(super::Message::Page(super::view::home::widget_page(widget)))
-                    .into(),
+                button::text(if self.canvas.is_some() {
+                    "Content settings"
+                } else {
+                    "Customize"
+                })
+                .on_press(super::Message::Page(super::view::home::widget_page(widget)))
+                .into(),
                 button::text(if editor.resize_mode {
                     "Move with arrows"
                 } else {
@@ -1049,6 +1085,28 @@ impl Settings {
     }
 
     pub(super) fn update_placement(&mut self, event: Message) -> Task<super::Message> {
+        if self.canvas.is_some() {
+            match event {
+                Message::Save => return Task::none(),
+                Message::Undo => return self.update_canvas(super::canvas::Message::Undo),
+                Message::Cancel => return self.update_canvas(super::canvas::Message::Cancel),
+                Message::Escape if !self.placement.dragging() => {
+                    self.placement.selected = None;
+                    return Task::none();
+                }
+                _ => {}
+            }
+        }
+        let canvas_before = if matches!(event, Message::Release) {
+            self.placement.drag.as_ref().map(|drag| drag.before.clone())
+        } else if !matches!(
+            event,
+            Message::Pointer(..) | Message::CancelDrag | Message::Leave | Message::Escape
+        ) {
+            Some(self.placement.state())
+        } else {
+            None
+        };
         let before = self.placement.state();
         let record = !matches!(
             event,
@@ -1071,7 +1129,10 @@ impl Settings {
             Message::Press(key) => self.placement.press(&key),
             Message::Select(key) => {
                 if let Some(display) = self.placement.snapshot.widget_displays.get(&key).cloned() {
-                    self.select_monitor_preview(display);
+                    self.select_monitor_preview(display.clone());
+                    if self.canvas.is_some() && self.placement.display.as_ref() != Some(&display) {
+                        return Task::none();
+                    }
                 }
                 self.placement.select(&key);
             }
@@ -1192,6 +1253,13 @@ impl Settings {
                 return Task::none();
             }
         }
+        if let Some(before) = canvas_before
+            && !self.placement.dragging()
+            && before != self.placement.state()
+            && let Some(canvas) = self.canvas.as_mut()
+        {
+            canvas.remember(before);
+        }
         if record && !self.placement.dragging() {
             self.placement.remember(before.clone());
         }
@@ -1205,7 +1273,11 @@ impl Settings {
                 )
         {
             self.status = if self.placement.dirty() {
-                "Finish this gesture to save"
+                if self.canvas.is_some() {
+                    "Previewing · Apply when ready"
+                } else {
+                    "Finish this gesture to save"
+                }
             } else {
                 "Layout matches your desktop"
             }
@@ -1216,6 +1288,13 @@ impl Settings {
     }
 
     pub(super) fn select_monitor_preview(&mut self, display: String) {
+        if self.placement.display.as_ref() == Some(&display) {
+            return;
+        }
+        if self.canvas.is_some() && self.canvas_dirty() {
+            self.failed("Apply or cancel this canvas before editing another display.".into());
+            return;
+        }
         self.placement.cancel_drag();
         if self.placement.dirty() {
             let _ = self.update_placement(Message::Save);
@@ -1223,6 +1302,8 @@ impl Settings {
         if !self.placement.dirty() {
             self.placement.display = Some(display);
             self.placement.refresh(&self.config);
+            self.canvas_retarget();
+            self.refresh_canvas();
         }
     }
     /// Local connection choice; ordinary buttons remain keyboard accessible.
@@ -1415,7 +1496,15 @@ impl Settings {
                 .width(Length::Fill)
                 .into(),
             if dirty {
-                label("Moving…", 11., palette.accent)
+                label(
+                    if self.canvas.is_some() && !editor.dragging() {
+                        "Previewing"
+                    } else {
+                        "Moving…"
+                    },
+                    11.,
+                    self.settings_accent(),
+                )
             } else {
                 label(
                     format!(
@@ -1435,7 +1524,13 @@ impl Settings {
             switch("Grid", editor.guides, Message::Guides).into(),
             container(text::body("")).width(Length::Fill).into(),
         ];
-        if !editor.session_actions.is_empty() || editor.dragging() || dirty {
+        if self.canvas.is_some() {
+            action_buttons.push(
+                button::text("Reset layout")
+                    .on_press(message(Message::Reset))
+                    .into(),
+            );
+        } else if !editor.session_actions.is_empty() || editor.dragging() || dirty {
             action_buttons.push(
                 button::text("Cancel arrangement")
                     .on_press(message(Message::Cancel))
@@ -1470,7 +1565,26 @@ impl Settings {
             .align_y(Alignment::Center);
         let mut parts = vec![actions.into(), preview.into(), caption.into()];
         if matches!(self.page, super::Page::Overview | super::Page::WidgetLayout) {
-            parts.insert(0, self.monitor_overview());
+            if self.canvas.is_some() {
+                let choices = self
+                    .displays
+                    .outputs()
+                    .iter()
+                    .filter_map(|output| {
+                        let key = self.displays.key(output)?;
+                        Some(
+                            button::text(output.name().unwrap_or("Display"))
+                                .on_press(super::Message::MonitorPreview(key))
+                                .into(),
+                        )
+                    })
+                    .collect::<Vec<Element<'_, super::Message>>>();
+                if choices.len() > 1 {
+                    parts.insert(0, row::with_children(choices).spacing(6).wrap().into());
+                }
+            } else {
+                parts.insert(0, self.monitor_overview());
+            }
         }
         if self.page != super::Page::Overview {
             parts.push(self.placement_inspector());
@@ -1488,6 +1602,78 @@ impl Settings {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fb08_geometry_epoch_cancels_only_inflight_gesture_and_keeps_prior_draft() {
+        if run_isolated(
+            "fb08_geometry_epoch_cancels_only_inflight_gesture_and_keeps_prior_draft",
+            r#"{"enabled_widgets":["clock","weather"],"placement":{"snap":false}}"#,
+        ) {
+            return;
+        }
+        crate::desktop::actions::in_action("Existing resize", || {
+            Config::save_changes(serde_json::json!({"widget_sizes":{"clock":[320,140]}}))
+        })
+        .unwrap();
+        let receipt = crate::desktop::actions::history_store()
+            .unwrap()
+            .latest_change()
+            .unwrap()
+            .unwrap();
+        let config = Config::load();
+        let bytes = std::fs::read(Config::path().unwrap()).unwrap();
+        for resized in [false, true] {
+            let mut geometry = Geometry::read(&config);
+            geometry.snapshot.display = Some(crate::layout_state::DisplayState {
+                output: Some("DP-1".into()),
+                ready: true,
+                epoch: 10,
+            });
+            let mut editor = PlacementEditor::from_geometry(&config, geometry);
+            editor.select("clock");
+            editor.nudge([1, 0], false);
+            editor.session_actions.push(receipt.clone());
+            let before = editor.state();
+            let at = editor.position("weather").unwrap();
+            editor.pointer(Point::new(at[0] + 20., at[1] + 20.), 1.);
+            editor.press("weather");
+            editor.pointer(Point::new(at[0] - 40., at[1] + 60.), 1.);
+            assert!(editor.dragging());
+            assert_ne!(editor.state(), before);
+            let mut next = Geometry {
+                visible: editor.visible.clone(),
+                snapshot: editor.snapshot.clone(),
+                defaults: editor.defaults.clone(),
+            };
+            // Data-only updates wait until release and never dirty preferences.
+            next.snapshot
+                .widgets
+                .iter_mut()
+                .find(|g| g.key == "clock")
+                .unwrap()
+                .natural_height = Some(210.);
+            editor.reconcile(next);
+            assert!(editor.dragging());
+            let mut changed = editor.pending.take().unwrap();
+            if resized {
+                changed.snapshot.screen = [1280., 720.];
+            } else {
+                changed.snapshot.display.as_mut().unwrap().epoch += 1;
+            }
+            editor.reconcile(changed);
+            assert!(!editor.dragging());
+            assert_eq!(editor.state(), before);
+            assert_eq!(editor.session_actions.len(), 1);
+            assert_eq!(editor.session_actions[0], receipt);
+            assert!(!editor.inside && editor.pointer.is_none());
+            editor.release();
+            assert_eq!(
+                editor.state(),
+                before,
+                "queued release cannot commit an obsolete gesture"
+            );
+            assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), bytes);
+        }
+    }
     #[test]
     fn multi_monitor_first_edit_uses_display_context_without_an_assignment() {
         let config = crate::config::Config::default();
@@ -2617,6 +2803,44 @@ mod review030_tests {
     }
 
     #[test]
+    fn fb08_selected_output_scale_change_cancels_drag_but_unrelated_output_does_not() {
+        if isolated(
+            "settings::placement::review030_tests::fb08_selected_output_scale_change_cancels_drag_but_unrelated_output_does_not",
+        ) {
+            return;
+        }
+        Config::save_changes(serde_json::json!({"enabled_widgets":["weather"],"widget_monitors":{"weather":{"display":"DP-2"}}})).unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::WidgetLayout);
+        let _wire = outputs(&mut app);
+        let _ = app.update_placement(Message::Select("weather".into()));
+        let before = app.placement.state();
+        let bytes = std::fs::read(Config::path().unwrap()).unwrap();
+        let at = app.placement.position("weather").unwrap();
+        app.placement
+            .pointer(Point::new(at[0] + 20., at[1] + 20.), 1.);
+        app.placement.press("weather");
+        app.placement
+            .pointer(Point::new(at[0] - 40., at[1] + 60.), 1.);
+        let other = app.displays.unique("DP-1").unwrap().handle.clone();
+        let _ = app.update(SettingsMessage::DisplayOutput(
+            OutputEvent::InfoUpdate(info(Some("DP-1"), (1280, 720))),
+            other,
+        ));
+        assert!(app.placement.dragging());
+        let output = app.displays.unique("DP-2").unwrap().handle.clone();
+        let mut updated = info(Some("DP-2"), (1280, 720));
+        updated.scale_factor = 2;
+        let _ = app.update(SettingsMessage::DisplayOutput(
+            OutputEvent::InfoUpdate(updated),
+            output,
+        ));
+        assert!(!app.placement.dragging());
+        assert_eq!(app.placement.state(), before);
+        let _ = app.update(SettingsMessage::Placement(Message::Release));
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), bytes);
+    }
+
+    #[test]
     fn review030_monitor_only_layout_blocks_automatic_reordering() {
         if isolated(
             "settings::placement::review030_tests::review030_monitor_only_layout_blocks_automatic_reordering",
@@ -2643,5 +2867,48 @@ mod review030_tests {
         assert!(!app.config.has_custom_positions());
         let _ = app.update(SettingsMessage::Move(Widget::Weather, 1));
         assert_ne!(Config::load().ordered_right_cards(), before);
+    }
+}
+
+impl PlacementEditor {
+    pub(super) fn canvas_project(&mut self, config: &Config) {
+        self.reconcile(Geometry::on_live_display(
+            config,
+            self.display.as_deref(),
+            &self.displays,
+        ));
+    }
+    pub(super) fn canvas_snapshot(&self) -> SavedPlacement {
+        SavedPlacement {
+            contexts: self.contexts.clone(),
+            saved_sizes: self.saved_sizes.clone(),
+            sizes: self.sizes.clone(),
+            saved_positions: self.saved_positions.clone(),
+            positions: self.positions.clone(),
+            materialized: self.materialized.clone(),
+            saved_snap: self.saved_snap,
+            saved_columns: self.saved_columns,
+            snap: self.snap,
+            columns: self.columns,
+            reset: self.reset,
+        }
+    }
+    pub(super) fn canvas_apply_snapshot(&self) -> SavedPlacement {
+        let mut saved = self.canvas_snapshot();
+        saved.saved_positions = self.save_baseline();
+        saved.saved_sizes = self.size_baseline();
+        if self.dirty() {
+            saved.columns = PlacementPreferences::FINE_COLUMNS;
+        }
+        saved
+    }
+    pub(super) fn canvas_end(&mut self, config: &Config) {
+        self.cancel_drag();
+        self.cancel();
+        self.session_actions.clear();
+        self.refresh(config);
+    }
+    pub(super) fn canvas_stop_gesture(&mut self) {
+        self.cancel_drag();
     }
 }

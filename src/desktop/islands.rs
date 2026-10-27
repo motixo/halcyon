@@ -768,7 +768,7 @@ mod installation_tests {
 mod installation;
 #[cfg(test)]
 pub(crate) use installation::fixture_installed;
-pub use installation::{CompatibilityStatus, Installation};
+pub use installation::{CompatibilityStatus, Installation, Provenance};
 
 #[cfg(test)]
 mod installation_races {

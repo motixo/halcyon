@@ -972,7 +972,7 @@ fn settings_round_trip_and_refuse_damaged_or_newer_files() {
     );
     assert_eq!(std::fs::read_to_string(&file).unwrap(), text);
     // Newer and damaged files are refused with a reason, never half-used.
-    let newer = text.replace("\"version\": 1", "\"version\": 2");
+    let newer = text.replace("\"version\": 1", "\"version\": 3");
     std::fs::write(&file, newer).unwrap();
     assert!(load(&store).unwrap_err().contains("newer"));
     std::fs::write(&file, "{").unwrap();
@@ -2189,4 +2189,163 @@ fn auditfix_set04_rule_saves_and_reset_share_execution_lock() {
     drop(lock);
     reset(&store).unwrap();
     assert_eq!(load(&store).unwrap(), Automation::default());
+}
+
+fn moment_rule(id: &str, h: u32, m: u32, phase: crate::moments::Phase) -> Rule {
+    let mut rule = schedule(id, h, m, Days::EVERY, phase.title());
+    rule.profile = ProfileRef::Moment(phase);
+    rule
+}
+#[test]
+fn fb15_moment_rule_versions_and_hyphenated_setup_ids_roundtrip() {
+    let old = on(vec![schedule("r1", 7, 0, Days::EVERY, "Paper-studio")]);
+    assert!(old.validate().is_ok());
+    assert_eq!(
+        Automation::parse(&old.to_bytes().unwrap()).unwrap().version,
+        1
+    );
+    let mut rules = on(vec![moment_rule("r1", 7, 0, crate::moments::Phase::Day)]);
+    assert!(
+        rules.validate().is_err(),
+        "version 1 cannot encode moment targets"
+    );
+    let bytes = rules.to_bytes().unwrap();
+    let parsed = Automation::parse(&bytes).unwrap();
+    assert_eq!(parsed.version, 2);
+    assert_eq!(parsed.rules, rules.rules);
+    rules.version = 3;
+    assert!(Automation::parse(&serde_json::to_vec(&rules).unwrap()).is_err());
+}
+#[test]
+fn fb15_moment_dst_resume_clock_rollback_priority_and_manual_policy() {
+    use crate::moments::Phase;
+    let mut rules = on(vec![
+        moment_rule("r1", 2, 30, Phase::Day),
+        moment_rule("r2", 2, 30, Phase::Night),
+    ]);
+    rules.version = 2;
+    let mut state = State::default();
+    tick(&rules, &mut state, at(2026, 3, 28, 22, 0));
+    assert!(tick(&rules, &mut state, at(2026, 3, 29, 1, 59)).is_empty());
+    assert_eq!(tick(&rules, &mut state, at(2026, 3, 29, 3, 0)), ["Day"]);
+    assert!(tick(&rules, &mut state, at(2026, 3, 29, 4, 0)).is_empty());
+    state = State::default();
+    tick(&rules, &mut state, at(2026, 10, 24, 22, 0));
+    assert_eq!(tick(&rules, &mut state, at(2026, 10, 25, 2, 30)), ["Day"]);
+    assert!(tick(&rules, &mut state, utc(2026, 10, 25, 1, 30)).is_empty());
+    assert!(tick(&rules, &mut state, at(2026, 10, 25, 1, 0)).is_empty());
+    assert!(tick(&rules, &mut state, utc(2026, 10, 25, 1, 30)).is_empty());
+    rules.rules[1].when = Trigger::Schedule {
+        time: Time::new(19, 0).unwrap(),
+        days: Days::EVERY,
+    };
+    state = State::default();
+    tick(&rules, &mut state, at(2026, 10, 25, 1, 0));
+    assert_eq!(tick(&rules, &mut state, at(2026, 10, 25, 21, 0)), ["Night"]);
+    state = State::default();
+    tick(&rules, &mut state, at(2026, 10, 25, 1, 0));
+    let result = decide(
+        &rules,
+        &mut state,
+        &Cet,
+        at(2026, 10, 25, 21, 0),
+        None,
+        || Some(at(2026, 10, 25, 20, 0)),
+    );
+    assert!(result.due.is_empty());
+}
+#[test]
+fn fb15_moment_activation_only_writes_selector_and_is_idempotent() {
+    let (fixture, store) = desk("fb15-run");
+    let installed = Installed::discover(&store);
+    let before: serde_json::Value = serde_json::from_str(&config_text(&fixture)).unwrap();
+    let target = ProfileRef::Moment(crate::moments::Phase::Day);
+    let result = run(&store, &installed, &target, "Day", &Default::default());
+    assert!(matches!(result, Ran::Applied { .. }), "{result:?}");
+    let after: serde_json::Value = serde_json::from_str(&config_text(&fixture)).unwrap();
+    for (k, v) in before.as_object().unwrap() {
+        assert_eq!(after.get(k), Some(v));
+    }
+    assert_eq!(after["moments"], serde_json::json!({"active":"day"}));
+    let before = fixture.tree();
+    assert_eq!(
+        run(&store, &installed, &target, "Day", &Default::default()),
+        Ran::AlreadySet
+    );
+    assert_eq!(fixture.tree(), before);
+}
+#[test]
+fn fb15_queued_moment_respects_manual_edit_rule_revision_and_restore() {
+    use crate::moments::Phase;
+    for cause in ["manual", "revision", "restore", "none"] {
+        let (fixture, store) = desk(&format!("fb15-{cause}"));
+        crate::desktop::recovery::ensure_baseline(
+            &store,
+            crate::desktop::recovery::BaselineKind::CurrentDesktop,
+        )
+        .unwrap();
+        let settings = update(&store, |s| {
+            *s = on(vec![moment_rule("r1", 7, 0, Phase::Day)]);
+            Ok(())
+        })
+        .unwrap();
+        let due = decide::Due {
+            revision: Some(decide::Revision::new(&settings, &settings.rules[0])),
+            rule: "r1".into(),
+            profile: ProfileRef::Moment(Phase::Day),
+            name: "Day".into(),
+            cause: decide::Cause::Schedule("2026-10-27T07:00:00".into()),
+            at: Utc::now().timestamp() - 1,
+        };
+        let job = runtime::Job {
+            due: vec![due],
+            held: Default::default(),
+            epoch: store.restore_epoch().unwrap(),
+        };
+        match cause {
+            "manual" => {
+                let mut p = Profile::new("Night").unwrap();
+                p.widget_style = Some(serde_json::json!({"moments":{"active":"night"}}));
+                let plan = profiles::plan(
+                    &store,
+                    &Installed::discover(&store),
+                    &p,
+                    &[Domain::WidgetStyle].into(),
+                );
+                profiles::apply(&store, &plan).unwrap();
+            }
+            "revision" => {
+                update(&store, |s| {
+                    s.rules[0].profile = ProfileRef::Moment(Phase::Night);
+                    Ok(())
+                })
+                .unwrap();
+            }
+            "restore" => {
+                let plan = crate::desktop::recovery::plan_restore(
+                    &store,
+                    &[crate::desktop::recovery::RecoveryDomain::WidgetAppearance],
+                )
+                .unwrap();
+                crate::desktop::recovery::apply_restore(&store, &plan).unwrap();
+            }
+            _ => {}
+        }
+        let before = fixture.tree();
+        let results = job.run(&store);
+        match cause {
+            "none" => assert!(matches!(results[0].1, Ran::Applied { .. }), "{results:?}"),
+            "revision" => assert!(
+                matches!(&results[0].1,Ran::Failed(s) if s.contains("rule changed")),
+                "{results:?}"
+            ),
+            _ => assert!(
+                matches!(results[0].1, Ran::KeptManual(_)),
+                "{cause}: {results:?}"
+            ),
+        }
+        if cause != "none" {
+            assert_eq!(fixture.tree(), before);
+        }
+    }
 }

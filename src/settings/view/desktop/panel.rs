@@ -114,11 +114,7 @@ impl Settings {
                     .into()
             })
             .collect();
-        blocks.push(if self.window.width >= 1120. {
-            row::with_children(lanes).spacing(8).into()
-        } else {
-            column::with_children(lanes).spacing(8).into()
-        });
+        blocks.push(column::with_children(lanes).spacing(8).into());
         if let Some(slot) = editor
             .focus
             .filter(|s| s.index < regions.list(s.region).len())

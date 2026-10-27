@@ -1,6 +1,6 @@
 [package]
 name = "cosmic-ext-halcyon"
-version = "0.3.0"
+version = "0.4.0"
 description = "Desktop widgets and themes for COSMIC"
 homepage = "https://github.com/profilaz3/halcyon"
 repository = "https://github.com/profilaz3/halcyon"
@@ -24,7 +24,7 @@ cosmic = { package = "libcosmic", git = "https://github.com/pop-os/libcosmic", d
     "xdg-portal",
 ] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 tokio = { version = "1", features = ["time", "macros", "sync", "net", "process"] }

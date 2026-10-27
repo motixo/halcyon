@@ -17,10 +17,44 @@ from runtime_compatibility import POLICY, validate_bundle
 ROOT=Path(__file__).resolve().parents[2]
 ACCEPTANCE=ROOT/'companion/compatibility/evidence/accepted-runtime-40071768899.json'
 FINAL_ACCEPTANCES={'0.3.0': ROOT/'companion/compatibility/evidence/accepted-final-030.json'}
+# Explicit frozen release reviews; candidate metadata cannot choose its scope.
+FINAL_REVIEWS={'0.4.0': ROOT/'companion/compatibility/evidence/reviewed-final-040.json'}
 LIMITATIONS=['physical-hardware-not-qualified','cosmic-1.10-not-native-qualified',
              'new-family-startup-helpers-not-native-qualified','not-full-native-matrix']
 FINAL_LIMITATIONS=['physical-hardware-not-qualified','cosmic-1.10-not-native-qualified',
                    'not-full-native-matrix']
+
+
+def final_package_review(root, data, bindings):
+    """Check the exact packages and the completed checks recorded in release source."""
+    path=FINAL_REVIEWS.get(data.get('release'))
+    if path is None or not path.is_file():
+        raise ValueError('final_package_review_pending')
+    record=read_json(path)
+    required=dict(format='halcyon-final-package-review',version=1,
+                  decision='approve-release',release=data['release'],
+                  policy_sha256=identity(POLICY),bindings=bindings,
+                  limitations=FINAL_LIMITATIONS,
+                  observations=dict(installation='passed',settings='passed'))
+    if any(record.get(k)!=v for k,v in required.items()):
+        raise ValueError('final_package_review_mismatch')
+    scope=record.get('scope',{})
+    if (scope.get('environment')!='native-settings-and-offline-package-upgrade'
+            or scope.get('cosmic_family')!='1.11'
+            or not isinstance(scope.get('image_sha256'),str)
+            or re.fullmatch('[0-9a-f]{64}',scope['image_sha256']) is None):
+        raise ValueError('final_package_review_scope_missing')
+    evidence=record.get('evidence',{}); name=evidence.get('file','')
+    artifact=data['artifacts'].get(name,{})
+    if (not name or Path(name).name!=name or artifact.get('kind')!='native-evidence'
+            or artifact.get('sha256')!=evidence.get('sha256')
+            or digest(root/name)!=evidence.get('sha256')):
+        raise ValueError('final_package_review_evidence_mismatch')
+    if not isinstance(record.get('review_reference'),str) or not record['review_reference'].strip():
+        raise ValueError('final_package_review_reference_missing')
+    return dict(final_package_review_sha256=digest(path),
+                release_evidence_sha256=evidence['sha256'],
+                release_scope=scope,limitations=FINAL_LIMITATIONS)
 
 
 def final_native_acceptance(root, data, bindings):
@@ -60,8 +94,29 @@ def final_native_acceptance(root, data, bindings):
                 native_scope=scope,limitations=FINAL_LIMITATIONS)
 
 
+def verify_download_pin(root, data, pin=None):
+    """The embedded download intent must name the exact companion being released."""
+    if pin is None:
+        pin = read_json(ROOT/'packaging/islands/download.json')
+    name = data['islands_package']
+    artifact = data['artifacts'][name]
+    version = pin.get('package_version')
+    if not isinstance(version, str) or re.fullmatch(r'[0-9][A-Za-z0-9.+~-]*', version) is None:
+        raise ValueError('release_download_pin_mismatch')
+    required = dict(format='halcyon-islands-download', version=1,
+                    main_version=data['release'], package_version=version,
+                    tag='v'+version, sha256=digest(root/name),
+                    bytes=(root/name).stat().st_size)
+    if (any(pin.get(k) != v for k,v in required.items())
+            or name != 'cosmic-ext-halcyon-islands_'+pin['package_version']+'_amd64.deb'
+            or artifact.get('kind') != 'islands-deb'
+            or artifact.get('sha256') != pin['sha256']):
+        raise ValueError('release_download_pin_mismatch')
+
+
 def audit(root, data, expected):
     """Return a review request; no approval is inferred or written."""
+    verify_download_pin(root, data)
     main=[n for n,v in data['artifacts'].items() if v['kind']=='main-deb']
     islands=data['islands_package']
     if len(main)!=1: raise ValueError('exact_main_package_required')
@@ -78,7 +133,9 @@ def audit(root, data, expected):
             'islands':dict(sha256=digest(root/islands),elf_sha256=manifest['binary_sha256'])},
             payload_sha256=manifest['payload_sha256'],catalog_sha256=digest(library/'catalog.json'),
             helpers={name:digest(library/name) for name in HELPERS})
-        fresh=final_native_acceptance(root,data,bindings)
+        fresh=(final_package_review(root,data,bindings)
+               if data.get('release') in FINAL_REVIEWS
+               else final_native_acceptance(root,data,bindings))
         # Scripts and policy are audited against this frozen release source,
         # never mislabeled as integration.5's tested helper payload.
         for name in HELPERS:

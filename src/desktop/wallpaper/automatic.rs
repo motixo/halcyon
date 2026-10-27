@@ -97,6 +97,26 @@ pub fn source(store: &DesktopStore, draft: &WallpaperDraft) -> Source {
 }
 
 impl Source {
+    /// Preview-owned analysis shares the bounded, cancellable image workers.
+    /// The runtime's existing background owner retains the synchronous entry.
+    pub async fn analyse_preview(
+        &self,
+        cancel: tokio::sync::watch::Receiver<bool>,
+    ) -> Result<palette::Suggestion, String> {
+        if *cancel.borrow() || cancel.has_changed().is_err() {
+            return Err("Wallpaper preview canceled".into());
+        }
+        let Input::Picture(path) = &self.input else {
+            return self.analyse();
+        };
+        let pixels = media::worker::thumbnail(path.clone(), cancel).await.ok_or(
+            "Cannot read colors from this picture. Use PNG or JPEG; your last colors are kept",
+        )?;
+        let suggestion = palette::from_pixels(&pixels);
+        recommended(&suggestion)
+            .ok_or("This picture has no usable colors. Keeping your last colors")?;
+        Ok(suggestion)
+    }
     /// Never call on the UI thread: bounded PNG/JPEG decode and median cut.
     pub fn analyse(&self) -> Result<palette::Suggestion, String> {
         let suggestion = match &self.input {

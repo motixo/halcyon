@@ -54,14 +54,32 @@ The Notes card’s copy button also uses `wl-copy` from `wl-clipboard`, so it ca
 ```
 cargo build --release --locked
 python3 scripts/install.py
-desktop-cards start
+halcyon --settings
 ```
 
-`scripts/install.py` installs for the current user only: the app and the `desktop-cards` controller in `~/.local/bin`, the calendar and project helpers and a source copy (with the bundled wallpapers) in `~/.local/share/cosmic-desktop-cards`, the six wallpapers in `~/Pictures/Desktop Cards`, the `cosmic-desktop-cards.service` user unit and the **Desktop Cards** launcher. It reads the build from `CARGO_TARGET_DIR` when set (or pass `--binary PATH`). It never changes preferences, notes, drafts, profiles, automation or undo records, and never enables or starts anything: `desktop-cards start` shows the cards and starts them at sign-in.
+`scripts/install.py` installs `halcyon` and `halcyon-ctl` under `~/.local/bin`,
+helpers under `~/.local/lib/cosmic-ext-halcyon`, wallpapers and desktop integration
+under `~/.local/share`, and `halcyon.service` under `~/.config/systemd/user`.
+It reads `CARGO_TARGET_DIR` when set, or accepts `--binary PATH`. Open the app with
+`~/.local/bin/halcyon --settings` to distinguish it from an installed system release.
+First-run setup controls showing widgets and starting at login.
 
-To upgrade, build and run the installer again; the previous app and controller are kept in `~/.local/share/cosmic-desktop-cards/backups/<time>-install/`. Add `--restart` to restart cards that are already running, or run `desktop-cards restart` later. New tools, automation and COSMIC color matching stay off until you turn them on.
+The installer does not enroll this build in release updates or change app
+preferences. It preserves enabled/running service intent during legacy migration
+and restarts an already-running Halcyon user service after replacement. To upgrade,
+build and run it again; replaced executables are backed up under
+`~/.local/share/halcyon/backups/<time>-install/`. There is no `--restart` option.
 
-To uninstall, run `desktop-cards restore` (previous wallpaper, cards hidden, startup off) or `desktop-cards stop`, then delete the files listed under [Files](#files) and the launcher `~/.local/share/applications/io.github.workstation.DesktopCards.desktop`.
+For a system package development test, use the explicit `--development` mode in
+[the packaging guide](../packaging/README.md#build-mode). Its distinct package
+identity prevents release APT updates from replacing a development build.
+`--release-updates` is for reviewed release assembly only.
+
+To remove a per-user install, stop it with `halcyon-ctl stop`, turn off **Start when
+you sign in**, and remove the installed program/integration files listed in the
+[packaging layout](../packaging/README.md#layout-under-a-prefix), including the user
+unit and `~/.local/share/applications/io.github.profilaz3.Halcyon.desktop`. Keep
+personal settings unless you intend to discard them. System package removal uses APT.
 
 ## Using it
 

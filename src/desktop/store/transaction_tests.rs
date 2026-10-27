@@ -674,6 +674,7 @@ fn an_older_v2_journal_whose_record_was_written_still_clears_that_record() {
             .map(JournalEntry::from)
             .collect(),
         widget: latest.widget.clone(),
+        design: None,
         undo: None,
     };
     fs::write(
@@ -706,7 +707,7 @@ fn damaged_future_or_forged_records_are_explained_and_never_used() {
         ("garbage", b"{not json".to_vec()),
         (
             "future version",
-            serde_json::to_vec(&record(dock.clone(), json!(null), 2)).unwrap(),
+            serde_json::to_vec(&record(dock.clone(), json!(null), 3)).unwrap(),
         ),
         (
             "forged key",
@@ -1053,4 +1054,494 @@ fn auditfix_tx02_older_receipt_uses_its_own_derived_expectations() {
     assert_eq!(store.latest_change().unwrap().unwrap().id, newer.id);
     store.undo_latest(&newer.id).unwrap();
     assert!(store.latest_change().unwrap().is_none());
+}
+
+fn projected(case: &Case) -> serde_json::Value {
+    config::parse_config_text(config::read_config_text(&case.config).unwrap().as_deref()).unwrap()
+}
+#[test]
+fn fb16_store_migration_keeps_source_and_old_undo_crosses_boundary() {
+    let case = Case::new("fb16-old-undo");
+    let store = case.store();
+    let (native, widgets) = case.patch();
+    let old = store
+        .apply_owned(&native, Some(&widgets), Owner::Profile, "Old setup")
+        .unwrap();
+    let source = case.json();
+    store.migrate_design().unwrap();
+    let mut expected = source.clone();
+    expected["widget_design_version"] = 1.into();
+    assert_eq!(case.json(), expected);
+    assert_eq!(projected(&case), expected);
+    assert_eq!(store.latest_change().unwrap().unwrap().id, old.id);
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&fs::read(case.undo()).unwrap()).unwrap()["version"],
+        2
+    );
+    store.undo_latest(&old.id).unwrap();
+    assert_eq!(projected(&case)["theme"], "teal");
+    assert_eq!(
+        case.json()["theme"],
+        "rose",
+        "frozen legacy snapshot never mirrors applied changes"
+    );
+    assert_eq!(case.fixture.read(DOCK, "anchor").as_deref(), Some("Bottom"));
+    assert_eq!(projected(&case)["location"], source["location"]);
+}
+#[test]
+fn fb16_store_combined_local_native_design_and_new_undo_are_one_action() {
+    let case = Case::new("fb16-new-undo");
+    let store = case.store();
+    store.migrate_design().unwrap();
+    let frozen = case.text();
+    let (native, mut widgets) = case.patch();
+    widgets
+        .set("/meeting_notice_minutes", None, Some(json!(25)))
+        .unwrap();
+    let new = store
+        .apply_owned(&native, Some(&widgets), Owner::Profile, "New setup")
+        .unwrap();
+    assert!(new.widget.as_ref().unwrap().design_v1);
+    assert_eq!(projected(&case)["theme"], "rose");
+    assert_eq!(case.json()["theme"], "teal");
+    assert_eq!(case.json()["meeting_notice_minutes"], 25);
+    let reopened = case.store();
+    reopened.undo_latest(&new.id).unwrap();
+    assert_eq!(projected(&case)["theme"], "teal");
+    assert!(case.json().get("meeting_notice_minutes").is_none());
+    assert_eq!(
+        case.json(),
+        serde_json::from_str::<serde_json::Value>(&frozen).unwrap()
+    );
+}
+#[test]
+fn fb16_store_activation_interruption_restores_exact_source_and_history() {
+    for (i, fault) in [
+        Fault::InterruptBeforeWidget,
+        Fault::InterruptBetweenDesignFiles,
+        Fault::InterruptBeforeRecord,
+        Fault::InterruptAfterRecord,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let case = Case::new(&format!("fb16-migrate-interrupt-{i}"));
+        let store = case.store();
+        let (native, widgets) = case.patch();
+        store
+            .apply_owned(&native, Some(&widgets), Owner::Profile, "Previous")
+            .unwrap();
+        let raw = case.text();
+        let history = fs::read(case.undo()).unwrap();
+        *store.fault.borrow_mut() = Some(fault);
+        assert!(store.migrate_design().is_err());
+        assert_eq!(case.store().pending_recovery().unwrap().unwrap().version, 4);
+        assert!(matches!(
+            case.store().migrate_design(),
+            Err(DesktopError::RecoveryPending)
+        ));
+        case.store().recover().unwrap();
+        assert_eq!(case.text(), raw);
+        assert_eq!(fs::read(case.undo()).unwrap(), history);
+        assert!(
+            crate::design::storage::read(&case.config)
+                .unwrap()
+                .is_none()
+        );
+        case.store().migrate_design().unwrap();
+        assert_eq!(projected(&case)["theme"], "rose");
+    }
+}
+#[test]
+fn fb16_store_failed_and_interrupted_edits_restore_both_files_and_native_keys() {
+    for (i, fault) in [
+        Fault::FailWidget,
+        Fault::InterruptBetweenDesignFiles,
+        Fault::InterruptBeforeRecord,
+        Fault::InterruptAfterRecord,
+        Fault::FailRecord,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let case = Case::new(&format!("fb16-write-interrupt-{i}"));
+        let store = case.store();
+        store.migrate_design().unwrap();
+        let raw = case.text();
+        let design = crate::design::storage::read(&case.config).unwrap();
+        let (native, mut widgets) = case.patch();
+        widgets
+            .set("/meeting_notice_minutes", None, Some(json!(25)))
+            .unwrap();
+        *store.fault.borrow_mut() = Some(fault);
+        assert!(
+            store
+                .apply_owned(&native, Some(&widgets), Owner::Profile, "New setup")
+                .is_err()
+        );
+        let reopened = case.store();
+        if reopened.pending_recovery().unwrap().is_some() {
+            reopened.recover().unwrap();
+        }
+        assert_eq!(case.text(), raw);
+        assert_eq!(crate::design::storage::read(&case.config).unwrap(), design);
+        assert_eq!(case.fixture.read(DOCK, "anchor").as_deref(), Some("Bottom"));
+        assert!(reopened.latest_change().unwrap().is_none());
+    }
+}
+#[test]
+fn fb16_store_old_writer_conflicts_but_unrelated_edits_survive() {
+    let case = Case::new("fb16-old-writer");
+    let store = case.store();
+    store.migrate_design().unwrap();
+    let mut raw = case.json();
+    raw["location"]["name"] = json!("New city");
+    fs::write(&case.config, raw.to_string()).unwrap();
+    let (native, widgets) = case.patch();
+    store
+        .apply_owned(&native, Some(&widgets), Owner::Profile, "Setup")
+        .unwrap();
+    assert_eq!(projected(&case)["location"]["name"], "New city");
+    let design = crate::design::storage::read(&case.config).unwrap();
+    raw["clock"] = json!({"face":"analog"});
+    fs::write(&case.config, raw.to_string()).unwrap();
+    assert!(config::read_config_text(&case.config).is_err());
+    let mut native = DesktopPatch::new();
+    native.set(
+        key("anchor"),
+        Some(raw_value("Left")),
+        Some(raw_value("Top")),
+    );
+    assert!(store.apply(&native).is_err());
+    assert_eq!(crate::design::storage::read(&case.config).unwrap(), design);
+    assert_eq!(case.fixture.read(DOCK, "anchor").as_deref(), Some("Left"));
+}
+fn raw_value(text: &str) -> RawValue {
+    RawValue::parse(text).unwrap()
+}
+#[test]
+fn fb16_store_missing_future_or_damaged_document_never_reverts_to_legacy() {
+    let case = Case::new("fb16-broken-design");
+    let store = case.store();
+    store.migrate_design().unwrap();
+    let path = crate::design::storage::path(&case.config);
+    let good = fs::read(&path).unwrap();
+    fs::remove_file(&path).unwrap();
+    assert!(config::read_config_text(&case.config).is_err());
+    assert!(store.migrate_design().is_err());
+    for bytes in [b"broken".to_vec(), {
+        let mut v: serde_json::Value = serde_json::from_slice(&good).unwrap();
+        v["version"] = 999.into();
+        v.to_string().into_bytes()
+    }] {
+        fs::write(&path, &bytes).unwrap();
+        assert!(config::read_config_text(&case.config).is_err());
+        assert!(store.migrate_design().is_err());
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+    }
+}
+
+#[test]
+fn fb16_store_recovery_retains_newer_unrelated_design_and_local_fields() {
+    let case = Case::new("fb16-outside-recovery");
+    let store = case.store();
+    store.migrate_design().unwrap();
+    let (native, mut widgets) = case.patch();
+    widgets
+        .set("/meeting_notice_minutes", None, Some(json!(25)))
+        .unwrap();
+    *store.fault.borrow_mut() = Some(Fault::InterruptAfterRecord);
+    assert!(
+        store
+            .apply_owned(&native, Some(&widgets), Owner::Profile, "Setup")
+            .is_err()
+    );
+    let path = crate::design::storage::path(&case.config);
+    let mut document = crate::design::Document::parse(&fs::read(&path).unwrap()).unwrap();
+    document
+        .put_legacy("/clock/format_24h", Some(json!(false)))
+        .unwrap();
+    fs::write(&path, document.bytes().unwrap()).unwrap();
+    let mut raw = case.json();
+    raw["location"]["name"] = json!("Kept newer city");
+    fs::write(&case.config, raw.to_string()).unwrap();
+    case.store().recover().unwrap();
+    let result = projected(&case);
+    assert_eq!(result["theme"], "teal");
+    assert_eq!(result["clock"]["format_24h"], false);
+    assert_eq!(result["location"]["name"], "Kept newer city");
+    assert!(result.get("meeting_notice_minutes").is_none());
+}
+#[test]
+fn fb16_store_concurrent_disjoint_instance_edits_merge_without_legacy_writes() {
+    let case = Case::new("fb16-concurrent");
+    case.store().migrate_design().unwrap();
+    let raw = case.text();
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(3));
+    let handles = [
+        ("/clock/format_24h", json!(false)),
+        ("/weather/show_dew_point", json!(true)),
+    ]
+    .into_iter()
+    .map(|(pointer, value)| {
+        let store = case.store();
+        let barrier = barrier.clone();
+        std::thread::spawn(move || {
+            let mut patch = WidgetPatch::new();
+            patch.set(pointer, None, Some(value)).unwrap();
+            barrier.wait();
+            store
+                .apply_owned(
+                    &DesktopPatch::new(),
+                    Some(&patch),
+                    Owner::Preferences,
+                    "Widget setting",
+                )
+                .unwrap();
+        })
+    })
+    .collect::<Vec<_>>();
+    barrier.wait();
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    assert_eq!(projected(&case)["clock"]["format_24h"], false);
+    assert_eq!(projected(&case)["weather"]["show_dew_point"], true);
+    assert_eq!(case.text(), raw);
+}
+#[test]
+fn fb16_profile_capture_apply_and_restore_use_canonical_instance_values() {
+    use crate::desktop::profiles::{self, Domain, Installed, Profile};
+    use crate::desktop::recovery::{self, RecoveryDomain};
+    let case = Case::new("fb16-profile-restore");
+    let store = case.store();
+    store.migrate_design().unwrap();
+    let raw = case.text();
+    let mut profile = Profile::new("Clock face").unwrap();
+    profile.widget_style = Some(json!({"clock":{"face":"analog","format_24h":false}}));
+    let plan = profiles::plan(
+        &store,
+        &Installed::default(),
+        &profile,
+        &[Domain::WidgetStyle].into_iter().collect(),
+    );
+    assert!(plan.can_apply(), "{:?}", plan.blocking_reasons());
+    let action = profiles::apply(&store, &plan).unwrap();
+    assert_eq!(projected(&case)["clock"]["face"], "analog");
+    assert_eq!(case.text(), raw);
+    let captured = profiles::capture(&store, "Saved Clock").unwrap();
+    assert_eq!(
+        captured.profile.widget_style.unwrap()["clock"]["face"],
+        "analog"
+    );
+    let restore = recovery::plan_restore(&store, &[RecoveryDomain::WidgetAppearance]).unwrap();
+    let restored = recovery::apply_restore(&store, &restore).unwrap();
+    assert!(projected(&case).pointer("/clock/face").is_none());
+    assert_eq!(case.text(), raw);
+    store.undo_latest(&restored.id).unwrap();
+    assert_eq!(projected(&case)["clock"]["face"], "analog");
+    store.undo_latest(&action.id).unwrap();
+    assert!(projected(&case).pointer("/clock/face").is_none());
+}
+#[test]
+fn fb16_migration_rejects_pending_journal_and_nonregular_or_external_design_files() {
+    use std::os::unix::fs::symlink;
+    let case = Case::new("fb16-confinement");
+    let store = case.store();
+    let before = case.text();
+    let target = crate::design::storage::path(&case.config);
+    symlink(&case.config, &target).unwrap();
+    assert!(store.migrate_design().is_err());
+    assert_eq!(case.text(), before);
+    fs::remove_file(&target).unwrap();
+    fs::create_dir(&target).unwrap();
+    assert!(store.migrate_design().is_err());
+    fs::remove_dir(&target).unwrap();
+    let (native, widgets) = case.patch();
+    *store.fault.borrow_mut() = Some(Fault::InterruptBeforeWidget);
+    assert!(
+        store
+            .apply_owned(&native, Some(&widgets), Owner::Profile, "Interrupted")
+            .is_err()
+    );
+    assert!(matches!(
+        case.store().migrate_design(),
+        Err(DesktopError::RecoveryPending)
+    ));
+    assert!(!target.exists());
+    case.store().recover().unwrap();
+    assert_eq!(case.text(), before);
+}
+
+#[test]
+fn fb16_source_recovery_archives_old_client_data_and_keeps_applied_design() {
+    let case = Case::new("fb16-source-recovery");
+    let store = case.store();
+    store.migrate_design().unwrap();
+    let (_, widgets) = case.patch();
+    store
+        .apply_owned(
+            &DesktopPatch::new(),
+            Some(&widgets),
+            Owner::Preferences,
+            "Current design",
+        )
+        .unwrap();
+    let design = crate::design::storage::read(&case.config).unwrap();
+    let mut old = case.json();
+    old["theme"] = json!("amber");
+    old["location"]["name"] = json!("New local city");
+    fs::write(&case.config, old.to_string()).unwrap();
+    let before = case.text();
+    assert!(crate::design::storage::source_conflict(&case.config));
+    // A real old client replaces the unsupported v2 root with a v1 receipt.
+    let mut legacy: serde_json::Value =
+        serde_json::from_slice(&fs::read(case.undo()).unwrap()).unwrap();
+    legacy["version"] = 1.into();
+    legacy["widget"]
+        .as_object_mut()
+        .unwrap()
+        .remove("design_v1");
+    fs::write(case.undo(), legacy.to_string()).unwrap();
+    let old_history = fs::read_to_string(case.undo()).unwrap();
+    store.repair_design_source().unwrap();
+    assert_eq!(projected(&case)["theme"], "rose");
+    assert_eq!(case.json()["theme"], "teal");
+    assert_eq!(projected(&case)["location"]["name"], "New local city");
+    assert_eq!(crate::design::storage::read(&case.config).unwrap(), design);
+    assert!(
+        store.latest_change().unwrap().is_none(),
+        "old-client receipt must not claim ownership of the applied design"
+    );
+    let archives = fs::read_dir(store.state_dir())
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("widget-design-conflict-")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(archives.len(), 1);
+    let archive: serde_json::Value =
+        serde_json::from_slice(&fs::read(archives[0].path()).unwrap()).unwrap();
+    assert_eq!(archive["preferences_original"], before);
+    assert_eq!(archive["undo_original"], old_history);
+    assert!(
+        store.repair_design_source().is_err(),
+        "not a reset or remigration command"
+    );
+}
+#[test]
+fn fb16_source_recovery_interruption_restores_conflict_without_losing_the_archive() {
+    for (i, fault) in [
+        Fault::InterruptBeforeWidget,
+        Fault::InterruptBetweenDesignFiles,
+        Fault::InterruptBeforeRecord,
+        Fault::InterruptAfterRecord,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let case = Case::new(&format!("fb16-source-crash-{i}"));
+        let store = case.store();
+        store.migrate_design().unwrap();
+        let mut raw = case.json();
+        raw["theme"] = json!("amber");
+        fs::write(&case.config, raw.to_string()).unwrap();
+        let before = case.text();
+        let design = crate::design::storage::read(&case.config).unwrap();
+        *store.fault.borrow_mut() = Some(fault);
+        assert!(store.repair_design_source().is_err());
+        assert_eq!(
+            case.store().pending_recovery().unwrap().unwrap().operation,
+            "repair_design"
+        );
+        case.store().recover().unwrap();
+        assert_eq!(case.text(), before);
+        assert_eq!(crate::design::storage::read(&case.config).unwrap(), design);
+        assert!(config::read_config_text(&case.config).is_err());
+        case.store().repair_design_source().unwrap();
+        assert_eq!(projected(&case)["theme"], "teal");
+    }
+}
+
+#[test]
+fn fb16_migration_source_reads_reject_devices_fifos_and_symlinks_without_blocking() {
+    use std::os::unix::{ffi::OsStrExt, fs::symlink};
+    let case = Case::new("fb16-source-bounds");
+    fs::remove_file(&case.config).unwrap();
+    let name = std::ffi::CString::new(case.config.as_os_str().as_bytes()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+    assert!(config::read_raw_config_text(&case.config).is_err());
+    fs::remove_file(&case.config).unwrap();
+    symlink("/dev/zero", &case.config).unwrap();
+    assert!(config::read_raw_config_text(&case.config).is_err());
+    fs::remove_file(&case.config).unwrap();
+    fs::write(&case.config, vec![b' '; config::MAX_CONFIG_BYTES + 1]).unwrap();
+    assert!(config::read_raw_config_text(&case.config).is_err());
+}
+#[test]
+fn fb17_recipe_upgrade_failure_recovery_and_undo_preserve_frozen_state() {
+    for (i, fault) in [
+        Fault::FailWidget,
+        Fault::InterruptBetweenDesignFiles,
+        Fault::InterruptBeforeRecord,
+        Fault::InterruptAfterRecord,
+        Fault::FailRecord,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let case = Case::new(&format!("fb17-recipe-{i}"));
+        let store = case.store();
+        let recipe = crate::recipes::Recipe::starter(crate::recipes::Kind::Clock);
+        let mut widgets = WidgetPatch::new();
+        widgets
+            .set("/recipes/clock", None, Some(json!(recipe)))
+            .unwrap();
+        assert!(
+            store
+                .apply_owned(
+                    &DesktopPatch::new(),
+                    Some(&widgets),
+                    Owner::Preferences,
+                    "Recipe"
+                )
+                .is_err()
+        );
+        store.migrate_design().unwrap();
+        let frozen = case.text();
+        let design = crate::design::storage::read(&case.config).unwrap();
+        let (native, _) = case.patch();
+        *store.fault.borrow_mut() = Some(fault);
+        assert!(
+            store
+                .apply_owned(&native, Some(&widgets), Owner::Preferences, "Recipe")
+                .is_err()
+        );
+        let reopened = case.store();
+        if reopened.pending_recovery().unwrap().is_some() {
+            reopened.recover().unwrap();
+        }
+        assert_eq!(case.text(), frozen);
+        assert_eq!(crate::design::storage::read(&case.config).unwrap(), design);
+        let applied = reopened
+            .apply_owned(&native, Some(&widgets), Owner::Preferences, "Recipe")
+            .unwrap();
+        let projected = config::read_config_text(&case.config).unwrap().unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&projected).unwrap()["recipes"]["clock"]["revision"],
+            recipe.revision
+        );
+        reopened.undo_latest(&applied.id).unwrap();
+        assert_eq!(case.text(), frozen);
+        assert!(
+            config::read_config_text(&case.config)
+                .unwrap()
+                .unwrap()
+                .find(&recipe.id)
+                .is_none()
+        );
+    }
 }

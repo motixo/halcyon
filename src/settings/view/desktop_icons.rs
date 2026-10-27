@@ -136,17 +136,15 @@ impl Settings {
         let config = draft.config();
         let known = config.known().copied();
         items.push(heading().into());
-        items.push(
-            self.scene_frame(
-                canvas(Miniature {
-                    icons: known.unwrap_or_default(),
-                    accent,
-                })
-                .width(PREVIEW.0)
-                .height(PREVIEW.1)
-                .into(),
-                "Schematic · desktop items, icon size and spacing",
-            ),
+        let scene = self.scene_frame(
+            canvas(Miniature {
+                icons: known.unwrap_or_default(),
+                accent,
+            })
+            .width(PREVIEW.0)
+            .height(PREVIEW.1)
+            .into(),
+            "Schematic · desktop items, icon size and spacing",
         );
         if let Some(banner) = recovery_banner(
             editor.recovery(),
@@ -235,6 +233,16 @@ impl Settings {
             ],
         ));
         items.push(label(REFRESH_NOTE, 12., MUTED));
-        column::with_children(items).spacing(16).into()
+        let header = items.remove(0);
+        column::with_children(vec![
+            header,
+            self.inspector_layout(
+                scene,
+                column::with_children(items).spacing(16).into(),
+                "icons",
+            ),
+        ])
+        .spacing(16)
+        .into()
     }
 }

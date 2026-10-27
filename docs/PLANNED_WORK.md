@@ -1,5 +1,40 @@
 # Planned work
 
+## Future builder foundations
+
+Updated 2026-10-27. **FB05–FB19 are implemented, reviewed and locally validated.**
+The [future-builder project](future-builder/README.md) retains all twelve concepts,
+contracts and exact stage evidence. It now includes shared styling/rendering/providers,
+Clock faces and typography, canvas/inspector, Mix board, sample-image sharing,
+prepared Ridge depth, Day/Night Moments, canonical widget migration, personal native
+recipes, portable asset packages, offline discovery and credit-preserving remixing.
+
+[FB20](future-builder/FB20.md) passed local development-package assembly, isolated
+install/upgrade/remove/purge, source upgrade/backup, extracted-artifact native flows
+and source-archive validation. Physical display/hardware, screen-reader and live
+release-installation acceptance remain open in the [tracker](future-builder/tracker.json).
+The source installer’s missing Ridge PNG was fixed during this review.
+
+The user selected **0.4.0** for these implementations. Release review and exact-package
+acceptance are in progress; 0.3.0 remains the published version until those checks pass.
+The local wizard navigation repair is included. Later concepts retain the 0.5 working target.
+
+The final 0.4.0 package upgrade preserved preferences byte for byte. Regression
+fixes, packaging checks, offline source resolution and 60 final-package Settings
+captures passed. Exact artifacts and corresponding source are being prepared for
+publication; the installed workstation app remains unchanged.
+
+## Settings structural pass
+
+Updated 2026-10-27. **Implemented and locally validated.** Responsive native
+columns, persistent previews, compact hover/focus help, nested search reveal,
+content-first Notes/Calendar/Projects and grouped maintenance pages are in place.
+Onboarding uses the same structures while retaining its existing guarded actions.
+75 focused tests passed; two existing performance probes ignored. Compact, wide
+and 150% private COSMIC release-window checks passed. See the
+[structural plan and evidence](future-builder/STRUCTURAL-PASS.md).
+Changes remain local; the installed app and published packages were not replaced.
+
 ## 0.3.0 release preparation and live reporting
 
 Updated 2026-10-26. **[0.3.0 is published](https://github.com/profilaz3/halcyon/releases/tag/v0.3.0)** with matching main/Islands packages, checksums, corresponding source and

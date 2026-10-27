@@ -137,6 +137,16 @@ impl Native {
     pub fn render<M>(&mut self, view: cosmic::Element<'_, M>, theme: &cosmic::Theme) -> Vec<u8> {
         self.render_with_cursor(view, theme, mouse::Cursor::Unavailable)
     }
+    /// Keep layout in logical pixels; exercise the native renderer's physical
+    /// scale independently, as on a scaled output.
+    pub fn render_scaled<M>(
+        &mut self,
+        view: cosmic::Element<'_, M>,
+        theme: &cosmic::Theme,
+        scale: f64,
+    ) -> Vec<u8> {
+        self.render_at_scale(view, theme, mouse::Cursor::Unavailable, scale)
+    }
     /// A hovered frame must update and draw the same UI: Iced rebuilds
     /// overlay layout during update, and it is not part of the widget cache.
     pub fn render_hover<M>(
@@ -153,6 +163,16 @@ impl Native {
         theme: &cosmic::Theme,
         cursor: mouse::Cursor,
     ) -> Vec<u8> {
+        self.render_at_scale(view, theme, cursor, 1.)
+    }
+    fn render_at_scale<M>(
+        &mut self,
+        view: cosmic::Element<'_, M>,
+        theme: &cosmic::Theme,
+        cursor: mouse::Cursor,
+        scale: f64,
+    ) -> Vec<u8> {
+        assert!(scale.is_finite() && (0.5..=4.).contains(&scale));
         let mut ui = UserInterface::build(
             view,
             self.size,
@@ -171,8 +191,11 @@ impl Native {
         }
         ui.draw(&mut self.renderer, theme, &Style::default(), cursor);
         let pixels = self.renderer.screenshot(
-            Size::new(self.size.width as u32, self.size.height as u32),
-            1.,
+            Size::new(
+                (f64::from(self.size.width) * scale).round() as u32,
+                (f64::from(self.size.height) * scale).round() as u32,
+            ),
+            scale as f32,
             cosmic::iced::Color::TRANSPARENT,
         );
         self.cache = ui.into_cache();

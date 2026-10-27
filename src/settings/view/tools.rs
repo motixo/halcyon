@@ -23,15 +23,10 @@ fn choice_row<'a>(
     options: Vec<(String, bool, Option<Message>)>,
     accent: Color,
 ) -> Element<'a, Message> {
-    row::with_children(vec![
-        container(label(title, 14., FG)).width(130).into(),
-        container(segmented(options, accent))
-            .width(Length::Fill)
-            .into(),
-    ])
-    .spacing(12)
-    .align_y(Alignment::Center)
-    .into()
+    column::with_children(vec![label(title, 14., FG), segmented(options, accent)])
+        .spacing(6)
+        .width(Length::Fill)
+        .into()
 }
 
 impl Settings {
@@ -209,11 +204,7 @@ impl Settings {
         let readable = tools.note.is_ok();
         let editor = text_editor(&tools.content)
             .placeholder("Write anything. Start a line with [ ] for a checklist.")
-            .height(Length::Fixed(if self.window.height < 760. {
-                150.
-            } else {
-                200.
-            }))
+            .height(Length::Fixed((self.inspector_height() - 88.).max(180.)))
             .padding(12)
             .size(15.)
             .class(cosmic::style::iced::TextEditor::Custom(Box::new(
@@ -298,7 +289,7 @@ impl Settings {
                     .id(cosmic::widget::Id::new("note-revert"))
                     .on_press_maybe(dirty.then(|| edit(Edit::NoteRevert)))
                     .into(),
-                button::suggested("Save")
+                button::suggested("Save note")
                     .id(cosmic::widget::Id::new("note-save"))
                     .on_press_maybe((dirty && readable).then(|| edit(Edit::NoteSave)))
                     .into(),
@@ -342,8 +333,8 @@ impl Settings {
             (!dirty).then_some(on_preview as fn(cards::Action) -> Message),
             Some(self.tool_preview_size(Widget::Notes)),
         );
+        let document = group(None, note);
         let mut items = vec![
-            group(None, note),
             group(
                 Some("Note size"),
                 vec![
@@ -382,7 +373,7 @@ impl Settings {
                 ],
             ),
             label(
-                "[ ] starts a checklist item you can tick on the desktop; # starts a heading. Notes stay on this computer: presets and exports never include them.",
+                "Notes stay on this computer. Setups and exports never include them.",
                 12.,
                 MUTED,
             ),
@@ -390,10 +381,15 @@ impl Settings {
         items.push(self.widget_style_and_layout(Widget::Notes));
         column::with_children(vec![
             self.widget_heading(Widget::Notes, "Notes"),
-            self.editor_with_preview(
-                preview,
+            self.inspector_layout(
+                document,
                 column::with_children(items).spacing(16).into(),
-                "Live controls · saved checklist",
+                "notes",
+            ),
+            self.disclosure(
+                "notes-checklist",
+                "Saved checklist · live controls",
+                self.preview_stage(preview),
             ),
         ])
         .spacing(16)

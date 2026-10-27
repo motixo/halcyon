@@ -138,13 +138,14 @@ fn auditfix_w02_hidden_glance_stops_wakes_and_refreshes_but_running_focus_surviv
     let mut hidden = cards.config.clone();
     hidden.widgets_visible = false;
     let _ = cards.apply_config(hidden);
-    cards.fetching = false;
-    cards.next_weather = Instant::now();
+    cards.weather_hub =
+        crate::providers::weather::Hub::new(crate::widget_presentation::Context::Live);
+    cards.weather_hub.due_now(Instant::now());
     cards.next_clock = Instant::now();
     let before = cards.next_clock;
     assert!(cards.next_wake().is_none());
     assert!(cards.refresh_visible_data().is_empty());
-    assert!(!cards.fetching);
+    assert!(!cards.weather_fetching());
     assert_eq!(cards.next_clock, before);
     let now = crate::tools::focus::now_ms();
     cards
@@ -162,7 +163,7 @@ fn auditfix_w02_hidden_glance_stops_wakes_and_refreshes_but_running_focus_surviv
     assert!(cards.next_wake().is_some());
     // These tasks are only constructed; the fixture makes no provider requests.
     assert_eq!(cards.refresh_visible_data().len(), 1);
-    assert!(cards.fetching);
+    assert!(cards.weather_fetching());
 }
 
 #[test]
@@ -294,15 +295,17 @@ fn auditfix_w03_offline_cache_and_refresh_failure_are_visible_in_both_views() {
     assert_weather_status_views(&mut cards, "Saved · 3d ago");
     let mut native = Native::new(Size::new(300., 180.));
     native.text_bounds(cards.weather_card(), "Forecast unavailable");
-    let _ = cards.update(Message::Weather(location(), Err("fixture offline".into())));
+    let _ = cards.update(weather_delivery(&cards, Err("fixture offline".into())));
     assert_weather_status_views(&mut cards, "Saved · 3d ago\nRefresh failed");
     assert_eq!(
         serde_json::to_value(cards.weather.as_ref().unwrap()).unwrap(),
         serde_json::to_value(&cached.weather).unwrap()
     );
     // A successful retry removes the stale indicator in both real widget trees.
-    let _ = cards.update(Message::Weather(
-        location(),
+    cards.weather_hub.due_now(Instant::now());
+    let _ = cards.refresh_weather(Instant::now());
+    let _ = cards.update(weather_delivery(
+        &cards,
         Ok(WeatherSnapshot {
             updated_at: Local::now().to_rfc3339(),
             ..cached
@@ -320,9 +323,16 @@ fn auditfix_w03_offline_cache_and_refresh_failure_are_visible_in_both_views() {
             .try_bounds(cards.glance(), "glance-weather-status")
             .is_none()
     );
-    let _ = cards.update(Message::Weather(
-        location(),
-        Err("fixture retry failed".into()),
-    ));
+    cards.weather_hub.due_now(Instant::now());
+    let _ = cards.refresh_weather(Instant::now());
+    let _ = cards.update(weather_delivery(&cards, Err("fixture retry failed".into())));
     assert_weather_status_views(&mut cards, "Saved · just now\nRefresh failed");
+}
+
+fn weather_delivery(cards: &Cards, result: Result<WeatherSnapshot, String>) -> Message {
+    let key = crate::providers::weather::Key::new(cards.config.location.as_ref().unwrap()).unwrap();
+    Message::Weather(crate::providers::weather::Completion {
+        token: cards.weather_hub.token_for_test(&key).unwrap(),
+        result: Some(result),
+    })
 }

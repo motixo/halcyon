@@ -83,6 +83,7 @@ pub fn update(
     let _lock = lock_rules(store)?;
     let mut automation = load(store)?;
     change(&mut automation)?;
+    automation.version = automation.written_version();
     let bytes = automation.to_bytes()?;
     write(store, FILE, &bytes)?;
     Ok(automation)

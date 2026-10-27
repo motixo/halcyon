@@ -82,9 +82,27 @@ def edit_config(change):
         helper('--migrate-config', failure='Could not migrate existing settings.')
     with config_lock():
         data = config()
-        change(data)
-        atomic(CONFIG_FILE, json.dumps(data, indent=2, allow_nan=False) + '\n')
-        return data
+        design = (CONFIG_FILE.with_name('design-v1.json') if CONFIG_FILE.name == 'config.json'
+                  else Path(str(CONFIG_FILE) + '.design-v1.json'))
+        managed = os.path.lexists(design) or 'widget_design_version' in data
+        if not managed:
+            change(data)
+            atomic(CONFIG_FILE, json.dumps(data, indent=2, allow_nan=False) + '\n')
+            return data
+    # The native owner locks and checks the request. Never hold Python's lock
+    # while waiting for the child, and never fall back to the frozen file.
+    result = subprocess.run([str(BINARY), '--read-widget-config'], text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or 'Could not read widget design.')
+    before = json.loads(result.stdout)
+    data = json.loads(result.stdout)
+    change(data)
+    result = subprocess.run([str(BINARY), '--edit-widget-config'],
+                            input=json.dumps({'before': before, 'after': data}, allow_nan=False),
+                            text=True, capture_output=True)
+    if result.returncode:
+        raise RuntimeError(result.stderr.strip() or 'Could not update widget design.')
+    return data
 
 def wallpaper_file(name):
     """A built-in wallpaper's file: `<name>.jpg`, or the old `<name>-4k.png`."""
@@ -243,7 +261,7 @@ def restore():
 
 # Every page the native Settings window accepts (`Page::key` in src/settings.rs), plus the old
 # `layout` alias for Widgets.
-SETTINGS_PAGES = ('overview', 'pending', 'themes', 'presets', 'schedules', 'widget-style', 'system-monitor', 'daily-overview', 'focus-timer', 'app-settings', 'appearance', 'widgets', 'layout', 'glance', 'calendar', 'weather', 'devbox', 'clock',
+SETTINGS_PAGES = ('builder', 'moments', 'overview', 'pending', 'themes', 'presets', 'schedules', 'widget-style', 'system-monitor', 'daily-overview', 'focus-timer', 'app-settings', 'appearance', 'widgets', 'layout', 'glance', 'calendar', 'weather', 'devbox', 'clock',
                   'projects', 'music', 'notes', 'focus', 'general', 'desktop', 'desktop-dock',
                   'desktop-appearance', 'desktop-wallpaper', 'desktop-icons', 'desktop-profiles',
                   'desktop-windows', 'desktop-workspaces', 'desktop-motion', 'desktop-window-rules',

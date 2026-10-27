@@ -2564,3 +2564,314 @@ fn auditfix_ux04_current_wallpaper_replacement_invalidates_cache_and_late_pixels
     assert_eq!(pixel(&editor), [160, 160, 160]);
     assert!(editor.backdrops.len() <= BACKDROPS);
 }
+
+#[test]
+fn fb09_backdrop_requests_coalesce_and_obsolete_work_cannot_replace_current_pixels() {
+    let desk = Desk::new("fb09-backdrop-coalescing");
+    let mut editor = desk.editor();
+    editor.take_jobs();
+    let set_background = |step: usize| {
+        let entry = BgEntry::new(
+            "all",
+            BgSource::Color(wallpaper::BgColor::Single([step as f32 / 100., 0.2, 0.4])),
+        );
+        desk.fixture.user(
+            wallpaper::NAMESPACE,
+            "all",
+            &ron::to_string(&entry).unwrap(),
+        );
+    };
+    set_background(0);
+    editor.open_home();
+    let stale = editor.take_jobs().pop().unwrap();
+    editor.queue_current_colors();
+    let stale_colors = editor.take_theme_jobs().pop().unwrap();
+    for step in 1..=100 {
+        set_background(step);
+        editor.open_home();
+        editor.queue_current_colors();
+        assert!(editor.theme_jobs.len() <= 2);
+        assert!(
+            editor.jobs.len() <= 2,
+            "only current home and candidate jobs retained"
+        );
+    }
+    assert!(*stale.cancel.borrow());
+    assert!(*stale_colors.cancel.borrow());
+    let current = editor.take_jobs().pop().unwrap();
+    editor.update(stale.run());
+    assert!(editor.home_image().is_none());
+    editor.update(current.run());
+    let image = editor.home_image().unwrap().clone();
+    editor.open_home();
+    assert!(editor.take_jobs().is_empty());
+    assert_eq!(editor.home_image(), Some(&image));
+    set_background(55);
+    editor.open_home();
+    let waiting = editor.take_jobs().pop().unwrap();
+    drop(editor);
+    assert!(
+        waiting.cancel.has_changed().is_err(),
+        "owner drop cancels outstanding work"
+    );
+}
+
+fn mix_fixture(name: &str) -> (Desk, ProfilesEditor, ProfileId) {
+    let desk = Desk::new(name);
+    let mut source = Profile::new("Picture source").unwrap();
+    source.wallpaper = Some(profiles::WallpaperLook {
+        background: Some(profiles::BackgroundLook {
+            source: Some(profiles::SourceLook::Color(profiles::Rgb::of_srgb([
+                0.16, 0.27, 0.32,
+            ]))),
+            ..Default::default()
+        }),
+        ..Default::default()
+    });
+    let id = ProfileLibrary::new(&desk.store()).create(&source).unwrap();
+    let editor = desk.editor();
+    (desk, editor, id)
+}
+fn choose_mix(editor: &mut ProfilesEditor, picture: ProfileId) {
+    use profiles::mix::Component;
+    editor.update(Message::MixStart);
+    editor.update(Message::MixPick(
+        Component::Picture,
+        Selection::Saved(picture),
+    ));
+    editor.update(Message::MixPick(
+        Component::Style,
+        Selection::Preset("paper-studio"),
+    ));
+    editor.update(Message::MixPick(
+        Component::Layout,
+        Selection::Preset("tidal"),
+    ));
+    finish_theme(editor);
+}
+#[test]
+fn fb12_mix_save_is_independent_and_apply_undo_is_one_transaction() {
+    let (desk, mut editor, picture) = mix_fixture("mix-transaction");
+    let before = desk.desktop();
+    let original = fs::read(&desk.config).unwrap();
+    choose_mix(&mut editor, picture.clone());
+    assert!(editor.profile().unwrap().composition.is_some());
+    assert!(!editor.mix.as_ref().unwrap().choosing);
+    assert_eq!(desk.desktop(), before, "preview must not apply");
+    assert_eq!(
+        editor
+            .profile()
+            .unwrap()
+            .widget_style
+            .as_ref()
+            .unwrap()
+            .pointer("/clock/face"),
+        Some(&serde_json::json!("analog"))
+    );
+    assert!(
+        editor.can_apply(),
+        "{:?} {:?}",
+        editor.plan(),
+        editor.notice
+    );
+    name(&mut editor, NameAction::SaveMix, "My independent mix");
+    finish_theme(&mut editor);
+    assert_eq!(desk.desktop(), before, "saving must not apply");
+    assert!(matches!(editor.selection(), Selection::Saved(_)));
+    ProfileLibrary::new(&desk.store()).delete(&picture).unwrap();
+    editor.refresh();
+    finish_theme(&mut editor);
+    assert_eq!(editor.profile().unwrap().name, "My independent mix");
+    assert!(
+        editor.can_apply(),
+        "{:?} {:?}",
+        editor.plan(),
+        editor.notice
+    );
+    assert_eq!(editor.update(Message::Apply), Outcome::Changed);
+    assert_eq!(desk.widget_config()["location"]["name"], "SENTINEL");
+    assert_eq!(editor.latest().unwrap().owner, Owner::Profile);
+    assert_eq!(editor.update(Message::Undo), Outcome::Changed);
+    assert_eq!(fs::read(&desk.config).unwrap(), original);
+}
+#[test]
+fn fb12_mix_incomplete_cancel_and_replacement_are_read_only() {
+    use profiles::mix::Component;
+    let (desk, mut editor, picture) = mix_fixture("mix-cancel");
+    let before = desk.desktop();
+    editor.update(Message::MixStart);
+    editor.update(Message::MixPick(
+        Component::Picture,
+        Selection::Saved(picture.clone()),
+    ));
+    assert!(editor.profile().is_none() && !editor.can_apply());
+    assert_eq!(editor.update(Message::Apply), Outcome::None);
+    editor.update(Message::Discard);
+    assert!(editor.mix.is_none());
+    choose_mix(&mut editor, picture);
+    let old = editor.profile().unwrap().clone();
+    editor.update(Message::MixPick(
+        Component::Style,
+        Selection::Preset("carbon"),
+    ));
+    finish_theme(&mut editor);
+    assert_eq!(editor.profile().unwrap().wallpaper, old.wallpaper);
+    assert_eq!(editor.profile().unwrap().widget_layout, old.widget_layout);
+    assert_ne!(editor.profile().unwrap().widget_style, old.widget_style);
+    editor.update(Message::Discard);
+    assert_eq!(desk.desktop(), before);
+}
+#[test]
+fn fb12_mix_retains_conflict_and_old_color_jobs_cannot_change_new_mix() {
+    use profiles::mix::Component;
+    let (desk, mut editor, picture) = mix_fixture("mix-conflict");
+    choose_mix(&mut editor, picture);
+    editor.update(Message::MixPick(
+        Component::Style,
+        Selection::Preset("carbon"),
+    ));
+    let old = editor.take_theme_jobs();
+    editor.update(Message::MixPick(
+        Component::Style,
+        Selection::Preset("paper-studio"),
+    ));
+    for job in old {
+        editor.update(job.run());
+    }
+    assert!(editor.theme_loading());
+    finish_theme(&mut editor);
+    desk.fixture.user(DOCK, "opacity", "0.4");
+    let changed = desk.desktop();
+    assert_eq!(editor.update(Message::Apply), Outcome::None);
+    assert!(editor.stale());
+    assert!(editor.mix.is_some());
+    assert_eq!(desk.desktop(), changed);
+}
+
+#[test]
+fn fb12_saving_mix_keeps_only_included_domains() {
+    let (desk, mut editor, picture) = mix_fixture("mix-selected-domains");
+    desk.fixture.user(
+        wallpaper::NAMESPACE,
+        "all",
+        &ron::to_string(&BgEntry::new(
+            wallpaper::SHARED,
+            BgSource::Color(wallpaper::BgColor::Single([0.2, 0.3, 0.4])),
+        ))
+        .unwrap(),
+    );
+    choose_mix(&mut editor, picture);
+    editor.update(Message::Include(Domain::Wallpaper, false));
+    finish_theme(&mut editor);
+    let before = desk.desktop();
+    name(&mut editor, NameAction::SaveMix, "Style and layout");
+    assert!(matches!(editor.selection(), Selection::Saved(_)));
+    assert!(editor.profile().unwrap().wallpaper.is_none());
+    assert!(editor.profile().unwrap().widget_style.is_some());
+    assert!(editor.profile().unwrap().widget_layout.is_some());
+    assert_eq!(desk.desktop(), before);
+}
+
+#[test]
+fn fb13_share_cancel_reselection_and_failure_never_write_or_open_stale_dialogs() {
+    let desk = Desk::new("share-fencing");
+    let mut editor = desk.editor();
+    let before = desk.desktop();
+    editor.update(Message::Select(Selection::Preset("carbon")));
+    editor.update(Message::ShareImage);
+    assert!(editor.sharing());
+    let first = editor.take_share_jobs().pop().unwrap();
+    editor.update(Message::ShareImage);
+    assert!(
+        editor.take_share_jobs().is_empty(),
+        "duplicate request is coalesced"
+    );
+    editor.update(Message::Select(Selection::Preset("paper-studio")));
+    assert!(*first.cancel.borrow());
+    assert!(!editor.sharing());
+    assert_eq!(
+        editor.update(Message::ShareReady(
+            first.id,
+            Ok(b"\x89PNG\r\n\x1a\nstale".to_vec())
+        )),
+        Outcome::None
+    );
+    editor.update(Message::ShareImage);
+    let second = editor.take_share_jobs().pop().unwrap();
+    editor.update(Message::CancelShare);
+    assert!(*second.cancel.borrow());
+    editor.update(Message::ShareImage);
+    let third = editor.take_share_jobs().pop().unwrap();
+    editor.update(Message::ShareReady(
+        third.id,
+        Err("Fixture renderer failed".into()),
+    ));
+    assert!(!editor.busy());
+    assert!(
+        matches!(&editor.notice,Some(Notice::Error(error)) if error=="Fixture renderer failed")
+    );
+    assert_eq!(desk.desktop(), before);
+}
+
+#[test]
+fn fb13_share_dialog_is_confined_and_saved_png_does_not_apply_the_setup() {
+    let desk = Desk::new("share-save");
+    let mut editor = desk.editor();
+    editor.update(Message::Select(Selection::Preset("carbon")));
+    let before = desk.desktop();
+    editor.update(Message::ShareImage);
+    let job = editor.take_share_jobs().pop().unwrap();
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(2)
+        .enable_all()
+        .build()
+        .unwrap();
+    let id = job.id;
+    let bytes = runtime.block_on(job.run()).unwrap();
+    let Outcome::Dialog(Request::ExportImage {
+        id,
+        file_name,
+        bytes,
+        confine,
+    }) = editor.update(Message::ShareReady(id, Ok(bytes)))
+    else {
+        panic!("image dialog");
+    };
+    assert!(file_name.ends_with("-preview.png"));
+    assert_eq!(confine.as_deref(), Some(desk.fixture.0.as_path()));
+    let out = desk.fixture.0.join("out");
+    fs::create_dir_all(&out).unwrap();
+    let target = out.join(file_name);
+    write_export(&target, &bytes, confine.as_deref()).unwrap();
+    editor.update(Message::Exported(id, Ok(Some(target.clone()))));
+    assert_eq!(fs::read(&target).unwrap(), bytes);
+    assert_eq!(desk.desktop(), before);
+    assert!(!editor.busy());
+    assert!(matches!(editor.notice, Some(Notice::Done(_))));
+}
+
+#[test]
+fn fb13_share_detects_external_library_change_with_the_same_selection() {
+    let desk = Desk::new("share-library-replacement");
+    let store = desk.store();
+    let library = ProfileLibrary::new(&store);
+    let id = library
+        .create(&profiles::preset("carbon").unwrap().profile)
+        .unwrap();
+    let mut editor = desk.editor();
+    editor.update(Message::Select(Selection::Saved(id.clone())));
+    editor.update(Message::ShareImage);
+    let job = editor.take_share_jobs().pop().unwrap();
+    library.rename(&id, "Changed elsewhere").unwrap();
+    editor.refresh();
+    assert_eq!(editor.selection(), &Selection::Saved(id));
+    assert_eq!(
+        editor.update(Message::ShareReady(
+            job.id,
+            Ok(b"\x89PNG\r\n\x1a\nstale".to_vec())
+        )),
+        Outcome::None
+    );
+    assert!(!editor.busy());
+    assert!(matches!(&editor.notice,Some(Notice::Error(text)) if text.contains("setup changed")));
+}

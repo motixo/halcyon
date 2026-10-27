@@ -57,7 +57,7 @@ jobs:
           python3 -m unittest companion.test_compatibility
           python3 -m unittest discover -s companion -p 'test_configured_applets.py'
           python3 -m unittest discover -s companion -p 'test_practical_compatibility.py'
-          PYTHONPATH=companion python3 -m unittest companion.test_owned_group companion.test_install_status companion.test_enable_path companion.test_refresh.Refresh companion.test_restart
+          PYTHONPATH=companion python3 -m unittest companion.test_owned_group companion.test_install_status companion.test_enable_path companion.test_refresh.Refresh companion.test_restart companion.test_islands_configuration
           PYTHONPATH=companion:scripts/compatibility python3 -m unittest discover -s scripts/compatibility -p 'test_practical_release.py'
       - name: Test Rust
         run: cargo test --locked -- --test-threads=1
@@ -88,7 +88,7 @@ jobs:
           cat "$RUNNER_TEMP/source-license-notices.txt" >> packaging/licenses/THIRD_PARTY_LICENSES.txt
       - name: Build Debian package
         run: |
-          python3 packaging/build-deb.py --binary target/release/halcyon \
+          python3 packaging/build-deb.py --development --binary target/release/halcyon \
             --version "$(dpkg-parsechangelog --file packaging/debian/changelog --show-field Version)~ci${GITHUB_RUN_NUMBER}" --out dist
       - name: Inspect Debian package
         run: |

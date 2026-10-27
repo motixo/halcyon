@@ -1,0 +1,29 @@
+{
+  "mode": "built-in image_gen",
+  "date": "2026-10-27",
+  "purpose": "FB14 prepared pair; qualified scope in FB14.md",
+  "wallpaper": {
+    "file": "wallpaper-source.png",
+    "original": "/home/workstation/.codex-t3/aicoach/generated_images/01a17047-4c1e-7513-a5d7-eec1f0336926/exec-8bf277f8-a702-41c4-b981-c51476d28d66.png",
+    "promptFile": "prompts.json"
+  },
+  "matte": {
+    "file": "matte-source.png",
+    "original": "/home/workstation/.codex-t3/aicoach/generated_images/01a17047-4c1e-7513-a5d7-eec1f0336926/exec-530986a5-edd3-4ae7-8b75-01de026148a0.png",
+    "initialPrompt": "Use case: precise-object-edit. Edit target: the supplied Halcyon Ridge landscape wallpaper. Produce a strictly black-and-white foreground matte on exactly the same canvas and in exactly the same coordinates as the input, 1672 by 941 pixels. Preserve the skyline silhouette precisely: all sky and clouds ABOVE the mountain and tree skyline become pure black (#000000). Every mountain, tree, rock and the entire lake BELOW that skyline become pure white (#ffffff). Trace the fine spruce tips at the left edge and the entire jagged mountain skyline faithfully. Do not shift, crop, zoom, move, smooth, redesign or reinterpret any boundary. This is a technical mask aligned to the original image, not artwork: no texture, tonal shading, outlines, gradients, transparency, text, labels or UI. Only solid black sky and solid white foreground, with antialiasing allowed only on the single-pixel boundary.",
+    "correctionPrompt": "Use case: precise-object-edit. Edit target: this black-and-white technical foreground mask. Make ONE correction only: remove every black tree line, dark mark, texture and hole INSIDE the white foreground below the main mountain skyline, filling all of it pure white (#ffffff). The complete region below the top mountain/tree boundary must be uninterrupted solid white, all the way to the bottom and sides. Keep the existing outer skyline boundary, peaks, coordinates, canvas dimensions and the pure black sky above it exactly unchanged. Do not move, crop or redraw the skyline. No gradients, interior outlines, grain, transparency or text. Output an exact aligned opaque black/white mask, 1672 by 941 pixels."
+  },
+  "installed_candidates": [
+    {
+      "file": "assets/wallpapers/halcyon-ridge.png",
+      "sha256": "537f68b63bdb14bd3482924dacda77b59fd7c08889d93962e56e3dc724df9a14",
+      "bytes": 2133497
+    },
+    {
+      "file": "assets/depth/halcyon-ridge.png",
+      "sha256": "c3fba3ed4b34c3c6c43b4c2888588c081f677f01f46186d5aec5d9cacae21531",
+      "bytes": 711075
+    }
+  ],
+  "qualification": "Prepared central mountain composition locally qualified in native Fill/Fit at 100/150/200 percent, with truthful plain fallback. Fine extreme-left spruce tips are not a pixel-perfect mask claim. Original assets/prompts preserved; not released."
+}

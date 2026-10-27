@@ -39,6 +39,7 @@ class PackageTests(unittest.TestCase):
             "packaging/man/halcyon-ctl.1",
             f"packaging/{builder.APP_ID}.desktop", f"packaging/{builder.APP_ID}.metainfo.xml",
             "packaging/licenses/THIRD_PARTY_LICENSES.txt", "assets/wallpapers-jpg/scene.jpg",
+            "assets/wallpapers/halcyon-ridge.png",
         ]
         files.extend(f"packaging/icons/{size}/{builder.APP_ID}.png" for size in builder.ICON_SIZES)
         for name in files:
@@ -52,7 +53,8 @@ class PackageTests(unittest.TestCase):
         self.client.write_text('{"installed":{"client_id":"test"}}\n')
         self.args = argparse.Namespace(binary=self.binary, version="0.1.0~ci7",
                                        out=self.root / "out", wallpapers=None,
-                                       google_client=self.client)
+                                       google_client=self.client, release_updates=True,
+                                       development=False)
         replacement = patch.object(builder, "REPO", repo)
         replacement.start()
         self.addCleanup(replacement.stop)
@@ -123,6 +125,26 @@ class PackageTests(unittest.TestCase):
         self.args.wallpapers.mkdir()
         with self.assertRaisesRegex(ValueError, "no <name>.jpg"):
             builder.build(self.args)
+
+    def test_package_mode_is_explicit_and_development_cannot_enroll(self):
+        self.args.release_updates = False
+        with self.assertRaisesRegex(ValueError, "choose --release-updates"):
+            builder.build(self.args)
+        self.assertFalse(self.args.out.exists())
+        self.args.development = True
+        package = self.build()
+        self.assertEqual(package.name, "cosmic-ext-halcyon-dev_0.1.0~ci7_amd64.deb")
+        root = self.root / "development"
+        subprocess.run(["dpkg-deb", "-R", str(package), str(root)], check=True)
+        control = (root / "DEBIAN/control").read_text()
+        self.assertIn("Package: cosmic-ext-halcyon-dev\n", control)
+        self.assertIn("Conflicts: cosmic-ext-halcyon\n", control)
+        self.assertIn("Replaces: cosmic-ext-halcyon\n", control)
+        self.assertNotIn("Provides:", control)
+        self.assertTrue((root / "usr/share/doc/cosmic-ext-halcyon-dev/copyright").is_file())
+        self.assertFalse((root / "DEBIAN/postinst").exists())
+        self.assertFalse((root / "DEBIAN/postrm").exists())
+        self.assertFalse((root / "usr/share/cosmic-ext-halcyon/updates").exists())
 
 
 if __name__ == "__main__":

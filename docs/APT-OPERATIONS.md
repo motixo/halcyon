@@ -1,9 +1,9 @@
 # Signed APT operations
 
-This pipeline distributes the already approved 0.2.5 release under its explicit
-practical compatibility policy. The former 0.2.1 hold/full-matrix implementation
-plan is historical and does not govern this deployment. It does not add a native
-result, demand a new hardware campaign or change the original approval's limits.
+This pipeline distributes reviewed releases pinned in `distribution.json` under
+their explicit compatibility policy. Published releases retain their original
+artifact hashes and approval scope. The older 0.2.1 implementation plan and the
+initial 0.2.5 bootstrap examples below are historical.
 
 ## Trust and immutable inputs
 

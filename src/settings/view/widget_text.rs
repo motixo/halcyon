@@ -1,5 +1,5 @@
-//! Widget style › Text: the widget font and the clock's own font, each an
-//! expanding list where every family is shown in itself.
+//! Bounded native type specimens. One page retains twelve choices, sharing the
+//! current wallpaper handle; browsing never edits preferences or starts data.
 use super::pages::section;
 use super::*;
 use crate::settings::FontTarget;
@@ -22,8 +22,6 @@ const SUGGESTED: [&str; 15] = [
     "Noto Sans Mono",
     "Hack",
 ];
-/// Enough to browse without a search; searching reaches the rest.
-const SHOWN: usize = 80;
 
 fn in_font<'a>(name: &str, size: f32, color: Color) -> Element<'a, Message> {
     text::body(name.to_string())
@@ -104,7 +102,7 @@ impl Settings {
         ])
     }
 
-    fn widget_font_row(
+    pub(super) fn widget_font_row(
         &self,
         target: FontTarget,
         title: &'static str,
@@ -157,15 +155,16 @@ impl Settings {
                 .on_press(Message::WidgetFont(target, value))
                 .into()
         };
-        let mut list: Vec<Element<'_, Message>> =
-            vec![choice(None, label(default, 14., MUTED), current.is_none())];
+        rows.push(choice(None, label(default, 14., MUTED), current.is_none()));
         let families = self.widget_font_families();
         let total = families.len();
-        for name in families.into_iter().take(SHOWN) {
-            let selected = current == Some(name.as_str());
-            let face = in_font(&name, 15., FG);
-            list.push(choice(Some(name), face, selected));
-        }
+        let page = self.font_page.min(total.saturating_sub(1) / FONT_PAGE_SIZE);
+        let start = page * FONT_PAGE_SIZE;
+        let shown = families
+            .into_iter()
+            .skip(start)
+            .take(FONT_PAGE_SIZE)
+            .collect::<Vec<_>>();
         rows.push(
             container(
                 text_input("Search fonts", &self.font_search)
@@ -175,20 +174,88 @@ impl Settings {
             .id(cosmic::widget::Id::new(format!("font-search-{key}")))
             .into(),
         );
+        rows.push(label(
+            if self.canvas.is_some() && self.page == Page::Overview {
+                "Sample text · previewing until Apply"
+            } else {
+                "Sample text · choosing a font applies it immediately"
+            },
+            11.,
+            MUTED,
+        ));
+        let selected_name = current.map(str::to_owned);
+        let grid = cosmic::widget::responsive(move |bounds| {
+            let columns = if bounds.width >= 660. {
+                3.
+            } else if bounds.width >= 360. {
+                2.
+            } else {
+                1.
+            };
+            let width = ((bounds.width - (columns - 1.) * 8.) / columns).max(1.);
+            let tiles = shown
+                .iter()
+                .map(|name| {
+                    let specimen = self.font_specimen(target, name, [width - 16., 96.]);
+                    button::custom(
+                        column::with_children(vec![specimen, label(name.clone(), 12., FG)])
+                            .spacing(6),
+                    )
+                    .id(cosmic::widget::Id::new(format!("font-choice-{key}-{name}")))
+                    .class(super::profiles::tile_style(
+                        selected_name.as_deref() == Some(name.as_str()),
+                        accent,
+                    ))
+                    .padding(7)
+                    .width(width)
+                    .on_press(Message::WidgetFont(target, Some(name.clone())))
+                    .into()
+                })
+                .collect::<Vec<_>>();
+            let height = ((shown.len() as f32 / columns).ceil() * 142.).clamp(1., 300.);
+            scrollable(row::with_children(tiles).spacing(8).wrap())
+                .id(cosmic::widget::Id::new(format!("font-scroll-{key}")))
+                .height(height)
+                .into()
+        })
+        .height(Length::Shrink);
         rows.push(
-            container(scrollable(column::with_children(list).spacing(2)).height(260))
+            container(grid)
                 .id(cosmic::widget::Id::new(format!("font-list-{key}")))
                 .into(),
         );
-        if total > SHOWN {
-            rows.push(label(
-                format!("Showing {SHOWN} of {total}. Search to find the rest."),
-                11.,
-                MUTED,
-            ));
+        if total > FONT_PAGE_SIZE {
+            rows.push(
+                row::with_children(vec![
+                    button::text("Previous")
+                        .id(cosmic::widget::Id::new(format!("font-previous-{key}")))
+                        .on_press_maybe((page > 0).then(|| Message::FontPage(page - 1)))
+                        .into(),
+                    label(
+                        format!(
+                            "{}–{} of {total}",
+                            start + 1,
+                            (start + FONT_PAGE_SIZE).min(total)
+                        ),
+                        12.,
+                        MUTED,
+                    ),
+                    button::text("Next")
+                        .id(cosmic::widget::Id::new(format!("font-next-{key}")))
+                        .on_press_maybe(
+                            (start + FONT_PAGE_SIZE < total).then_some(Message::FontPage(page + 1)),
+                        )
+                        .into(),
+                ])
+                .align_y(Alignment::Center)
+                .spacing(12)
+                .into(),
+            );
         } else if total == 0 {
             rows.push(label(
-                if self.font_search.trim().is_empty() {
+                if self.font_loading {
+                    "Loading installed fonts…"
+                } else if self.font_search.trim().is_empty() {
                     "No installed fonts were found."
                 } else {
                     "No fonts match."
@@ -198,5 +265,64 @@ impl Settings {
             ));
         }
         column::with_children(rows).spacing(8).into()
+    }
+
+    fn font_specimen(
+        &self,
+        target: FontTarget,
+        name: &str,
+        size: [f32; 2],
+    ) -> Element<'static, Message> {
+        use crate::widget_style::resolver::{ClockFace, ClockSurface};
+        let mut config = self.canvas_config().clone();
+        let clock = matches!(target, FontTarget::Clock | FontTarget::GlanceClock);
+        let ink = config.wallpaper_palette().foreground;
+        let content = if clock {
+            config.clock_font = Some(name.into());
+            config.clock.face = Some(ClockFace::Digital);
+            config.clock.surface = Some(ClockSurface::None);
+            config.clock.scale = 100;
+            config.clock.show_date = false;
+            config.clock.alignment = crate::config::ClockAlignment::Center;
+            config.clock.center_vertically = true;
+            crate::app::settings_clock_preview(&config, size).map(|_| Message::Preview)
+        } else {
+            container(
+                text::body("Make room\nfor your ideas")
+                    .size(24)
+                    .font(cosmic::iced::Font {
+                        family: cosmic::iced::font::Family::Name(crate::widget_style::intern(name)),
+                        ..cosmic::iced::Font::DEFAULT
+                    })
+                    .class(cosmic::theme::Text::Color(ink)),
+            )
+            .center_x(size[0])
+            .center_y(size[1])
+            .into()
+        };
+        let background: Element<'static, Message> = match self.profiles.home_image() {
+            Some(handle) => cosmic::widget::image(handle.clone())
+                .width(size[0])
+                .height(size[1])
+                .content_fit(cosmic::iced::ContentFit::Cover)
+                .into(),
+            None => {
+                let color = config.palette().background;
+                container(cosmic::iced::widget::space())
+                    .width(size[0])
+                    .height(size[1])
+                    .class(cosmic::theme::Container::custom(move |_| {
+                        cosmic::iced::widget::container::Style {
+                            background: Some(color.into()),
+                            ..Default::default()
+                        }
+                    }))
+                    .into()
+            }
+        };
+        cosmic::iced::widget::stack(vec![background, content])
+            .width(size[0])
+            .height(size[1])
+            .into()
     }
 }

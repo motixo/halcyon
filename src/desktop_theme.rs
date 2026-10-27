@@ -671,6 +671,29 @@ pub fn font_installed(name: &str) -> bool {
     })
 }
 
+/// Exact face support from the renderer's already loaded database. This does
+/// not run font discovery or load a file while building Settings controls.
+pub fn font_style_available(font: Font) -> bool {
+    use cosmic::iced::advanced::graphics::text::{self, cosmic_text::fontdb};
+    let attrs = text::to_attributes(font);
+    let system = text::font_system().read().expect("Read font catalogue");
+    let query = fontdb::Query {
+        families: &[attrs.family],
+        weight: attrs.weight,
+        stretch: attrs.stretch,
+        style: attrs.style,
+    };
+    system
+        .db()
+        .query(&query)
+        .and_then(|id| system.db().face(id))
+        .is_some_and(|face| {
+            face.weight == attrs.weight
+                && face.style == attrs.style
+                && face.stretch == attrs.stretch
+        })
+}
+
 /// COSMIC's own palettes use a pastel accent in Dark and a deep one in Light,
 /// so one shared color becomes two native accents of the same hue.
 pub fn native_accent(seed: [u8; 3], dark: bool) -> [u8; 3] {
@@ -857,15 +880,16 @@ pub fn resolve(a: Appearance) -> Roles {
 }
 impl Config {
     pub fn theme_roles(&self) -> Option<Roles> {
-        self.appearance.family?;
+        let appearance = self.moment_appearance();
+        appearance.family?;
         let mut cache = self.theme_cache.borrow_mut();
         if cache
             .as_ref()
-            .is_none_or(|cached| cached.appearance != self.appearance)
+            .is_none_or(|cached| cached.appearance != appearance)
         {
             *cache = Some(Cache {
-                appearance: self.appearance,
-                roles: resolve(self.appearance),
+                appearance,
+                roles: resolve(appearance),
             });
         }
         cache.as_ref().map(|c| {

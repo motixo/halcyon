@@ -14,9 +14,10 @@ from bundle_contract import CONFIGURATION_SOURCE, installed_package_status
 from panel_configuration import Snapshot, Watch
 from runtime_identity import _proc_bytes, _stat, _owned_by_host, host_process, LOADER_ENV
 
-POLICY = dict(version=2, id='cosmic-1.10-1.11-startup-v2', families=['1.10','1.11'],
+POLICY = dict(version=3, id='cosmic-1.10-1.11-startup-v3', families=['1.10','1.11'],
     assurance='supported-family-probed-startup-not-hardware-qualification',
-    native_source={**CONFIGURATION_SOURCE, 'patch_sha256':'6207734618f4815676fd7e2c0beccfcf094f21170fa1b941dfd9946edf17053f'},
+    native_source={**CONFIGURATION_SOURCE, 'patch_sha256':'6207734618f4815676fd7e2c0beccfcf094f21170fa1b941dfd9946edf17053f',
+                   'islands_sha256':'5dece621dcee8f3375b606d231e661952cf98479aadac2c748bea69d5a830043'},
     binary_sha256='11c321ed40d87a5daba4357338365b5ac4723254b99ff1b28fc9492dcbde01da',
     protocol=1, runtime_probe=1, max_outputs=32)
 CORE = ('cosmic-comp', 'cosmic-session', 'cosmic-settings-daemon')

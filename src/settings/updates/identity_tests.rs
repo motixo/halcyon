@@ -1,5 +1,47 @@
 use super::*;
 use std::os::unix::fs::{PermissionsExt, symlink};
+
+#[test]
+fn islands_needs_verified_package_and_preserves_source_choices() {
+    let mut identity = Identity {
+        channel: UpdateChannel::ManualDeb,
+        enrollment: Enrollment::Disabled,
+        architecture: Some("amd64".into()),
+        installed_version: Some(env!("CARGO_PKG_VERSION").into()),
+        evidence: Some("verified".into()),
+        ..Identity::default()
+    };
+    assert!(identity.can_install_islands());
+    assert!(!identity.can_enroll());
+    for channel in [UpdateChannel::Source, UpdateChannel::Unknown] {
+        identity.channel = channel;
+        assert!(!identity.can_install_islands());
+    }
+    identity.channel = UpdateChannel::Apt;
+    let original = identity.clone();
+    identity.evidence = Some("changed".into());
+    assert!(!original.same_package(&identity));
+    identity.installed_version = Some("0.0.1".into());
+    assert!(!identity.can_install_islands());
+}
+
+#[test]
+fn islands_partial_installs_cannot_be_overwritten() {
+    let fixture = Fixture::new();
+    let original = fs::read_to_string(fixture.path("/var/lib/dpkg/status")).unwrap();
+    assert!(islands_absent(&fixture.root));
+    for (status, absent, installed) in [
+        ("install ok installed", false, true),
+        ("install ok unpacked", false, false),
+        ("install ok half-configured", false, false),
+        ("deinstall ok config-files", true, false),
+        ("install reinstreq half-installed", false, false),
+    ] {
+        fixture.put("/var/lib/dpkg/status", format!("{original}Package: cosmic-ext-halcyon-islands\nStatus: {status}\nArchitecture: amd64\nVersion: 0.3.0\n\n").as_bytes());
+        assert_eq!(islands_absent(&fixture.root), absent);
+        assert_eq!(islands_version(&fixture.root).is_some(), installed);
+    }
+}
 struct Fixture {
     root: PathBuf,
 }

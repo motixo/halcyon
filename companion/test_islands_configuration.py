@@ -11,6 +11,7 @@ from unittest.mock import patch
 
 from bundle_contract import CONFIGURATION_SOURCE, CONFIGURATION_RESOLVER, verify_bundle, canonical, digest
 from panel_configuration import islands_settings_enabled, UnsupportedSettings
+from runtime_compatibility import POLICY
 import test_panel_configuration as base
 from test_generation_contract import bundle_fixture
 
@@ -141,11 +142,11 @@ class IslandsConfiguration(unittest.TestCase):
     def test_native_source_pins_and_bundle_reject_missing_or_wrong_source(self):
         root=Path(__file__).resolve().parents[1]
         patch_bytes=(root/'companion/patches/0001-dock-islands.patch').read_bytes()
-        self.assertEqual(hashlib.sha256(patch_bytes).hexdigest(),CONFIGURATION_SOURCE['patch_sha256'])
-        self.assertEqual(digest(root/'companion/dock-islands-core/src/lib.rs'),CONFIGURATION_SOURCE['core_sha256'])
+        self.assertEqual(hashlib.sha256(patch_bytes).hexdigest(),POLICY['native_source']['patch_sha256'])
+        self.assertEqual(digest(root/'companion/dock-islands-core/src/lib.rs'),POLICY['native_source']['core_sha256'])
         section=patch_bytes.split(b'+++ b/cosmic-panel-bin/src/islands.rs\n')[1].split(b'\n--- ')[0]+b'\n'
         islands=b''.join(line[1:] for line in section.splitlines(keepends=True) if line.startswith(b'+') and not line.startswith(b'+++'))
-        self.assertEqual(hashlib.sha256(islands).hexdigest(),CONFIGURATION_SOURCE['islands_sha256'])
+        self.assertEqual(hashlib.sha256(islands).hexdigest(),POLICY['native_source']['islands_sha256'])
         library=self.root/'bundle';manifest,catalog=bundle_fixture(library)
         self.assertEqual(catalog['cohorts'][0]['runtime']['configuration']['resolver'],CONFIGURATION_RESOLVER)
         verify_bundle(library,'companion-manifest.json')

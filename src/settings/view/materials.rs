@@ -7,57 +7,55 @@ impl Settings {
         let selected = self
             .material_draft
             .or(self.config.materials.effective(target));
-        let chooser = row::with_children(
-            Kind::ALL
-                .into_iter()
-                .map(|kind| {
-                    let chosen = selected.is_some_and(|f| f.kind == kind);
-                    container(
-                        button::custom(
-                            column::with_children(vec![
+        let tiles = Kind::ALL
+            .into_iter()
+            .map(|kind| {
+                let chosen = selected.is_some_and(|f| f.kind == kind);
+                container(
+                    button::custom(
+                        column::with_children(vec![
+                            super::sample::fit(
                                 self.material_specimen(
                                     selected
                                         .filter(|f| f.kind == kind)
                                         .unwrap_or_else(|| Finish::new(kind)),
                                 ),
-                                split(
-                                    label(kind.title(), 14., FG),
-                                    label(
-                                        if chosen { "✓" } else { "" },
-                                        14.,
-                                        self.settings_accent(),
-                                    ),
-                                ),
-                                if self.material_adjust {
-                                    cosmic::widget::space().height(0).into()
-                                } else {
-                                    label(
-                                        match kind {
-                                            Kind::Frosted => "Soft & balanced",
-                                            Kind::Clear => "Light & luminous",
-                                            Kind::Smoked => "Quiet & dense",
-                                            Kind::Liquid => "Polished & rounded",
-                                        },
-                                        12.,
-                                        MUTED,
-                                    )
-                                },
-                            ])
-                            .spacing(5),
-                        )
-                        .class(profiles::tile_style(chosen, self.settings_accent()))
-                        .selected(chosen)
-                        .padding(7)
-                        .width(Length::Fill)
-                        .on_press(Message::MaterialChoose(Some(kind))),
+                                52.,
+                            ),
+                            split(
+                                label(kind.title(), 14., FG),
+                                label(if chosen { "✓" } else { "" }, 14., self.settings_accent()),
+                            ),
+                        ])
+                        .spacing(5),
                     )
-                    .id(cosmic::widget::Id::new(format!("material-{}", kind.key())))
+                    .class(profiles::tile_style(chosen, self.settings_accent()))
+                    .selected(chosen)
+                    .padding(7)
                     .width(Length::Fill)
-                    .into()
-                })
-                .collect::<Vec<_>>(),
-        )
-        .spacing(8);
+                    .on_press(Message::MaterialChoose(Some(kind))),
+                )
+                .id(cosmic::widget::Id::new(format!("material-{}", kind.key())))
+                .width(Length::Fill)
+                .into()
+            })
+            .collect::<Vec<_>>();
+        let mut tiles = tiles.into_iter();
+        let chooser = column::with_children(vec![
+            adaptive::columns(
+                tiles.next().unwrap(),
+                tiles.next().unwrap(),
+                [132., 132.],
+                false,
+            ),
+            adaptive::columns(
+                tiles.next().unwrap(),
+                tiles.next().unwrap(),
+                [132., 132.],
+                false,
+            ),
+        ])
+        .spacing(12);
         let scopes = segmented(
             Target::ALL
                 .into_iter()
@@ -121,18 +119,16 @@ impl Settings {
             cosmic::widget::space().height(0).into()
         };
         let mut rows = vec![
-            heading(
-                "Surface finishes",
-                "Choices apply directly. Adjustments finish when you release the slider.",
-            ),
+            heading("Surface finishes", ""),
             column::with_children(vec![
-                split(label("Applies to", 14., FG), scopes),
+                container(split(label("Applies to", 14., FG), scopes))
+                    .id(cosmic::widget::Id::new("material-scope"))
+                    .width(Length::Fill)
+                    .into(),
                 label(state, 13., MUTED),
             ])
             .spacing(8)
             .into(),
-            chooser.into(),
-            self.scene_frame(scene, "Sample widget · decorative surface finish"),
             row::with_children(vec![
                 label("Preview widget", 12., MUTED),
                 segmented(
@@ -202,7 +198,10 @@ impl Settings {
             rows.push(pages::section(vec![
                 self.material_slider("Transparency", format!("{}%", 100 - finish.opacity()), 0..=55, 100 - finish.opacity(), true),
                 self.material_slider("Color tint", format!("{}%", finish.tint), 0..=100, finish.tint, false),
-                split(label("Liquid widget motion", 12., FG), toggler(self.config.material_motion).on_toggle(Message::MaterialMotion).into()),
+                container(split(label("Liquid widget motion", 12., FG), toggler(self.config.material_motion).on_toggle(Message::MaterialMotion).into()))
+                    .id(cosmic::widget::Id::new("material-motion"))
+                    .width(Length::Fill)
+                    .into(),
                 self.search_target("contrast-assist", split(self.help("material-readability", "Widget readability", "Adds enough opacity for small text on bright or busy wallpaper. Your transparency setting is kept."),
                     container(toggler(self.config.appearance.contrast_assist).on_toggle(Message::ContrastAssist)).id(cosmic::widget::Id::new("material-readability")).into())),
             ]));
@@ -241,10 +240,24 @@ impl Settings {
             ));
         }
         rows.push(self.page_settings_advanced(Page::Appearance, vec![self.legacy_widget_style()]));
-        column::with_children(rows)
-            .spacing(12)
-            .width(Length::Fill)
-            .into()
+        let header = rows.remove(0);
+        let controls = column::with_children(rows).spacing(12).into();
+        column::with_children(vec![
+            header,
+            self.inspector_layout(
+                column::with_children(vec![
+                    self.scene_frame(scene, "Decorative finish"),
+                    chooser.into(),
+                ])
+                .spacing(16)
+                .into(),
+                controls,
+                "finish",
+            ),
+        ])
+        .spacing(16)
+        .width(Length::Fill)
+        .into()
     }
     fn material_slider(
         &self,

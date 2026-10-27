@@ -35,6 +35,11 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
     let mut fields = Vec::new();
     let mut add = |parts: &[&str]| fields.push(pointer(parts));
     match message {
+        Message::Moment(edit) => {
+            if let Some(path) = super::moments::scope(edit) {
+                fields.push(path);
+            }
+        }
         Message::WidgetDisplay(_) => add(&["widget_display"]),
         Message::WidgetMonitor(w, _) => add(&["widget_monitors", w.key(), "display"]),
         Message::WidgetMonitorHide(w, _) => add(&["widget_monitors", w.key(), "hide_disconnected"]),
@@ -89,6 +94,11 @@ fn message_scope(config: &Config, message: &Message) -> Vec<String> {
         Message::ClockAlignment(_) => add(&["clock", "alignment"]),
         Message::ClockScale(_) => add(&["clock", "scale"]),
         Message::ClockVertical(_) => add(&["clock", "center_vertically"]),
+        Message::ClockDepth(_) => add(&["clock", "depth"]),
+        Message::ClockFace(_) => add(&["clock", "face"]),
+        Message::ClockWeight(_) => add(&["clock", "weight"]),
+        Message::ClockItalic(_) => add(&["clock", "italic"]),
+        Message::ClockSurface(_) => add(&["clock", "surface"]),
         Message::WidgetColorSource(_) => add(&["appearance", "color_source"]),
         Message::ContrastAssist(_) => add(&["appearance", "contrast_assist"]),
         Message::WidgetSurface(_) => add(&["appearance", "surface"]),
@@ -438,6 +448,59 @@ mod tests {
         let _ = app.update(Message::ClockScale(0));
         assert!(app.error);
         assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
+    }
+
+    #[test]
+    fn foundation_clock_choices_save_reset_and_undo_without_touching_date() {
+        if isolated("foundation_clock_choices_save_reset_and_undo_without_touching_date") {
+            return;
+        }
+        use crate::widget_style::resolver::{ClockFace, ClockSurface, ClockWeight};
+        let (mut app, _) = Settings::init(Core::default(), super::super::Page::Clock);
+        for message in [
+            Message::ClockFace(Some(ClockFace::Analog)),
+            Message::ClockWeight(Some(ClockWeight::Bold)),
+            Message::ClockItalic(Some(true)),
+            Message::ClockSurface(Some(ClockSurface::Panel)),
+        ] {
+            super::super::tests::send_settings(&mut app, message);
+            assert!(!app.error, "{}", app.status);
+        }
+        let config = Config::load();
+        assert_eq!(config.clock.face, Some(ClockFace::Analog));
+        assert_eq!(config.clock.surface, Some(ClockSurface::Panel));
+        Config::save_clock(serde_json::json!({"show_date":false})).unwrap();
+        for _ in 0..4 {
+            super::super::tests::send_settings(&mut app, Message::UndoPreferences);
+            assert!(!app.error, "{}", app.status);
+        }
+        let clock = Config::load().clock;
+        assert_eq!(
+            (clock.face, clock.weight, clock.italic, clock.surface),
+            (None, None, None, None)
+        );
+        assert!(!clock.show_date);
+        super::super::tests::send_settings(&mut app, Message::ClockFace(Some(ClockFace::Analog)));
+        super::super::tests::send_settings(&mut app, Message::ClockFace(None));
+        assert_eq!(Config::load().clock.face, None);
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
+        assert_eq!(Config::load().clock.face, Some(ClockFace::Analog));
+    }
+
+    #[test]
+    fn fb14_depth_choice_undo_keeps_newer_clock_content() {
+        if isolated("fb14_depth_choice_undo_keeps_newer_clock_content") {
+            return;
+        }
+        let (mut app, _) = Settings::init(Core::default(), super::super::Page::Clock);
+        super::super::tests::send_settings(&mut app, Message::ClockDepth(true));
+        assert!(!app.error, "{}", app.status);
+        assert!(Config::load().clock.depth);
+        Config::save_clock(serde_json::json!({"show_date":false})).unwrap();
+        super::super::tests::send_settings(&mut app, Message::UndoPreferences);
+        assert!(!app.error, "{}", app.status);
+        let clock = Config::load().clock;
+        assert!(!clock.depth && !clock.show_date);
     }
 
     #[test]

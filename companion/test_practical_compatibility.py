@@ -19,6 +19,10 @@ VERSIONS={'cosmic-panel':'1.11.2~new-build','cosmic-session':'1.11.0~other-build
           'cosmic-comp':'0.1~new-source','cosmic-settings-daemon':'1.11.0~rebuild'}
 
 class Policy(unittest.TestCase):
+    def test_catalog_schema_matches_current_startup_policy(self):
+        schema=json.loads((Path(__file__).parent/'compatibility/schema.json').read_text())
+        self.assertEqual(schema['properties']['startup_policy']['const'], c.POLICY)
+
     def test_release_catalog_keeps_authoritative_policy_and_preserves_history(self):
         from bundle_contract import release_catalog, read_catalog, canonical
         source=read_catalog(Path(__file__).parent/'compatibility/catalog.json')

@@ -399,7 +399,32 @@ fn capture_widgets(
         .get("materials")
         .and_then(Value::as_object)
         .is_some_and(|members| members.values().any(|value| !value.is_null()));
+    let clock_fields = [
+        "/clock/face",
+        "/clock/weight",
+        "/clock/italic",
+        "/clock/surface",
+    ];
+    let has_clock_presentation = clock_fields
+        .iter()
+        .any(|pointer| raw.pointer(pointer).is_some());
     for field in widget::fields(group) {
+        // Never-configured recipes keep legacy exports compatible. An applied
+        // recipe or explicit reset is captured so later Apply restores intent.
+        if field.pointer.starts_with("/recipes/") && raw.pointer(field.pointer).is_none() {
+            continue;
+        }
+        if field.pointer.starts_with("/moments/") && raw.get("moments").is_none() {
+            continue;
+        }
+        if field.pointer == "/clock/depth" && raw.pointer(field.pointer).is_none() {
+            continue;
+        }
+        // Never-configured new choices do not make legacy captures require a
+        // newer reader. Once used (including explicit reset), capture all four.
+        if clock_fields.contains(&field.pointer) && !has_clock_presentation {
+            continue;
+        }
         // Defaults alone must not raise an older setup's format version.
         if field.pointer.starts_with("/materials/") && !has_materials {
             continue;

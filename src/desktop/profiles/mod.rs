@@ -16,8 +16,11 @@
 //! transaction and the library.
 mod capture;
 mod desktop_look;
+pub mod discovery;
 mod format;
 mod library;
+pub mod mix;
+pub mod packages;
 mod plan;
 mod presets;
 pub mod themes;
@@ -40,7 +43,7 @@ pub use plan::{
 pub(crate) use presets::islands_composition;
 pub use presets::{
     CLEAN, Preset, fitted, islands_available, islands_description, missing, occasion, preset,
-    presets,
+    presets, studio_presets,
 };
 
 #[cfg(test)]

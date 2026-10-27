@@ -62,7 +62,32 @@ pub(crate) fn settings_devbox_preview(config: &Config) -> Element<'static, Messa
 /// Uses the selected city and card style, with illustrative conditions. Dates
 /// follow today so an open Settings window never shows an expired sample week.
 pub(crate) fn settings_weather_preview(config: &Config) -> Element<'static, Message> {
-    let today = Local::now().date_naive();
+    settings_weather_preview_sized(config, crate::widget_presentation::WEATHER_SIZE)
+}
+pub(crate) fn settings_weather_preview_sized(
+    config: &Config,
+    size: [f32; 2],
+) -> Element<'static, Message> {
+    settings_weather_preview_at(config, size, Local::now())
+}
+pub(crate) fn settings_weather_preview_at(
+    config: &Config,
+    size: [f32; 2],
+    now: chrono::DateTime<Local>,
+) -> Element<'static, Message> {
+    let weather = weather_sample(now.date_naive());
+    weather::Presentation::new(
+        config,
+        weather::Snapshot {
+            weather: Some(&weather),
+            updated_at: None,
+            failed: false,
+        },
+        now,
+    )
+    .view(crate::widget_presentation::Context::LocalPreview, size)
+}
+pub(super) fn weather_sample(today: NaiveDate) -> Weather {
     let weather = Weather {
         current: data::Current {
             temperature_2m: 21.,
@@ -83,9 +108,7 @@ pub(crate) fn settings_weather_preview(config: &Config) -> Element<'static, Mess
             precipitation_probability_max: vec![Some(10.), Some(25.), Some(0.)],
         },
     };
-    // A missing location still previews the same appearance and sample data;
-    // the card's normal WEATHER heading makes no claim about a real city.
-    weather_view(config, Some(&weather), None, false, 180.)
+    weather
 }
 
 /// Offline examples for the calendar, projects and overview; no workers,
@@ -150,12 +173,15 @@ impl SettingsSamples {
             service_fetching: false,
             next_service: Instant::now(),
             next_clock: Instant::now(),
+            clock_at: Local::now(),
             next_calendar_view: Instant::now(),
             weather: weather.as_ref().map(|snapshot| snapshot.weather.clone()),
             weather_error: false,
             weather_at: weather.map(|snapshot| snapshot.updated_at),
-            next_weather: Instant::now(),
-            fetching: false,
+            weather_hub: crate::providers::weather::Hub::new(
+                crate::widget_presentation::Context::LocalPreview,
+            ),
+            weather_cache: Default::default(),
             capture_key: None,
             calendar_today: calendar.clone(),
             today_fetching: false,
@@ -180,6 +206,7 @@ impl SettingsSamples {
             automator: crate::automation::runtime::Automator::with_store(None),
             woke_at: (Instant::now(), SystemTime::now()),
             wake_generation: 0,
+            depth: Default::default(),
             wallpaper_color_generation: Default::default(),
         };
         let mut samples = Self { cards };

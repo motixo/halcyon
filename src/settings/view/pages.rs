@@ -487,7 +487,7 @@ impl Settings {
                     .into(),
             ));
         }
-        let mut items = vec![self.calendar_connection()];
+        let mut items = Vec::new();
         if self.calendar.connection.connected() {
             items.push(group(Some("Agenda & privacy"), events));
         }
@@ -511,9 +511,21 @@ impl Settings {
         ));
         column::with_children(vec![
             self.widget_heading(Widget::Calendar, "Calendar"),
-            self.widget_settings_body(
-                self.samples.calendar_view().map(|_| Message::Preview),
+            self.inspector_layout(
+                column::with_children(vec![
+                    self.calendar_connection(),
+                    self.scene_frame(
+                        self.preview_stage(super::sample::fit(
+                            self.samples.calendar_view().map(|_| Message::Preview),
+                            180.,
+                        )),
+                        "Sample agenda",
+                    ),
+                ])
+                .spacing(16)
+                .into(),
                 column::with_children(items).spacing(12).into(),
+                "calendar",
             ),
         ])
         .spacing(16)
@@ -704,10 +716,16 @@ impl Settings {
         );
         column::with_children(vec![
             self.widget_heading(Widget::Projects, "Projects"),
-            self.widget_settings_body(
-                self.samples.projects_view().map(|_| Message::Preview),
+            self.inspector_layout(
+                group(Some("Project folders"), roots),
                 column::with_children(vec![
-                    group(Some("Project folders"), roots),
+                    self.scene_frame(
+                        self.preview_stage(super::sample::fit(
+                            self.samples.projects_view().map(|_| Message::Preview),
+                            150.,
+                        )),
+                        "Sample projects",
+                    ),
                     self.widget_style_and_layout(Widget::Projects),
                     self.page_settings_advanced(
                         Page::Projects,
@@ -716,6 +734,7 @@ impl Settings {
                 ])
                 .spacing(16)
                 .into(),
+                "projects",
             ),
         ])
         .spacing(16)
@@ -1274,10 +1293,44 @@ impl Settings {
     }
 
     pub(super) fn clock_page(&self) -> Element<'_, Message> {
-        let clock = &self.config.clock;
+        use crate::widget_style::resolver::{ClockFace, ClockSurface, ClockWeight};
+        let clock = self.config.clock_layer(self.clock_moment_target());
+        let follow = if self.clock_moment_target().is_some() {
+            "Use base widget style"
+        } else {
+            "Follow style"
+        };
+        let (clock_font, missing_font) = {
+            let _scope = crate::widget_style::scope(&self.config);
+            let style = crate::widget_style::presentation(
+                &self.config,
+                self.config.wallpaper_palette(),
+                true,
+            );
+            (style.display.value, style.missing_font)
+        };
+        let preview_height = if self.config.moment_clock().face == Some(ClockFace::Analog) {
+            176.
+        } else {
+            112.
+        };
         let mut controls = vec![
+            self.widget_font_row(
+                super::super::FontTarget::Clock,
+                "Font",
+                self.config.clock_font.as_deref(),
+                "Follow style",
+            ),
             split(
-                label("Text size", 15., FG),
+                label(
+                    if clock.face == Some(ClockFace::Analog) {
+                        "Face size"
+                    } else {
+                        "Text size"
+                    },
+                    15.,
+                    FG,
+                ),
                 row::with_children(vec![
                     button::text("−")
                         .id(cosmic::widget::Id::new("clock-scale-down"))
@@ -1304,7 +1357,7 @@ impl Settings {
                 .into(),
             ),
             split(
-                label("Align text", 15., FG),
+                label("Alignment", 15., FG),
                 segmented(
                     [
                         ("Left", ClockAlignment::Left),
@@ -1324,6 +1377,74 @@ impl Settings {
                 ),
             ),
         ];
+        controls.push(split(
+            label("Weight", 15., FG),
+            segmented(
+                [
+                    (follow, None),
+                    ("Light", Some(ClockWeight::Light)),
+                    ("Regular", Some(ClockWeight::Normal)),
+                    ("Bold", Some(ClockWeight::Bold)),
+                ]
+                .into_iter()
+                .map(|(name, value)| {
+                    (
+                        name.into(),
+                        clock.weight == value,
+                        value
+                            .is_none_or(|weight| {
+                                crate::desktop_theme::font_style_available(cosmic::iced::Font {
+                                    weight: weight.native(),
+                                    ..clock_font
+                                })
+                            })
+                            .then_some(self.clock_moment_edit(Message::ClockWeight(value))),
+                    )
+                })
+                .collect(),
+                self.settings_accent(),
+            ),
+        ));
+        controls.push(split(
+            label("Letter style", 15., FG),
+            segmented(
+                [
+                    (follow, None),
+                    ("Upright", Some(false)),
+                    ("Italic", Some(true)),
+                ]
+                .into_iter()
+                .map(|(name, value)| {
+                    (
+                        name.into(),
+                        clock.italic == value,
+                        value
+                            .is_none_or(|italic| {
+                                crate::desktop_theme::font_style_available(cosmic::iced::Font {
+                                    style: if italic {
+                                        cosmic::iced::font::Style::Italic
+                                    } else {
+                                        cosmic::iced::font::Style::Normal
+                                    },
+                                    ..clock_font
+                                })
+                            })
+                            .then_some(self.clock_moment_edit(Message::ClockItalic(value))),
+                    )
+                })
+                .collect(),
+                self.settings_accent(),
+            ),
+        ));
+        if missing_font.is_some() {
+            controls.push(label(
+                "Selected font unavailable. Using the system sans-serif.",
+                12.,
+                MUTED,
+            ));
+        } else if !crate::desktop_theme::font_style_available(clock_font) {
+            controls.push(label("Using the closest installed font style.", 12., MUTED));
+        }
         if !self.config.glance.enabled {
             controls.push(switch(
                 "Center vertically",
@@ -1338,14 +1459,23 @@ impl Settings {
         ];
         column::with_children(vec![
             self.widget_heading(Widget::Clock, "Clock"),
+            self.moment_clock_target_view(),
             self.widget_settings_body(
                 cosmic::widget::responsive(move |bounds| {
-                    crate::app::settings_clock_preview(&self.config, [bounds.width, 112.])
+                    crate::app::settings_clock_preview(&self.config, [bounds.width, preview_height])
                         .map(|_| Message::Preview)
-                }).height(112.).into(),
+                }).height(preview_height).into(),
                 column::with_children(vec![
+                    group(Some("Face"),vec![segmented(
+                        [(follow,None),("Digital",Some(ClockFace::Digital)),("Analog",Some(ClockFace::Analog))].into_iter()
+                            .map(|(name,value)|(name.into(),clock.face==value,Some(self.clock_moment_edit(Message::ClockFace(value))))).collect(),self.settings_accent())]),
                     group(Some("Time & date"), content),
-                    group(Some("Text"), controls),
+                    group(Some("Size & type"), controls),
+                    group(Some("Clock surface"),vec![segmented(
+                        [(follow,None),("None",Some(ClockSurface::None)),("Panel",Some(ClockSurface::Panel))].into_iter()
+                            .map(|(name,value)|(name.into(),clock.surface==value,Some(self.clock_moment_edit(Message::ClockSurface(value))))).collect(),self.settings_accent()),
+                        label(if self.config.glance.enabled {"The separate clock uses this surface. At a glance keeps its shared background."} else {"Readability assistance can add a background."},12.,MUTED)]),
+                    group(Some("Depth"),vec![switch("Behind the landscape", "Requires Ridge wallpaper, a digital clock, no surface and auto-hiding bars. Other backgrounds, unsupported displays and Arrange show a plain clock.", clock.depth, Message::ClockDepth)]),
                     self.help("clock-position", "Position & size", "Move, resize or center the widget in Layout. In At a glance, the whole card moves together."),
                     self.widget_style_and_layout(Widget::Clock),
                     self.page_settings_advanced(Page::Clock, vec![self.refresh_control(Widget::Clock)])])
@@ -1380,9 +1510,7 @@ impl Settings {
             AppSettingsPage::Interface => self.app_interface_page(),
             AppSettingsPage::Privacy => self.privacy_section(),
             AppSettingsPage::Updates => {
-                column::with_children(vec![self.updates_section(), self.addons_section()])
-                    .spacing(20)
-                    .into()
+                self.setting_columns(self.updates_section(), self.addons_section())
             }
             AppSettingsPage::Restore if self.support.recent_open => self.recent_changes_page(),
             AppSettingsPage::Restore => self.app_restore_page(),
@@ -1414,7 +1542,7 @@ impl Settings {
         } else {
             "Stopped"
         };
-        column::with_children(vec![
+        self.setting_columns(
             group(
                 Some("Widgets & background operation"),
                 vec![
@@ -1467,13 +1595,11 @@ impl Settings {
                     ),
                 ],
             ),
-        ])
-        .spacing(20)
-        .into()
+        )
     }
 
     fn app_interface_page(&self) -> Element<'_, Message> {
-        column::with_children(vec![
+        self.setting_columns(
             group(Some("Edge menu"), vec![
                 split(self.help("edge-menu", "Edge menu", "Hold the pointer at the far-right screen edge for one second to open widget controls."),
                     button::standard("Show menu")
@@ -1489,11 +1615,11 @@ impl Settings {
                     button::text("Accessibility")
                         .on_press(Message::Page(Page::DesktopMotion)).into()),
             ]),
-        ]).spacing(20).into()
+        )
     }
 
     fn app_restore_page(&self) -> Element<'_, Message> {
-        column::with_children(vec![
+        let mut items = vec![
             group(
                 None,
                 vec![group_row(
@@ -1507,6 +1633,7 @@ impl Settings {
                         .into(),
                 )],
             ),
+            self.design_section(),
             self.desktop_recovery_section(),
             group(
                 Some("Unfinished work"),
@@ -1550,8 +1677,14 @@ impl Settings {
                         .into(),
                 )],
             ),
-        ])
-        .spacing(20)
-        .into()
+        ];
+        if self.desktop_recovery.plan.is_none() && self.desktop_recovery.problem.is_none() {
+            let mut routine = items.split_off(2);
+            let backup = routine.remove(0);
+            items.push(
+                self.setting_columns(backup, column::with_children(routine).spacing(16).into()),
+            );
+        }
+        column::with_children(items).spacing(16).into()
     }
 }

@@ -118,6 +118,39 @@ pub struct AppletCatalog {
 }
 
 impl AppletCatalog {
+    /// Public scene illustrations only; never use this catalog for admission.
+    pub(crate) fn public_sample() -> Self {
+        let applets = [
+            (
+                "com.system76.CosmicPanelWorkspacesButton",
+                "view-grid-symbolic",
+            ),
+            (
+                "com.system76.CosmicAppletTime",
+                "preferences-system-time-symbolic",
+            ),
+            (
+                "com.system76.CosmicAppletAudio",
+                "audio-volume-high-symbolic",
+            ),
+            ("com.system76.CosmicAppletPower", "system-shutdown-symbolic"),
+        ]
+        .into_iter()
+        .map(|(id, icon)| {
+            (
+                id.into(),
+                AppletInfo {
+                    id: id.into(),
+                    name: String::new(),
+                    comment: String::new(),
+                    icon: icon.into(),
+                },
+            )
+        })
+        .collect();
+        Self { applets }
+    }
+
     /// An explicit starting point, using only installed native applets.
     pub fn starter(&self, battery: bool) -> Regions {
         let mut regions = Regions::default();

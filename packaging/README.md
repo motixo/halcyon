@@ -36,7 +36,7 @@ release targets Pop!_OS 24.04 with COSMIC.
 | `bin/halcyon-ctl` | Controller (Python 3) |
 | `lib/cosmic-ext-halcyon/` | Helpers run by the program: `calendar-sync.py`, `project-status.py` |
 | `share/cosmic-ext-halcyon/` | `google-calendar-setup.html`; optional `google-calendar-client.json` (publisher OAuth client, added at release build time, never committed) |
-| `share/backgrounds/halcyon/` | Wallpapers, one JPEG per name: `<name>.jpg` (the seven Halcyon scenes and six palette gradients) |
+| `share/backgrounds/halcyon/` | Thirteen JPEG wallpapers and the prepared `halcyon-ridge.png`; identical assets for Debian and per-user installs |
 | `share/applications/io.github.profilaz3.Halcyon.desktop` | Launcher (opens Settings) |
 | `share/metainfo/io.github.profilaz3.Halcyon.metainfo.xml` | AppStream metadata |
 | `share/icons/hicolor/<size>x<size>/apps/io.github.profilaz3.Halcyon.png` | Icon at 48, 64, 128, 256 and 512 px |
@@ -57,13 +57,14 @@ on first start, and leaves the old folders in place.
 ## Islands add-on
 
 `cosmic-ext-halcyon-islands` is a separate, optional package (see
-`packaging/islands/`). It only works with the exact COSMIC panel version it was
-built for and is activated per person with `halcyon-islands enable`.
+`packaging/islands/`). Its reviewed COSMIC source/family policy and native startup checks determine
+compatibility; a matching version string alone does not establish compatibility.
+Activation is per person for the next login. See [the add-on guide](islands/README.md).
 
 
 ## Default system updates
 
-Upcoming main packages include reviewed update templates under
+Release main packages since 0.3.0 include reviewed update templates under
 `/usr/share/cosmic-ext-halcyon/updates/`. On a clean install, the package enables
 the signed Halcyon source once, offline. The script preserves existing bootstrap
 ownership and disabled, deleted, renamed or administrator-edited sources. It does
@@ -72,3 +73,34 @@ not enable unattended upgrades or install/activate Islands.
 The public installation receipt is `/var/lib/halcyon/updates/default-source.json`.
 Package removal disables only its unchanged generated source; purge removes only
 unchanged generated trust/pin files when safe. [Ownership, opt-out and recovery](../docs/DISTRIBUTION.md#default-enrollment-ownership).
+
+## Build mode
+
+Prefer `python3 scripts/install.py` for per-user source work; it adds no APT source.
+The Debian builder requires an explicit mode:
+
+```sh
+python3 packaging/build-deb.py --development --binary target/release/halcyon --version 0.4.0~local1 --out dist
+# Release assembly only, after reviewing the binary and public enrollment inputs:
+python3 packaging/build-deb.py --release-updates --binary target/release/halcyon --version VERSION --out dist
+```
+
+`--development` produces `cosmic-ext-halcyon-dev`, with no update templates or
+maintainer enrollment/removal hooks. It conflicts with and replaces the main
+package's files, provides no release package identity, and receives no Halcyon
+release updates. Installing it over a release is an explicit package-manager
+replacement; an installed Islands package requires the real main package.
+APT consequently proposes removing Islands when replacing its required main
+package with the development package; review that transaction explicitly.
+Returning to releases likewise replaces the development package explicitly.
+Per-user builds can coexist, so launch the intended executable explicitly.
+
+CI uses the development mode. Release assembly uses `--release-updates`, which
+retains the existing default-enrollment and administrator-preservation behavior.
+Do not reuse a published version for changed bytes.
+
+The next app build embeds `islands/download.json`, a separate reviewed companion
+pin. Before release, bind `main_version` to the new app version and verify the
+companion version/tag, size and SHA-256 against the approved immutable asset in
+`scripts/apt/distribution.json`. The companion may remain at an older compatible
+version. Stale or invalid metadata fails closed. Future updates remain signed APT.

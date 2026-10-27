@@ -460,7 +460,7 @@ impl Draft {
                     Some(p)
                 }
             } else {
-                crate::layout::free_spot(
+                crate::layout::free_spot_in_area(
                     [g.position[0] - left, g.position[1] - top],
                     size,
                     &occupied,
@@ -582,6 +582,51 @@ impl Draft {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn onboarding_small_display_uses_space_between_reserved_edges() {
+        let raw = serde_json::json!({
+            "enabled_widgets":["clock"], "glance":{"enabled":false},
+            "widget_sizes":{"clock":[360.,200.],"weather":[360.,200.]},
+            "widget_positions":{"clock":[0.,32. / 304.]}
+        });
+        let config: Config = serde_json::from_value(raw.clone()).unwrap();
+        let (_, _, mut snapshot, _) = fixture();
+        snapshot.screen = [800., 600.];
+        let mut draft = Draft::new(&config, &raw, &snapshot);
+        draft.toggle(Widget::Weather);
+        let plan = draft.plan(
+            &config,
+            snapshot,
+            &Registry::default(),
+            [24., 80., 24., 80.],
+        );
+        assert!(
+            plan.error.is_none(),
+            "There is room beside or below Clock: {:?}",
+            plan.error
+        );
+        let clock = plan
+            .snapshot
+            .widgets
+            .iter()
+            .find(|g| g.key == "clock")
+            .unwrap();
+        let weather = plan
+            .snapshot
+            .widgets
+            .iter()
+            .find(|g| g.key == "weather")
+            .unwrap();
+        assert_eq!(clock.position, [24., 80.]);
+        assert!(weather.position[0] >= 24. && weather.position[0] + weather.size[0] <= 776.);
+        assert!(weather.position[1] >= 80. && weather.position[1] + weather.size[1] <= 520.);
+        assert!((0..2).any(|axis| clock.position[axis]
+            + clock.size[axis]
+            + crate::layout::WIDGET_GAP
+            <= weather.position[axis]
+            || weather.position[axis] + weather.size[axis] + crate::layout::WIDGET_GAP
+                <= clock.position[axis]));
+    }
     fn fixture() -> (Config, Value, Snapshot, Draft) {
         let raw = serde_json::json!({"enabled_widgets":["clock","weather"],"glance":{"enabled":false},"notes":{"enabled":true},"widget_positions":{"notes":[0.8,0.7]},"project_roots":["/keep"],"location":{"name":"Zagreb","latitude":45.8,"longitude":16.0},"unknown":{"keep":true}});
         let c: Config = serde_json::from_value(raw.clone()).unwrap();

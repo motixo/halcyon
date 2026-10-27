@@ -10,7 +10,7 @@ use crate::desktop::profiles::{
     ProfileLibrary, ProfilePlan,
 };
 use crate::desktop::store::{Journal, KeyEntry, Snapshot, widget};
-use crate::desktop::wallpaper::media::{self, Pixels, Preview as Picture};
+use crate::desktop::wallpaper::media::{self, Pixels};
 use crate::desktop::wallpaper::{self, BgEntry, BgSource};
 use crate::desktop::{DesktopError, DesktopPatch, DesktopStore, LatestChange, Owner};
 use crate::settings::desktop::Notice;
@@ -22,12 +22,15 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+pub mod discovery;
+pub mod mix;
+pub mod packages;
+mod sharing;
+
 static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
-/// Backdrop pictures kept (a few recent backgrounds, to toggle quickly).
-const BACKDROPS: usize = 4;
 /// Backdrops fill a Settings scene. Four stable handles cap retained CPU pixels
 /// at about 14 MiB; grid thumbnails keep their separate 320×180 bound.
-pub const BACKDROP: (u32, u32) = media::SCENE;
+const BACKDROPS: usize = 4;
 
 /// What the preview shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -48,6 +51,7 @@ pub enum NameAction {
     Rename(ProfileId),
     /// A new local copy of a preset or saved profile.
     Duplicate,
+    SaveMix,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +62,15 @@ pub struct NameEdit {
 
 #[derive(Clone, Debug)]
 pub enum Message {
+    DiscoveryQuery(String),
+    RemixSelected,
+    Package(packages::Edit),
+    MixStart,
+    MixPart(profiles::mix::Component),
+    MixClosePicker,
+    MixPick(profiles::mix::Component, Selection),
+    MixQuery(String),
+    MixPage(usize),
     Select(Selection),
     /// Local browser/view state; never included in a desktop transaction.
     Collection(bool),
@@ -87,6 +100,9 @@ pub enum Message {
     Import,
     ImportTheme,
     Export,
+    ShareImage,
+    CancelShare,
+    ShareReady(u64, Result<Vec<u8>, String>),
     /// A file chooser finished: request ID and the file's bytes, `None`
     /// when cancelled.
     Imported(u64, Result<Option<Vec<u8>>, String>),
@@ -105,11 +121,22 @@ pub enum Message {
 }
 
 impl Message {
+    pub fn blocking(&self) -> bool {
+        self.writes()
+            || matches!(
+                self,
+                Self::MixStart
+                    | Self::RemixSelected
+                    | Self::MixPick(..)
+                    | Self::Package(packages::Edit::Open)
+            )
+    }
     /// Whether the message may write the desktop, the library or a file.
     pub fn writes(&self) -> bool {
         matches!(
             self,
             Self::NameSubmit
+                | Self::Package(packages::Edit::Export)
                 | Self::Delete(true)
                 | Self::Import
                 | Self::Export
@@ -127,6 +154,12 @@ impl Message {
 /// carries the ID its result must come back with.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
+    ExportImage {
+        id: u64,
+        file_name: String,
+        bytes: Vec<u8>,
+        confine: Option<PathBuf>,
+    },
     Import {
         id: u64,
     },
@@ -156,14 +189,17 @@ enum Pending {
     /// The profile name the bytes were made from and what a shared profile
     /// left on this computer, for the notice.
     Export(String, Vec<&'static str>),
+    Image(String, bool),
 }
 
 #[derive(Clone, Debug)]
 pub struct ThemeJob {
     id: u64,
     source: Option<wallpaper::automatic::Source>,
+    cancel: tokio::sync::watch::Receiver<bool>,
 }
 impl ThemeJob {
+    #[cfg(test)]
     pub fn run(self) -> Message {
         let result = self
             .source
@@ -184,15 +220,11 @@ pub fn theme_task<X: Into<Y> + 'static, Y: 'static>(
     wrap: fn(Message) -> X,
 ) -> cosmic::Task<Y> {
     cosmic::task::future(async move {
-        let id = job.id;
-        wrap(
-            tokio::task::spawn_blocking(move || job.run())
-                .await
-                .unwrap_or(Message::ThemeReady(
-                    id,
-                    Err("Wallpaper preview stopped unexpectedly".into()),
-                )),
-        )
+        let result = match job.source {
+            Some(source) => source.analyse_preview(job.cancel).await,
+            None => Err("Wallpaper is unavailable".into()),
+        };
+        wrap(Message::ThemeReady(job.id, result))
     })
 }
 
@@ -255,32 +287,38 @@ impl BackdropKey {
     }
 }
 
-/// Makes one backdrop picture (blocking; never panics on a bad file).
-#[derive(Clone, Debug, PartialEq)]
+/// One cancellable request for the current home or candidate backdrop.
+#[derive(Clone, Debug)]
 pub struct BackdropJob {
     pub id: u64,
     key: BackdropKey,
+    cancel: tokio::sync::watch::Receiver<bool>,
 }
 
 impl BackdropJob {
+    #[cfg(test)]
     pub fn run(self) -> Message {
-        let pixels = backdrop_pixels(&self.key);
+        let pixels = (!*self.cancel.borrow() && self.cancel.has_changed().is_ok())
+            .then(|| backdrop_entry(&self.key))
+            .flatten()
+            .and_then(|entry| media::worker::pixels(&entry));
         Message::Backdrop(self.id, pixels)
     }
 }
 
-/// Runs `job` on the blocking pool; `wrap` makes the app's message.
+/// Decode in a cancellable child; selection changes never wait for its pixels.
 pub fn backdrop_task<X: Into<Y> + 'static, Y: 'static>(
     job: BackdropJob,
     wrap: fn(Message) -> X,
 ) -> cosmic::Task<Y> {
     cosmic::task::future(async move {
         let id = job.id;
-        wrap(
-            tokio::task::spawn_blocking(move || job.run())
-                .await
-                .unwrap_or(Message::Backdrop(id, None)),
-        )
+        let pixels = if let Some(entry) = backdrop_entry(&job.key) {
+            media::worker::render(entry, job.cancel).await
+        } else {
+            None
+        };
+        wrap(Message::Backdrop(id, pixels))
     })
 }
 
@@ -288,32 +326,16 @@ pub fn backdrop_task<X: Into<Y> + 'static, Y: 'static>(
 /// gradient rendered, a picture scaled with its fit. Themes use their analyzed
 /// picture; other previews use a folder's first image. Bundled pictures use the
 /// installed source too, preserving detail at the larger scene size.
-fn backdrop_pixels(key: &BackdropKey) -> Option<Pixels> {
-    let entry = &key.entry;
-    let (width, height) = BACKDROP;
-    let path = match &entry.source {
-        BgSource::Color(color) => return Some(media::render_color(color, width, height)),
-        BgSource::Path(path) => path,
-    };
-    let picture = if let Some(source) = &key.source {
+fn backdrop_entry(key: &BackdropKey) -> Option<BgEntry> {
+    let mut entry = key.entry.clone();
+    if let Some(source) = &key.source {
         // Use the exact analyzed slideshow frame or image. A bundled
         // thumbnail must not stand in for a file that has been replaced.
-        source.picture()?.to_path_buf()
-    } else if path.is_dir() {
-        media::scan_folder(path).ok()?.first.into_iter().next()?
-    } else {
-        path.clone()
-    };
-    let pixels = match media::scene_preview(&picture) {
-        Picture::Ready(pixels) => pixels,
-        Picture::None(_) => return None,
-    };
-    Some(media::fit_preview(
-        &pixels,
-        &entry.scaling_mode,
-        width,
-        height,
-    ))
+        if matches!(entry.source, BgSource::Path(_)) {
+            entry.source = BgSource::Path(source.picture()?.to_path_buf());
+        }
+    }
+    Some(entry)
 }
 
 /// The selected look drawn over the current desktop: both bars, the theme
@@ -338,6 +360,12 @@ pub(super) struct SavedSelection {
 
 #[derive(Clone, Default)]
 pub struct ProfilesEditor {
+    pub package: Option<packages::Draft>,
+    pub mix: Option<mix::Draft>,
+    share_pending: Option<(u64, String, bool)>,
+    share_source: Option<super::sharing::Scene>,
+    share_cancel: Option<tokio::sync::watch::Sender<bool>>,
+    share_jobs: Vec<super::sharing::Job>,
     store: Option<Result<DesktopStore, String>>,
     /// The Islands panel component answered when the looks were fitted.
     islands: bool,
@@ -377,6 +405,7 @@ pub struct ProfilesEditor {
     pub notes: Vec<String>,
     pub details: bool,
     pub saved_collection: bool,
+    pub discovery_query: String,
     pub compare_current: bool,
     pub name: Option<NameEdit>,
     pub confirm_delete: bool,
@@ -396,6 +425,10 @@ pub struct ProfilesEditor {
     /// The applied shared background used by Home's placement canvas.
     home_background: Option<BackdropKey>,
     home_pending: Option<(u64, BackdropKey)>,
+    backdrop_cancel: Option<tokio::sync::watch::Sender<bool>>,
+    home_cancel: Option<tokio::sync::watch::Sender<bool>>,
+    theme_cancel: Option<tokio::sync::watch::Sender<bool>>,
+    current_cancel: Option<tokio::sync::watch::Sender<bool>>,
 }
 
 impl ProfilesEditor {
@@ -440,10 +473,16 @@ impl ProfilesEditor {
         self.next_request = self.next_request.wrapping_add(1);
         let id = self.next_request;
         self.current_pending = Some((id, source.stamp));
+        let (cancel, receiver) = tokio::sync::watch::channel(false);
+        if let Some(old) = self.current_cancel.replace(cancel) {
+            let _ = old.send(true);
+        }
         self.theme_jobs.push(ThemeJob {
             id,
             source: Some(source),
+            cancel: receiver,
         });
+        self.retire_theme_jobs();
     }
     /// Wallpaper colors for what the page shows: the planned wallpaper of
     /// the selected look, or the applied one.
@@ -460,8 +499,9 @@ impl ProfilesEditor {
         let bundled = self.store().map(wallpaper::bundled_dir).unwrap_or_default();
         self.islands = self.store().is_some_and(profiles::islands_available);
         let islands = self.islands;
-        self.presets = profiles::presets()
+        self.presets = profiles::studio_presets()
             .into_iter()
+            .map(profiles::discovery::credited)
             .map(|preset| profiles::fitted(preset, config, &bundled, islands))
             .chain(profiles::themes::presets())
             .collect();
@@ -607,7 +647,16 @@ impl ProfilesEditor {
         self.next_request = self.next_request.wrapping_add(1);
         let id = self.next_request;
         self.home_pending = Some((id, entry.clone()));
-        self.jobs.push(BackdropJob { id, key: entry });
+        let (cancel, receiver) = tokio::sync::watch::channel(false);
+        if let Some(old) = self.home_cancel.replace(cancel) {
+            let _ = old.send(true);
+        }
+        self.jobs.push(BackdropJob {
+            id,
+            key: entry,
+            cancel: receiver,
+        });
+        self.retire_backdrop_jobs();
     }
     /// The current shared background's picture, when it has one.
     pub fn home_image(&self) -> Option<&Handle> {
@@ -713,6 +762,19 @@ impl ProfilesEditor {
         &self.backdrop
     }
     /// The backdrop's finished picture, if it has one.
+    pub(super) fn depth_background(&self, current: bool) -> Option<(String, BgEntry)> {
+        let key = if current {
+            self.home_background.as_ref()
+        } else {
+            self.backdrop_key.as_ref().or(self.home_background.as_ref())
+        }?;
+        self.backdrops
+            .iter()
+            .find(|(known, _)| known == key)?
+            .1
+            .as_ref()?;
+        Some((format!("{key:?}"), key.entry.clone()))
+    }
     pub fn backdrop_image(&self) -> Option<&Handle> {
         let key = self.backdrop_key.as_ref()?;
         self.backdrops
@@ -722,7 +784,34 @@ impl ProfilesEditor {
     }
     /// Background work the last messages started (drained by the app).
     pub fn take_jobs(&mut self) -> Vec<BackdropJob> {
+        self.retire_backdrop_jobs();
         std::mem::take(&mut self.jobs)
+    }
+    fn retire_backdrop_jobs(&mut self) {
+        for (pending, wanted, cancel) in [
+            (
+                &mut self.home_pending,
+                &self.home_background,
+                &mut self.home_cancel,
+            ),
+            (
+                &mut self.backdrop_pending,
+                &self.backdrop_key,
+                &mut self.backdrop_cancel,
+            ),
+        ] {
+            if pending
+                .as_ref()
+                .is_none_or(|(_, key)| wanted.as_ref() != Some(key))
+            {
+                if let Some(old) = cancel.take() {
+                    let _ = old.send(true);
+                }
+                *pending = None;
+            }
+        }
+        self.jobs
+            .retain(|job| !*job.cancel.borrow() && job.cancel.has_changed().is_ok());
     }
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn latest(&self) -> Option<&LatestChange> {
@@ -734,7 +823,7 @@ impl ProfilesEditor {
         self.elsewhere.as_ref().filter(|_| self.undo.is_none())
     }
     pub fn busy(&self) -> bool {
-        self.pending.is_some()
+        self.pending.is_some() || self.share_pending.is_some()
     }
     /// Parts Apply would actually change, for the overlap check.
     #[cfg(test)]
@@ -766,7 +855,7 @@ impl ProfilesEditor {
     /// Changes whenever anything visible changes; used by capture mode.
     pub fn state_key(&self) -> String {
         format!(
-            "{:?}:{:?}:{:?}:{:?}:{:?}:{}:{:?}:{}:{}:{:?}:{:?}:{}:{:?}:{}:{}:{}",
+            "{:?}:{:?}:{:?}:{:?}:{:?}:{}:{:?}:{}:{}:{:?}:{:?}:{}:{:?}:{}:{}:{}:{:?}:{}",
             self.selection,
             self.excluded,
             self.plan,
@@ -783,6 +872,14 @@ impl ProfilesEditor {
             self.backdrop_image().is_some(),
             self.saved_collection,
             self.compare_current,
+            self.mix.as_ref().map(|m| (
+                m.picking,
+                m.choosing,
+                &m.query,
+                m.page,
+                m.sources.each_ref().map(|s| s.as_ref().map(|s| &s.origin))
+            )),
+            self.discovery_query,
         )
     }
 
@@ -949,10 +1046,16 @@ impl ProfilesEditor {
         self.next_request = self.next_request.wrapping_add(1);
         let id = self.next_request;
         self.backdrop_pending = Some((id, key.clone()));
+        let (cancel, receiver) = tokio::sync::watch::channel(false);
+        if let Some(old) = self.backdrop_cancel.replace(cancel) {
+            let _ = old.send(true);
+        }
         self.jobs.push(BackdropJob {
             id,
             key: key.clone(),
+            cancel: receiver,
         });
+        self.retire_backdrop_jobs();
     }
     fn keep_backdrop(&mut self, key: BackdropKey, pixels: Option<Pixels>) {
         let handle =
@@ -970,6 +1073,7 @@ impl ProfilesEditor {
             .is_some_and(|(pending, _)| *pending == id)
         {
             if let Some((_, entry)) = self.home_pending.take() {
+                self.home_cancel = None;
                 if entry.current() {
                     self.keep_backdrop(entry, pixels);
                 } else {
@@ -985,6 +1089,7 @@ impl ProfilesEditor {
             self.backdrop_pending = Some((pending, entry));
             return;
         }
+        self.backdrop_cancel = None;
         if entry.source.is_some() && !self.check_theme_source() {
             return;
         }
@@ -998,6 +1103,8 @@ impl ProfilesEditor {
     }
 
     fn select(&mut self, selection: Selection) {
+        self.package = None;
+        self.cancel_share();
         // Style and color are separate choices: a pending look's color and
         // matching-wallpaper choice carry over to another built-in style,
         // otherwise the applied look's color does (see `preserve_custom`).
@@ -1005,6 +1112,7 @@ impl ProfilesEditor {
             .profile()
             .filter(|p| p.appearance_only && profiles::themes::family(p).is_some())
             .cloned();
+        self.mix = None;
         self.theme_override = None;
         self.theme_pending = None;
         self.theme_source = None;
@@ -1125,7 +1233,25 @@ impl ProfilesEditor {
         }
     }
     pub fn take_theme_jobs(&mut self) -> Vec<ThemeJob> {
+        self.retire_theme_jobs();
         std::mem::take(&mut self.theme_jobs)
+    }
+    fn retire_theme_jobs(&mut self) {
+        for (pending, cancel) in [
+            (self.theme_pending, &mut self.theme_cancel),
+            (
+                self.current_pending.map(|(id, _)| id),
+                &mut self.current_cancel,
+            ),
+        ] {
+            if pending.is_none() {
+                if let Some(old) = cancel.take() {
+                    let _ = old.send(true);
+                }
+            }
+        }
+        self.theme_jobs
+            .retain(|job| !*job.cancel.borrow() && job.cancel.has_changed().is_ok());
     }
     pub fn theme_loading(&self) -> bool {
         self.theme_pending.is_some()
@@ -1168,9 +1294,10 @@ impl ProfilesEditor {
         self.theme_pending = None;
         self.theme_source = None;
         if self.resetting()
-            || !self
-                .profile()
-                .is_some_and(|p| p.appearance_only && profiles::themes::family(p).is_some())
+            || !self.profile().is_some_and(|p| {
+                p.composition.is_some()
+                    || (p.appearance_only && profiles::themes::family(p).is_some())
+            })
         {
             // Nothing selected or a surface Reset: offer the applied
             // wallpaper's colors.
@@ -1182,13 +1309,23 @@ impl ProfilesEditor {
         self.next_request = self.next_request.wrapping_add(1);
         let id = self.next_request;
         self.theme_pending = Some(id);
-        self.theme_jobs.push(ThemeJob { id, source });
+        let (cancel, receiver) = tokio::sync::watch::channel(false);
+        if let Some(old) = self.theme_cancel.replace(cancel) {
+            let _ = old.send(true);
+        }
+        self.theme_jobs.push(ThemeJob {
+            id,
+            source,
+            cancel: receiver,
+        });
+        self.retire_theme_jobs();
     }
     fn theme_ready(&mut self, id: u64, result: Result<wallpaper::palette::Suggestion, String>) {
         if let Some((pending, stamp)) = self.current_pending
             && pending == id
         {
             self.current_pending = None;
+            self.current_cancel = None;
             // A selection's own analysis takes precedence.
             match result {
                 Ok(suggestion) if self.theme_source.is_none() => {
@@ -1207,6 +1344,7 @@ impl ProfilesEditor {
             return;
         }
         self.theme_pending = None;
+        self.theme_cancel = None;
         let Some(mut p) = self.profile().cloned() else {
             return;
         };
@@ -1354,8 +1492,27 @@ impl ProfilesEditor {
     }
 
     pub fn update(&mut self, message: Message) -> Outcome {
+        // A changed candidate must never open a chooser for an earlier render.
+        if !matches!(
+            message,
+            Message::ShareImage
+                | Message::ShareReady(..)
+                | Message::Backdrop(..)
+                | Message::ThemeReady(..)
+                | Message::Exported(..)
+                | Message::Imported(..)
+        ) {
+            self.cancel_share();
+        }
         match message {
+            Message::ShareImage => self.share_image(),
+            Message::CancelShare => self.cancel_share(),
+            Message::ShareReady(id, result) => return self.share_ready(id, result),
             Message::Select(selection) => self.select(selection),
+            Message::DiscoveryQuery(query) => {
+                self.discovery_query = query.chars().take(80).collect()
+            }
+            Message::RemixSelected => self.start_remix(),
             Message::Collection(saved) => self.saved_collection = saved,
             Message::Compare(current) => self.compare_current = current,
             Message::ThemeColors(on) => {
@@ -1458,11 +1615,42 @@ impl ProfilesEditor {
                 self.replan();
             }
             Message::Details(open) => self.details = open,
+            Message::MixStart => self.start_mix(),
+            Message::MixClosePicker => {
+                if let Some(draft) = &mut self.mix {
+                    if draft.sources.iter().all(Option::is_some) {
+                        draft.choosing = false;
+                    }
+                }
+            }
+            Message::MixPart(part) => {
+                if let Some(draft) = &mut self.mix {
+                    draft.picking = part;
+                    draft.choosing = true;
+                    draft.query.clear();
+                    draft.page = 0;
+                }
+            }
+            Message::Package(edit) => return self.package_edit(edit),
+            Message::MixPick(part, selection) => self.pick_mix(part, selection),
+            Message::MixQuery(query) => {
+                if let Some(draft) = &mut self.mix {
+                    draft.query = query.chars().take(80).collect();
+                    draft.page = 0;
+                }
+            }
+            Message::MixPage(page) => {
+                let max = self.mix_choices().len().saturating_sub(1) / mix::PAGE_SIZE;
+                if let Some(draft) = &mut self.mix {
+                    draft.page = page.min(max);
+                }
+            }
             Message::Name(action) => {
                 self.confirm_delete = false;
                 self.name = action.map(|action| {
                     let text = match &action {
                         NameAction::Capture => "My desktop".to_string(),
+                        NameAction::SaveMix => "My mix".to_string(),
                         NameAction::CaptureTheme => "My theme".to_string(),
                         NameAction::Rename(_) => self.selected_name().unwrap_or_default(),
                         NameAction::Duplicate => {
@@ -1537,6 +1725,14 @@ impl ProfilesEditor {
         let Some(edit) = self.name.clone() else {
             return;
         };
+        if edit.action == NameAction::SaveMix
+            && (self.mix.is_none()
+                || self.profile().is_none()
+                || self.theme_loading()
+                || self.theme_problem().is_some())
+        {
+            return;
+        }
         let name = edit.text.trim().to_string();
         if Profile::new(&name).is_none() {
             self.notice = Some(Notice::Error(
@@ -1563,11 +1759,31 @@ impl ProfilesEditor {
                         .map(|id| (Some(id), capture.warnings))
                 }),
                 NameAction::Rename(id) => library.rename(id, &name).map(|_| (None, Vec::new())),
-                NameAction::Duplicate => {
+                NameAction::Duplicate | NameAction::SaveMix => {
                     let Some(mut copy) = self.profile().cloned() else {
                         return;
                     };
                     copy.name = name.clone();
+                    if edit.action == NameAction::SaveMix {
+                        for domain in &self.excluded {
+                            match domain {
+                                Domain::Dock => copy.dock = None,
+                                Domain::Panel => copy.panel = None,
+                                Domain::Appearance => copy.appearance = None,
+                                Domain::WidgetStyle => copy.widget_style = None,
+                                Domain::WidgetLayout => copy.widget_layout = None,
+                                Domain::Wallpaper => copy.wallpaper = None,
+                                Domain::Windows => copy.windows = None,
+                                Domain::Workspaces => copy.workspaces = None,
+                                Domain::DesktopIcons => copy.desktop_icons = None,
+                            }
+                        }
+                        if copy.domains().is_empty() {
+                            self.notice =
+                                Some(Notice::Error("Choose at least one part to save".into()));
+                            return;
+                        }
+                    }
                     library.create(&copy).map(|id| (Some(id), Vec::new()))
                 }
             };
@@ -1594,7 +1810,7 @@ impl ProfilesEditor {
                         format!("Saved “{name}” from your desktop")
                     }
                     NameAction::Rename(_) => format!("Renamed to “{name}”"),
-                    NameAction::Duplicate => format!("Saved “{name}”"),
+                    NameAction::Duplicate | NameAction::SaveMix => format!("Saved “{name}”"),
                 }));
             }
             // The name field stays open with the text for another try.
@@ -1694,16 +1910,31 @@ impl ProfilesEditor {
             return Outcome::None;
         };
         // Validated before anything is stored; never applied.
-        match profiles::import(&bytes).and_then(|profile| {
-            if themes_only && !profile.appearance_only {
-                return Err(profiles::ProfileError::Invalid(
-                    "This file is a layout preset. Import it in Presets & schedules.".into(),
-                ));
-            }
-            ProfileLibrary::new(store)
-                .create(&profile)
-                .map(|id| (id, profile.name))
-        }) {
+        let imported = if profiles::packages::recognizes(&bytes) {
+            profiles::packages::Package::parse(&bytes)
+                .map_err(profiles::ProfileError::Invalid)
+                .and_then(|package| {
+                    if themes_only {
+                        return Err(profiles::ProfileError::Invalid(
+                            "Import setup packages in Setups.".into(),
+                        ));
+                    }
+                    let name = package.profile.name.clone();
+                    package.import(store).map(|id| (id, name))
+                })
+        } else {
+            profiles::import(&bytes).and_then(|profile| {
+                if themes_only && !profile.appearance_only {
+                    return Err(profiles::ProfileError::Invalid(
+                        "This file is a layout preset. Import it in Presets & schedules.".into(),
+                    ));
+                }
+                ProfileLibrary::new(store)
+                    .create(&profile)
+                    .map(|id| (id, profile.name))
+            })
+        };
+        match imported {
             Ok((id, name)) => {
                 self.reload_library();
                 self.select(Selection::Saved(id));
@@ -1719,8 +1950,17 @@ impl ProfilesEditor {
     }
 
     fn exported(&mut self, id: u64, result: Result<Option<PathBuf>, String>) {
-        let Some(Pending::Export(name, omitted)) = self.finish(id) else {
-            return;
+        let (name, omitted) = match self.finish(id) {
+            Some(Pending::Export(name, omitted)) => (name, omitted),
+            Some(Pending::Image(name, omitted)) => (
+                name,
+                if omitted {
+                    vec!["personal or unlisted wallpaper"]
+                } else {
+                    vec![]
+                },
+            ),
+            _ => return,
         };
         match result {
             Ok(Some(path)) => {
@@ -2047,7 +2287,7 @@ pub fn read_import(path: &Path) -> Result<Vec<u8>, String> {
     if !meta.is_file() {
         return Err("Choose a profile file.".into());
     }
-    if meta.len() > MAX_PROFILE_BYTES as u64 {
+    if meta.len() > profiles::packages::MAX_BYTES as u64 {
         return Err("This profile is too large.".into());
     }
     let file = fs::OpenOptions::new()
@@ -2055,11 +2295,16 @@ pub fn read_import(path: &Path) -> Result<Vec<u8>, String> {
         .custom_flags(libc::O_NONBLOCK)
         .open(path)
         .map_err(unreadable)?;
+    if !file.metadata().map_err(unreadable)?.is_file() {
+        return Err("Choose a regular setup file.".into());
+    }
     let mut bytes = Vec::new();
-    file.take(MAX_PROFILE_BYTES as u64 + 1)
+    file.take(profiles::packages::MAX_BYTES as u64 + 1)
         .read_to_end(&mut bytes)
         .map_err(unreadable)?;
-    if bytes.len() > MAX_PROFILE_BYTES {
+    if bytes.len() > profiles::packages::MAX_BYTES
+        || (bytes.len() > MAX_PROFILE_BYTES && !profiles::packages::recognizes(&bytes))
+    {
         return Err("This profile is too large.".into());
     }
     Ok(bytes)

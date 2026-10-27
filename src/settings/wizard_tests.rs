@@ -87,8 +87,10 @@ fn seed_desktop() {
     std::fs::create_dir_all(&bundled).unwrap();
     for (name, _) in crate::desktop::wallpaper::BUNDLED {
         std::fs::copy(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("assets/wallpapers/{name}.jpg")),
+            crate::desktop::wallpaper::bundled_path(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers"),
+                name,
+            ),
             crate::desktop::wallpaper::bundled_path(&bundled, name),
         )
         .unwrap();
@@ -141,6 +143,91 @@ fn open(size: Size) -> (Settings, Native) {
 
 fn step(app: &Settings) -> wizard::Step {
     app.wizard.as_ref().unwrap().step
+}
+
+#[test]
+fn onboarding_full_display_explains_and_recovers_without_discarding_choices() {
+    if child("onboarding_full_display_explains_and_recovers_without_discarding_choices") {
+        return;
+    }
+    seed_desktop();
+    use crate::displays::{
+        OutputEvent,
+        test_support::{Wire, info},
+    };
+    let wire = Wire::new();
+    for size in [Size::new(820., 600.), Size::new(1280., 800.)] {
+        Config::save_changes(json!({
+            "enabled_widgets":["clock"], "glance":{"enabled":false},
+            "notes":{"enabled":false}, "widget_sizes":{"clock":[730.,430.]}
+        }))
+        .unwrap();
+        let baseline = wizard::widgets::raw().unwrap();
+        let (mut app, mut native) = open(size);
+        let _ = app.update(Message::DisplayOutput(
+            OutputEvent::Created(Some(info(Some("A"), (800, 600)))),
+            wire.output(1),
+        ));
+        let _ = app.update(Message::Wizard(wizard::Message::Show(
+            wizard::Step::Widgets,
+        )));
+        click(&mut app, &mut native, "wizard-widget-notes");
+        click(&mut app, &mut native, "wizard-next");
+        assert_eq!(step(&app), wizard::Step::Arrange);
+        assert!(
+            app.wizard
+                .as_ref()
+                .unwrap()
+                .widget_plan(&app.config)
+                .error
+                .is_some()
+        );
+        let warning = native.bounds(app.settings_view(), "wizard-step-error");
+        let footer = native.bounds(app.settings_view(), "wizard-next");
+        assert!(
+            warning.y >= 0. && warning.y + warning.height <= footer.y,
+            "The error is visible above the footer: {warning:?}, {footer:?}"
+        );
+        native.scroll(app.settings_view(), "wizard-body", 1000.);
+        assert_eq!(
+            warning,
+            native.bounds(app.settings_view(), "wizard-step-error")
+        );
+        native.capture(
+            app.settings_view(),
+            &controls_theme(&app.config),
+            &format!("wizard-full-display-{}", size.width),
+        );
+        // A direct request also cannot write the invalid layout.
+        let _ = app.update(Message::Wizard(wizard::Message::Next));
+        assert_eq!(step(&app), wizard::Step::Arrange);
+        assert_eq!(wizard::widgets::raw().unwrap(), baseline);
+        // The primary pointer action now offers correction, not a disabled end.
+        click(&mut app, &mut native, "wizard-next");
+        assert_eq!(step(&app), wizard::Step::Widgets);
+        let draft = &app.wizard.as_ref().unwrap().widgets;
+        assert!(draft.selected(Widget::Clock) && draft.selected(Widget::Notes));
+        assert_eq!(wizard::widgets::raw().unwrap(), baseline);
+        native.scroll(app.settings_view(), "wizard-body", 0.);
+        click(&mut app, &mut native, "wizard-widget-clock");
+        click(&mut app, &mut native, "wizard-next");
+        assert!(
+            app.wizard
+                .as_ref()
+                .unwrap()
+                .widget_plan(&app.config)
+                .error
+                .is_none()
+        );
+        click(&mut app, &mut native, "wizard-next");
+        assert_eq!(step(&app), wizard::Step::Ready);
+        assert!(Config::load().notes.enabled);
+        assert!(!Config::load().widget_visible(Widget::Clock));
+        click(&mut app, &mut native, "wizard-cancel");
+        assert!(app.wizard.is_none());
+        assert_eq!(Config::load().widget_sizes["clock"], [730., 430.]);
+        assert!(!Config::load().notes.enabled);
+    }
 }
 
 /// Explicit diagnostic, not a wall-time CI assertion. Uses an isolated desktop

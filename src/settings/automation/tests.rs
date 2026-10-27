@@ -34,7 +34,13 @@ fn opening_reads_only_and_offers_every_profile_and_display() {
             "Deep work",
             "Writing desk",
             "Studio",
-            "Clean desktop"
+            "Tidal",
+            "Paper",
+            "Moss",
+            "Carbon",
+            "Clean desktop",
+            "Day moment",
+            "Night moment"
         ]
     );
     let choices = editor.display_choices();

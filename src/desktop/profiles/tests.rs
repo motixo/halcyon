@@ -11,7 +11,7 @@ use crate::desktop::store::{DesktopError, DesktopStore, Owner};
 use cosmic::cosmic_config::{Config, CosmicConfigEntry};
 use cosmic::cosmic_theme::palette::{Srgb, Srgba};
 use cosmic::cosmic_theme::{Roundness, ThemeBuilder};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
@@ -19,6 +19,103 @@ use std::path::PathBuf;
 const DOCK: &str = "com.system76.CosmicPanel.Dock";
 const APPLIST: &str = "com.system76.CosmicAppList";
 const SECRETS: [&str; 4] = ["SENTINEL", "/home/", "future_setting", "refresh_intervals"];
+
+#[test]
+fn foundation_clock_profile_is_versioned_and_apply_undo_preserves_unowned_fields() {
+    let desk = desk(
+        "foundation-clock-profile",
+        Srgb::new(0.3, 0.4, 0.7),
+        Srgb::new(0.2, 0.4, 0.7),
+        "teal",
+    );
+    let before = fs::read(&desk.config).unwrap();
+    let mut profile = Profile::new("Paper clock").unwrap();
+    profile.widget_style =
+        Some(json!({"clock":{"face":"analog","weight":"normal","italic":false,"surface":"none"}}));
+    let bytes = export(&profile).unwrap().bytes;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes).unwrap()["version"],
+        9
+    );
+    let profile = import(&bytes).unwrap();
+    let store = desk.store();
+    let proposal = plan(
+        &store,
+        &desk.installed(),
+        &profile,
+        &[Domain::WidgetStyle].into(),
+    );
+    assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
+    let change = apply(&store, &proposal).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&desk.config).unwrap()).unwrap();
+    assert_eq!(after["clock"]["face"], "analog");
+    let original: Value = serde_json::from_slice(&before).unwrap();
+    for key in [
+        "location",
+        "enabled_widgets",
+        "widget_order",
+        "refresh_intervals",
+    ] {
+        assert_eq!(after.get(key), original.get(key), "{key}");
+    }
+    let captured = capture(&store, "Current").unwrap().profile;
+    assert_eq!(captured.written_version(), 9);
+    store.undo_latest(&change.id).unwrap();
+    assert_eq!(fs::read(&desk.config).unwrap(), before);
+    let mut old = profile.clone();
+    old.version = 8;
+    assert!(
+        old.validate().is_err(),
+        "old formats cannot carry new clock fields"
+    );
+}
+
+#[test]
+fn foundation_old_setups_leave_clock_overrides_and_explicit_reset_restores_inheritance() {
+    let desk = desk(
+        "foundation-clock-inheritance",
+        Srgb::new(0.3, 0.4, 0.7),
+        Srgb::new(0.2, 0.4, 0.7),
+        "teal",
+    );
+    let mut raw: Value = serde_json::from_slice(&fs::read(&desk.config).unwrap()).unwrap();
+    raw["clock"] = json!({"face":"analog","weight":"bold","italic":true,"surface":"none"});
+    fs::write(&desk.config, raw.to_string()).unwrap();
+    let store = desk.store();
+    let old=import(br#"{"format":"desktop-cards-profile","version":1,"name":"Date","widget_style":{"clock":{"show_date":false}}}"#).unwrap();
+    let proposal = plan(
+        &store,
+        &desk.installed(),
+        &old,
+        &[Domain::WidgetStyle].into(),
+    );
+    apply(&store, &proposal).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&desk.config).unwrap()).unwrap();
+    assert_eq!(after["clock"]["face"], "analog");
+    assert_eq!(after["clock"]["show_date"], false);
+    let mut reset = Profile::new("Follow style").unwrap();
+    reset.widget_style =
+        Some(json!({"clock":{"face":null,"weight":null,"italic":null,"surface":null}}));
+    let proposal = plan(
+        &store,
+        &desk.installed(),
+        &reset,
+        &[Domain::WidgetStyle].into(),
+    );
+    let change = apply(&store, &proposal).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&desk.config).unwrap()).unwrap();
+    assert!(after["clock"]["face"].is_null());
+    assert_eq!(
+        capture(&store, "Reset clock")
+            .unwrap()
+            .profile
+            .written_version(),
+        9
+    );
+    store.undo_latest(&change.id).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&desk.config).unwrap()).unwrap();
+    assert_eq!(after["clock"]["face"], "analog");
+}
 
 struct Desk {
     fixture: Fixture,
@@ -805,7 +902,7 @@ fn windows_workspaces_profile_roundtrip_and_legacy_import() {
         ),
         (
             "future version",
-            r#"{"format":"desktop-cards-profile","version":9,"name":"X"}"#,
+            r#"{"format":"desktop-cards-profile","version":999,"name":"X"}"#,
             true,
         ),
     ] {
@@ -828,6 +925,8 @@ fn windows_workspaces_profile_roundtrip_and_legacy_import() {
     for preset in presets() {
         let expected = if preset.id == "presentation" {
             format::VERSION_4
+        } else if matches!(preset.id, "tidal" | "paper-studio" | "moss" | "carbon") {
+            format::VERSION_9
         } else {
             format::VERSION_7
         };
@@ -1345,4 +1444,49 @@ fn multi_monitor_setups_capture_effective_layout_and_apply_with_undo() {
     assert_eq!(applied["widget_monitors"], config["widget_monitors"]);
     desk.store().undo_latest(&change.id).unwrap();
     assert_eq!(desk.json()["monitor_layouts"], config["monitor_layouts"]);
+}
+
+#[test]
+fn fb15_moments_profile_requires_v12_preserves_private_state_and_undo() {
+    let desk = desk(
+        "moments-profile",
+        Srgb::new(0.3, 0.4, 0.7),
+        Srgb::new(0.2, 0.4, 0.7),
+        "teal",
+    );
+    let before = fs::read(&desk.config).unwrap();
+    let mut p = Profile::new("Day and Night").unwrap();
+    p.widget_style = Some(
+        json!({"moments":{"active":"day","day":{"clock":{"face":"analog"}},"night":{"family":"midnight"}}}),
+    );
+    let bytes = export(&p).unwrap().bytes;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&bytes).unwrap()["version"],
+        12
+    );
+    p.version = 11;
+    assert!(p.validate().is_err());
+    let p = import(&bytes).unwrap();
+    let store = desk.store();
+    let proposal = plan(&store, &desk.installed(), &p, &[Domain::WidgetStyle].into());
+    assert!(proposal.can_apply(), "{:?}", proposal.blocking_reasons());
+    let changed = apply(&store, &proposal).unwrap();
+    let after: Value = serde_json::from_slice(&fs::read(&desk.config).unwrap()).unwrap();
+    let original: Value = serde_json::from_slice(&before).unwrap();
+    for (key, value) in original.as_object().unwrap() {
+        assert_eq!(after.get(key), Some(value), "{key}");
+    }
+    let captured = capture(&store, "Current").unwrap().profile;
+    assert_eq!(captured.written_version(), 12);
+    assert_eq!(
+        captured.widget_style.as_ref().unwrap()["moments"]["day"]["family"],
+        "paper"
+    );
+    let portable = String::from_utf8(export(&captured).unwrap().bytes).unwrap();
+    for secret in SECRETS {
+        assert!(!portable.contains(secret), "{secret}");
+    }
+    store.undo_latest(&changed.id).unwrap();
+    assert_eq!(fs::read(&desk.config).unwrap(), before);
+    assert!(capture(&store, "Old").unwrap().profile.written_version() < 12);
 }

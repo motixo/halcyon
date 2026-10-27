@@ -31,6 +31,7 @@ pub(super) enum Kind {
     WindowRules,
     Shortcuts,
     Layout,
+    Canvas,
     Automation,
     Preset,
 }
@@ -46,6 +47,7 @@ impl Kind {
             Self::WindowRules => "window-rules",
             Self::Shortcuts => "shortcuts",
             Self::Layout => "layout",
+            Self::Canvas => "canvas",
             Self::Automation => "automation",
             Self::Preset => "preset",
         }
@@ -61,6 +63,7 @@ impl Kind {
             Self::WindowRules => "Floating apps",
             Self::Shortcuts => "Shortcuts",
             Self::Layout => "Widget layout",
+            Self::Canvas => "Desktop canvas",
             Self::Automation => "Schedules",
             Self::Preset => "Presets",
         }
@@ -327,6 +330,17 @@ impl Settings {
             Ok(None) => {}
             Err(error) => errors.push(error),
         }
+        match session.load(&store, Kind::Canvas) {
+            Ok(Some(saved)) => match self.restore_canvas(saved) {
+                Ok(()) => session.recovered += 1,
+                Err(error) => {
+                    session.unreadable.insert(Kind::Canvas);
+                    errors.push(format!("Canvas draft: {error}"));
+                }
+            },
+            Ok(None) => {}
+            Err(error) => errors.push(error),
+        }
         if session.recovered > 0 {
             self.status = format!(
                 "Recovered {} unfinished {} · continue where you left off",
@@ -406,8 +420,13 @@ impl Settings {
         );
         save!(
             Layout,
-            !self.placement.dragging(),
+            self.canvas.is_none() && !self.placement.dragging(),
             self.placement.session_draft().as_ref()
+        );
+        save!(
+            Canvas,
+            !self.placement.dragging(),
+            self.canvas_saved().as_ref()
         );
         save!(
             Automation,

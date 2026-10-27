@@ -141,6 +141,7 @@ pub(super) fn completion(message: &Message) -> Option<Message> {
 }
 pub(super) fn label(message: &Message) -> String {
     match message {
+        Message::Moment(_) => "Moment",
         Message::WidgetDisplay(_) | Message::WidgetMonitor(..) | Message::WidgetMonitorHide(..) => {
             "Widget display"
         }
@@ -166,7 +167,12 @@ pub(super) fn label(message: &Message) -> String {
         | Message::ClockAlignment(_)
         | Message::ClockFormat(_)
         | Message::ClockDate(_)
-        | Message::ClockVertical(_) => "Clock",
+        | Message::ClockVertical(_)
+        | Message::ClockDepth(_)
+        | Message::ClockFace(_)
+        | Message::ClockWeight(_)
+        | Message::ClockItalic(_)
+        | Message::ClockSurface(_) => "Clock",
         Message::GlanceOpacity(_) | Message::GlanceStyle(_) | Message::GlanceDensity(_) => {
             "At a glance"
         }

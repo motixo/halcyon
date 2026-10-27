@@ -20,13 +20,10 @@ pub fn time_id() -> cosmic::widget::Id {
 
 /// A labelled row in the rule editor.
 fn field<'a>(title: &'static str, control: Element<'a, Message>) -> Element<'a, Message> {
-    row::with_children(vec![
-        container(label(title, 12., MUTED)).width(64).into(),
-        container(control).width(Length::Fill).into(),
-    ])
-    .spacing(12)
-    .align_y(Alignment::Center)
-    .into()
+    column::with_children(vec![label(title, 12., MUTED), control])
+        .spacing(6)
+        .width(Length::Fill)
+        .into()
 }
 
 fn chip<'a>(title: String, on: bool, accent: Color, message: Message) -> Element<'a, Message> {
@@ -63,7 +60,7 @@ impl Settings {
             column::with_children(vec![
                 heading("Schedules & display rules", ""),
                 label(
-                    "Choose when a saved setup becomes your desktop.",
+                    "Choose when to switch setups or Day and Night moments.",
                     12.,
                     MUTED,
                 ),
@@ -99,8 +96,11 @@ impl Settings {
         items.push(self.automation_status(&settings));
         items.push(self.automation_rules(&settings));
         if !editor.state.recent.is_empty() {
-            items.push(group_label("Recent switches"));
-            items.push(self.automation_recent());
+            items.push(self.disclosure(
+                "automation-recent",
+                "Recent switches",
+                self.automation_recent(),
+            ));
         }
         column::with_children(items).spacing(16).into()
     }
@@ -260,14 +260,6 @@ impl Settings {
             if !rows.is_empty() {
                 rows.push(separator());
             }
-            let editing = editor
-                .draft
-                .as_ref()
-                .is_some_and(|draft| draft.id.as_deref() == Some(rule.id.as_str()));
-            if editing {
-                rows.push(self.automation_rule_editor(editor.draft.as_ref().unwrap()));
-                continue;
-            }
             rows.push(self.automation_rule_row(rule, index, count, writable));
             if editor.confirm_delete.as_deref() == Some(rule.id.as_str()) {
                 rows.push(banner(
@@ -283,12 +275,6 @@ impl Settings {
                     ],
                 ));
             }
-        }
-        if let Some(draft) = editor.draft.as_ref().filter(|draft| draft.id.is_none()) {
-            if !rows.is_empty() {
-                rows.push(separator());
-            }
-            rows.push(self.automation_rule_editor(draft));
         }
         if rows.is_empty() {
             rows.push(label(
@@ -323,7 +309,7 @@ impl Settings {
             .wrap()
             .into(),
         );
-        column::with_children(vec![
+        let list = column::with_children(vec![
             group_label("Rules · highest priority first"),
             section(rows),
             label(
@@ -333,7 +319,12 @@ impl Settings {
             ),
         ])
         .spacing(8)
-        .into()
+        .into();
+        if let Some(draft) = &editor.draft {
+            self.inspector_layout(list, self.automation_rule_editor(draft), "automation")
+        } else {
+            list
+        }
     }
 
     fn automation_rule_row(

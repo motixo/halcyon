@@ -6,12 +6,34 @@ use cosmic::iced::advanced::{Layout, Widget, layout, renderer, widget::Tree};
 use cosmic::iced::{Rectangle, Size, Transformation, mouse};
 
 pub(super) fn fit<'a>(child: Element<'a, Message>, height: f32) -> Element<'a, Message> {
-    Element::new(Sample { child, height })
+    Element::new(Sample {
+        child,
+        height,
+        source: None,
+    })
+}
+
+/// Scale the real component at its logical viewport into a desktop miniature.
+/// Like compact samples, this adapter deliberately has no event forwarding.
+pub(super) fn thumbnail<'a>(
+    child: Element<'a, Message>,
+    source: [f32; 2],
+    target: [f32; 2],
+) -> Element<'a, Message> {
+    container(Element::new(Sample {
+        child,
+        height: target[1],
+        source: Some(Size::new(source[0], source[1])),
+    }))
+    .width(target[0])
+    .height(target[1])
+    .into()
 }
 
 struct Sample<'a> {
     child: Element<'a, Message>,
     height: f32,
+    source: Option<Size>,
 }
 
 impl Widget<Message, cosmic::Theme, cosmic::Renderer> for Sample<'_> {
@@ -33,7 +55,10 @@ impl Widget<Message, cosmic::Theme, cosmic::Renderer> for Sample<'_> {
         let child = self.child.as_widget_mut().layout(
             &mut tree.children[0],
             renderer,
-            &layout::Limits::new(Size::new(360., 0.), Size::new(360., 2000.)),
+            &self.source.map_or_else(
+                || layout::Limits::new(Size::new(360., 0.), Size::new(360., 2000.)),
+                |size| layout::Limits::new(size, size),
+            ),
         );
         let size = child.size();
         let scale = (limits.max().width / size.width.max(1.))

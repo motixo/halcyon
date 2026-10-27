@@ -66,6 +66,20 @@ impl Default for Identity {
     }
 }
 impl Identity {
+    pub fn can_install_islands(&self) -> bool {
+        self.format_version == 1
+            && self.evidence.is_some()
+            && matches!(self.channel, UpdateChannel::Apt | UpdateChannel::ManualDeb)
+            && self.architecture.as_deref() == Some("amd64")
+            && self.installed_version.as_deref() == Some(self.running_version.as_str())
+    }
+    pub fn same_package(&self, other: &Self) -> bool {
+        self.can_install_islands()
+            && other.can_install_islands()
+            && self.evidence == other.evidence
+            && self.installed_version == other.installed_version
+            && self.architecture == other.architecture
+    }
     pub fn can_enroll(&self) -> bool {
         self.channel == UpdateChannel::ManualDeb
             && self.enrollment == Enrollment::Available
@@ -208,6 +222,49 @@ fn fields(text: &str) -> Option<BTreeMap<String, String>> {
     }
     Some(map)
 }
+pub(super) fn islands_absent(root: &Path) -> bool {
+    let Some(db) = Database::load(root) else {
+        return false;
+    };
+    db.packages
+        .get("cosmic-ext-halcyon-islands")
+        .is_none_or(|p| {
+            p.get("Status").is_some_and(|s| {
+                let fields: Vec<_> = s.split_whitespace().collect();
+                fields.len() == 3
+                    && fields[1] == "ok"
+                    && matches!(fields[2], "not-installed" | "config-files")
+            })
+        })
+}
+pub(super) fn islands_version(root: &Path) -> Option<String> {
+    Database::load(root)?
+        .installed("cosmic-ext-halcyon-islands", "amd64")?
+        .get("Version")
+        .filter(|v| valid_version(v))
+        .cloned()
+}
+pub(super) fn islands_cli_verified() -> bool {
+    let path = Path::new("/usr/bin/halcyon-islands");
+    let Some(db) = Database::load(Path::new("/")) else {
+        return false;
+    };
+    if !db
+        .record(Path::new("/"), "cosmic-ext-halcyon-islands", "list")
+        .is_some_and(|list| list.lines().any(|line| line == path.to_string_lossy()))
+    {
+        return false;
+    }
+    let Ok(meta) = path.symlink_metadata() else {
+        return false;
+    };
+    meta.is_file()
+        && meta.uid() == 0
+        && meta.mode() & 0o022 == 0
+        && read(path, 65536).is_some_and(|s| {
+            s.as_bytes() == include_bytes!("../../../packaging/islands/halcyon-islands")
+        })
+}
 struct Database {
     packages: BTreeMap<String, BTreeMap<String, String>>,
     raw: String,
@@ -219,7 +276,13 @@ impl Database {
         for stanza in raw.trim().split("\n\n") {
             let f = fields(stanza)?;
             let name = f.get("Package")?;
-            if [MAIN, "halcyon-update-source", "halcyon-archive-keyring"].contains(&name.as_str())
+            if [
+                MAIN,
+                "halcyon-update-source",
+                "halcyon-archive-keyring",
+                "cosmic-ext-halcyon-islands",
+            ]
+            .contains(&name.as_str())
                 && packages.insert(name.clone(), f).is_some()
             {
                 return None;

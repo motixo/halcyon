@@ -1,12 +1,114 @@
 //! One clock renderer for the desktop, Daily overview and Settings preview.
 use super::*;
 use crate::config::{ClockAlignment, ClockPreferences};
+use crate::widget_style::resolver::{ClockFace, ClockReading, Surface};
 use cosmic::iced::advanced::text::{self as advanced_text, Paragraph};
 use cosmic::iced::widget::{pin, stack};
 use cosmic::iced::{Point, Size};
+mod analog;
+#[cfg(test)]
+mod foundation_tests;
 
+#[cfg(test)]
+fn supported_font(mut font: Font) -> Font {
+    if let cosmic::iced::font::Family::Name(name) = font.family
+        && !crate::desktop_theme::font_installed(name)
+    {
+        font.family = cosmic::iced::font::Family::SansSerif;
+    }
+    font
+}
+#[cfg(test)]
 fn font() -> Font {
-    crate::widget_style::clock_font()
+    supported_font(crate::widget_style::clock_font())
+}
+
+/// All style choices are captured before measurement; no Config or ambient
+/// font context is consulted while constructing the resulting frame.
+#[derive(Clone, Copy)]
+pub(super) struct Presentation {
+    preferences: ClockPreferences,
+    style: crate::widget_style::resolver::Style,
+    body_ink: Color,
+    legacy_bearing: bool,
+}
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) struct Geometry {
+    pub viewport: [f32; 2],
+    pub content_width: f32,
+    pub face_size: f32,
+    pub date_size: f32,
+    pub padding: f32,
+    pub gap: f32,
+}
+pub(super) struct Frame {
+    presentation: Presentation,
+    reading: ClockReading,
+    date: String,
+    pub geometry: Geometry,
+}
+impl Presentation {
+    pub fn new(config: &Config) -> Self {
+        Self::project(config, config.wallpaper_palette(), false)
+    }
+    pub fn part(config: &Config, palette: Palette) -> Self {
+        Self::project(config, palette, false)
+    }
+    pub fn grouped(config: &Config, palette: Palette) -> Self {
+        Self::project(config, palette, true)
+    }
+    fn project(config: &Config, palette: Palette, grouped: bool) -> Self {
+        let _scope = crate::widget_style::scope(config);
+        let _fonts = grouped.then(|| {
+            crate::widget_style::fonts(
+                config.glance.font.as_deref(),
+                config.glance.clock_font.as_deref(),
+            )
+        });
+        let mut style = crate::widget_style::presentation(config, palette, true);
+        if grouped {
+            // The group owns its surface and ink; Clock owns face and type.
+            style.ink.value = palette.foreground;
+            style.muted.value = palette.muted;
+            style.accent.value = palette.accent;
+        }
+        Self {
+            preferences: config.clock,
+            body_ink: crate::widget_style::semantic(style.muted.value),
+            style,
+            legacy_bearing: config.moment_appearance().family.is_none()
+                && config.moment_clock().weight.is_none()
+                && config.moment_clock().italic.is_none(),
+        }
+    }
+    pub fn metrics(self) -> crate::widget_presentation::Metrics {
+        crate::widget_presentation::metrics(Widget::Clock)
+    }
+    pub fn fit(self, width: f32, requested: f32) -> f32 {
+        if self.style.clock_face.value == ClockFace::Analog {
+            return requested.min(width.max(1.) / 1.05);
+        }
+        fit_with(
+            &self.preferences,
+            width,
+            requested,
+            self.style.display.value,
+            self.style.body.value,
+        )
+    }
+}
+fn clock_label(
+    value: impl Into<String>,
+    size: f32,
+    color: Color,
+    font: Font,
+) -> Element<'static, Message> {
+    text::body(value.into())
+        .size(size.max(crate::widget_style::META))
+        .line_height(1.25)
+        .font(font)
+        .class(cosmic::theme::Text::Color(color))
+        .into()
 }
 type NativeParagraph = <cosmic::Renderer as advanced_text::Renderer>::Paragraph;
 fn paragraph(value: &str, size: f32, font: Font) -> NativeParagraph {
@@ -74,18 +176,34 @@ pub(super) fn ink_offset(time: &str, size: f32) -> f32 {
 
 /// Fit a full five-character time (and AM/PM) before rendering, so narrow
 /// frames never clip or wrap and the font does not jump on each minute tick.
+#[cfg(test)]
 pub(super) fn fit(preferences: &ClockPreferences, width: f32, requested: f32) -> f32 {
+    fit_with(
+        preferences,
+        width,
+        requested,
+        font(),
+        crate::widget_style::font(),
+    )
+}
+fn fit_with(
+    preferences: &ClockPreferences,
+    width: f32,
+    requested: f32,
+    display: Font,
+    body: Font,
+) -> f32 {
     let width = (width - 2.).max(1.);
-    let time_width = measure("00:00", requested, font());
+    let time_width = measure("00:00", requested, display);
     let mut needed = time_width;
     let gap = if preferences.format_24h { 0. } else { 6. };
     if !preferences.format_24h {
-        needed += measure("PM", period_size(requested), crate::widget_style::font());
+        needed += measure("PM", period_size(requested), body);
     }
     let mut ratio = ((width - gap).max(1.) / needed.max(1.)).min(1.);
     if !preferences.format_24h {
         // The small label stops shrinking at META, even when the clock does not.
-        let minimum_period = measure("PM", crate::widget_style::META, crate::widget_style::font());
+        let minimum_period = measure("PM", crate::widget_style::META, body);
         ratio = ratio.min((width - gap - minimum_period).max(1.) / time_width.max(1.));
     }
     (requested * ratio).max(1.)
@@ -95,116 +213,242 @@ fn period_size(clock_size: f32) -> f32 {
     (clock_size * 0.2).max(crate::widget_style::META)
 }
 
-pub(super) fn face(
-    config: &Config,
-    time: chrono::NaiveTime,
-    width: f32,
-    size: f32,
-    p: Palette,
-) -> Element<'static, Message> {
-    let _style = crate::widget_style::scope(config);
-    let (time, period) = clock_labels(time, config.clock.format_24h);
-    let mut content_width = measure(&time, size, font());
-    // Center visible glyphs, not their advances: a large leading digit and a
-    // small AM/PM have very different side bearings, especially with fallbacks.
-    let mut ink = if config.clock.alignment == ClockAlignment::Center {
-        ink_edges(&time, size, font())
-    } else {
-        [0., content_width]
-    };
-    let offset = if config.appearance.family.is_some() {
-        0.
-    } else {
-        ink_offset(&time, size)
-    };
-    let mut items = vec![
-        text::body(time)
-            .size(size)
-            .line_height(1.05)
-            .font(font())
-            .wrapping(advanced_text::Wrapping::None)
-            .class(cosmic::theme::Text::Color(p.foreground))
-            .into(),
-    ];
-    if let Some(period) = period {
-        if config.clock.alignment == ClockAlignment::Center {
-            let period_ink = ink_edges(&period, period_size(size), crate::widget_style::font());
-            ink[1] = ink[1].max(content_width + 6. + period_ink[1]);
+impl Presentation {
+    pub fn face(self, reading: ClockReading, width: f32, size: f32) -> Element<'static, Message> {
+        let p = self.style.palette();
+        if self.style.clock_face.value == ClockFace::Analog {
+            return analog::view(
+                reading.clone(),
+                width,
+                size * 1.05,
+                p,
+                self.style.display.value,
+                self.preferences.alignment,
+            );
         }
-        content_width += 6. + measure(&period, period_size(size), crate::widget_style::font());
-        items.push(
-            container(label(period, period_size(size), p.muted))
+        let ClockReading { time, period, .. } = reading;
+        let mut content_width = measure(&time, size, self.style.display.value);
+        // Center visible glyphs, not their advances: a large leading digit and a
+        // small AM/PM have very different side bearings, especially with fallbacks.
+        let mut ink = if self.preferences.alignment == ClockAlignment::Center {
+            ink_edges(&time, size, self.style.display.value)
+        } else {
+            [0., content_width]
+        };
+        let offset = if self.legacy_bearing {
+            ink_offset(&time, size)
+        } else {
+            0.
+        };
+        let mut items = vec![
+            text::body(time)
+                .size(size)
+                .line_height(1.05)
+                .font(self.style.display.value)
+                .wrapping(advanced_text::Wrapping::None)
+                .class(cosmic::theme::Text::Color(p.foreground))
+                .into(),
+        ];
+        if let Some(period) = period {
+            if self.preferences.alignment == ClockAlignment::Center {
+                let period_ink = ink_edges(&period, period_size(size), self.style.body.value);
+                ink[1] = ink[1].max(content_width + 6. + period_ink[1]);
+            }
+            content_width += 6. + measure(&period, period_size(size), self.style.body.value);
+            items.push(
+                container(clock_label(
+                    period,
+                    period_size(size),
+                    self.body_ink,
+                    self.style.body.value,
+                ))
                 .padding([0., 0., size * 0.08, 0.])
                 .into(),
-        );
+            );
+        }
+        let x = match self.preferences.alignment {
+            ClockAlignment::Left => -offset,
+            ClockAlignment::Center => (width - ink[0] - ink[1]) / 2.,
+            ClockAlignment::Right => width - content_width,
+        };
+        let content = row::with_children(items).spacing(6).align_y(Alignment::End);
+        stack(vec![pin(content).position(Point::new(x, 0.)).into()])
+            .width(width)
+            .height(size * 1.05)
+            .into()
     }
-    let x = match config.clock.alignment {
-        ClockAlignment::Left => -offset,
-        ClockAlignment::Center => (width - ink[0] - ink[1]) / 2.,
-        ClockAlignment::Right => width - content_width,
-    };
-    let content = row::with_children(items).spacing(6).align_y(Alignment::End);
-    stack(vec![pin(content).position(Point::new(x, 0.)).into()])
-        .width(width)
-        .height(size * 1.05)
-        .into()
 }
 
+impl Presentation {
+    pub fn frame(self, now: chrono::NaiveDateTime, size: [f32; 2]) -> Frame {
+        let size = crate::widget_presentation::viewport(size, self.metrics().natural);
+        let padding = f32::from(self.style.padding.value);
+        let width = (size[0] - padding * 2.).max(1.);
+        let height = (size[1] - padding * 2.).max(1.);
+        let scale = (size[0] / self.metrics().natural[0])
+            .min(size[1] / self.metrics().natural[1])
+            .clamp(0.1, 4.)
+            * f32::from(self.preferences.scale)
+            / 100.;
+        let mut font_size = self.fit(width, 104. * scale);
+        let date = now.format("%A, %B %-d").to_string();
+        let gap = if self.preferences.show_date {
+            f32::from(self.style.gap.value)
+        } else {
+            0.
+        };
+        if self.preferences.show_date {
+            let date_width = measure(&date, 20. * font_size / 104., self.style.body.value);
+            font_size *= (width / date_width.max(1.)).min(1.);
+        }
+        let height_per_em = 1.05
+            + if self.preferences.show_date {
+                25. / 104.
+            } else {
+                0.
+            };
+        let date_size = if self.style.clock_face.value == ClockFace::Analog {
+            // The dial owns the space; its date stays a readable caption rather
+            // than inheriting the digital face's large-type proportions.
+            let requested = (height * 0.08).clamp(9., 18.);
+            let date_size = requested
+                * (width / measure(&date, requested, self.style.body.value).max(1.)).min(1.);
+            let date_height = if self.preferences.show_date {
+                date_size * 1.25
+            } else {
+                0.
+            };
+            let available = width.min((height - gap - date_height).max(1.)) / 1.05;
+            font_size = (available * 0.9 * f32::from(self.preferences.scale) / 100.).min(available);
+            date_size
+        } else {
+            font_size = font_size.min((height - gap).max(1.) / height_per_em);
+            20. * font_size / 104.
+        };
+        Frame {
+            presentation: self,
+            reading: ClockReading::at(now.time(), self.preferences.format_24h),
+            date,
+            geometry: Geometry {
+                viewport: size,
+                content_width: width,
+                face_size: font_size,
+                date_size,
+                padding,
+                gap,
+            },
+        }
+    }
+}
+impl Frame {
+    pub(super) fn face_rows(&self) -> [f32; 2] {
+        let g = self.geometry;
+        let face = g.face_size * 1.05;
+        let content = face
+            + if self.presentation.preferences.show_date {
+                g.gap + g.date_size * 1.25
+            } else {
+                0.
+            };
+        let top = g.padding
+            + if self.presentation.preferences.center_vertically {
+                ((g.viewport[1] - 2. * g.padding - content) / 2.).max(0.)
+            } else {
+                0.
+            };
+        [top, top + face]
+    }
+    pub fn view(self) -> Element<'static, Message> {
+        let Self {
+            presentation,
+            reading,
+            date,
+            geometry,
+        } = self;
+        let Geometry {
+            viewport: size,
+            content_width: width,
+            face_size: font_size,
+            date_size,
+            padding,
+            gap,
+        } = geometry;
+        let mut content = vec![presentation.face(reading, width, font_size)];
+        if presentation.preferences.show_date {
+            content.push(
+                container(clock_label(
+                    date,
+                    date_size,
+                    presentation.body_ink,
+                    presentation.style.body.value,
+                ))
+                .width(Length::Fill)
+                .align_x(presentation.preferences.alignment.layout())
+                .into(),
+            );
+        }
+        container(
+            column::with_children(content)
+                .spacing(gap)
+                .width(Length::Fill),
+        )
+        .width(size[0])
+        .height(size[1])
+        .padding(padding)
+        .class(cosmic::theme::Container::custom(move |_| {
+            cosmic::iced::widget::container::Style {
+                background: match presentation.style.surface.value {
+                    Surface::None => None,
+                    Surface::Solid(color) => Some(color.into()),
+                },
+                border: cosmic::iced::Border {
+                    radius: f32::from(presentation.style.radius.value).into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        }))
+        .align_y(if presentation.preferences.center_vertically {
+            Alignment::Center
+        } else {
+            Alignment::Start
+        })
+        .into()
+    }
+}
+
+/// Compatibility entry for existing callers; both consumers use the same frame.
 pub(crate) fn view(
     config: &Config,
     now: chrono::NaiveDateTime,
     size: [f32; 2],
 ) -> Element<'static, Message> {
-    let _style = crate::widget_style::scope(config);
-    let p = config.wallpaper_palette();
-    let width = (size[0] - 8.).max(1.);
-    let height = (size[1] - 8.).max(1.);
-    let scale =
-        (size[0] / 490.).min(size[1] / 200.).clamp(0.1, 4.) * f32::from(config.clock.scale) / 100.;
-    let mut font_size = fit(&config.clock, width, 104. * scale);
-    let date = now.format("%A, %B %-d").to_string();
-    let gap = if config.clock.show_date { 8. } else { 0. };
-    if config.clock.show_date {
-        let date_width = measure(&date, 20. * font_size / 104., crate::widget_style::font());
-        font_size *= (width / date_width.max(1.)).min(1.);
-    }
-    let height_per_em = 1.05
-        + if config.clock.show_date {
-            25. / 104.
-        } else {
-            0.
-        };
-    font_size = font_size.min((height - gap).max(1.) / height_per_em);
-    let mut content = vec![face(config, now.time(), width, font_size, p)];
-    if config.clock.show_date {
-        content.push(
-            container(label(date, 20. * font_size / 104., p.muted))
-                .width(Length::Fill)
-                .align_x(config.clock.alignment.layout())
-                .into(),
+    view_context(config, now, size, crate::widget_presentation::Context::Live)
+}
+pub(super) fn view_context(
+    config: &Config,
+    now: chrono::NaiveDateTime,
+    size: [f32; 2],
+    context: crate::widget_presentation::Context,
+) -> Element<'static, Message> {
+    if let Some(recipe) = config.recipes.clock.as_ref() {
+        return super::recipe::view(
+            config,
+            recipe,
+            now,
+            super::recipe::Reading::default(),
+            context,
+            size,
         );
     }
-    container(
-        column::with_children(content)
-            .spacing(gap)
-            .width(Length::Fill),
-    )
-    .width(size[0])
-    .height(size[1])
-    .padding(4)
-    .align_y(if config.clock.center_vertically {
-        Alignment::Center
-    } else {
-        Alignment::Start
-    })
-    .into()
+    Presentation::new(config).frame(now, size).view()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::native_test::Native;
-    fn ink(pixels: &[u8], width: usize) -> [usize; 4] {
+    pub(super) fn ink(pixels: &[u8], width: usize) -> [usize; 4] {
         let mut result = [usize::MAX, usize::MAX, 0, 0];
         for (i, pixel) in pixels.chunks_exact(4).enumerate() {
             if pixel[3] > 40 {

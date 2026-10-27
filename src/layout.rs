@@ -195,7 +195,39 @@ fn crowds(a: [f32; 4], b: [f32; 4], gap: f32) -> bool {
 /// another would take the clicks meant for the one below. Keeps `point`
 /// when nothing is in the way; `None` when the screen has no room for it.
 pub fn free_spot(point: Point, size: Size, placed: &[[f32; 4]], screen: Size) -> Option<Point> {
-    let point = clamp(point, size, screen);
+    free_spot_clamped(point, size, placed, screen, |at| clamp(at, size, screen))
+}
+
+/// Search within an area whose caller has already removed panel and edge
+/// clearances. Coordinates are relative to that area; do not add margins again.
+pub fn free_spot_in_area(
+    point: Point,
+    size: Size,
+    placed: &[[f32; 4]],
+    area: Size,
+) -> Option<Point> {
+    if !(0..2).all(|axis| size[axis] > 0. && size[axis] <= area[axis] && area[axis].is_finite()) {
+        return None;
+    }
+    free_spot_clamped(point, size, placed, area, |at| {
+        [0, 1].map(|axis| {
+            if at[axis].is_finite() {
+                at[axis].clamp(0., area[axis] - size[axis])
+            } else {
+                0.
+            }
+        })
+    })
+}
+
+fn free_spot_clamped(
+    point: Point,
+    size: Size,
+    placed: &[[f32; 4]],
+    screen: Size,
+    constrain: impl Fn(Point) -> Point,
+) -> Option<Point> {
+    let point = constrain(point);
     let clear = |at: Point| {
         placed
             .iter()
@@ -235,13 +267,38 @@ pub fn free_spot(point: Point, size: Size, placed: &[[f32; 4]], screen: Size) ->
     }
     candidates
         .into_iter()
-        .map(|at| clamp(at, size, screen))
+        .map(constrain)
         .filter(|at| clear(*at))
         .min_by(|a, b| distance(*a).total_cmp(&distance(*b)))
 }
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn reserved_area_search_preserves_clearance_and_refuses_overflow() {
+        let area = [752., 440.];
+        let size = [360., 200.];
+        let occupied = [[0., 0., 360., 200.]];
+        let point = super::free_spot_in_area([0., 0.], size, &occupied, area).unwrap();
+        assert!(!super::crowds(
+            [point[0], point[1], size[0], size[1]],
+            occupied[0],
+            super::WIDGET_GAP
+        ));
+        assert!((0..2).all(|i| point[i] >= 0. && point[i] + size[i] <= area[i]));
+        assert_eq!(
+            super::free_spot_in_area([0., 0.], area, &[], area),
+            Some([0., 0.])
+        );
+        assert_eq!(
+            super::free_spot_in_area([0., 0.], [753., 200.], &[], area),
+            None
+        );
+        assert_eq!(
+            super::free_spot_in_area([0., 0.], size, &[[0., 0., 752., 440.]], area),
+            None
+        );
+    }
     #[test]
     fn widgets_never_stack_and_move_as_little_as_possible() {
         let screen = [1920., 1080.];

@@ -156,7 +156,20 @@ macro_rules! fields {
 }
 
 /// Every member a profile, its Undo or its recovery may write.
-pub static FIELDS: [WidgetField; 84] = fields![
+pub static FIELDS: [WidgetField; 102] = fields![
+    "/recipes/clock", "Clock recipe", Style, |v| crate::recipes::accepts(v, crate::recipes::Kind::Clock);
+    "/recipes/weather", "Weather recipe", Style, |v| crate::recipes::accepts(v, crate::recipes::Kind::Weather);
+    "/moments/active", "Active moment", Style, |v| v.is_null() || matches!(v.as_str(), Some("day" | "night"));
+    "/moments/day/family", "Day widget style", Style, |v| serde_json::from_value::<Option<crate::desktop_theme::Family>>(v.clone()).is_ok();
+    "/moments/day/clock/face", "Day clock face", Style, |v| v.is_null() || matches!(v.as_str(), Some("digital" | "analog"));
+    "/moments/day/clock/weight", "Day clock weight", Style, |v| v.is_null() || matches!(v.as_str(), Some("light" | "normal" | "bold"));
+    "/moments/day/clock/italic", "Day clock italic", Style, |v| v.is_null() || v.is_boolean();
+    "/moments/day/clock/surface", "Day clock surface", Style, |v| v.is_null() || matches!(v.as_str(), Some("none" | "panel"));
+    "/moments/night/family", "Night widget style", Style, |v| serde_json::from_value::<Option<crate::desktop_theme::Family>>(v.clone()).is_ok();
+    "/moments/night/clock/face", "Night clock face", Style, |v| v.is_null() || matches!(v.as_str(), Some("digital" | "analog"));
+    "/moments/night/clock/weight", "Night clock weight", Style, |v| v.is_null() || matches!(v.as_str(), Some("light" | "normal" | "bold"));
+    "/moments/night/clock/italic", "Night clock italic", Style, |v| v.is_null() || v.is_boolean();
+    "/moments/night/clock/surface", "Night clock surface", Style, |v| v.is_null() || matches!(v.as_str(), Some("none" | "panel"));
     "/material_motion", "Liquid widget motion", Style, boolean;
     "/materials/shared", "Shared material", Style, material;
     "/materials/widgets", "Widget material", Style, material;
@@ -182,6 +195,11 @@ pub static FIELDS: [WidgetField; 84] = fields![
     "/clock/show_date", "Clock date", Style, boolean;
     "/clock/alignment", "Clock alignment", Style, clock_alignment;
     "/clock/scale", "Clock text size", Style, clock_scale;
+    "/clock/depth", "Clock depth", Style, boolean;
+    "/clock/face", "Clock face", Style, |v| v.is_null() || matches!(v.as_str(), Some("digital" | "analog"));
+    "/clock/weight", "Clock weight", Style, |v| v.is_null() || matches!(v.as_str(), Some("light" | "normal" | "bold"));
+    "/clock/italic", "Clock italic", Style, |v| v.is_null() || v.is_boolean();
+    "/clock/surface", "Clock surface", Style, |v| v.is_null() || matches!(v.as_str(), Some("none" | "panel"));
     "/widget_font", "Widget font", Style, font_family;
     "/clock_font", "Clock font", Style, font_family;
     "/clock/center_vertically", "Clock vertical alignment", Style, boolean;
@@ -514,6 +532,9 @@ fn present_value<'de, D: serde::Deserializer<'de>>(
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct WidgetChange {
+    /// New receipts target reserved instance identities through the adapter.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub design_v1: bool,
     pub before: Option<String>,
     pub after: Option<String>,
     pub fields: Vec<WidgetFieldChange>,
@@ -523,6 +544,8 @@ impl<'de> Deserialize<'de> for WidgetChange {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Record {
+            #[serde(default)]
+            design_v1: bool,
             before: Option<String>,
             after: Option<String>,
             fields: Vec<WidgetFieldChange>,
@@ -543,6 +566,7 @@ impl<'de> Deserialize<'de> for WidgetChange {
             }
         }
         Ok(Self {
+            design_v1: record.design_v1,
             before: record.before,
             after: record.after,
             fields: record.fields,

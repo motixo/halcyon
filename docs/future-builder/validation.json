@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-27",
+  "scope": "Foundation contracts and FB05\u2013FB13 local implementation acceptance. Current status is owned by tracker.json.",
+  "source_head": "306b5a6ef1168bdd654fac440e15eaf861d040b9",
+  "relative_markdown_links_checked": 108,
+  "concept_images": 12,
+  "image_hashes": "Matched original generated PNGs; unchanged copies.",
+  "tracker_tasks": 20,
+  "dependency_graph": "Acyclic, all references valid.",
+  "gallery_preview": {
+    "widths": [
+      390,
+      728
+    ],
+    "images_loaded": 12,
+    "horizontal_overflow": false,
+    "method": "Two six-image batches with the gallery stylesheet; full inline embedding exceeds the renderer 25 MiB limit. The saved local gallery uses relative image paths."
+  },
+  "architecture_preview": {
+    "widths": [
+      390,
+      728
+    ],
+    "systems": 6,
+    "horizontal_overflow": false,
+    "reviewed_after_gate_update": true
+  },
+  "preserved_work": "Existing five wizard-repair source files have unchanged SHA256 hashes.",
+  "remaining": "FB14 Ridge depth next; later Moments, instances, recipes, packages and physical/live-provider/device acceptance remain explicit.",
+  "foundation_evidence": "evidence/baseline-20261026.json",
+  "concept_image_bytes": 24054819,
+  "probe_validation": {
+    "exact_existing_regressions": 10,
+    "native_font_cases": 36,
+    "headless_samples": 368,
+    "stock_vertical_panel_orientations": 2,
+    "native_idle_seconds_per_page": 60,
+    "native_pages": 2
+  },
+  "implementation_evidence": [
+    "evidence/fb05-20261026.json",
+    "evidence/fb06-20261026.json",
+    "evidence/fb07-20261026.json",
+    "evidence/fb08-20261026.json",
+    "evidence/fb11-20261027.json",
+    "evidence/fb12-20261027.json",
+    "evidence/fb13-20261027.json"
+  ],
+  "fb05": {
+    "distinct_regressions_passed": 115,
+    "new_regressions": 12,
+    "native_tree_samples": 160,
+    "native_idle_seconds": 60,
+    "installed_or_published": false,
+    "inline_preview": {
+      "widths": [
+        390,
+        728
+      ],
+      "horizontal_overflow": false,
+      "default_images_loaded": 3
+    }
+  },
+  "fb06": {
+    "distinct_regressions_passed": 98,
+    "new_regressions": 11,
+    "render_scales": [
+      1,
+      1.5,
+      2
+    ],
+    "warm_gpu_samples": 320,
+    "warm_software_samples": 48,
+    "native_pages": 3,
+    "native_seconds_per_page": 12,
+    "installed_or_published": false,
+    "inline_preview": {
+      "widths": [
+        390,
+        728
+      ],
+      "horizontal_overflow": false,
+      "default_images_loaded": 7
+    }
+  },
+  "fb07": {
+    "distinct_regressions_passed": 123,
+    "new_regressions": 18,
+    "live_provider_requests": false,
+    "loopback_transport_cases": 3,
+    "shared_request_consumers": 2,
+    "maximum_weather_jobs": 4,
+    "maximum_weather_keys": 32,
+    "cache_writers": 1,
+    "pending_cache_snapshots": 1,
+    "installed_or_published": false
+  },
+  "fb08": {
+    "distinct_regressions_passed": 157,
+    "new_regressions": 5,
+    "installed_or_published": false,
+    "implementation_review": "Shared-column Arrange correction fixed and validated"
+  },
+  "fb09": {
+    "distinct_regressions_passed": 161,
+    "new_regressions": 6,
+    "native_input_samples_per_style": 30,
+    "native_idle_seconds": 60,
+    "edit_undo_cycles_per_style": 26,
+    "maximum_standalone_widgets": 8,
+    "worker_slots": 2,
+    "installed_or_published": false,
+    "implementation_review": "Worker lifetime correction fixed and validated; scoped performance and native acceptance passed"
+  },
+  "fb10": {
+    "distinct_regressions_passed": 111,
+    "new_regressions": 5,
+    "font_specimens_per_page": 12,
+    "gallery_image_cache_limit_mib": 16,
+    "native_gallery_cycles_per_size": 26,
+    "native_sizes": [
+      "820x600",
+      "1280x800"
+    ],
+    "installed_or_published": false,
+    "implementation_review": "Color policy, cache preparation/bounds, wizard ordering and Paper proportions corrected and validated."
+  },
+  "fb11": {
+    "evidence": "evidence/fb11-20261027.json",
+    "distinct_regressions": 115,
+    "new_regressions": 13,
+    "native_sizes": [
+      "820x600",
+      "1280x800"
+    ],
+    "apply_undo_cycles_per_size": 26,
+    "maximum_warm_rss_growth_mib": 0.890625
+  },
+  "fb13": {
+    "distinct_regressions_passed": 178,
+    "new_regressions": 8,
+    "native_windows": 2,
+    "png_size": [
+      1280,
+      720
+    ],
+    "cold_public_render_ms": 117.4512300058268,
+    "child_peak_rss_kib": 49504,
+    "installed_or_published": false
+  }
+}

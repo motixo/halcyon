@@ -218,6 +218,8 @@ fn redesign_navigation_scene_and_scroll_are_local_and_remembered() {
     assert_eq!(fixture_files(&root.join("cosmic-root")), before);
     assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), preferences);
     assert!(!checkpoint_message(&Message::ToggleScene));
+    assert!(!checkpoint_message(&Message::ToggleHelp("structural")));
+    assert!(!checkpoint_message(&Message::ToggleSection("structural")));
     assert!(!checkpoint_message(&Message::ContentScrolled(20.)));
 }
 
@@ -356,6 +358,10 @@ fn redesign_search_reveals_maintenance_pages_and_scene_bypasses_native_queue() {
     app.native_busy = true;
     send_settings(&mut app, Message::ToggleScene);
     send_settings(&mut app, Message::ContentScrolled(80.));
+    send_settings(&mut app, Message::ToggleHelp("structural"));
+    send_settings(&mut app, Message::ToggleSection("structural"));
+    assert_eq!(app.help_open, Some("structural"));
+    assert!(app.open_sections.contains("structural"));
     assert!(!app.scene_open());
     assert!(
         app.native_deferred.is_empty(),
@@ -603,19 +609,35 @@ fn comfort_theme_inspector_keeps_color_picker_inside_its_column() {
         &mut app,
         Message::ColorWell(color_well::Message::Open(color_well::Target::Accent, None)),
     );
-    for size in [Size::new(1120., 720.), Size::new(1280., 900.)] {
+    for size in [
+        Size::new(820., 600.),
+        Size::new(1024., 760.),
+        Size::new(1120., 720.),
+        Size::new(1280., 900.),
+    ] {
         send_settings(&mut app, Message::Resized(size));
         let mut native = crate::native_test::Native::new(size);
         let scene = native.bounds(app.settings_view(), "desktop-scene");
         let picker = native.bounds(app.settings_view(), "color-panel");
-        assert!(
-            picker.x > scene.x + scene.width && picker.x + picker.width <= size.width - 20.,
-            "scene={scene:?}; picker={picker:?}"
-        );
+        assert!(picker.x + picker.width <= size.width - 20., "{picker:?}");
+        if size.width == 820. {
+            assert!(
+                picker.y > scene.y + scene.height,
+                "compact picker stacks: {scene:?}; {picker:?}"
+            );
+        } else {
+            assert!(
+                picker.x > scene.x + scene.width,
+                "scene={scene:?}; picker={picker:?}"
+            );
+        }
         assert!(
             picker.width >= 328.,
             "300 px native picker plus its padding must fit: {picker:?}"
         );
+        // The full picker can be taller than a compact viewport. Its
+        // individual controls must remain reachable in the nested scroll.
+        native_reveal(&app, &mut native, "color-quick-0");
         native.capture(
             app.settings_view(),
             &cosmic::Theme::dark(),
@@ -651,9 +673,11 @@ fn setups_collection_comparison_and_keyboard_back_are_local_and_reachable() {
     std::fs::create_dir_all(&bundled).unwrap();
     for (name, _) in crate::desktop::wallpaper::BUNDLED {
         std::fs::copy(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join(format!("assets/wallpapers/{name}.jpg")),
-            bundled.join(format!("{name}.jpg")),
+            crate::desktop::wallpaper::bundled_path(
+                &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers"),
+                name,
+            ),
+            crate::desktop::wallpaper::bundled_path(&bundled, name),
         )
         .unwrap();
     }
@@ -672,22 +696,25 @@ fn setups_collection_comparison_and_keyboard_back_are_local_and_reachable() {
             &cosmic::Theme::dark(),
             &format!("setups-explore-{}", size.width),
         );
-        let first = native.bounds(app.settings_view(), "preset-halcyon");
-        let second = native.bounds(app.settings_view(), "preset-focus");
+        let first = native.bounds(app.settings_view(), "preset-tidal");
+        let second = native.bounds(app.settings_view(), "preset-paper-studio");
         assert!(
             second.x > first.x + first.width && first.y == second.y,
             "two real cards fit: {first:?}/{second:?}"
         );
         assert!(
-            first.width >= 260. && first.y + first.height <= size.height,
+            first.width >= 240. && first.y + first.height <= size.height,
             "first choices fit without scrolling: {first:?}"
         );
-        for id in ["halcyon", "focus", "paper", "rose", "calm", "evening"] {
+        for id in crate::desktop::profiles::discovery::CURATED
+            .into_iter()
+            .chain(["halcyon", "focus", "paper", "rose", "calm", "evening"])
+        {
             native_click(&mut app, &mut native, &format!("preset-{id}"));
             assert_eq!(app.profiles.selection(), &profiles::Selection::Preset(id));
             assert!(
                 native
-                    .try_bounds(app.settings_view(), "preset-halcyon")
+                    .try_bounds(app.settings_view(), "preset-tidal")
                     .is_none(),
                 "review hides the competing gallery"
             );
@@ -730,7 +757,7 @@ fn setups_collection_comparison_and_keyboard_back_are_local_and_reachable() {
         assert!(app.profiles.saved_collection);
         assert!(
             native
-                .try_bounds(app.settings_view(), "preset-halcyon")
+                .try_bounds(app.settings_view(), "preset-tidal")
                 .is_none()
         );
         native.capture(
@@ -863,4 +890,54 @@ fn setups_islands_scenes_follow_plan_and_do_not_edit_applet_selection() {
     }
     assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), preferences);
     assert_eq!(fixture_files(&root.join("cosmic-root")), files);
+}
+
+#[test]
+fn structural_setup_inspector_keeps_scene_and_apply_visible() {
+    let name = "structural_setup_inspector_keeps_scene_and_apply_visible";
+    if desktop_test_child(
+        name,
+        DesktopEnv {
+            app_config: true,
+            fixture: true,
+            ..Default::default()
+        },
+    ) {
+        return;
+    }
+    let root = isolated_root();
+    let mut app = open_isolated_editor(&root);
+    send_settings(&mut app, Message::Page(Page::DesktopProfiles));
+    send_settings(
+        &mut app,
+        Message::Profiles(profiles::Message::Select(profiles::Selection::Preset(
+            "calm",
+        ))),
+    );
+    let before = std::fs::read(Config::path().unwrap()).unwrap();
+    for size in [Size::new(820., 600.), Size::new(1280., 800.)] {
+        send_settings(&mut app, Message::Resized(size));
+        let mut native = crate::native_test::Native::new(Size::new(size.width, size.height - 48.));
+        let stage = native.bounds(app.settings_view(), "setup-stage");
+        let inspector = native.bounds(app.settings_view(), "setup-inspector");
+        assert!(
+            inspector.x >= stage.x + stage.width + 15.,
+            "{stage:?} {inspector:?}"
+        );
+        assert!(inspector.x + inspector.width <= size.width - 19.);
+        native.scroll(app.settings_view(), "setup-scroll", 500.);
+        assert_eq!(native.bounds(app.settings_view(), "setup-stage"), stage);
+        native.scroll(app.settings_view(), "setup-scroll", 0.);
+        for (theme, suffix) in [
+            (cosmic::Theme::dark(), "dark"),
+            (cosmic::Theme::light(), "light"),
+        ] {
+            native.capture(
+                app.settings_view(),
+                &theme,
+                &format!("structural-setup-{}-{suffix}", size.width),
+            );
+        }
+    }
+    assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
 }

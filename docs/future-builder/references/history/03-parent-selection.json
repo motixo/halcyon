@@ -1,0 +1,99 @@
+{
+  "title": "Parent curation of Fable concepts",
+  "date": "2026-10-26",
+  "status": "Design proposals only; original staged plan remains unchanged",
+  "source": "02-fable-ideas.json",
+  "accepted_for_visual_exploration": [
+    {
+      "id": "A1",
+      "concept": "08-ridge",
+      "reason": "A genuinely new relationship between wallpaper and widget; composition centered around the landscape instead of another card layout.",
+      "scope": "Prepared background/foreground asset pairs first. Prototype fit and scale alignment before promising live wallpaper depth.",
+      "stage": "After the first clock/style milestone",
+      "confidence": "Design compelling; rendering alignment unverified."
+    },
+    {
+      "id": "A6",
+      "concept": "09-spine",
+      "reason": "Tests whether the layout model supports a different orientation and makes useful use of vertical space.",
+      "scope": "Standard vertical COSMIC panel with native applets. No promise of vertical Islands support; stacked clock stays outside the narrow panel.",
+      "stage": "With early preset/layout validation",
+      "confidence": "Native panel direction is grounded; final applet and scaling acceptance still required."
+    },
+    {
+      "id": "A2",
+      "concept": "10-moments",
+      "reason": "A setup can retain its identity through the day; the timeline makes inherited overrides visible.",
+      "scope": "Optional scheduled visual overrides. Begin with day/night and fixed times; sun times later. Define manual override, schedule conflict and session precedence before implementation.",
+      "stage": "After shared style model, during editor stage",
+      "confidence": "Reuses scheduling, but needs a new bounded override/resolution model."
+    },
+    {
+      "id": "A9",
+      "concept": "11-mix-board",
+      "reason": "Makes selective domains understandable and supports the way users borrow a layout from one setup and a style from another.",
+      "scope": "Local library and personal picture first. Show merge differences and readable fallbacks; preserve content/accounts; sharing lineage later.",
+      "stage": "Editor stage; local composer can precede a full widget builder",
+      "confidence": "Good fit with existing selective-domain planning; cross-domain consistency still needs implementation."
+    },
+    {
+      "id": "A4",
+      "concept": "12-type-wall",
+      "reason": "Typography is visible before choosing, rather than hidden behind a list of font names.",
+      "scope": "Installed families/styles, bounded preview tiles, stable digit width and type size. Variable axes only where actual renderer support is verified.",
+      "stage": "First styling milestone",
+      "confidence": "Strong early-value UI; named font samples in generated imagery are illustrative."
+    }
+  ],
+  "additional_useful_proposals": [
+    {
+      "id": "A7",
+      "decision": "Small built-in day-timeline face; show in Ridge concept. Calendar/focus event clustering needs design."
+    },
+    {
+      "id": "A10",
+      "decision": "Prioritize real-rendered share images plus existing file export before building a hosted gallery. User controls whether personal wallpaper appears; distinguish share preview from exported private data."
+    },
+    {
+      "id": "A11",
+      "decision": "Optional artwork-derived music tint; bounded/event-driven and local to the music surface. Existing colour-follow policy must define precedence."
+    },
+    {
+      "id": "A12",
+      "decision": "Matte/no-surface first, subtle texture finishes later; maintain readability at all scale factors."
+    },
+    {
+      "id": "A5",
+      "decision": "Manual 'Fit to picture' suggestions worth prototyping, but local variance alone cannot understand faces/subjects or aesthetic importance; no automatic moves on wallpaper change."
+    }
+  ],
+  "deferred": [
+    {
+      "id": "A3",
+      "reason": "Focus/meeting-driven rearrangement can fight manual edits and change layout unexpectedly. Keep opt-in, explicit active-state editing and reliable restore; do not delay base styling."
+    },
+    {
+      "id": "A8",
+      "reason": "Timed live trials are more complex than Fable's 'low' estimate. Need crash-safe revert, conflict handling, native job completion and defined domains; cannot assume Undo guarantees restoration after other changes."
+    },
+    {
+      "id": "A1-automatic-segmentation",
+      "reason": "Not necessary for initial layered assets; separate resource/quality problem."
+    },
+    {
+      "id": "A6-vertical-islands",
+      "reason": "Do not infer support from native panel Left/Right anchors; qualify companion independently."
+    }
+  ],
+  "plan_recommendations": [
+    "Narrow first milestone to shared styling plus clock typography/faces and two coherent real presets; keep existing setup/import/Undo behavior.",
+    "Do not require the general widget builder before shipping better built-in widgets.",
+    "Keep content access close to the inspector, but reuse existing account/content pages instead of duplicating their workflows.",
+    "Make no-surface a first-class styling option and test center/vertical compositions before fixing layout assumptions.",
+    "Define setup override precedence now, but do not implement every future time/activity layer in the first release.",
+    "Accessibility constraints take precedence over a setup's visual preferences; previews must show the resulting adjusted design."
+  ],
+  "images": "Generated with the built-in image_gen tool; future concepts, not actual application captures.",
+  "scope_boundary": "Original visual exploration only; later architecture-first sequencing is tracked in the parent folder.",
+  "archive_notice": "Historical proposal. Current architecture and sequencing are in ../../ARCHITECTURE.md, ../../ROADMAP.md and ../../tracker.json."
+}

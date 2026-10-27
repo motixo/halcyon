@@ -1,6 +1,7 @@
 //! Explicit update discovery and verified source enrollment. The OS owns authentication and installation.
 mod enrollment;
 mod identity;
+pub(super) mod islands;
 mod packagekit;
 #[cfg(test)]
 mod tests;
@@ -24,10 +25,20 @@ pub enum Failure {
     InvalidResponse,
     Failed,
     InstallationChanged,
+    Busy,
+    DependencyChanges,
+    ReleaseRequired,
+    Activation,
 }
 impl Failure {
     pub fn label(&self) -> &'static str {
         match self {
+            Self::ReleaseRequired => {
+                "Install the Halcyon release package to add Islands here. Source installations use the development guide."
+            }
+            Self::Activation => {
+                "Islands could not be enabled. Check Islands diagnostics and the installation guide before retrying."
+            }
             Self::MissingPackageKit => "System update service unavailable.",
             Self::Offline => "Couldn’t reach the package sources. Try again when online.",
             Self::Timeout => "The system did not finish in time. Recheck its status.",
@@ -37,6 +48,12 @@ impl Failure {
             Self::InvalidResponse => "The system returned an incomplete update result.",
             Self::Failed => "The system could not complete this operation.",
             Self::InstallationChanged => "Installation changed. Reopen Settings to check it again.",
+            Self::Busy => {
+                "Another system installation is running. Wait for it to finish, then check again."
+            }
+            Self::DependencyChanges => {
+                "This add-on needs additional system changes. Use the installation guide to review them in your package manager."
+            }
         }
     }
 }
@@ -69,6 +86,7 @@ pub enum InstallPhase {
 }
 #[derive(Clone, Debug)]
 pub enum Message {
+    Islands(islands::Message),
     Inspect,
     Inspected(u64, Identity),
     Check,
@@ -88,6 +106,7 @@ pub enum Message {
 }
 #[derive(Default)]
 pub struct Updates {
+    pub islands: islands::State,
     pub identity: Option<Identity>,
     pub check: Check,
     pub store_error: Option<String>,
@@ -150,6 +169,7 @@ impl Updates {
 impl Settings {
     pub(super) fn update_updates(&mut self, message: Message) -> Task<SettingsMessage> {
         match message {
+            Message::Islands(message) => return islands::update(self, message),
             Message::Inspect => {
                 // Focus changes during PolicyKit authentication must not cancel
                 // the check or start another local measurement.

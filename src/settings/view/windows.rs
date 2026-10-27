@@ -125,7 +125,10 @@ impl Settings {
             items.push(label("Reading window settings…", 12., MUTED));
             return column::with_children(items).spacing(14).into();
         };
-        items.push(self.windows_header(draft));
+        items.push(split(
+            heading("Windows & workspaces", ""),
+            store_pill(self.windows.store(), accent),
+        ));
         if let Some(banner) = recovery_banner(
             editor.recovery(),
             editor.writable(),
@@ -172,10 +175,20 @@ impl Settings {
                 vec![button::text("Discard").on_press(edit(Edit::Discard)).into()],
             ));
         }
-        items.push(self.windows_tiling(draft));
-        items.push(self.windows_gaps(draft));
-        items.push(windows_controls(draft));
-        items.push(self.windows_focus(draft));
+        items.push(
+            self.inspector_layout(
+                self.windows_header(draft),
+                column::with_children(vec![
+                    self.windows_tiling(draft),
+                    self.windows_gaps(draft),
+                    windows_controls(draft),
+                    self.windows_focus(draft),
+                ])
+                .spacing(16)
+                .into(),
+                "windows",
+            ),
+        );
         column::with_children(items).spacing(16).into()
     }
 
@@ -198,10 +211,6 @@ impl Settings {
             "Tiling off · windows float".to_string()
         };
         let details = column::with_children(vec![
-            split(
-                heading("Windows & workspaces", ""),
-                store_pill(self.windows.store(), accent),
-            ),
             label(summary, 12., MUTED),
             label(
                 format!("Gaps {outer} / {inner} px · {} theme", variant.title()),

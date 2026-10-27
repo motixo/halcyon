@@ -1,0 +1,126 @@
+{
+  "created": "2026-10-26",
+  "prompt_file": "../references/prompts.json",
+  "images": [
+    {
+      "id": "01-tidal",
+      "title": "Tidal — editorial desktop",
+      "file": "01-tidal.png",
+      "bytes": 2209831,
+      "sha256": "6cbaa2597c69b0843994a5589e60afbe66839cd261d6d0b3f1252a2b7caaeb2a",
+      "prompt_id": "01-tidal",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "02-moss",
+      "title": "Moss — soft material desktop",
+      "file": "02-moss.png",
+      "bytes": 2894820,
+      "sha256": "e697df1e8d392b96e8804367cc1fbd165fb076e597e96015961eee17f636846a",
+      "prompt_id": "02-moss",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "03-paper",
+      "title": "Paper — warm light desktop",
+      "file": "03-paper.png",
+      "bytes": 1882328,
+      "sha256": "b860f65bed0898ea8695ce7fc0f59a3acffa5906bf903c1ae929a2c581422a4e",
+      "prompt_id": "03-paper",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "04-carbon",
+      "title": "Carbon — compact technical desktop",
+      "file": "04-carbon.png",
+      "bytes": 1921026,
+      "sha256": "6f0da745bc9938899de1fb64d28a2e895952b71ed12c4108aa7aa1c8413178d2",
+      "prompt_id": "04-carbon",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "05-canvas",
+      "title": "Desktop canvas — direct visual editing",
+      "file": "05-canvas.png",
+      "bytes": 1740448,
+      "sha256": "e34c89ef1785c05c43aac777188edcfa7fcbe9e8af099a950f3df150f3e49d92",
+      "prompt_id": "05-canvas",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "06-widget-builder",
+      "title": "Widget builder — personal components",
+      "file": "06-widget-builder.png",
+      "bytes": 1520703,
+      "sha256": "2364d63c1292fb7280b2f4e6ad57a9bad7b63ce668806016f3ab43f918b6864a",
+      "prompt_id": "06-widget-builder",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "07-community",
+      "title": "Community setups — discover, preview, remix",
+      "file": "07-community.png",
+      "bytes": 1904583,
+      "sha256": "55597aff401f7a103081a8d249658fe6bacbde5ac6f1b09a61b55cf14eaffa6f",
+      "prompt_id": "07-community",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "08-ridge",
+      "title": "Ridge — the clock becomes part of the picture",
+      "file": "08-ridge.png",
+      "bytes": 2125993,
+      "sha256": "20ac311744cf308f473ab6a899ab29ae2127dee3ef8de0dda3fe824b6c440dae",
+      "prompt_id": "08-ridge",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "09-spine",
+      "title": "Spine — a vertical desktop",
+      "file": "09-spine.png",
+      "bytes": 2325668,
+      "sha256": "93874a02a7afb856e451083d6cc38af712e5906d7404e32ad03af9271186e07a",
+      "prompt_id": "09-spine",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "10-moments",
+      "title": "Moments — one setup through the day",
+      "file": "10-moments.png",
+      "bytes": 1889661,
+      "sha256": "544eda5b7e5b5abd74bf83340bb9def6bda98159f567b13023dbdab986a08688",
+      "prompt_id": "10-moments",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "11-mix-board",
+      "title": "Mix board — combine the parts you like",
+      "file": "11-mix-board.png",
+      "bytes": 1848971,
+      "sha256": "b43eddf6d93de3fea8f4e03eb2e41adc979ab1a637752b5aa405105457b1042c",
+      "prompt_id": "11-mix-board",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    },
+    {
+      "id": "12-type-wall",
+      "title": "Type wall — choose by looking",
+      "file": "12-type-wall.png",
+      "bytes": 1790787,
+      "sha256": "8c3bdead55e16a4427df51234b1d63abf84ba0993dbc3e6b86e47c6ee2513c64",
+      "prompt_id": "12-type-wall",
+      "generator": "Built-in image_gen",
+      "status": "Generated future concept, not a native capture"
+    }
+  ]
+}

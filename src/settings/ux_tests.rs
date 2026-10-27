@@ -63,15 +63,10 @@ fn click(app: &mut Settings, native: &mut Native, id: &str) {
 /// Reveal a control through the page's real scrollable before checking its
 /// visible hit target. Reset first so the target starts in content coordinates.
 fn reveal(app: &Settings, native: &mut Native, id: &str) {
-    native.scroll(app.settings_view(), "settings-content", 0.);
-    let bounds = native.bounds(app.settings_view(), id);
-    if bounds.y + bounds.height > native.size.height - 64. {
-        native.scroll(
-            app.settings_view(),
-            "settings-content",
-            (bounds.y - 240.).max(0.),
-        );
-    }
+    native.operate(
+        app.settings_view(),
+        Box::new(super::navigation::Reveal::target(id)),
+    );
 }
 
 fn reveal_click(app: &mut Settings, native: &mut Native, id: &str) {
@@ -501,7 +496,8 @@ fn all_settings_render_in_cosmic_light_dark_and_high_contrast_without_saving() {
                 }
                 // The main background follows the rendering theme, even in a headless test.
                 let expected: cosmic::iced::Color = theme.cosmic().bg_color().into();
-                let index = ((size.height as usize - 2) * size.width as usize + 190) * 4;
+                let margin = native.bounds(app.settings_view(), "settings-viewport").x as usize + 2;
+                let index = ((size.height as usize - 2) * size.width as usize + margin) * 4;
                 for (got, want) in pixels[index..index + 3]
                     .iter()
                     .zip([expected.r, expected.g, expected.b])
@@ -1015,6 +1011,95 @@ fn color_control_offers_suggestions_and_the_picker_and_applies_a_choice() {
 }
 
 #[test]
+fn fb10_type_wall_pages_are_bounded_and_browsing_keeps_preferences() {
+    if child("fb10_type_wall_pages_are_bounded_and_browsing_keeps_preferences") {
+        return;
+    }
+    let before = std::fs::read(Config::path().unwrap()).unwrap();
+    let (mut app, _) = Settings::init(Core::default(), Page::Clock);
+    let _ = app.update(Message::ToggleScene);
+    let _ = app.update(Message::FontMenu(Some(FontTarget::Clock)));
+    assert!(app.font_loading);
+    let manifest = (0..31)
+        .map(|i| format!("interface\tFamily {i:02}\t400\n"))
+        .collect::<String>();
+    let _ = app.update(Message::FontCatalogReady(
+        crate::desktop::appearance::catalog::FontCatalog::from_manifest(&manifest),
+    ));
+    for size in [Size::new(820., 600.), Size::new(1280., 800.)] {
+        let _ = app.update(Message::Resized(size));
+        let _ = app.update(Message::FontPage(0));
+        let mut native = Native::new(size);
+        for i in 0..31 {
+            assert_eq!(
+                native
+                    .try_bounds(
+                        app.settings_view(),
+                        &format!("font-choice-clock-Family {i:02}")
+                    )
+                    .is_some(),
+                i < 12
+            );
+        }
+        reveal_click(&mut app, &mut native, "font-next-clock");
+        assert_eq!(app.font_page, 1);
+        for i in 0..31 {
+            assert_eq!(
+                native
+                    .try_bounds(
+                        app.settings_view(),
+                        &format!("font-choice-clock-Family {i:02}")
+                    )
+                    .is_some(),
+                (12..24).contains(&i)
+            );
+        }
+        let _ = app.update(Message::FontPage(usize::MAX));
+        assert_eq!(app.font_page, 2);
+        let _ = app.update(Message::FontSearch("Family 30".into()));
+        assert_eq!(app.font_page, 0);
+        assert_eq!(app.widget_font_families(), vec!["Family 30"]);
+        reveal(&app, &mut native, "font-list-clock");
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb10-type-search-{}", size.width),
+        );
+        let _ = app.update(Message::FontSearch(String::new()));
+    }
+    let _ = app.update(Message::FontMenu(None));
+    assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
+}
+
+#[test]
+fn fb10_type_choice_click_and_undo_preserve_face_and_other_fonts() {
+    if child("fb10_type_choice_click_and_undo_preserve_face_and_other_fonts") {
+        return;
+    }
+    let (mut app, _) = Settings::init(Core::default(), Page::Clock);
+    let before = Config::load();
+    let _ = app.update(Message::ToggleScene);
+    let _ = app.update(Message::FontMenu(Some(FontTarget::Clock)));
+    let _ = app.update(Message::FontCatalogReady(
+        crate::desktop::appearance::catalog::FontCatalog::from_manifest(
+            "interface\tNoto Serif\t400\n",
+        ),
+    ));
+    let size = Size::new(820., 600.);
+    let _ = app.update(Message::Resized(size));
+    let mut native = Native::new(size);
+    reveal_click(&mut app, &mut native, "font-choice-clock-Noto Serif");
+    let chosen = Config::load();
+    assert_eq!(chosen.clock_font.as_deref(), Some("Noto Serif"));
+    assert_eq!(chosen.clock, before.clock);
+    assert_eq!(chosen.widget_font, before.widget_font);
+    assert!(app.font_menu.is_none());
+    let _ = app.update(Message::UndoDesktop);
+    assert_eq!(Config::load().clock_font, before.clock_font);
+    assert_eq!(Config::load().clock, before.clock);
+}
+
+#[test]
 fn widget_fonts_list_installed_families_and_save_a_choice() {
     if child("widget_fonts_list_installed_families_and_save_a_choice") {
         return;
@@ -1194,4 +1279,342 @@ fn calendar_subscription_form_and_selection_use_real_controls() {
     );
     click(&mut app, &mut native, "settings-undo");
     assert!(!Config::load().calendar_private);
+}
+
+/// Actual native controls, including compact scrolling and sticky Apply.
+#[test]
+fn fb11_native_canvas_selection_style_and_apply_at_both_sizes() {
+    if child("fb11_native_canvas_selection_style_and_apply_at_both_sizes") {
+        return;
+    }
+    for size in [Size::new(820., 600.), Size::new(1280., 800.)] {
+        let before = std::fs::read(Config::path().unwrap()).unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::Overview);
+        let _ = app.update(Message::Resized(size));
+        let mut native = Native::new(size);
+        reveal_click(&mut app, &mut native, "canvas-start");
+        assert!(app.canvas.is_some());
+        reveal_click(&mut app, &mut native, "canvas-object-clock");
+        assert_eq!(app.placement.selected(), Some(Widget::Clock));
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb11-canvas-{}-initial", size.width),
+        );
+        // The existing ignored-keyboard subscription maps arrows to these
+        // geometry messages. No completion may leak through to the live file.
+        let event = Event::Keyboard(cosmic::iced::keyboard::Event::KeyPressed {
+            key: cosmic::iced::keyboard::Key::Named(cosmic::iced::keyboard::key::Named::ArrowRight),
+            modified_key: cosmic::iced::keyboard::Key::Named(
+                cosmic::iced::keyboard::key::Named::ArrowRight,
+            ),
+            physical_key: cosmic::iced::keyboard::key::Physical::Code(
+                cosmic::iced::keyboard::key::Code::ArrowRight,
+            ),
+            location: cosmic::iced::keyboard::Location::Standard,
+            modifiers: cosmic::iced::keyboard::Modifiers::empty(),
+            text: None,
+            repeat: false,
+        });
+        if let Some(edit) = placement::input(event, cosmic::iced::event::Status::Ignored) {
+            let _ = app.update(Message::Placement(edit));
+        } else {
+            panic!("arrow did not route");
+        }
+        reveal_click(&mut app, &mut native, "canvas-Face-analog");
+        assert_eq!(
+            app.canvas_config().clock.face,
+            Some(crate::widget_style::resolver::ClockFace::Analog)
+        );
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb11-canvas-{}-inspector", size.width),
+        );
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::light(),
+            &format!("fb11-canvas-{}-light", size.width),
+        );
+        click(&mut app, &mut native, "canvas-apply");
+        assert!(app.canvas.is_none(), "{}", app.status);
+        assert!(!app.error, "{}", app.status);
+        let _ = app.update(Message::UndoDesktop);
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
+    }
+}
+
+#[test]
+fn fb11_native_canvas_drag_resize_cancel_and_inheritance() {
+    if child("fb11_native_canvas_drag_resize_cancel_and_inheritance") {
+        return;
+    }
+    let before = std::fs::read(Config::path().unwrap()).unwrap();
+    let (mut app, _) = Settings::init(Core::default(), Page::Overview);
+    let size = Size::new(820., 600.);
+    let _ = app.update(Message::Resized(size));
+    let mut native = Native::new(size);
+    reveal_click(&mut app, &mut native, "canvas-start");
+    reveal_click(&mut app, &mut native, "canvas-object-clock");
+    reveal(&app, &mut native, "placement-card-clock");
+    let card = native.bounds(app.settings_view(), "placement-card-clock");
+    let original = app.placement.state();
+    let start = card.center();
+    let end = Point::new(start.x + 48., start.y + 20.);
+    for (event, point) in [
+        (mouse::Event::CursorMoved { position: start }, start),
+        (mouse::Event::ButtonPressed(mouse::Button::Left), start),
+        (mouse::Event::CursorMoved { position: end }, end),
+        (mouse::Event::ButtonReleased(mouse::Button::Left), end),
+    ] {
+        for message in native
+            .event(app.settings_view(), Event::Mouse(event.clone()), point)
+            .0
+        {
+            let _ = app.update(message);
+        }
+        if let Some(edit) =
+            placement::input(Event::Mouse(event), cosmic::iced::event::Status::Ignored)
+        {
+            let _ = app.update(Message::Placement(edit));
+        }
+    }
+    assert_ne!(
+        app.placement.state(),
+        original,
+        "native mouse drag must move the widget"
+    );
+    reveal_click(&mut app, &mut native, "layout-resize-mode");
+    let _ = app.update(Message::Placement(placement::Message::Nudge([0, 1], false)));
+    reveal_click(&mut app, &mut native, "canvas-Surface-none");
+    assert_eq!(
+        app.canvas_config().clock.surface,
+        Some(crate::widget_style::resolver::ClockSurface::None)
+    );
+    reveal_click(&mut app, &mut native, "canvas-reset-Surface");
+    assert_eq!(app.canvas_config().clock.surface, None);
+    assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
+    click(&mut app, &mut native, "canvas-cancel");
+    assert!(app.canvas.is_none());
+    assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), before);
+}
+
+fn mix_native_click(app: &mut Settings, native: &mut Native, id: &str) {
+    use cosmic::iced::futures::StreamExt;
+    use cosmic::iced::runtime::Action;
+    reveal(app, native, id);
+    let point = native.bounds(app.settings_view(), id).center();
+    assert!(point.y < native.size.height && point.y >= 0.);
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    runtime.block_on(async {
+        for event in [
+            mouse::Event::CursorMoved { position: point },
+            mouse::Event::ButtonPressed(mouse::Button::Left),
+            mouse::Event::ButtonReleased(mouse::Button::Left),
+        ] {
+            let messages = native
+                .event(app.settings_view(), Event::Mouse(event), point)
+                .0;
+            let mut tasks = std::collections::VecDeque::new();
+            for message in messages {
+                tasks.push_back(app.update(message));
+            }
+            while let Some(task) = tasks.pop_front() {
+                if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                    while let Some(action) = stream.next().await {
+                        match action {
+                            Action::Output(cosmic::Action::App(message)) => {
+                                tasks.push_back(app.update(message))
+                            }
+                            Action::Widget(operation) => {
+                                native.operate(app.settings_view(), operation)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+#[test]
+fn fb12_native_mix_choices_preview_cancel_and_apply_fit_both_sizes() {
+    if child("fb12_native_mix_choices_preview_cancel_and_apply_fit_both_sizes") {
+        return;
+    }
+    use crate::desktop::{DesktopStore, profiles as records, wallpaper as backgrounds};
+    let root = std::path::PathBuf::from(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap());
+    let directory = root
+        .join("config/cosmic")
+        .join(backgrounds::NAMESPACE)
+        .join("v1");
+    std::fs::create_dir_all(&directory).unwrap();
+    let entry = backgrounds::BgEntry::new(
+        backgrounds::SHARED,
+        backgrounds::BgSource::Color(backgrounds::BgColor::Single([0.1, 0.2, 0.3])),
+    );
+    std::fs::write(directory.join("all"), ron::to_string(&entry).unwrap()).unwrap();
+    for size in [Size::new(820., 552.), Size::new(1280., 752.)] {
+        let original = std::fs::read(Config::path().unwrap()).unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::DesktopProfiles);
+        let _ = app.update(Message::Resized(size));
+        let mut native = Native::new(size);
+        mix_native_click(&mut app, &mut native, "mix-start");
+        assert!(app.profiles.mix.is_some());
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb12-mix-{}-sources", size.width),
+        );
+        for id in [
+            "mix-source-desktop",
+            "mix-source-paper-studio",
+            "mix-source-tidal",
+        ] {
+            mix_native_click(&mut app, &mut native, id);
+        }
+        for job in app.profiles.take_theme_jobs() {
+            let _ = app.update(Message::Profiles(job.run()));
+        }
+        assert!(app.profiles.profile().unwrap().composition.is_some());
+        assert!(!app.profiles.mix.as_ref().unwrap().choosing);
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), original);
+        native.scroll(app.settings_view(), "settings-content", 0.);
+        let scene = native.bounds(app.settings_view(), "desktop-scene");
+        assert!(
+            scene.y + scene.height <= size.height - 45.,
+            "scene {scene:?}; content {size:?}"
+        );
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb12-mix-{}-preview", size.width),
+        );
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::light(),
+            &format!("fb12-mix-{}-light", size.width),
+        );
+        assert!(
+            app.profiles.can_apply(),
+            "{:?} {:?}",
+            app.profiles.plan(),
+            app.profiles.notice
+        );
+        mix_native_click(&mut app, &mut native, "mix-save");
+        assert!(app.profiles.name.is_some());
+        assert!(native.bounds(app.settings_view(), "profile-name").y < size.height - 60.);
+        let _ = app.update(Message::Profiles(profiles::Message::NameInput(format!(
+            "Native mix {}",
+            size.width
+        ))));
+        mix_native_click(&mut app, &mut native, "mix-save");
+        assert!(matches!(
+            app.profiles.selection(),
+            profiles::Selection::Saved(_)
+        ));
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), original);
+        assert!(app.profiles.profile().unwrap().composition.is_some());
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb12-mix-{}-saved", size.width),
+        );
+        mix_native_click(&mut app, &mut native, "profiles-confirm");
+        assert!(app.profiles.mix.is_none());
+        let store = DesktopStore::from_env().unwrap();
+        assert!(store.latest_change().unwrap().is_some());
+        let _ = app.update(Message::UndoDesktop);
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), original);
+        // Source metadata exists only in saved setup records, not preferences.
+        assert!(
+            records::capture(&store, "Applied")
+                .unwrap()
+                .profile
+                .composition
+                .is_none()
+        );
+    }
+}
+
+#[test]
+fn fb13_native_share_actions_fit_compact_and_wide_setup_review() {
+    if child("fb13_native_share_actions_fit_compact_and_wide_setup_review") {
+        return;
+    }
+    for size in [Size::new(820., 552.), Size::new(1280., 752.)] {
+        let (mut app, _) = Settings::init(Core::default(), Page::DesktopProfiles);
+        let _ = app.update(Message::Resized(size));
+        let _ = app.update(Message::Profiles(profiles::Message::Select(
+            profiles::Selection::Preset("spine"),
+        )));
+        let mut native = Native::new(size);
+        reveal(&app, &mut native, "profiles-share-image");
+        // Do not execute the returned asynchronous dialog task in this UI test.
+        let bounds = native.bounds(app.settings_view(), "profiles-share-image");
+        assert!(
+            bounds.x >= 0. && bounds.x + bounds.width <= size.width,
+            "{bounds:?}"
+        );
+        assert!(
+            bounds.y >= 0.
+                && bounds.y + bounds.height <= {
+                    let viewport = native.bounds(app.settings_view(), "settings-viewport");
+                    viewport.y + viewport.height
+                },
+            "{bounds:?}"
+        );
+        native.capture(
+            app.settings_view(),
+            &cosmic::Theme::dark(),
+            &format!("fb13-spine-{}", size.width),
+        );
+        let messages: Vec<_> = [
+            mouse::Event::CursorMoved {
+                position: bounds.center(),
+            },
+            mouse::Event::ButtonPressed(mouse::Button::Left),
+            mouse::Event::ButtonReleased(mouse::Button::Left),
+        ]
+        .into_iter()
+        .flat_map(|event| {
+            native
+                .event(app.settings_view(), Event::Mouse(event), bounds.center())
+                .0
+        })
+        .collect();
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, Message::Profiles(profiles::Message::ShareImage)))
+        );
+        app.profiles.update(profiles::Message::ShareImage);
+        assert!(app.profiles.sharing());
+        let messages: Vec<_> = [
+            mouse::Event::CursorMoved {
+                position: bounds.center(),
+            },
+            mouse::Event::ButtonPressed(mouse::Button::Left),
+            mouse::Event::ButtonReleased(mouse::Button::Left),
+        ]
+        .into_iter()
+        .flat_map(|event| {
+            native
+                .event(app.settings_view(), Event::Mouse(event), bounds.center())
+                .0
+        })
+        .collect();
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, Message::Profiles(profiles::Message::CancelShare)))
+        );
+        app.profiles.update(profiles::Message::CancelShare);
+        assert!(!app.profiles.sharing());
+    }
 }

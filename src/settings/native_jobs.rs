@@ -25,6 +25,9 @@ pub enum Done {
     ),
     Material(Result<(), String>),
     Recovery(legacy::Recovery, Result<(), String>),
+    Canvas(u64, Result<Config, String>),
+    Design(Result<String, String>),
+    Recipes(recipes::Editor, Result<Option<Config>, String>),
     Failed(String),
 }
 fn task(run: impl FnOnce() -> Done + Send + 'static) -> Task<Message> {
@@ -45,13 +48,28 @@ impl Settings {
         self.error = false;
     }
     pub(super) fn dispatch_native(&mut self, message: &Message) -> Option<Task<Message>> {
+        if self.native_busy
+            && matches!(
+                message,
+                Message::Profiles(profiles::Message::Package(_) | profiles::Message::RemixSelected)
+            )
+        {
+            return Some(Task::none());
+        }
         if let Message::Wizard(edit) = message
             && self.wizard.as_ref().is_none_or(|w| !w.accepts(edit))
         {
             return Some(Task::none());
         }
         // Pure view state does not wait for desktop IO or grow the edit queue.
-        if matches!(message, Message::ToggleScene | Message::ContentScrolled(_)) {
+        if matches!(
+            message,
+            Message::ToggleScene
+                | Message::ToggleHelp(_)
+                | Message::ToggleSection(_)
+                | Message::ContentScrolled(_)
+                | Message::Moment(moments::Message::Preview(_) | moments::Message::BaseClock(_))
+        ) {
             return None;
         }
 
@@ -63,11 +81,58 @@ impl Settings {
         ) {
             return None;
         }
+        if self.native_busy
+            && self.profiles.mix.is_some()
+            && matches!(
+                message,
+                Message::Profiles(
+                    profiles::Message::MixStart
+                        | profiles::Message::MixPart(_)
+                        | profiles::Message::MixPick(..)
+                        | profiles::Message::MixQuery(_)
+                        | profiles::Message::MixPage(_)
+                        | profiles::Message::MixClosePicker
+                )
+            )
+        {
+            return Some(Task::none());
+        }
+        if self.native_busy
+            && self.canvas.is_some()
+            && matches!(
+                message,
+                Message::Canvas(_)
+                    | Message::Placement(_)
+                    | Message::WidgetFont(..)
+                    | Message::UndoDesktop
+                    | Message::UndoPreferences
+            )
+        {
+            // Apply owns this draft until completion. Pointer samples must not
+            // grow a queue, and draft gestures must never replay as ordinary
+            // immediate controls after successful Apply has closed the canvas.
+            return Some(Task::none());
+        }
+        if self.native_busy && matches!(message, Message::Recipe(_)) {
+            return Some(Task::none());
+        }
         if self.native_busy {
             // Default to deferral at the shared admission boundary, before
             // dispatch, completion, preference saves or checkpoint processing.
             // Only these read-only window events may bypass the active writer.
             match message {
+                Message::Profiles(profiles::Message::DiscoveryQuery(query)) => {
+                    // A bounded, coalesced local search must not grow the writer queue.
+                    if let Some(Message::Profiles(profiles::Message::DiscoveryQuery(last))) =
+                        self.native_deferred.back_mut()
+                    {
+                        *last = query.chars().take(80).collect();
+                    } else {
+                        self.native_deferred.push_back(Message::Profiles(
+                            profiles::Message::DiscoveryQuery(query.chars().take(80).collect()),
+                        ));
+                    }
+                }
                 Message::NativeDone(_) => return None,
                 Message::Resized(size) => self.window = *size,
                 Message::Window(control) if *control != WindowControl::Close => {
@@ -112,7 +177,81 @@ impl Settings {
         {
             return None;
         }
-        if !self.native_worker_needed() {
+        if let Message::Design(
+            edit @ (design::Message::Migrate
+            | design::Message::Recover
+            | design::Message::KeepDesign),
+        ) = message
+        {
+            let migrate = matches!(edit, design::Message::Migrate);
+            let repair = matches!(edit, design::Message::KeepDesign);
+            if repair && (!self.design.source_review || !self.design.source_conflict) {
+                return Some(Task::none());
+            }
+            if migrate && !self.design.review {
+                return Some(Task::none());
+            }
+            self.begin_native();
+            return Some(task(move || {
+                Done::Design(
+                    crate::desktop::actions::history_store()
+                        .map_err(|e| e.to_string())
+                        .and_then(|store| {
+                            if migrate {
+                                store
+                                    .migrate_design()
+                                    .map(|()| "Widgets migrated".into())
+                                    .map_err(|e| e.to_string())
+                            } else if repair {
+                                store
+                                    .repair_design_source()
+                                    .map(|()| {
+                                        format!(
+                                            "Current design kept. Older changes saved in {}",
+                                            store.state_dir().display()
+                                        )
+                                    })
+                                    .map_err(|e| e.to_string())
+                            } else {
+                                store
+                                    .recover()
+                                    .map(|_| "Interrupted change recovered".into())
+                                    .map_err(|e| e.to_string())
+                            }
+                        }),
+                )
+            }));
+        }
+        if let Message::Recipe(
+            edit @ (recipes::Message::Save
+            | recipes::Message::ConfirmDelete
+            | recipes::Message::Apply
+            | recipes::Message::UseBuiltin
+            | recipes::Message::Reload),
+        ) = message
+        {
+            let mut editor = self.recipe_editor.clone();
+            let edit = edit.clone();
+            let baseline = self
+                .config
+                .recipes
+                .get(editor.draft.kind)
+                .and_then(|r| serde_json::to_value(r).ok());
+            self.begin_native();
+            return Some(task(move || {
+                let result = editor.work(edit, baseline);
+                Done::Recipes(editor, result)
+            }));
+        }
+        let package_work = matches!(
+            message,
+            Message::Profiles(
+                profiles::Message::Package(
+                    profiles::packages::Edit::Open | profiles::packages::Edit::Export
+                ) | profiles::Message::Imported(..)
+            )
+        );
+        if !self.native_worker_needed() && !package_work {
             return None;
         }
         // Switching tabs reads the in-memory drafts, not the companion. A
@@ -193,7 +332,9 @@ impl Settings {
                 }))
             }
             Message::Profiles(edit)
-                if edit.writes() && matches!(self.page, Page::DesktopProfiles | Page::Themes) =>
+                if edit.blocking()
+                    && (matches!(self.page, Page::DesktopProfiles | Page::Themes)
+                        || matches!(edit, profiles::Message::Imported(..))) =>
             {
                 // Preserve the same page/scope admission as the synchronous path.
                 if self.page == Page::Themes
@@ -210,6 +351,13 @@ impl Settings {
                 let mut editor = self.profiles.clone();
                 let edit = edit.clone();
                 self.begin_native();
+                if !edit.writes() {
+                    self.status = "Preparing preview…".into();
+                } else if matches!(edit, profiles::Message::Package(_)) {
+                    self.status = "Preparing package…".into();
+                } else if matches!(edit, profiles::Message::Imported(..)) {
+                    self.status = "Importing setup…".into();
+                }
                 Some(task(move || {
                     let result = editor.update(edit);
                     Done::Profiles(editor, result)
@@ -254,6 +402,10 @@ impl Settings {
             }
             _ => None,
         }
+    }
+    pub(super) fn background_canvas(&mut self, apply: canvas::Apply) -> Task<Message> {
+        self.begin_native();
+        task(move || Done::Canvas(apply.id, apply.run()))
     }
     pub(super) fn background_undo(
         &mut self,
@@ -341,8 +493,28 @@ impl Settings {
             }
             Done::Profiles(editor, outcome) => {
                 let before = self.profiles.selection().clone();
+                let origins = |editor: &profiles::ProfilesEditor| {
+                    editor.mix.as_ref().map(|d| {
+                        d.sources
+                            .each_ref()
+                            .map(|s| s.as_ref().map(|s| s.origin.clone()))
+                    })
+                };
+                let mix_changed = origins(&self.profiles) != origins(&editor)
+                    || self.profiles.package.is_some() != editor.package.is_some();
                 self.profiles = editor;
-                let reveal = self.reveal_setup_selection(&before);
+                let reveal = if mix_changed && self.page == Page::DesktopProfiles {
+                    self.page_scroll.insert(self.page.key().into(), 0.);
+                    cosmic::iced::widget::scrollable::snap_to(
+                        cosmic::widget::Id::new("settings-content"),
+                        cosmic::iced::widget::scrollable::RelativeOffset {
+                            x: None,
+                            y: Some(0.),
+                        },
+                    )
+                } else {
+                    self.reveal_setup_selection(&before)
+                };
                 Task::batch([self.profile_outcome(outcome), reveal])
             }
             Done::Wizard(wizard, outcome) => {
@@ -378,6 +550,43 @@ impl Settings {
                     Err(e) => self.failed(e),
                 }
                 self.after_desktop_change()
+            }
+            Done::Canvas(id, result) => self.finish_canvas(id, result),
+            Done::Recipes(mut editor, result) => {
+                let changed = matches!(&result, Ok(Some(_)));
+                match result {
+                    Ok(config) => {
+                        if let Some(config) = config {
+                            self.config = config;
+                        }
+                        editor.error = false;
+                    }
+                    Err(e) => {
+                        editor.notice = Some(e);
+                        editor.error = true;
+                    }
+                }
+                self.error = editor.error;
+                self.status = editor.notice.clone().unwrap_or_default();
+                self.recipe_editor = editor;
+                if changed {
+                    self.after_desktop_change()
+                } else {
+                    Task::none()
+                }
+            }
+            Done::Design(result) => {
+                self.config = Config::load();
+                self.design = design::State::load();
+                self.design.notice = Some(match result {
+                    Ok(notice) => notice,
+                    Err(error) => error,
+                });
+                if self.config.design_problem.is_none() {
+                    self.after_desktop_change()
+                } else {
+                    Task::none()
+                }
             }
             Done::Failed(e) => {
                 self.failed(e);
@@ -443,6 +652,74 @@ mod review030_tests {
     use crate::displays::test_support::isolated;
     use cosmic::Application;
     use cosmic::iced::futures::StreamExt;
+
+    #[test]
+    fn fb12_mix_preparation_uses_worker_and_busy_input_stays_bounded() {
+        if isolated(
+            "settings::native_jobs::review030_tests::fb12_mix_preparation_uses_worker_and_busy_input_stays_bounded",
+        ) {
+            return;
+        }
+        use crate::desktop::profiles::mix::Component;
+        let root =
+            std::path::PathBuf::from(std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").unwrap());
+        crate::desktop::islands::fixture_installed(&root);
+        std::fs::write(root.join("status-islands-probe.py"), "import pathlib\nprint((pathlib.Path(__file__).parent/'islands-installation.json').read_text())\n").unwrap();
+        Config::save_changes(serde_json::json!({"theme":"teal"})).unwrap();
+        let original = std::fs::read(Config::path().unwrap()).unwrap();
+        let (mut app, _) = Settings::init(Core::default(), Page::DesktopProfiles);
+        for edit in [
+            profiles::Message::MixStart,
+            profiles::Message::MixPick(
+                Component::Style,
+                profiles::Selection::Preset("paper-studio"),
+            ),
+        ] {
+            let task = app.update(Message::Profiles(edit));
+            assert!(app.native_busy);
+            assert_eq!(app.status, "Preparing preview…");
+            if app.profiles.mix.is_some() {
+                for _ in 0..100 {
+                    let _ = app.update(Message::Profiles(profiles::Message::MixQuery(
+                        "busy".into(),
+                    )));
+                }
+                assert!(app.native_deferred.is_empty());
+            }
+            let messages = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut messages = Vec::new();
+                    if let Some(mut stream) = cosmic::iced::runtime::task::into_stream(task) {
+                        while let Some(action) = stream.next().await {
+                            if let cosmic::iced::runtime::Action::Output(cosmic::Action::App(
+                                message,
+                            )) = action
+                            {
+                                messages.push(message);
+                            }
+                        }
+                    }
+                    messages
+                });
+            assert_eq!(messages.len(), 1);
+            for message in messages {
+                let _ = app.update(message);
+            }
+            assert!(!app.native_busy);
+        }
+        assert_eq!(
+            app.profiles
+                .mix
+                .as_ref()
+                .unwrap()
+                .source_name(Component::Style),
+            Some("Paper")
+        );
+        assert_eq!(std::fs::read(Config::path().unwrap()).unwrap(), original);
+    }
 
     #[test]
     fn review030_native_recovery_refreshes_preferences_flags_and_undo_before_watchers() {

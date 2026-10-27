@@ -24,12 +24,7 @@ impl Settings {
         arrange: bool,
     ) -> Element<'a, Message> {
         let plan = wizard.widget_plan(&self.config);
-        let compact = self.window.width < 1050.;
-        let pane_width = if compact {
-            self.wizard_inner_width() * 0.51
-        } else {
-            self.wizard_inner_width() * 0.45
-        };
+        let compact = self.wizard_inner_width() < 900.;
         let available = (self.window.height - 330.).clamp(200., 400.);
         let mut controls = Vec::new();
         if arrange {
@@ -226,7 +221,7 @@ impl Settings {
             self.wizard_widget_preview(wizard, if compact { 205. } else { 270. }),
         ];
         if self.displays.outputs().len() > 1 || !plan.elsewhere.is_empty() {
-            preview.push(words("Arrange display", 12., INK));
+            preview.push(words("Preview display", 12., INK));
             let choices = self.displays.choices(wizard.widgets.display.as_deref());
             let labels = choices.iter().map(|c| c.0.clone()).collect::<Vec<_>>();
             let selected = choices.iter().position(|c| c.1 == wizard.widgets.display);
@@ -257,7 +252,10 @@ impl Settings {
             }
         }
         if let Some(error) = plan.error {
-            preview.push(words(error, 13., DANGER));
+            // Arrange shows this next to its fixed footer action.
+            if !arrange {
+                preview.push(words(error, 13., DANGER));
+            }
         } else if !plan.visible.is_empty() {
             preview.push(words(
                 format!("{} widgets on this display", plan.visible.len()),
@@ -265,17 +263,16 @@ impl Settings {
                 SOFT,
             ));
         }
-        row::with_children(vec![
-            container(column::with_children(controls).spacing(10))
-                .width(pane_width)
-                .into(),
+        super::super::adaptive::columns(
             container(column::with_children(preview).spacing(10))
                 .width(Length::Fill)
                 .into(),
-        ])
-        .spacing(20)
-        .align_y(Alignment::Start)
-        .into()
+            container(column::with_children(controls).spacing(10))
+                .width(Length::Fill)
+                .into(),
+            [300., 340.],
+            true,
+        )
     }
     pub(super) fn wizard_widget_preview<'a>(
         &'a self,

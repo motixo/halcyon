@@ -57,6 +57,9 @@ struct Script {
     packages: Vec<String>,
     allow_cancel: bool,
     delay_reply: bool,
+    info: u32,
+    flags: u64,
+    files: usize,
 }
 impl Default for Script {
     fn default() -> Self {
@@ -67,6 +70,9 @@ impl Default for Script {
             packages: vec![],
             allow_cancel: true,
             delay_reply: false,
+            info: 2,
+            flags: 0,
+            files: 2,
         }
     }
 }
@@ -74,6 +80,7 @@ impl Default for Script {
 struct Trace {
     calls: Vec<String>,
     paths: usize,
+    active: Vec<OwnedObjectPath>,
 }
 struct Root {
     trace: Arc<Mutex<Trace>>,
@@ -81,6 +88,9 @@ struct Root {
 }
 #[zbus::interface(name = "org.freedesktop.PackageKit")]
 impl Root {
+    fn get_transaction_list(&self) -> Vec<OwnedObjectPath> {
+        self.trace.lock().unwrap().active.clone()
+    }
     #[zbus(property)]
     fn roles(&self) -> u64 {
         1 << 10
@@ -123,8 +133,14 @@ impl Transaction {
         let c = emitter.connection();
         let p = emitter.path();
         for id in &self.script.packages {
-            c.emit_signal(None::<&str>, p, TX, "Package", &(2u32, id, "fixture"))
-                .await?;
+            c.emit_signal(
+                None::<&str>,
+                p,
+                TX,
+                "Package",
+                &(self.script.info, id, "fixture"),
+            )
+            .await?;
         }
         if self.script.malformed {
             c.emit_signal(None::<&str>, p, TX, "Package", &"wrong signature")
@@ -159,8 +175,8 @@ impl Transaction {
         files: Vec<String>,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
     ) -> zbus::fdo::Result<()> {
-        assert_eq!(flags, 0);
-        assert_eq!(files.len(), 2);
+        assert_eq!(flags, self.script.flags);
+        assert_eq!(files.len(), self.script.files);
         assert!(files.iter().all(|p| std::path::Path::new(p).is_file()));
         self.trace.lock().unwrap().calls.push("InstallFiles".into());
         self.signals(&emitter).await
@@ -628,8 +644,56 @@ fn native_updates_clicks_renders_failure_unknown_and_absence() {
         assert!(
             ui_click(&app, &mut native, "get-islands")
                 .iter()
-                .any(|message| matches!(message, SettingsMessage::OpenIslandsGuide))
+                .any(|message| matches!(
+                    message,
+                    SettingsMessage::Updates(Message::Islands(islands::Message::Prepare))
+                ))
         ); // Inspect the action only; never launch the host browser.
+        // Preparation and activation are distinct, explicit native actions.
+        app.updates.islands.phase = islands::Phase::Ready;
+        assert!(
+            ui_click(&app, &mut native, "install-islands-confirm")
+                .iter()
+                .any(|m| matches!(
+                    m,
+                    SettingsMessage::Updates(Message::Islands(islands::Message::Install))
+                ))
+        );
+        assert!(
+            ui_click(&app, &mut native, "install-islands-cancel")
+                .iter()
+                .any(|m| matches!(
+                    m,
+                    SettingsMessage::Updates(Message::Islands(islands::Message::Cancel))
+                ))
+        );
+        native.capture(
+            app.settings_view(),
+            &theme,
+            &format!("islands-confirm-{suffix}"),
+        );
+        app.updates.islands.phase = islands::Phase::Idle;
+        app.desktop.islands.installation = Installation::Installed {
+            provenance: crate::desktop::islands::Provenance::Package,
+            enabled: false,
+            compatible: None,
+            status: Some(crate::desktop::islands::CompatibilityStatus::Disabled),
+            diagnostics: String::new(),
+        };
+        assert!(
+            ui_click(&app, &mut native, "enable-islands")
+                .iter()
+                .any(|m| matches!(
+                    m,
+                    SettingsMessage::Updates(Message::Islands(islands::Message::Enable))
+                ))
+        );
+        native.capture(
+            app.settings_view(),
+            &theme,
+            &format!("islands-enable-{suffix}"),
+        );
+        app.desktop.islands.installation = Installation::Absent;
         let messages = ui_click(&app, &mut native, "updates-check");
         assert!(
             messages
@@ -902,4 +966,144 @@ fn successful_check_timestamp_survives_failure_and_notes_use_stable_tags() {
     let (token, _) = updates.begin();
     updates.finish(token, Err(Failure::Offline));
     assert_eq!(updates.last_checked, checked);
+}
+
+#[tokio::test]
+async fn islands_simulation_rejects_unrelated_changes_and_ambiguous_results() {
+    let expected = format!(
+        "cosmic-ext-halcyon-islands;{};amd64;local",
+        enrollment::islands_version().unwrap()
+    );
+    for (info, packages, accepted) in [
+        (12, vec![expected.clone()], true),
+        (
+            12,
+            vec![expected.clone(), "unrelated;1;amd64;repo".into()],
+            false,
+        ),
+        (12, vec![expected.clone(), expected.clone()], false),
+        (11, vec![expected.clone()], false),
+        (13, vec![expected.clone()], false),
+        (20, vec![expected.clone()], false),
+        (
+            12,
+            vec!["cosmic-ext-halcyon-islands;999;amd64;local".into()],
+            false,
+        ),
+        (
+            12,
+            vec!["cosmic-ext-halcyon-islands;0.3.0;arm64;local".into()],
+            false,
+        ),
+        (12, vec![], false),
+    ] {
+        let bus = Bus::new();
+        let prepared =
+            enrollment::fixture_kind(bus.directory.join("islands"), enrollment::Kind::Islands);
+        let (_service, client, trace) = service(
+            &bus,
+            vec![Script {
+                info,
+                packages,
+                flags: 4,
+                files: 1,
+                delay_reply: true,
+                ..Default::default()
+            }],
+        )
+        .await;
+        assert_eq!(
+            packagekit::islands_preflight(&client, &prepared).await,
+            if accepted {
+                Ok(())
+            } else {
+                Err(Failure::DependencyChanges)
+            }
+        );
+        assert_eq!(
+            trace.lock().unwrap().calls,
+            ["CreateTransaction", "SetHints", "InstallFiles"]
+        );
+        assert!(
+            !prepared
+                .handed_off
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+    }
+}
+
+#[tokio::test]
+async fn islands_busy_or_failed_simulation_never_starts_installation() {
+    for error in [None, Some(2), Some(48), Some(5)] {
+        let bus = Bus::new();
+        let prepared =
+            enrollment::fixture_kind(bus.directory.join("islands"), enrollment::Kind::Islands);
+        let (_service, client, trace) = service(
+            &bus,
+            vec![Script {
+                error,
+                flags: 4,
+                files: 1,
+                ..Default::default()
+            }],
+        )
+        .await;
+        if error.is_none() {
+            trace
+                .lock()
+                .unwrap()
+                .active
+                .push(OwnedObjectPath::try_from("/other").unwrap());
+        }
+        let result = packagekit::islands_preflight(&client, &prepared).await;
+        assert_eq!(
+            result,
+            Err(match error {
+                None => Failure::Busy,
+                Some(2) => Failure::Offline,
+                Some(48) => Failure::Authorization,
+                _ => Failure::Untrusted,
+            })
+        );
+        if error.is_none() {
+            assert!(trace.lock().unwrap().calls.is_empty());
+        }
+        assert!(
+            !prepared
+                .handed_off
+                .load(std::sync::atomic::Ordering::Relaxed)
+        );
+    }
+}
+
+#[tokio::test]
+async fn islands_install_uses_one_file_and_keeps_unknown_outcome() {
+    let bus = Bus::new();
+    let prepared =
+        enrollment::fixture_kind(bus.directory.join("islands"), enrollment::Kind::Islands);
+    let (_service, client, _) = service(
+        &bus,
+        vec![Script {
+            files: 1,
+            finish: None,
+            ..Default::default()
+        }],
+    )
+    .await;
+    assert!(
+        tokio::time::timeout(
+            Duration::from_millis(100),
+            packagekit::install_on(&client, &prepared)
+        )
+        .await
+        .is_err()
+    );
+    assert!(
+        prepared
+            .handed_off
+            .load(std::sync::atomic::Ordering::Relaxed)
+    );
+    let path = prepared.paths[0].clone();
+    drop(prepared);
+    assert!(path.is_file());
 }

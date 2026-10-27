@@ -303,11 +303,22 @@ pub fn preferences(
     label: &str,
     change: impl FnOnce(&mut Value) -> Result<(), String>,
 ) -> Result<Value, String> {
+    preferences_guarded(path, label, None, change)
+}
+
+/// A read dependency participates in the store's commit-time conflict check,
+/// but is not owned or restored by this action's Undo.
+pub(crate) fn preferences_guarded(
+    path: &std::path::Path,
+    label: &str,
+    guard: Option<(&str, Option<Value>)>,
+    change: impl FnOnce(&mut Value) -> Result<(), String>,
+) -> Result<Value, String> {
     let before = config::parse_config_text(config::read_config_text(path)?.as_deref())?;
     let mut after = before.clone();
     change(&mut after)?;
     config::check_config_value(&after)?;
-    let patch = preference_patch(&before, &after)?;
+    let mut patch = preference_patch(&before, &after)?;
     if patch.is_empty() {
         complete_property(PROPERTY.with(|v| v.get()), label)?;
         return config::parse_config_text(config::read_config_text(path)?.as_deref());
@@ -320,6 +331,9 @@ pub fn preferences(
         }
         Ok(())
     })?;
+    if let Some((pointer, expected)) = guard {
+        patch.set(pointer, expected.clone(), expected)?;
+    }
     let store = preference_store(path).map_err(|error| error.to_string())?;
     let receipt = commit(
         &store,

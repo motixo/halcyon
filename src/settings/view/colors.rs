@@ -181,6 +181,7 @@ impl Settings {
                     } else {
                         "Show"
                     })
+                    .id(cosmic::widget::Id::new("colors-palettes"))
                     .trailing_icon(
                         icon::from_name(if self.wallpaper.palette_choices {
                             "go-up-symbolic"
@@ -191,7 +192,6 @@ impl Settings {
                     )
                     .on_press(edit(Edit::PaletteChoices(!self.wallpaper.palette_choices))),
                 )
-                .id(cosmic::widget::Id::new("colors-palettes"))
                 .into(),
             ));
             if self.wallpaper.palette_choices {

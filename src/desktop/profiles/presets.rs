@@ -47,7 +47,7 @@ struct Look {
 /// Corner radius COSMIC rounds into a pill at any bar size.
 const PILL: u32 = crate::desktop::panels::MAX_RADIUS;
 
-const LOOKS: [Look; 6] = [
+const LOOKS: [Look; 10] = [
     Look {
         id: "halcyon",
         name: "Everyday",
@@ -108,6 +108,46 @@ const LOOKS: [Look; 6] = [
         seed: [0xf1, 0x92, 0x95],
         light: false,
     },
+    Look {
+        id: "tidal",
+        name: "Tidal",
+        description: "A large, open clock with weather and music along the edge.",
+        family: Family::Soft,
+        wallpaper: "halcyon-calm",
+        palette: "teal",
+        seed: [0x6a, 0xc2, 0xc6],
+        light: false,
+    },
+    Look {
+        id: "paper-studio",
+        name: "Paper",
+        description: "An analog clock, a notebook and a focus timer on a warm, light desktop.",
+        family: Family::Paper,
+        wallpaper: "halcyon-paper",
+        palette: "amber",
+        seed: [0xd5, 0xa7, 0x76],
+        light: true,
+    },
+    Look {
+        id: "moss",
+        name: "Moss",
+        description: "Soft green panels for the time, weather and your music.",
+        family: Family::Soft,
+        wallpaper: "teal",
+        palette: "teal",
+        seed: [0x9d, 0xcf, 0xbe],
+        light: false,
+    },
+    Look {
+        id: "carbon",
+        name: "Carbon",
+        description: "A compact clock, system readings and projects with fine outlines.",
+        family: Family::Outline,
+        wallpaper: "graphite",
+        palette: "graphite",
+        seed: [0xa4, 0xc1, 0xdf],
+        light: false,
+    },
 ];
 
 /// Deep-merges `patch` into `base`; objects merge, everything else replaces.
@@ -166,6 +206,26 @@ fn record(look: &Look) -> Value {
         json!({"autohide":
         if matches!(look.id, "focus" | "evening") { "Always" } else { "Never" }}),
     );
+    // New looks state their Clock choices explicitly. Legacy IDs retain their
+    // original records so saved schedules do not acquire a different face.
+    let clock = match look.id {
+        "tidal" => Some(json!({"face":"digital","surface":"none","scale":150,
+            "alignment":"left","center_vertically":true,"weight":"light","italic":false})),
+        "paper-studio" => Some(json!({"face":"analog","surface":"panel","scale":100,
+            "alignment":"center","center_vertically":true,"weight":"normal","italic":false})),
+        "moss" => Some(json!({"face":"digital","surface":"panel","scale":120,
+            "alignment":"center","center_vertically":true,"weight":"normal","italic":false})),
+        "carbon" => Some(json!({"face":"digital","surface":"none","scale":90,
+            "alignment":"left","center_vertically":true,"weight":"normal","italic":false})),
+        _ => None,
+    };
+    if let Some(clock) = clock {
+        value["version"] = super::format::VERSION_9.into();
+        merge(
+            &mut value["widget_style"],
+            json!({"clock":clock,"clock_font":null,"appearance":{"color_policy":"wallpaper"}}),
+        );
+    }
     value
 }
 
@@ -184,7 +244,7 @@ pub fn islands_composition(id: &str) -> Option<Settings> {
                 ..Default::default()
             },
         ),
-        "focus" => (
+        "focus" | "tidal" => (
             Placement::Together,
             10,
             Together {
@@ -193,7 +253,7 @@ pub fn islands_composition(id: &str) -> Option<Settings> {
             },
             Separate::default(),
         ),
-        "paper" => (
+        "paper" | "paper-studio" => (
             Placement::Separate,
             24,
             Together::default(),
@@ -202,7 +262,7 @@ pub fn islands_composition(id: &str) -> Option<Settings> {
                 ..Default::default()
             },
         ),
-        "rose" => (
+        "rose" | "carbon" => (
             Placement::Separate,
             16,
             Together::default(),
@@ -211,7 +271,7 @@ pub fn islands_composition(id: &str) -> Option<Settings> {
                 ..Default::default()
             },
         ),
-        "calm" => (
+        "calm" | "moss" => (
             Placement::Together,
             28,
             Together {
@@ -243,10 +303,10 @@ pub fn islands_composition(id: &str) -> Option<Settings> {
 pub fn islands_description(id: &str) -> Option<&'static str> {
     Some(match id {
         "halcyon" => "Three islands, balanced across the panel",
-        "focus" => "A compact group in the center",
-        "paper" => "Three inset islands with soft square corners",
-        "rose" => "Two islands to the left, one to the right",
-        "calm" => "A relaxed center group with room between islands",
+        "focus" | "tidal" => "A compact group in the center",
+        "paper" | "paper-studio" => "Three inset islands with soft square corners",
+        "rose" | "carbon" => "Two islands to the left, one to the right",
+        "calm" | "moss" => "A relaxed center group with room between islands",
         "evening" => "A small group tucked to the right",
         _ => return None,
     })
@@ -255,6 +315,42 @@ pub fn islands_description(id: &str) -> Option<&'static str> {
 /// No content or account fields: switching the visible tools never erases data.
 fn composition(id: &str) -> Value {
     let (widgets, glance, weather, notes, music, focus, positions) = match id {
+        "tidal" => (
+            json!(["clock", "weather"]),
+            false,
+            false,
+            false,
+            true,
+            false,
+            json!({"clock":[0.04,0.09],"weather":[0.04,0.87],"music":[0.96,0.87]}),
+        ),
+        "paper-studio" => (
+            json!(["clock"]),
+            false,
+            false,
+            true,
+            false,
+            true,
+            json!({"clock":[0.05,0.1],"notes":[0.93,0.18],"focus":[0.93,0.87]}),
+        ),
+        "moss" => (
+            json!(["clock", "weather"]),
+            false,
+            false,
+            false,
+            true,
+            false,
+            json!({"clock":[0.08,0.13],"weather":[0.08,0.84],"music":[0.92,0.84]}),
+        ),
+        "carbon" => (
+            json!(["clock", "devbox", "projects"]),
+            false,
+            false,
+            false,
+            false,
+            false,
+            json!({"clock":[0.04,0.08],"devbox":[0.96,0.1],"projects":[0.96,0.9]}),
+        ),
         "halcyon" => (
             json!(["devbox"]),
             true,
@@ -311,15 +407,23 @@ fn composition(id: &str) -> Value {
         ),
         _ => unreachable!("known curated setup"),
     };
-    json!({"enabled_widgets": widgets, "widget_positions": positions,
+    let mut value = json!({"enabled_widgets": widgets, "widget_positions": positions,
         "glance": {"enabled":glance,"initialized":true,"show_clock":true,
             "show_weather":weather,"show_calendar":false},
-        "notes":{"enabled":notes},"music":{"enabled":music},"focus":{"enabled":focus}})
+        "notes":{"enabled":notes},"music":{"enabled":music},"focus":{"enabled":focus}});
+    if id == "paper-studio" {
+        value["widget_sizes"] = json!({"clock":[320,340]});
+    }
+    value
 }
 
 /// Short, purpose-led labels for the setup browser; stable IDs are internal.
 pub fn occasion(id: &str) -> &'static str {
     match id {
+        "tidal" => "Open space",
+        "paper-studio" => "A light workspace",
+        "moss" => "Music and weather",
+        "carbon" => "System at a glance",
         "halcyon" => "A little of everything",
         "calm" => "Start gently",
         "focus" => "Make room to concentrate",
@@ -358,8 +462,92 @@ pub fn presets() -> Vec<Preset> {
         .collect()
 }
 
+/// Additional studio layouts do not change the first-run wizard's choices.
+pub fn studio_presets() -> Vec<Preset> {
+    presets().into_iter().chain([spine(), ridge()]).collect()
+}
+fn ridge() -> Preset {
+    let mut profile = presets()
+        .into_iter()
+        .find(|p| p.id == "tidal")
+        .unwrap()
+        .profile;
+    profile.version = super::format::VERSION_11;
+    profile.name = "Ridge".into();
+    profile
+        .wallpaper
+        .as_mut()
+        .unwrap()
+        .background
+        .as_mut()
+        .unwrap()
+        .source = Some(super::SourceLook::Bundled("halcyon-ridge".into()));
+    for bar in [&mut profile.panel, &mut profile.dock]
+        .into_iter()
+        .flatten()
+    {
+        bar.autohide = Some(crate::desktop::panels::AutoHide::Always);
+    }
+    profile.widget_style.as_mut().unwrap()["clock"] = json!({"face":"digital","surface":"none","depth":true,"scale":200,"weight":"bold","italic":false,"alignment":"center","center_vertically":false});
+    profile.widget_layout = Some(
+        json!({"enabled_widgets":["clock"],"widget_positions":{"clock":[0.5,0.25]},"widget_sizes":{"clock":[800,330]},"glance":{"enabled":false,"initialized":true},"notes":{"enabled":false},"music":{"enabled":false},"focus":{"enabled":false}}),
+    );
+    profile.validate().expect("Ridge is a valid prepared setup");
+    Preset {
+        id: "ridge",
+        description: "A quiet landscape with a clock behind the mountain. Bars hide until needed.",
+        profile,
+    }
+}
+fn spine() -> Preset {
+    let mut profile = presets()
+        .into_iter()
+        .find(|p| p.id == "carbon")
+        .unwrap()
+        .profile;
+    profile.name = "Spine".into();
+    let panel = profile.panel.as_mut().unwrap();
+    panel.anchor = Some(crate::desktop::panels::Anchor::Left);
+    panel.size = Some(crate::desktop::panels::PanelSize::M);
+    panel.extend = Some(true);
+    panel.floating = Some(true);
+    panel.margin = Some(8);
+    panel.padding = Some(4);
+    panel.border_radius = Some(14);
+    panel.islands = Some(Settings::default());
+    panel.island_gap = None;
+    profile.dock.as_mut().unwrap().autohide = Some(crate::desktop::panels::AutoHide::Always);
+    profile
+        .wallpaper
+        .as_mut()
+        .unwrap()
+        .background
+        .as_mut()
+        .unwrap()
+        .source = Some(super::SourceLook::Bundled("halcyon-workbench".into()));
+    profile.widget_layout = Some(json!({
+        "enabled_widgets":["clock","weather","devbox"],
+        "widget_positions":{"clock":[0.32,0.10],"weather":[0.32,0.86],"devbox":[0.96,0.10]},
+        "widget_sizes":{}, "glance":{"enabled":false,"initialized":true},
+        "notes":{"enabled":false},"music":{"enabled":false},"focus":{"enabled":false}
+    }));
+    profile.widget_style.as_mut().unwrap()["clock"]["scale"] = 125.into();
+    profile.validate().expect("Spine is a valid portable setup");
+    Preset {
+        id: "spine",
+        description: "A standard vertical panel with time, weather and system readings.",
+        profile,
+    }
+}
+
 /// The built-in preset with `id`, including the earlier releases' names.
 pub fn preset(id: &str) -> Option<Preset> {
+    if id == "ridge" {
+        return Some(ridge());
+    }
+    if id == "spine" {
+        return Some(spine());
+    }
     let id = RENAMED
         .iter()
         .find(|(old, _)| *old == id)
@@ -462,6 +650,106 @@ pub fn missing(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn fb13_spine_stays_out_of_wizard_and_blocks_vertical_islands_without_mutation() {
+        use crate::desktop::panels::{Anchor, PanelDraft, PanelKind};
+        use crate::desktop::profiles::{Domain, Installed, apply, plan};
+        let spine = super::preset("spine").unwrap();
+        assert!(super::presets().iter().all(|p| p.id != "spine"));
+        assert_eq!(super::studio_presets().len(), super::presets().len() + 2);
+        assert_eq!(
+            spine.profile.panel.as_ref().unwrap().anchor,
+            Some(Anchor::Left)
+        );
+        let (fixture, store) = desk("spine");
+        crate::desktop::islands::fixture_installed(&fixture.0);
+        let key = crate::desktop::islands::key(PanelKind::Panel);
+        let mut current = dock_islands_core::Settings::default();
+        current.enabled = true;
+        fixture.user(
+            key.namespace(),
+            key.key(),
+            &ron::to_string(&current).unwrap(),
+        );
+        let selected = [Domain::Panel].into_iter().collect();
+        let before = fixture.tree();
+        let blocked = plan(
+            &store,
+            &Installed::discover(&store),
+            &spine.profile,
+            &selected,
+        );
+        assert!(!blocked.can_apply());
+        assert!(
+            blocked
+                .blocking_reasons()
+                .iter()
+                .any(|s| s.contains("Turn off Islands"))
+        );
+        assert_eq!(fixture.tree(), before);
+        current.enabled = false;
+        fixture.user(
+            key.namespace(),
+            key.key(),
+            &ron::to_string(&current).unwrap(),
+        );
+        let ready = plan(
+            &store,
+            &Installed::discover(&store),
+            &spine.profile,
+            &selected,
+        );
+        assert!(ready.can_apply(), "{:?}", ready.blocking_reasons());
+        assert!(
+            ready.patch().guards().any(|(guard, _)| guard == &key),
+            "enablement must be guarded"
+        );
+        current.enabled = true;
+        fixture.user(
+            key.namespace(),
+            key.key(),
+            &ron::to_string(&current).unwrap(),
+        );
+        assert!(
+            apply(&store, &ready).is_err(),
+            "concurrent enable must conflict"
+        );
+        current.enabled = false;
+        fixture.user(
+            key.namespace(),
+            key.key(),
+            &ron::to_string(&current).unwrap(),
+        );
+        let ready = plan(
+            &store,
+            &Installed::discover(&store),
+            &spine.profile,
+            &selected,
+        );
+        let before = PanelDraft::load(&store, PanelKind::Panel).unwrap();
+        apply(&store, &ready).unwrap();
+        assert_eq!(
+            PanelDraft::load(&store, PanelKind::Panel)
+                .unwrap()
+                .anchor()
+                .known(),
+            Some(&Anchor::Left)
+        );
+        assert_eq!(
+            PanelDraft::load(&store, PanelKind::Panel)
+                .unwrap()
+                .applets(),
+            before.applets()
+        );
+        store
+            .undo_latest(&store.latest_change().unwrap().unwrap().id)
+            .unwrap();
+        assert_eq!(
+            PanelDraft::load(&store, PanelKind::Panel).unwrap().anchor(),
+            before.anchor()
+        );
+    }
+
     use super::*;
     use crate::desktop::profiles::{Domain, Installed, ProfileLibrary, apply, plan};
     use crate::desktop::store::tests::Fixture;
@@ -493,9 +781,11 @@ mod tests {
         std::fs::create_dir_all(&bundled).unwrap();
         for (name, _) in crate::desktop::wallpaper::BUNDLED {
             std::fs::copy(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join(format!("assets/wallpapers/{name}.jpg")),
-                bundled.join(format!("{name}.jpg")),
+                crate::desktop::wallpaper::bundled_path(
+                    &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wallpapers"),
+                    name,
+                ),
+                crate::desktop::wallpaper::bundled_path(&bundled, name),
             )
             .unwrap();
         }
@@ -514,11 +804,96 @@ mod tests {
     }
 
     #[test]
+    fn fb10_new_looks_are_versioned_portable_choices_and_keep_legacy_ids() {
+        for (id, face, surface) in [
+            ("tidal", "digital", "none"),
+            ("paper-studio", "analog", "panel"),
+            ("moss", "digital", "panel"),
+            ("carbon", "digital", "none"),
+        ] {
+            let p = preset(id).unwrap();
+            assert_eq!(p.profile.version, super::super::format::VERSION_9);
+            let style = p.profile.widget_style.as_ref().unwrap();
+            assert_eq!(style["clock"]["face"], face);
+            assert_eq!(style["clock"]["surface"], surface);
+            assert!(style.get("location").is_none());
+            assert!(style.get("notes").is_none());
+            let exported = super::super::export(&p.profile).unwrap();
+            assert!(exported.omitted.is_empty());
+            let loaded = import(&exported.bytes).unwrap();
+            assert_eq!(loaded.widget_style, p.profile.widget_style);
+            assert_eq!(loaded.widget_layout, p.profile.widget_layout);
+            assert!(
+                serde_json::to_value(loaded.panel.unwrap())
+                    .unwrap()
+                    .get("output")
+                    .is_none()
+            );
+        }
+        for id in ["halcyon", "calm", "evening", "focus", "paper", "rose"] {
+            let p = preset(id).unwrap();
+            assert!(
+                p.profile.widget_style.unwrap().get("clock").is_none(),
+                "{id}"
+            );
+        }
+        assert_eq!(preset("paper").unwrap().profile.name, "Writing desk");
+        assert_eq!(preset("minimal").unwrap(), preset("focus").unwrap());
+    }
+
+    #[test]
+    fn fb10_looks_replace_explicit_color_policy_and_clock_style_without_content_loss() {
+        let (_fixture, store) = desk("fb10-colors");
+        let path = store.app_config().unwrap();
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        value["appearance"]["color_policy"] = json!("custom");
+        value["clock_font"] = json!("Uninstalled personal font");
+        value["clock"] =
+            json!({"face":"analog","surface":"panel","format_24h":false,"show_date":false});
+        let before = serde_json::to_vec_pretty(&value).unwrap();
+        std::fs::write(&path, &before).unwrap();
+        let installed = Installed::discover(&store);
+        let dir = crate::desktop::wallpaper::bundled_dir(&store);
+        for (id, face) in [
+            ("tidal", "digital"),
+            ("paper-studio", "analog"),
+            ("moss", "digital"),
+            ("carbon", "digital"),
+        ] {
+            let config = crate::config::Config::from_bytes(&before).unwrap();
+            let p = fitted(preset(id).unwrap(), &config, &dir, false).profile;
+            let change = apply(
+                &store,
+                &plan(&store, &installed, &p, &p.domains().into_iter().collect()),
+            )
+            .unwrap();
+            let current: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+            assert_eq!(current["appearance"]["color_policy"], "wallpaper", "{id}");
+            assert_eq!(current["clock"]["face"], face, "{id}");
+            assert_eq!(current["clock"]["format_24h"], false);
+            assert_eq!(current["clock"]["show_date"], false);
+            assert!(current["clock_font"].is_null());
+            for key in ["location", "project_roots", "future_field"] {
+                assert_eq!(current[key], value[key]);
+            }
+            store.undo_latest(&change.id).unwrap();
+            assert_eq!(std::fs::read(&path).unwrap(), before, "{id}: Undo");
+        }
+    }
+
+    #[test]
     fn writing_desk_and_dark_setup_apply_readable_wallpaper_ink() {
         let (_fixture, store) = desk("preset-wallpaper-ink");
         let installed = Installed::discover(&store);
         let dir = crate::desktop::wallpaper::bundled_dir(&store);
-        for (id, light) in [("paper", true), ("halcyon", false)] {
+        for (id, light) in [
+            ("paper", true),
+            ("halcyon", false),
+            ("tidal", false),
+            ("paper-studio", true),
+            ("moss", false),
+            ("carbon", false),
+        ] {
             let config = crate::config::Config::from_bytes(
                 &std::fs::read(store.app_config().unwrap()).unwrap(),
             )
@@ -551,7 +926,17 @@ mod tests {
         assert_eq!(
             ids,
             [
-                "halcyon", "calm", "evening", "focus", "paper", "rose", CLEAN
+                "halcyon",
+                "calm",
+                "evening",
+                "focus",
+                "paper",
+                "rose",
+                "tidal",
+                "paper-studio",
+                "moss",
+                "carbon",
+                CLEAN
             ]
         );
         let installed = Installed::discover(&store);
@@ -998,7 +1383,18 @@ mod tests {
             crate::config::Config::from_bytes(&std::fs::read(store.app_config().unwrap()).unwrap())
                 .unwrap();
         let original = std::fs::read(store.app_config().unwrap()).unwrap();
-        for id in ["halcyon", "calm", "evening", "focus", "paper", "rose"] {
+        for id in [
+            "tidal",
+            "paper-studio",
+            "moss",
+            "carbon",
+            "halcyon",
+            "calm",
+            "evening",
+            "focus",
+            "paper",
+            "rose",
+        ] {
             let p = fitted(preset(id).unwrap(), &config, &dir, false).profile;
             let selected = p.domains().into_iter().collect();
             let plan = plan(&store, &installed, &p, &selected);

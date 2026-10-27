@@ -90,7 +90,7 @@ impl Settings {
             ));
         }
         container(column::with_children(items).spacing(4))
-            .padding([12, 22, 0, 22])
+            .padding([8, 20, 0, 20])
             .width(Length::Fill)
             .into()
     }
@@ -118,7 +118,7 @@ impl Settings {
                     )))
                     .class(nav_style(selected, self.settings_accent()))
                     .selected(selected)
-                    .padding([9, 12])
+                    .padding([7, 10])
                     .on_press(Message::Page(page))
                     .into()
                 })

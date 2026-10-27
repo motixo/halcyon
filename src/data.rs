@@ -37,7 +37,7 @@ pub struct WeatherSnapshot {
     pub weather: Weather,
 }
 impl WeatherSnapshot {
-    fn path() -> Option<PathBuf> {
+    pub(crate) fn path() -> Option<PathBuf> {
         std::env::var_os("DESKTOP_CARDS_CACHE_DIR")
             .map(PathBuf::from)
             .or_else(crate::paths::cache_dir)
@@ -54,7 +54,7 @@ impl WeatherSnapshot {
         .then_some(snapshot)
     }
     /// Owner-only: the cache names the chosen city and its coordinates.
-    fn save_at(&self, path: &Path) -> Result<(), String> {
+    pub(crate) fn save_at(&self, path: &Path) -> Result<(), String> {
         let bytes = serde_json::to_vec(self).map_err(|e| e.to_string())?;
         crate::tools::write_private(path, &bytes)?;
         // A cache folder made by an older version may be readable by others.
@@ -70,14 +70,22 @@ pub async fn fetch_weather(loc: &Location) -> Result<WeatherSnapshot, String> {
     let client = CLIENT
         .get_or_init(|| {
             reqwest::Client::builder()
-                .timeout(Duration::from_secs(20))
+                .timeout(crate::providers::weather::DEADLINE)
                 .build()
                 .map_err(|e| e.to_string())
         })
         .as_ref()
         .map_err(Clone::clone)?;
-    let weather = client
-        .get("https://api.open-meteo.com/v1/forecast")
+    fetch_weather_from(client, "https://api.open-meteo.com/v1/forecast", loc).await
+}
+
+async fn fetch_weather_from(
+    client: &reqwest::Client,
+    endpoint: &str,
+    loc: &Location,
+) -> Result<WeatherSnapshot, String> {
+    let mut response = client
+        .get(endpoint)
         .query(&[
             ("latitude", loc.latitude.to_string()),
             ("longitude", loc.longitude.to_string()),
@@ -93,26 +101,37 @@ pub async fn fetch_weather(loc: &Location) -> Result<WeatherSnapshot, String> {
         .await
         .map_err(|e| e.to_string())?
         .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
         .map_err(|e| e.to_string())?;
-    let snapshot = WeatherSnapshot {
+    const MAX_BYTES: usize = 256 * 1024;
+    if response
+        .content_length()
+        .is_some_and(|len| len > MAX_BYTES as u64)
+    {
+        return Err("Weather response is too large".into());
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if chunk.len() > MAX_BYTES - bytes.len() {
+            return Err("Weather response is too large".into());
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(WeatherSnapshot {
         location: loc.clone(),
         updated_at: chrono::Local::now().to_rfc3339(),
-        weather,
-    };
-    tokio::task::spawn_blocking(move || {
-        if let Some(path) = WeatherSnapshot::path() {
-            if let Err(error) = snapshot.save_at(&path) {
-                eprintln!("Weather cache: {error}");
-            }
-        }
-        snapshot
+        weather: serde_json::from_slice(&bytes).map_err(|e| e.to_string())?,
     })
-    .await
-    .map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+pub(crate) async fn test_fetch_weather(
+    client: &reqwest::Client,
+    endpoint: &str,
+    location: &Location,
+) -> Result<WeatherSnapshot, String> {
+    fetch_weather_from(client, endpoint, location).await
+}
+
 pub fn weather_description(code: u32) -> &'static str {
     match code {
         0 => "Clear skies",

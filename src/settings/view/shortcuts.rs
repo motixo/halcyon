@@ -234,13 +234,14 @@ impl Settings {
             .into(),
         );
         if let Some(form) = &editor.form {
-            items.push(command_form(
-                form,
-                editor.recording(),
-                editor.recording_error.as_deref(),
+            items.push(self.inspector_layout(
+                self.shortcut_list(&rows),
+                command_form(form, editor.recording(), editor.recording_error.as_deref()),
+                "shortcuts",
             ));
+        } else {
+            items.push(self.shortcut_list(&rows));
         }
-        items.push(self.shortcut_list(&rows));
         column::with_children(items).spacing(16).into()
     }
 

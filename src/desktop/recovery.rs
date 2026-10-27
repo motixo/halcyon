@@ -451,12 +451,19 @@ fn capture(store: &DesktopStore, requested: BaselineKind) -> Result<BaselineInfo
         .map(|path| read_path(path, MAX_MANIFEST_BYTES))
         .transpose()?
         .flatten();
-    let app: serde_json::Value = match &app_bytes {
+    let mut app: serde_json::Value = match &app_bytes {
         Some((bytes, _)) => serde_json::from_slice(bytes).map_err(failed)?,
         None => serde_json::json!({}),
     };
     if !app.is_object() {
         return Err(failed("app settings are not a JSON object"));
+    }
+    if let Some(path) = store.app_config()
+        && let Some(text) = crate::design::storage::read(path).map_err(failed)?
+    {
+        app = crate::design::Document::parse(text.as_bytes())
+            .and_then(|d| d.project(&app))
+            .map_err(failed)?;
     }
     // Absence of the new baseline is never evidence of a fresh installation.
     // Only absent app configuration AND absent prior mutation/setup evidence

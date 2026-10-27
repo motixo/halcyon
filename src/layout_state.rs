@@ -102,6 +102,11 @@ impl Snapshot {
     }
 }
 
+/// A public reference canvas. Never reads the desktop geometry cache.
+pub(crate) fn public_preview(config: &Config) -> Snapshot {
+    project(default_positions(fallback(config), config), config)
+}
+
 fn fallback(config: &Config) -> Snapshot {
     Snapshot {
         monitors: Default::default(),
@@ -114,9 +119,9 @@ fn fallback(config: &Config) -> Snapshot {
                 natural_size: None,
                 key: widget.key().into(),
                 size: match widget {
-                    Widget::Clock => [490., 200.],
+                    Widget::Clock => crate::widget_presentation::CLOCK_SIZE,
                     Widget::Calendar => [360., 320.],
-                    Widget::Weather => [360., 180.],
+                    Widget::Weather => crate::widget_presentation::WEATHER_SIZE,
                     Widget::Devbox => [360., devbox_content_height(&config.devbox, 0)],
                     Widget::Projects => [360., 200.],
                     Widget::Glance => [config.glance.auto_width(config.glance_panel()), 220.],

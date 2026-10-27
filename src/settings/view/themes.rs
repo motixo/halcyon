@@ -151,7 +151,7 @@ impl Settings {
         let editor = &self.profiles;
         let look = self.look();
         let mut rows = vec![split(
-            heading("Theme & colors", "Make your desktop feel like home."),
+            heading("Theme & colors", ""),
             button::standard("Choose theme…")
                 .id(cosmic::widget::Id::new("theme-browse-styles"))
                 .on_press(Message::StyleBrowser(true))
@@ -245,24 +245,11 @@ impl Settings {
             .on_press(Message::Page(Page::DesktopAppearance))
             .into(),
         ]));
-        if self.window.width >= 1120. && self.scene_open() {
-            rows.push(
-                row::with_children(vec![
-                    container(self.theme_stage(&look))
-                        .width(Length::FillPortion(1))
-                        .into(),
-                    container(column::with_children(controls).spacing(16))
-                        .width(Length::FillPortion(1))
-                        .into(),
-                ])
-                .spacing(24)
-                .align_y(Alignment::Start)
-                .into(),
-            );
-        } else {
-            rows.push(self.theme_stage(&look));
-            rows.extend(controls);
-        }
+        rows.push(self.inspector_layout(
+            self.theme_stage(&look),
+            column::with_children(controls).spacing(16).into(),
+            "theme",
+        ));
         if let Some(p) = editor.profile().filter(|p| !p.appearance_only) {
             rows.push(banner(
                 format!("“{}” is a desktop setup. Review it in Setups.", p.name),
@@ -329,15 +316,7 @@ impl Settings {
     fn theme_stage(&self, look: &Look) -> Element<'_, Message> {
         // Size the scene for its column, keeping the whole display visible
         // inside a short window. Wide windows put routine controls beside it.
-        let screen = self.placement.preview_snapshot().screen;
-        let ratio = (screen[1] / screen[0].max(1.)).clamp(0.4, 0.8);
-        let width = (self.window.width - 184. - 44.).max(320.);
-        let width = if self.window.width >= 1120. {
-            (width - 24.) * 0.5
-        } else {
-            width
-        };
-        let height = (width * ratio).min((self.window.height - 250.).max(180.));
+        let height = self.stage_height();
         let scene = if self.scene_open() {
             self.profile_preview(height)
         } else {

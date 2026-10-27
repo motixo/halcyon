@@ -316,6 +316,11 @@ impl AutomationEditor {
             .into_iter()
             .map(|preset| (ProfileRef::Preset(preset.id.into()), preset.profile.name))
             .collect();
+        choices.extend(
+            crate::moments::Phase::ALL
+                .into_iter()
+                .map(|p| (ProfileRef::Moment(p), format!("{} moment", p.title()))),
+        );
         if let Ok(entries) = ProfileLibrary::new(store).list() {
             choices.extend(entries.into_iter().filter_map(|entry| {
                 let profile = entry.profile.ok()?;
@@ -365,6 +370,7 @@ impl AutomationEditor {
             return None;
         }
         Some(match &rule.profile {
+            ProfileRef::Moment(phase) => format!("{} moment is unavailable", phase.title()),
             ProfileRef::Saved(_) => format!("“{}” was deleted", rule.name),
             ProfileRef::Preset(_) => format!("“{}” isn’t available", rule.name),
         })

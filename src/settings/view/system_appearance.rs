@@ -55,13 +55,10 @@ fn swatch<'a>(value: Color, size: u16) -> Element<'a, Message> {
 }
 /// Field label column: fixed width so controls line up.
 fn field<'a>(title: &'static str, control: Element<'a, Message>) -> Element<'a, Message> {
-    row::with_children(vec![
-        container(label(title, 13., FG)).width(132).into(),
-        container(control).width(Length::Fill).into(),
-    ])
-    .spacing(12)
-    .align_y(Alignment::Center)
-    .into()
+    column::with_children(vec![label(title, 13., FG), control])
+        .spacing(6)
+        .width(Length::Fill)
+        .into()
 }
 fn choice<'a, T: PartialEq + Copy>(
     setting: &Setting<T>,
@@ -103,10 +100,7 @@ impl Settings {
         let accent = self.appearance_accent();
         let editor = &self.system_appearance;
         let title = split(
-            heading(
-                "Fonts & icons",
-                "Global desktop settings · completed choices apply directly",
-            ),
+            heading("Fonts & icons", ""),
             super::windows::store_pill(editor.store(), accent),
         );
         let Some(draft) = editor.draft() else {
@@ -234,25 +228,31 @@ impl Settings {
             ));
         }
         let scene = if self.scene_open() {
-            container(sample_window(draft.preview(editor.variant), draft, 128.))
-                .width(Length::Fill)
-                .max_width(360)
-                .into()
+            container(sample_window(
+                draft.preview(editor.variant),
+                draft,
+                self.stage_height().min(240.),
+            ))
+            .width(Length::Fill)
+            .max_width(640)
+            .into()
         } else {
             cosmic::widget::space().height(0).into()
         };
-        items.push(self.scene_frame(
-            scene,
-            &format!(
-                "{} color preview · desktop mode stays {} until you change Mode",
-                editor.variant.title(),
-                draft.active_variant().title(),
+        items.push(
+            self.inspector_layout(
+                self.scene_frame(scene, "Sample · global desktop appearance"),
+                column::with_children(vec![
+                    self.search_target("appearance-fonts", self.appearance_type(draft)),
+                    self.search_target("appearance-colors", self.appearance_colors(draft)),
+                    self.appearance_window(draft),
+                    self.search_target("appearance-effects", self.appearance_effects(draft)),
+                ])
+                .spacing(16)
+                .into(),
+                "fonts",
             ),
-        ));
-        items.push(self.search_target("appearance-fonts", self.appearance_type(draft)));
-        items.push(self.search_target("appearance-colors", self.appearance_colors(draft)));
-        items.push(self.appearance_window(draft));
-        items.push(self.search_target("appearance-effects", self.appearance_effects(draft)));
+        );
         column::with_children(items).spacing(16).into()
     }
 

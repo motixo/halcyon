@@ -14,6 +14,62 @@ import practical_release as policy
 import release_gate
 
 class Release(unittest.TestCase):
+    def test_scoped_final_review_binds_artifacts_and_only_its_release(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); proof=root/'checks.zip'; proof.write_bytes(b'SYNTHETIC TEST ONLY')
+            bindings={'packages':{'main':{'sha256':'1'*64},'islands':{'sha256':'2'*64}}}
+            data=dict(release='0.4.0',artifacts={'checks.zip':dict(kind='native-evidence',sha256=digest(proof))})
+            record=dict(format='halcyon-final-package-review',version=1,
+                decision='approve-release',release='0.4.0',
+                policy_sha256=policy.identity(policy.POLICY),bindings=bindings,
+                limitations=policy.FINAL_LIMITATIONS,
+                observations=dict(installation='passed',settings='passed'),
+                scope=dict(environment='native-settings-and-offline-package-upgrade',cosmic_family='1.11',image_sha256='3'*64),
+                evidence=dict(file='checks.zip',sha256=digest(proof)),review_reference='SYNTHETIC')
+            reviewed=root/'reviewed.json'
+            with patch.dict(policy.FINAL_REVIEWS,{'0.4.0':reviewed},clear=True):
+                with self.assertRaisesRegex(ValueError,'review_pending'):
+                    policy.final_package_review(root,data,bindings)
+                reviewed.write_bytes(canonical(record))
+                result=policy.final_package_review(root,data,bindings)
+                self.assertEqual(result['final_package_review_sha256'],digest(reviewed))
+                self.assertNotIn('final_native_acceptance_sha256',result)
+                with self.assertRaisesRegex(ValueError,'review_pending'):
+                    policy.final_package_review(root,{**data,'release':'0.4.1'},bindings)
+                with self.assertRaisesRegex(ValueError,'acceptance_pending'):
+                    policy.final_native_acceptance(root,data,bindings)
+                for key,value in [('decision','PENDING'),('release','0.4.1'),
+                    ('policy_sha256','0'*64),('bindings',{}),('limitations',[]),
+                    ('scope',{}),('evidence',{}),('review_reference',' '),
+                    ('observations',{'installation':'passed','settings':'passed','startup':'passed'})]:
+                    with self.subTest(key=key):
+                        reviewed.write_bytes(canonical({**record,key:value}))
+                        with self.assertRaises(ValueError):policy.final_package_review(root,data,bindings)
+                reviewed.write_bytes(canonical(record));proof.write_bytes(b'changed evidence')
+                with self.assertRaisesRegex(ValueError,'review_evidence_mismatch'):
+                    policy.final_package_review(root,data,bindings)
+
+    def test_candidate_download_pin_binds_exact_companion_before_publication(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            name = 'cosmic-ext-halcyon-islands_0.4.0_amd64.deb'
+            artifact = root/name
+            artifact.write_bytes(b'SYNTHETIC PIN TEST ONLY')
+            pin = dict(format='halcyon-islands-download', version=1,
+                       main_version='0.4.0', package_version='0.4.0', tag='v0.4.0',
+                       sha256=digest(artifact), bytes=artifact.stat().st_size)
+            data = dict(release='0.4.0', islands_package=name,
+                        artifacts={name:dict(kind='islands-deb',sha256=digest(artifact))})
+            policy.verify_download_pin(root, data, pin)
+            for key, value in [('format','unknown'), ('version',2), ('main_version','0.3.0'),
+                               ('package_version','0.3.0'), ('tag','v0.3.0'),
+                               ('sha256','0'*64), ('bytes',1)]:
+                with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'download_pin_mismatch'):
+                    policy.verify_download_pin(root, data, {**pin,key:value})
+            artifact.write_bytes(b'CHANGED BYTES')
+            with self.assertRaisesRegex(ValueError, 'download_pin_mismatch'):
+                policy.verify_download_pin(root, data, pin)
+
     def test_fresh_native_acceptance_requires_reviewed_source_and_exact_artifacts(self):
         # Schema/byte-binding test only. This fixture is never native evidence.
         with tempfile.TemporaryDirectory() as temporary:

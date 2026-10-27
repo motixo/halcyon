@@ -1,23 +1,30 @@
+mod adaptive;
 mod automation;
 mod calendar;
+mod canvas;
 mod color_well;
 mod colors;
+mod design;
 mod desktop;
 mod desktop_icons;
+mod help;
 pub(super) mod home;
 mod layered;
 mod materials;
+mod moments;
 mod motion;
 mod navigation;
 mod pages;
 mod preview;
 mod privacy;
 pub(super) mod profiles;
+mod recipes;
 mod recovery;
 mod reveal;
 mod sample;
 mod scene;
 mod setup;
+pub(super) mod sharing;
 mod shortcuts;
 mod sidebar;
 mod slider_completion;
@@ -149,10 +156,7 @@ fn detail<'a>(title: impl Into<String>, description: impl Into<String>) -> Eleme
         .into()
 }
 fn split<'a>(left: Element<'a, Message>, right: Element<'a, Message>) -> Element<'a, Message> {
-    row::with_children(vec![container(left).width(Length::Fill).into(), right])
-        .spacing(12)
-        .align_y(Alignment::Center)
-        .into()
+    adaptive::field(left, right)
 }
 fn switch<'a>(
     title: &'static str,
@@ -236,6 +240,9 @@ pub(super) fn segmented<'a>(
         .into_iter()
         .map(|(title, selected, message)| {
             let id = match &message {
+                Some(Message::DesktopEditor(crate::settings::desktop::Message::RadiusChoice(
+                    radius,
+                ))) => cosmic::widget::Id::new(format!("native-bar-radius-{radius}")),
                 Some(Message::DesktopEditor(
                     crate::settings::desktop::Message::Islands(
                         crate::settings::desktop::islands::Edit::Enabled(true),
@@ -338,51 +345,115 @@ impl Settings {
         title: &'static str,
         explanation: &'static str,
     ) -> Element<'_, Message> {
-        let open = self.help_open == Some(key);
-        let mut parts = vec![
-            row::with_children(vec![
-                label(title, 14., FG),
-                cosmic::widget::tooltip(
-                    button::custom(container(label("?", 12., MUTED)).center_x(24).center_y(24))
-                        .id(cosmic::widget::Id::new(format!("help-{key}")))
-                        .class(chip_style(open, self.settings_accent()))
-                        .width(24)
-                        .height(24)
-                        .padding(0)
-                        .on_press(Message::ToggleHelp(key)),
-                    container(
-                        text::body(if open {
-                            "Hide explanation"
-                        } else {
-                            explanation
-                        })
-                        .size(12),
-                    )
-                    .max_width(320),
-                    cosmic::widget::tooltip::Position::Top,
-                )
-                .into(),
-            ])
-            .spacing(6)
-            .align_y(Alignment::Center)
-            .into(),
-        ];
-        if open {
-            parts.push(
-                container(label(explanation, 12., MUTED))
-                    .id(cosmic::widget::Id::new(format!("help-text-{key}")))
-                    .into(),
-            );
-        }
-        column::with_children(parts)
-            .spacing(5)
-            .width(Length::Fill)
-            .into()
+        row::with_children(vec![
+            label(title, 14., FG),
+            help::explanation(key, title, explanation, self.help_open == Some(key)),
+        ])
+        .spacing(6)
+        .align_y(Alignment::Center)
+        .into()
     }
-    fn settings_accent(&self) -> Color {
+    fn disclosure<'a>(
+        &'a self,
+        key: &'static str,
+        title: &'static str,
+        content: Element<'a, Message>,
+    ) -> Element<'a, Message> {
+        let open = self.open_sections.contains(key);
+        column::with_children(vec![
+            button::text(title)
+                .id(cosmic::widget::Id::new(key))
+                .trailing_icon(
+                    icon::from_name(if open {
+                        "go-up-symbolic"
+                    } else {
+                        "go-down-symbolic"
+                    })
+                    .size(16),
+                )
+                .on_press(Message::ToggleSection(key))
+                .into(),
+            reveal::reveal(
+                content,
+                open,
+                self.config.settings_animations && self.system_animations,
+            ),
+        ])
+        .spacing(6)
+        .into()
+    }
+    fn sidebar_width(&self) -> f32 {
+        // Keep more working room at the supported compact window size.
+        (self.window.width * 0.2).clamp(164., 184.)
+    }
+    fn content_width(&self) -> f32 {
+        (self.window.width - self.sidebar_width() - 40.).max(240.)
+    }
+    fn inspector_height(&self) -> f32 {
+        (self.window.height - 260.).max(260.)
+    }
+    fn stage_width(&self) -> f32 {
+        let width = self.content_width();
+        if width >= 584. {
+            width - (width * 0.38).clamp(248., 312.) - 16.
+        } else {
+            width
+        }
+    }
+    fn stage_height(&self) -> f32 {
+        (self.stage_width() * 0.625).clamp(180., self.inspector_height() - 48.)
+    }
+    fn inspector_layout<'a>(
+        &'a self,
+        stage: Element<'a, Message>,
+        controls: Element<'a, Message>,
+        id: &'static str,
+    ) -> Element<'a, Message> {
+        adaptive::columns(
+            container(stage)
+                .id(cosmic::widget::Id::new(format!("{id}-stage")))
+                .width(Length::Fill)
+                .into(),
+            container(
+                scrollable(
+                    container(controls)
+                        .padding([0, 8, 12, 0])
+                        .width(Length::Fill),
+                )
+                .id(cosmic::widget::Id::new(format!("{id}-scroll")))
+                .height(Length::Shrink),
+            )
+            .max_height(self.inspector_height())
+            .width(Length::Fill)
+            .id(cosmic::widget::Id::new(format!("{id}-inspector")))
+            .into(),
+            [
+                320.,
+                if matches!(id, "theme" | "fonts") && self.color_well.is_some() {
+                    // 300 px picker, 28 px card padding, 48 px enclosing
+                    // section padding and the 8 px scroll gutter.
+                    384.
+                } else {
+                    248.
+                },
+            ],
+            true,
+        )
+    }
+    fn setting_columns<'a>(
+        &'a self,
+        left: Element<'a, Message>,
+        right: Element<'a, Message>,
+    ) -> Element<'a, Message> {
+        adaptive::columns(left, right, [280., 280.], false)
+    }
+    pub(super) fn settings_accent(&self) -> Color {
         cosmic::theme::active().cosmic().accent_text_color().into()
     }
     pub(super) fn settings_view(&self) -> Element<'_, Message> {
+        if self.config.design_problem.is_some() {
+            return self.design_recovery_view();
+        }
         if let Some(wizard) = &self.wizard {
             return self.wizard_view(wizard);
         }
@@ -407,7 +478,7 @@ impl Settings {
             Page::General => self.general_page(),
             Page::Desktop => self.desktop_page(),
             Page::DesktopDock => {
-                column::with_children(vec![self.desktop_dock_header(), self.desktop_dock_page()])
+                column::with_children(vec![self.desktop_dock_header(), self.dock_workspace()])
                     .spacing(20)
                     .into()
             }
@@ -444,6 +515,8 @@ impl Settings {
             Page::DesktopWindowRules => self.window_rules_page(),
             Page::DesktopShortcuts => self.shortcuts_page(),
             Page::DesktopAutomation => self.automation_page(),
+            Page::Moments => self.moments_page(),
+            Page::Builder => self.recipe_page(),
         };
         let pinned = !searching && self.page == Page::DesktopAppearance && self.appearance_pinned();
         // Unpinned, System appearance keeps a fixed strip above its scroll
@@ -483,9 +556,9 @@ impl Settings {
         let scrolling = scrollable(container(page).width(Length::Fill).padding(if pinned {
             [16, 22, 24, 22]
         } else if strip {
-            [0, 22, 24, 22]
+            [0, 20, 20, 20]
         } else {
-            [12, 22, 20, 22]
+            [12, 20, 20, 20]
         }))
         .id(cosmic::widget::Id::new("settings-content"))
         .on_scroll(|viewport| Message::ContentScrolled(viewport.absolute_offset().y))
@@ -529,6 +602,8 @@ impl Settings {
         };
         let status: Element<'_, Message> = if searching {
             self.simple_status()
+        } else if self.page == Page::Overview && self.canvas.is_some() {
+            self.canvas_actions()
         } else if self.page == Page::Overview && self.placement.selected().is_some() {
             let mut inspector = Vec::new();
             if self.error {
@@ -541,6 +616,8 @@ impl Settings {
                 .padding([6, 22])
                 .width(Length::Fill)
                 .into()
+        } else if self.page == Page::Builder {
+            column::with_children(vec![self.simple_status(), self.recipe_actions()]).into()
         } else if self.page == Page::DesktopWallpaper {
             self.wallpaper_actions()
         } else if matches!(self.page, Page::DesktopProfiles | Page::Themes) {
@@ -657,7 +734,7 @@ impl Settings {
             )
             .height(Length::Fill),
         )
-        .width(184)
+        .width(self.sidebar_width())
         .height(Length::Fill)
         .class(cosmic::theme::Container::Primary)
         .into();

@@ -49,7 +49,9 @@ class InstallTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o755, path)
         wallpapers = sorted(p.name for p in (local / 'share/backgrounds/halcyon').iterdir())
         self.assertIn('halcyon-night.jpg', wallpapers)
-        self.assertEqual(len(wallpapers), 13)
+        self.assertEqual(len(wallpapers), 14)
+        ridge = local / 'share/backgrounds/halcyon/halcyon-ridge.png'
+        self.assertEqual(ridge.read_bytes(), (installer.SOURCE / 'assets/wallpapers/halcyon-ridge.png').read_bytes())
         for size in (48, 64, 128, 256, 512):
             self.assertTrue((local / f'share/icons/hicolor/{size}x{size}/apps/{APP_ID}.png').is_file())
         launcher = (local / f'share/applications/{APP_ID}.desktop').read_text()

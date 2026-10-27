@@ -1,25 +1,27 @@
 # Distribution and system updates
 
-Halcyon 0.2.5 remains available as immutable [GitHub release downloads](https://github.com/profilaz3/halcyon/releases/tag/v0.2.5).
-The signed APT channel is `https://profilaz3.github.io/halcyon/apt`, suite `noble`,
+[Halcyon 0.3.0 is published](https://github.com/profilaz3/halcyon/releases/tag/v0.3.0), including the main app, optional Islands and signed APT packages.
+The signed channel is `https://profilaz3.github.io/halcyon/apt`, suite `noble`,
 component `main`, architecture `amd64` (Intel and AMD x86-64 PCs).
 
-The published 0.2.5 package uses optional, explicit enrollment. The signed archive
-and bootstrap release are live. A repository listing alone does not put Halcyon
-in everyone's COSMIC Store.
+For a new installation, [download the main app](https://github.com/profilaz3/halcyon/releases/download/v0.3.0/cosmic-ext-halcyon_0.3.0_amd64.deb), open it with COSMIC Store and install it. Then open Halcyon from the launcher. [Terminal fallback](../README.md#install).
 
-**Upcoming 0.3.0 packages enable system updates by default on a clean install.**
-The main package contains the reviewed public key, scoped source and restrictive
-pins. Its installation script enrolls once, without downloading anything or
-starting another installer. APT/COSMIC Store then handles updates according to the
-OS settings; Halcyon does not turn on unattended installation.
+**0.3.0 enables signed system updates on a clean package install.** No bootstrap
+download is needed. The main package contains the reviewed public key, scoped
+source and restrictive pins. Its installation script enrolls once, offline,
+inside the original install transaction. The system may fetch ordinary missing
+dependencies from its configured repositories.
+
+Repository enrollment makes future releases available. **Check for updates**
+refreshes metadata and reports availability. **COSMIC Store → Updates** or APT
+installs updates; automatic installation remains the administrator's OS policy.
+Halcyon never collects a password or turns on unattended installation.
 
 Existing enrollment, disabled/deleted sources and administrator modifications
 are preserved. A clean upgrade from an unenrolled 0.2.5 manual package enrolls;
-a previous enrollment decision is retained. Islands remains separately installed.
-Source/per-user builds do not add system repositories. For older verified manual
-packages, Settings retains **Enable system updates…** as a recovery/enrollment path.
-This change is local and unpublished; installed 0.2.5 is unchanged.
+a previous enrollment decision is retained. Islands stays optional. Source and
+per-user installs do not add system repositories. Older verified manual packages
+retain **Enable system updates…** as an explicit recovery/enrollment path.
 
 ## Enroll an older/manual installation
 
@@ -55,7 +57,7 @@ and `halcyon-update-source` from this origin. No COSMIC version holds are added.
 
 ## Install or update
 
-For a first app installation:
+After explicitly enrolling a machine and refreshing its package lists:
 
 ```sh
 sudo apt install cosmic-ext-halcyon
@@ -63,7 +65,7 @@ sudo apt install cosmic-ext-halcyon
 
 Existing package installations update normally through APT or **COSMIC Store →
 Updates**. The app's Updates row offers an explicit check and opens COSMIC Store
-for app upgrades. The development enrollment flow installs only the two bootstrap
+for app upgrades. The explicit enrollment flow for older manual installations installs only the two bootstrap
 packages through the OS installer. Halcyon never collects passwords. Unattended installation depends
 on the user's OS policy. Store search discovery is separate from system updates;
 AppStream metadata and icons are provided, but a native Store search trial has not
@@ -92,26 +94,24 @@ For a package with default enrollment, edit
 Upgrades preserve that choice and also preserve a deleted source. Remove that
 line to enable the source again. Disabling enrollment does not uninstall Halcyon.
 
-For the separately installed bootstrap packages:
+For the legacy, separately installed bootstrap, disable the source first and
+review all active APT sources before removing its keyring package. In particular,
+the published `halcyon-archive-keyring` **0.2.5-1** package does not protect a key
+still referenced by an administrator-renamed source during purge. Do not purge
+that keyring while any active source uses its `Signed-By` path. Leave the keyring
+installed when only disabling updates; a public key by itself enables no source.
 
-```sh
-sudo apt purge halcyon-update-source halcyon-archive-keyring
-sudo apt update
-```
-
-This leaves Halcyon, Islands and user settings installed. Source removal preserves
-its exact bytes as an ignored `halcyon.sources.removed.*` file for administrator
-recovery; it is never silently re-enabled. Administrator-disabled/deleted source
-conffiles remain disabled on ordinary package upgrades. Unrelated source files and
-keys are untouched. The saved disabled file may be removed manually if no longer
-needed.
+Removing the legacy source package preserves its source as an ignored
+`halcyon.sources.removed.*` recovery file. Other active source copies require an
+administrator's explicit decision. This legacy behavior is distinct from the
+reference-aware default-enrollment removal described below.
 
 ## Release identity, source and maintenance
 
-APT serves the **exact** approved 0.2.5 app/companion bytes. Its existing practical
-`cosmic-1.10-1.11-startup-v1` approval and documented limitations remain unchanged;
+APT serves the **exact** approved 0.3.0 app/companion bytes. Its practical
+`cosmic-1.10-1.11-startup-v2` approval and documented limitations remain unchanged;
 APT delivery does not turn historical focused evidence into new native/hardware
-qualification. No published 0.2.5 package, source or approval is modified.
+qualification. Published releases remain immutable.
 
 The original release supplies corresponding source, licenses, provenance and
 focused evidence. The separate bootstrap release supplies its own corresponding
@@ -149,3 +149,37 @@ needs them. Administrator changes and bootstrap-owned files are retained. Recove
 of a removed installation can use the explicit bootstrap above. If Python itself
 has already been removed, the removal script leaves the public configuration
 intact rather than leaving an active source without its key.
+
+## In-app Islands installation (next build; not in published 0.3.0)
+
+Open **App settings → Updates → Get Islands…**. Halcyon downloads and verifies
+one reviewed companion package, checks the proposed system changes, then asks
+**Install Islands**. The system handles authorization. **Enable for next login**
+is a separate per-user choice; the existing helper checks native compatibility,
+ownership and previous failures before staging activation. Log out and back in.
+
+This path works from a verified system package with the same version as the
+running app. It does not enable or rewrite APT sources. An intentionally disabled
+source stays disabled. The exact companion is pinned in the app, so the first
+install does not require refreshing newly enrolled Halcyon package lists.
+Future companion updates use the signed source when it is enabled.
+
+The normal supported desktop already provides the companion's system dependencies.
+If the system simulation proposes other package changes, Halcyon directs you to
+the package manager and this guide to review them. It does not install over a
+manual companion, repair a half-configured package, downgrade COSMIC, or choose
+an arbitrary newer companion. Cancel is available before installation. After an
+interruption, check system installation status before retrying; successful OS
+installation is verified against dpkg before activation is offered.
+
+For an absent companion on the signed repository path, an administrator can use:
+
+```sh
+sudo apt update
+sudo apt install cosmic-ext-halcyon-islands
+halcyon-islands enable
+```
+
+A connection is needed for uncached packages or metadata. Offline failures keep
+Halcyon usable; reconnect and retry. Native Store install/PolicyKit prompts and a
+complete fresh-machine journey remain release acceptance checks for the next build.

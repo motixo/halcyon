@@ -146,6 +146,7 @@ enum Origin {
 pub struct Asset {
     pub path: PathBuf,
     origin: Origin,
+    package_digest: Option<String>,
 }
 
 impl Asset {
@@ -153,6 +154,9 @@ impl Asset {
     /// a COSMIC wallpaper still resolves inside its trusted folder. Reads
     /// only; a file can still disappear afterwards.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(hash) = &self.package_digest {
+            super::packages::verify_picture(&self.path, hash)?;
+        }
         let name = file_label(&self.path);
         let missing = || match &self.origin {
             Origin::Bundled(palette) => format!(
@@ -453,6 +457,23 @@ pub fn plan(
                 {
                     merge(&mut result, &mut part, prepared.patch);
                     result.assets = prepared.assets;
+                    if let Some(hash) = profile.package.as_ref().and_then(|p| p.picture.as_ref())
+                        && let Some(SourceLook::Image(path)) = profile
+                            .wallpaper
+                            .as_ref()
+                            .and_then(|w| w.background.as_ref())
+                            .and_then(|b| b.source.as_ref())
+                    {
+                        let asset = Asset {
+                            path: path.clone(),
+                            origin: Origin::Personal,
+                            package_digest: Some(hash.clone()),
+                        };
+                        if let Err(reason) = asset.check() {
+                            part.blocked.push(reason);
+                        }
+                        result.assets.push(asset);
+                    }
                     if part.blocked.is_empty() {
                         result.background = if profile.appearance_only {
                             prepared.source.background
@@ -713,6 +734,21 @@ fn plan_panel(
             kind.title()
         ));
     }
+    // Vertical Islands remains unqualified. A vertical setup never silently
+    // turns off selected Islands intent; the user makes that choice explicitly.
+    let vertical = look.anchor.is_some_and(|anchor| !anchor.horizontal());
+    if vertical
+        && draft
+            .islands()
+            .known()
+            .is_none_or(|islands| islands.enabled)
+    {
+        part.blocked.push(format!(
+            "{} uses a standard vertical bar. Turn off Islands for this bar, then check again.",
+            kind.title()
+        ));
+        return None;
+    }
     let installed_islands = crate::desktop::islands::Installation::discover(store).installed();
     if let Some(gap) = look.island_gap.filter(|_| installed_islands) {
         if let Some(mut islands) = draft.islands().known().cloned() {
@@ -793,6 +829,11 @@ fn plan_panel(
         }
     }
     let mut patch = draft.patch();
+    if vertical {
+        let snapshot = draft.clone().into_snapshot();
+        let key = crate::desktop::islands::key(kind);
+        patch.guard(key.clone(), snapshot.user(&key).cloned());
+    }
     if look.background.is_some() {
         let key = ConfigKey::new(kind.namespace(), 1, "background").expect("panel key");
         let snapshot = draft.into_snapshot();
@@ -1240,7 +1281,11 @@ fn plan_wallpaper(
             .iter()
             .find(|(known, _)| *known == path)
             .map_or(Origin::Personal, |(_, origin)| origin.clone());
-        let asset = Asset { path, origin };
+        let asset = Asset {
+            path,
+            origin,
+            package_digest: None,
+        };
         if let Err(reason) = asset.check() {
             part.blocked.push(reason);
         }

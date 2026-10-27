@@ -13,7 +13,11 @@ use cosmic::iced::Point;
 use cosmic::iced::widget::{pin, stack};
 use cosmic::widget::responsive;
 
+mod discovery;
 /// Reasons shown before the rest is counted.
+mod mix;
+mod packages;
+
 const SHORT: usize = 3;
 
 fn edit(message: Edit) -> Message {
@@ -64,56 +68,15 @@ fn bundled_name(profile: &crate::desktop::profiles::Profile) -> Option<&str> {
         _ => None,
     }
 }
-/// Asset presence is cheap: testing whether a preview exists must not decode
-/// an image that the stock-bar miniature will never display.
-fn look_bytes(id: &str, wallpaper: bool) -> Option<&'static [u8]> {
-    macro_rules! looks {
-        ($($id:literal),*) => {
-            match (id, wallpaper) {
-                $(
-                    ($id, false) => Some(&include_bytes!(concat!("../../../assets/looks/", $id, ".jpg"))[..]),
-                    ($id, true) => Some(&include_bytes!(concat!("../../../assets/looks/", $id, "-wallpaper.jpg"))[..]),
-                )*
-                _ => None,
-            }
-        };
-    }
-    looks!("halcyon", "calm", "evening", "focus", "paper", "rose")
-}
-/// Decode directly into the stable handle; retain only one copy of its pixels.
+mod images;
+#[cfg(test)]
+pub(in crate::settings) use images::prepare as prepare_look_images;
+pub(in crate::settings) use images::{load as load_look_images, ready as look_images_ready};
 pub(super) fn look_image(id: &str, wallpaper: bool) -> Option<cosmic::widget::image::Handle> {
-    use cosmic::widget::image::Handle;
-    static HANDLES: std::sync::Mutex<Vec<((String, bool), Option<Handle>)>> =
-        std::sync::Mutex::new(Vec::new());
-    let mut handles = HANDLES.lock().ok()?;
-    if let Some((_, handle)) = handles
-        .iter()
-        .find(|(key, _)| key.0 == id && key.1 == wallpaper)
-    {
-        return handle.clone();
-    }
-    let handle = look_bytes(id, wallpaper)
-        .and_then(|bytes| image::load_from_memory_with_format(bytes, image::ImageFormat::Jpeg).ok())
-        .map(|image| {
-            let rgba = image.to_rgba8();
-            Handle::from_rgba(rgba.width(), rgba.height(), rgba.into_raw())
-        });
-    handles.push(((id.to_string(), wallpaper), handle.clone()));
-    handle
+    images::look(id, wallpaper)
 }
-/// The compiled-in thumbnail of a bundled wallpaper, decoded once.
 fn bundled_handle(name: &str) -> Option<cosmic::widget::image::Handle> {
-    use cosmic::widget::image::Handle;
-    static DECODED: std::sync::Mutex<Vec<(String, Option<Handle>)>> =
-        std::sync::Mutex::new(Vec::new());
-    let mut decoded = DECODED.lock().ok()?;
-    if let Some((_, handle)) = decoded.iter().find(|(known, _)| known == name) {
-        return handle.clone();
-    }
-    let handle = crate::desktop::wallpaper::media::bundled_thumbnail(name)
-        .map(|pixels| Handle::from_rgba(pixels.width, pixels.height, pixels.rgba));
-    decoded.push((name.to_string(), handle.clone()));
-    handle
+    images::bundled(name)
 }
 fn swatch<'a>(color: Color) -> Element<'a, Message> {
     container(cosmic::iced::widget::space().width(12).height(12))
@@ -160,7 +123,7 @@ fn preset_config(config: &Config, preset: &Preset) -> Config {
 /// Recover the comparison baseline from the same observation as the candidate.
 /// Reversing only planned fields keeps system defaults and unrelated values.
 /// This is a view projection, never an Undo or a write to the desktop.
-fn comparison_current(
+pub(in crate::settings) fn comparison_current(
     candidate: &crate::settings::profiles::Preview,
     plan: Option<&ProfilePlan>,
 ) -> crate::settings::profiles::Preview {
@@ -225,7 +188,7 @@ fn original_snapshot(
 
 /// A new candidate may remove custom sizes from the currently shown layout.
 /// Start from the cached natural sizes so removal means automatic again.
-fn scene_geometry(
+pub(in crate::settings) fn scene_geometry(
     mut snapshot: crate::layout_state::Snapshot,
     config: &Config,
 ) -> crate::layout_state::Snapshot {
@@ -269,6 +232,37 @@ pub(in crate::settings) fn card<'a>(
     config: &Config,
     scale: f32,
 ) -> Element<'a, Message> {
+    card_at(widget, size, config, scale, None)
+}
+
+pub(in crate::settings) fn card_at<'a>(
+    widget: Widget,
+    size: [f32; 2],
+    config: &Config,
+    scale: f32,
+    now: Option<chrono::DateTime<chrono::Local>>,
+) -> Element<'a, Message> {
+    if matches!(widget, Widget::Clock | Widget::Weather) {
+        let scale = if scale.is_finite() && scale > 0. {
+            scale
+        } else {
+            1.
+        };
+        let source = crate::widget_presentation::viewport(
+            [size[0] / scale, size[1] / scale],
+            crate::widget_presentation::metrics(widget).natural,
+        );
+        let preview = match (widget, now) {
+            (Widget::Clock, Some(now)) => {
+                crate::app::settings_clock_preview_at(config, source, now.naive_local())
+            }
+            (Widget::Clock, None) => crate::app::settings_clock_preview(config, source),
+            (_, Some(now)) => crate::app::settings_weather_preview_at(config, source, now),
+            (_, None) => crate::app::settings_weather_preview_sized(config, source),
+        }
+        .map(|_| Message::Preview);
+        return super::sample::thumbnail(preview, source, size);
+    }
     // At a glance can keep its own background under a widget style.
     let transparent = if widget == Widget::Glance {
         !config.glance_panel()
@@ -361,15 +355,20 @@ pub(in crate::settings) fn card<'a>(
                 r.body
             }
         });
+    let gap = (6. * scale).max(1.);
+    let mut used = main_size * 1.25;
+    let available = (size[1] - pad * 2.).max(0.);
     let mut content = vec![
         text::body(title)
             .size(main_size)
+            .line_height(1.25)
             .font(font)
             .class(cosmic::theme::Text::Color(palette.foreground))
             .into(),
     ];
-    if size[1] >= main_size * 1.25 + secondary_size * 1.25 + pad * 2. + 2. {
+    if available >= used + gap + secondary_size * 1.25 {
         content.push(line(detail, secondary_size, palette.muted));
+        used += gap + secondary_size * 1.25;
     }
     // The large scene should read like a desktop, not a collection of empty
     // blocks. Keep illustrative content bounded and omit it from small tiles.
@@ -385,14 +384,17 @@ pub(in crate::settings) fn card<'a>(
             Widget::Notes => &["[ ] Review the details", "[ ] Make something good"],
             _ => &[],
         };
-        if !extra.is_empty() {
-            content.push(cosmic::widget::space().height((12. * scale).max(3.)).into());
-            for value in extra {
+        let separator = (12. * scale).max(3.);
+        let room = (available - used - gap - separator).max(0.);
+        let count = (room / (gap + secondary_size * 1.25)).floor() as usize;
+        if count > 0 && !extra.is_empty() {
+            content.push(cosmic::widget::space().height(separator).into());
+            for value in extra.iter().take(count) {
                 content.push(line(*value, secondary_size, palette.muted));
             }
         }
     }
-    container(column::with_children(content).spacing((6. * scale).max(1.)))
+    container(column::with_children(content).spacing(gap))
         .width(size[0].max(1.))
         .height(size[1].max(1.))
         .padding(pad)
@@ -581,15 +583,14 @@ impl Settings {
     /// padding, scrollbar allowance and gaps: four styles on Colors & theme,
     /// two spacious desktop compositions on Setups.
     fn tile_width(&self) -> f32 {
-        if self.page == Page::Themes {
-            ((self.window.width - 184. - 44. - 14. - 24.) / 4.)
-                .floor()
-                .clamp(132., 240.)
+        let available = self.content_width() - 14.;
+        let minimum = if self.page == Page::Themes {
+            168.
         } else {
-            ((self.window.width - 184. - 44. - 14. - 16.) / 2.)
-                .floor()
-                .clamp(240., 540.)
-        }
+            248.
+        };
+        let count = ((available + 16.) / (minimum + 16.)).floor().max(1.);
+        ((available - (count - 1.) * 16.) / count).floor()
     }
 
     /// The selection over the current desktop: the planned wallpaper (or a
@@ -768,7 +769,20 @@ impl Settings {
                     continue;
                 }
                 let size = [geometry.size[0] * scale, geometry.size[1] * scale];
-                let sample = card(widget, size, &config, scale);
+                let sample = if widget == Widget::Clock {
+                    self.depth_preview
+                        .image(current)
+                        .map(|handle| {
+                            cosmic::widget::image(handle.clone())
+                                .width(size[0])
+                                .height(size[1])
+                                .content_fit(cosmic::iced::ContentFit::Fill)
+                                .into()
+                        })
+                        .unwrap_or_else(|| card(widget, size, &config, scale))
+                } else {
+                    card(widget, size, &config, scale)
+                };
                 let sample = if interactive {
                     button::custom(sample)
                         .class(super::home::hotspot(accent, 6.))
@@ -882,7 +896,8 @@ impl Settings {
     ) -> Element<'a, Message> {
         // Render the actual recipe. The old baked desktop images all used
         // one composition, so they cannot represent purpose-led setups.
-        let starter = look_bytes(preset.id, true).is_some();
+        let starter =
+            !preset.profile.appearance_only && preset.id != crate::desktop::profiles::CLEAN;
         let installed = self.desktop.islands.installation.installed();
         let panel = self.setup_panel_baseline().and_then(|applied| {
             let look = preset.profile.panel.as_ref()?;
@@ -1294,76 +1309,101 @@ impl Settings {
 
     /// The selection: miniature, name and actions, parts to include, what
     /// blocks it, missing components and (on demand) every change.
-    pub(super) fn selection_section<'a>(&'a self) -> Element<'a, Message> {
+    fn selection_scene(&self) -> Element<'_, Message> {
         let editor = &self.profiles;
         let accent = self.settings_accent();
-        let height = ((self.window.width - 240.) * 9. / 16.)
-            .min((self.window.height - 380.).max(170.))
-            .clamp(170., 390.);
-        let selection = editor.selection();
-        let beside = |info: Vec<Element<'a, Message>>| -> Element<'a, Message> {
-            let mut content = vec![column::with_children(info).spacing(8).into()];
-            let choices = row::with_children(vec![
-                button::custom(label("This setup", 13., FG))
-                    .class(nav_style(!editor.compare_current, accent))
-                    .selected(!editor.compare_current)
-                    .padding([8, 14])
-                    .id(cosmic::widget::Id::new("setup-show-candidate"))
-                    .on_press(edit(Edit::Compare(false)))
-                    .into(),
-                button::custom(label("Your desktop", 13., FG))
-                    .class(nav_style(editor.compare_current, accent))
-                    .selected(editor.compare_current)
-                    .padding([8, 14])
-                    .id(cosmic::widget::Id::new("setup-show-current"))
-                    .on_press(edit(Edit::Compare(true)))
-                    .into(),
-            ])
-            .spacing(6)
-            .into();
-            content.push(split(
-                choices,
-                button::text(if self.scene_open() {
-                    "Hide preview"
-                } else {
-                    "Show preview"
-                })
-                .id(cosmic::widget::Id::new("scene-toggle"))
-                .on_press(Message::ToggleScene)
+        let height = self.stage_height();
+        let mut content = Vec::new();
+        let choices = row::with_children(vec![
+            button::custom(label("Preview", 13., FG))
+                .class(nav_style(!editor.compare_current, accent))
+                .selected(!editor.compare_current)
+                .padding([8, 14])
+                .id(cosmic::widget::Id::new("setup-show-candidate"))
+                .on_press(edit(Edit::Compare(false)))
                 .into(),
-            ));
-            let scene = if editor.compare_current {
-                editor
-                    .preview()
-                    .map(|preview| {
-                        self.profile_scene(
-                            comparison_current(preview, editor.plan()),
-                            height,
-                            true,
-                            false,
-                        )
-                    })
-                    .unwrap_or_else(|| label("Reading your desktop…", 12., MUTED))
+            button::custom(label("Current", 13., FG))
+                .class(nav_style(editor.compare_current, accent))
+                .selected(editor.compare_current)
+                .padding([8, 14])
+                .id(cosmic::widget::Id::new("setup-show-current"))
+                .on_press(edit(Edit::Compare(true)))
+                .into(),
+        ])
+        .spacing(6)
+        .into();
+        content.push(split(
+            choices,
+            button::text(if self.scene_open() {
+                "Hide preview"
             } else {
-                self.profile_preview(height)
-            };
-            if self.scene_open() {
-                content.push(
-                    container(scene)
-                        .id(cosmic::widget::Id::new("desktop-scene"))
-                        .into(),
-                );
-                content.push(label(
-                    format!("Illustrative content · {}", self.setup_islands_status()),
-                    12.,
-                    MUTED,
-                ));
-            }
-            column::with_children(content).spacing(14).into()
+                "Show preview"
+            })
+            .id(cosmic::widget::Id::new("scene-toggle"))
+            .on_press(Message::ToggleScene)
+            .into(),
+        ));
+        let scene = if editor.compare_current {
+            editor
+                .preview()
+                .map(|preview| {
+                    self.profile_scene(
+                        comparison_current(preview, editor.plan()),
+                        height,
+                        true,
+                        false,
+                    )
+                })
+                .unwrap_or_else(|| label("Reading your desktop…", 12., MUTED))
+        } else {
+            self.profile_preview(height)
         };
+        if self.scene_open() {
+            content.push(
+                container(scene)
+                    .id(cosmic::widget::Id::new("desktop-scene"))
+                    .into(),
+            );
+            content.push(label(
+                format!("Sample desktop · {}", self.setup_islands_status()),
+                12.,
+                MUTED,
+            ));
+        }
+        column::with_children(content).spacing(12).into()
+    }
+    pub(super) fn selection_section(&self) -> Element<'_, Message> {
+        let mut content = Vec::new();
+        if let Some(profile) = self.profiles.profile() {
+            let title = label(&profile.name, 26., FG);
+            content.push(if let Some(description) = self.profiles.description() {
+                split(
+                    title,
+                    super::help::explanation(
+                        "setup-about",
+                        "About this setup",
+                        description,
+                        self.help_open == Some("setup-about"),
+                    ),
+                )
+            } else {
+                title
+            });
+        }
+        content.push(self.inspector_layout(
+            self.selection_scene(),
+            self.selection_details(),
+            "setup",
+        ));
+        column::with_children(content).spacing(16).into()
+    }
+    fn selection_details(&self) -> Element<'_, Message> {
+        let editor = &self.profiles;
+        let accent = self.settings_accent();
+        let selection = editor.selection();
         let mut items: Vec<Element<'_, Message>> = Vec::new();
         if let Some(error) = editor.load_error() {
-            items.push(beside(vec![label("Unreadable setup", 18., WARN)]));
+            items.push(label("Unreadable setup", 18., WARN));
             items.push(banner(
                 format!("This setup can’t be read: {error}"),
                 ERROR,
@@ -1379,31 +1419,51 @@ impl Settings {
             return section(items);
         }
         let Some(profile) = editor.profile() else {
-            items.push(beside(vec![detail(
-                "Your current desktop",
-                "Choose a starter or saved setup to compare its changes here.",
-            )]));
+            items.push(detail(
+                "Current desktop",
+                "Choose a setup to compare its changes.",
+            ));
             return section(items);
         };
         let saved = matches!(selection, Selection::Saved(_));
-        let subtitle = editor.description().unwrap_or(if saved {
-            "Saved on this computer"
-        } else {
-            "Built-in"
-        });
-        let title: Element<'_, Message> = column::with_children(vec![
-            label(profile.name.clone(), 28., FG),
-            label(subtitle, 14., MUTED),
-        ])
-        .spacing(3)
-        .into();
         let writable = editor.writable();
         let mut actions = vec![
-            button::text("Duplicate")
-                .leading_icon(icon::from_name("edit-copy-symbolic").size(14))
-                .on_press_maybe(writable.then_some(edit(Edit::Name(Some(NameAction::Duplicate)))))
-                .into(),
+            button::text(if editor.mix.is_some() {
+                "Save setup…"
+            } else {
+                "Duplicate"
+            })
+            .leading_icon(icon::from_name("edit-copy-symbolic").size(14))
+            .on_press_maybe(
+                (writable
+                    && !self.native_busy
+                    && !editor.theme_loading()
+                    && editor.theme_problem().is_none())
+                .then_some(edit(Edit::Name(Some(if editor.mix.is_some() {
+                    NameAction::SaveMix
+                } else {
+                    NameAction::Duplicate
+                })))),
+            )
+            .into(),
         ];
+        if editor.mix.is_some() {
+            actions.clear();
+        } else if self.page != Page::Themes {
+            actions.insert(
+                0,
+                button::text("Remix…")
+                    .id(cosmic::widget::Id::new("setup-remix"))
+                    .on_press_maybe(
+                        (writable
+                            && !self.native_busy
+                            && !editor.busy()
+                            && !editor.theme_loading())
+                        .then_some(edit(Edit::RemixSelected)),
+                    )
+                    .into(),
+            );
+        }
         if let Selection::Saved(id) = selection {
             actions.push(
                 button::text("Rename")
@@ -1414,11 +1474,58 @@ impl Settings {
             );
         }
         actions.push(
-            button::text("Export…")
-                .leading_icon(icon::from_name("document-save-as-symbolic").size(14))
-                .on_press_maybe((writable && !editor.busy()).then_some(edit(Edit::Export)))
-                .into(),
+            button::text(if editor.sharing() {
+                "Cancel image"
+            } else {
+                "Save preview…"
+            })
+            .id(cosmic::widget::Id::new("profiles-share-image"))
+            .on_press_maybe(
+                (writable
+                    && !self.native_busy
+                    && !editor.theme_loading()
+                    && editor.theme_problem().is_none())
+                .then_some(edit(if editor.sharing() {
+                    Edit::CancelShare
+                } else {
+                    Edit::ShareImage
+                })),
+            )
+            .into(),
         );
+        actions.push(
+            button::text(if editor.profile().is_some_and(|p| p.appearance_only) {
+                "Export theme…"
+            } else {
+                "Export setup…"
+            })
+            .leading_icon(icon::from_name("document-save-as-symbolic").size(14))
+            .on_press_maybe(
+                (writable
+                    && !editor.busy()
+                    && !self.native_busy
+                    && !editor.theme_loading()
+                    && editor.theme_problem().is_none())
+                .then_some(edit(Edit::Export)),
+            )
+            .into(),
+        );
+        if self.page != Page::Themes {
+            actions.push(
+                button::text("Export package…")
+                    .id(cosmic::widget::Id::new("package-open"))
+                    .on_press_maybe(
+                        (writable
+                            && !editor.busy()
+                            && !self.native_busy
+                            && !editor.theme_loading())
+                        .then_some(edit(Edit::Package(
+                            crate::settings::profiles::packages::Edit::Open,
+                        ))),
+                    )
+                    .into(),
+            );
+        }
         if saved && !matches!(selection, Selection::Saved(id) if id.as_str() == "before-themes") {
             actions.push(
                 button::text("Delete…")
@@ -1427,19 +1534,64 @@ impl Settings {
                     .into(),
             );
         }
-        let mut info = vec![title];
         if let Selection::Preset(id) = selection
             && let Some(hint) = crate::desktop::profiles::preset(id).and_then(|preset| {
                 crate::desktop::profiles::missing(&preset, &editor.bundled_dir(), editor.islands())
             })
         {
-            info.push(label(hint, 12., WARN));
+            items.push(label(hint, 12., WARN));
         }
-        items.push(beside(info));
+
+        if editor.mix.is_none()
+            && let Some(origin) = &profile.composition
+        {
+            items.push(
+                row::with_children(vec![
+                    detail("Picture from", origin.picture.name.clone()),
+                    detail("Style from", origin.style.name.clone()),
+                    detail("Layout from", origin.layout.name.clone()),
+                ])
+                .spacing(16)
+                .wrap()
+                .into(),
+            );
+        }
         items.push(row::with_children(actions).spacing(4).wrap().into());
-        if editor.name.as_ref().is_some_and(|name| {
-            !matches!(name.action, NameAction::Capture | NameAction::CaptureTheme)
-        }) {
+        if let Some(origin) = &profile.package {
+            items.push(label(
+                format!(
+                    "Credits: {}",
+                    if origin.credits.author.is_empty() && origin.credits.license.is_empty() {
+                        "not provided".into()
+                    } else {
+                        [&origin.credits.author, &origin.credits.license]
+                            .into_iter()
+                            .filter(|s| !s.is_empty())
+                            .map(String::as_str)
+                            .collect::<Vec<_>>()
+                            .join(" · ")
+                    }
+                ),
+                12.,
+                MUTED,
+            ));
+            if !origin.credits.source.is_empty() {
+                items.push(label(&origin.credits.source, 12., MUTED));
+            }
+        }
+        if self.page != Page::Themes {
+            items.push(self.setup_sources());
+        }
+        items.push(label(
+            "Preview images show the full setup with sample content. Personal pictures stay here.",
+            12.,
+            MUTED,
+        ));
+        if editor.mix.is_none()
+            && editor.name.as_ref().is_some_and(|name| {
+                !matches!(name.action, NameAction::Capture | NameAction::CaptureTheme)
+            })
+        {
             items.push(self.name_field("Save"));
         }
         if editor.confirm_delete {
@@ -1475,11 +1627,13 @@ impl Settings {
                 "Applies with Panel below. Your applets and display-specific arrangements are kept."
             }, 12., MUTED));
         }
+        let mut review = Vec::new();
         if !profile.appearance_only {
-            items.push(self.parts(profile, accent));
+            review.push(self.parts(profile, accent));
         }
-        items.extend(self.plan_states());
-        column::with_children(items).spacing(20).into()
+        review.extend(self.plan_states());
+        review.extend(items);
+        column::with_children(review).spacing(16).into()
     }
 
     pub(super) fn delete_confirm(&self, name: String) -> Element<'_, Message> {
@@ -1517,9 +1671,10 @@ impl Settings {
         _accent: Color,
     ) -> Element<'a, Message> {
         let plan = self.profiles.plan();
-        let mut rows = vec![detail(
-            "Include when applying",
-            "Keep any part of your current desktop by turning it off below.",
+        let mut rows = vec![self.help(
+            "setup-include",
+            "Include",
+            "Turn off a part to keep its current settings. Apply changes only the included parts.",
         )];
         for domain in profile.domains() {
             let on = self.profiles.included(domain);
@@ -1537,20 +1692,29 @@ impl Settings {
             rows.push(separator());
             rows.push(
                 row::with_children(vec![
-                    cosmic::widget::checkbox(on)
-                        .label(domain.title())
-                        .on_toggle(move |on| edit(Edit::Include(domain, on)))
-                        .into(),
-                    container(label(status, 12., tone))
-                        .width(Length::Fill)
-                        .align_x(Alignment::End)
-                        .into(),
+                    container(
+                        column::with_children(vec![
+                            cosmic::widget::checkbox(on)
+                                .label(domain.title())
+                                .on_toggle(move |on| edit(Edit::Include(domain, on)))
+                                .into(),
+                            label(status, 12., tone),
+                        ])
+                        .spacing(2),
+                    )
+                    .width(Length::Fill)
+                    .into(),
+                    super::help::explanation(
+                        domain.title(),
+                        domain.title(),
+                        domain_hint(domain),
+                        self.help_open == Some(domain.title()),
+                    ),
                 ])
-                .spacing(12)
+                .spacing(8)
                 .align_y(Alignment::Center)
                 .into(),
             );
-            rows.push(label(domain_hint(domain), 12., MUTED));
         }
         if profile.local_member().is_some() {
             rows.push(label(
@@ -1682,18 +1846,36 @@ impl Settings {
     }
 
     pub(super) fn profiles_page(&self) -> Element<'_, Message> {
+        if let Some(package) = &self.profiles.package {
+            return self.package_page(package);
+        }
         let editor = &self.profiles;
         let accent = self.settings_accent();
-        let reviewing = editor.profile().is_some()
+        let reviewing = editor.mix.is_some()
+            || editor.profile().is_some()
             || editor.selection() != &Selection::Current
             || editor.load_error().is_some();
         let mut items: Vec<Element<'_, Message>> = if reviewing {
             vec![split(
-                button::text("Back to setups")
-                    .leading_icon(icon::from_name("go-previous-symbolic").size(16))
-                    .id(cosmic::widget::Id::new("setups-back"))
-                    .on_press(edit(Edit::Discard))
-                    .into(),
+                if editor.mix.is_some() {
+                    row::with_children(vec![
+                        button::text("Setups")
+                            .leading_icon(icon::from_name("go-previous-symbolic").size(16))
+                            .id(cosmic::widget::Id::new("setups-back"))
+                            .on_press(edit(Edit::Discard))
+                            .into(),
+                        label("/ Remix", 18., FG),
+                    ])
+                    .spacing(8)
+                    .align_y(Alignment::Center)
+                    .into()
+                } else {
+                    button::text("Back to setups")
+                        .leading_icon(icon::from_name("go-previous-symbolic").size(16))
+                        .id(cosmic::widget::Id::new("setups-back"))
+                        .on_press(edit(Edit::Discard))
+                        .into()
+                },
                 super::windows::store_pill(editor.store(), accent),
             )]
         } else {
@@ -1703,10 +1885,11 @@ impl Settings {
                     super::windows::store_pill(editor.store(), accent),
                 ),
                 container(label(
-                    format!(
-                        "A desktop for every kind of day. {}",
-                        self.setup_islands_status()
-                    ),
+                    if editor.saved_collection {
+                        self.setup_islands_status().to_owned()
+                    } else {
+                        format!("Built-in looks · {}", self.setup_islands_status())
+                    },
                     14.,
                     MUTED,
                 ))
@@ -1759,12 +1942,18 @@ impl Settings {
                 .into(),
             );
         }
-        if reviewing {
+        if editor.mix.is_some() {
+            items.push(self.mix_board());
+        } else if reviewing {
             items.push(self.selection_section());
         } else {
             items.push(
                 row::with_children(vec![
-                    button::custom(label("Explore", 14., FG))
+                    button::text("Remix…")
+                        .id(cosmic::widget::Id::new("mix-start"))
+                        .on_press_maybe((!self.native_busy).then_some(edit(Edit::MixStart)))
+                        .into(),
+                    button::custom(label("Discover", 14., FG))
                         .class(nav_style(!editor.saved_collection, accent))
                         .selected(!editor.saved_collection)
                         .padding([9, 16])
@@ -1786,10 +1975,14 @@ impl Settings {
                 items.push(self.library_section());
                 items.push(self.schedules_summary());
             } else {
+                items.push(self.discovery_gallery());
                 // Pair calm and active compositions; the IDs remain stable for schedules.
                 let looks = ["halcyon", "focus", "paper", "rose", "calm", "evening"]
                     .into_iter()
                     .filter_map(|id| editor.presets().iter().find(|p| p.id == id))
+                    .filter(|p| {
+                        crate::desktop::profiles::discovery::matches(p, &editor.discovery_query)
+                    })
                     .map(|preset| self.preset_tile(preset))
                     .collect::<Vec<_>>();
                 items.push(row::with_children(looks).spacing(16).wrap().into());
@@ -1801,7 +1994,9 @@ impl Settings {
                 items.push(self.quick_switches());
             }
         }
-        column::with_children(items).spacing(20).into()
+        column::with_children(items)
+            .spacing(if reviewing { 20 } else { 16 })
+            .into()
     }
 
     /// One-tap states that are not looks, such as hiding everything.
@@ -1883,9 +2078,16 @@ impl Settings {
 
     pub(super) fn profiles_actions(&self) -> Element<'_, Message> {
         let editor = &self.profiles;
+        if editor.package.is_some() {
+            return column::with_children(vec![self.simple_status(), self.package_actions()])
+                .into();
+        }
         // Repair/reset previews can be based on Current without selecting a
         // preset. Their active profile still needs an explicit confirmation.
-        if *editor.selection() == Selection::Current && editor.profile().is_none() {
+        if *editor.selection() == Selection::Current
+            && editor.profile().is_none()
+            && editor.mix.is_none()
+        {
             return self.simple_status();
         }
         let problem = self.page_error().unwrap_or_else(|| {
@@ -1895,23 +2097,52 @@ impl Settings {
                 "Local preview"
             })
         });
-        container(
-            row::with_children(vec![
-                container(label(problem, 12., MUTED))
-                    .width(Length::Fill)
-                    .into(),
-                button::text("Cancel").on_press(edit(Edit::Discard)).into(),
-                button::suggested(if self.page == Page::Themes {
-                    "Apply theme"
-                } else {
-                    "Apply setup"
-                })
-                .id("profiles-confirm".into())
-                .on_press_maybe(editor.can_apply().then_some(edit(Edit::Apply)))
+        let mut actions: Vec<Element<'_, Message>> = vec![
+            container(label(problem, 12., MUTED))
+                .width(Length::Fill)
                 .into(),
-            ])
-            .spacing(10)
-            .align_y(Alignment::Center),
+        ];
+        if editor.mix.is_some() && editor.profile().is_some() {
+            actions.push(
+                button::text(if editor.name.is_some() {
+                    "Save setup"
+                } else {
+                    "Save setup…"
+                })
+                .id(cosmic::widget::Id::new("mix-save"))
+                .on_press_maybe(
+                    (editor.writable()
+                        && !self.native_busy
+                        && !editor.theme_loading()
+                        && editor.theme_problem().is_none())
+                    .then_some(edit(if editor.name.is_some() {
+                        Edit::NameSubmit
+                    } else {
+                        Edit::Name(Some(NameAction::SaveMix))
+                    })),
+                )
+                .into(),
+            );
+        }
+        actions.push(
+            button::text("Cancel")
+                .on_press_maybe((!self.native_busy).then_some(edit(Edit::Discard)))
+                .into(),
+        );
+        actions.push(
+            button::suggested(if self.page == Page::Themes {
+                "Apply theme"
+            } else {
+                "Apply setup"
+            })
+            .id("profiles-confirm".into())
+            .on_press_maybe((editor.can_apply() && !self.native_busy).then_some(edit(Edit::Apply)))
+            .into(),
+        );
+        container(
+            row::with_children(actions)
+                .spacing(10)
+                .align_y(Alignment::Center),
         )
         .padding([8, 22])
         .width(Length::Fill)
@@ -1946,6 +2177,69 @@ fn plan_details<'a>(plan: &ProfilePlan) -> Element<'a, Message> {
 #[cfg(test)]
 mod image_tests {
     use super::*;
+
+    #[test]
+    fn fb13_illustrative_readings_never_leave_partial_lines_in_short_cards() {
+        use cosmic::iced::{Rectangle, Size, advanced::widget::Operation};
+        use std::sync::{Arc, Mutex};
+        struct Texts(Arc<Mutex<Vec<Rectangle>>>);
+        impl Operation for Texts {
+            fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn Operation)) {
+                f(self);
+            }
+            fn text(&mut self, _: Option<&cosmic::widget::Id>, bounds: Rectangle, _: &str) {
+                self.0.lock().unwrap().push(bounds);
+            }
+        }
+        for (size, scale) in [([180., 113.], 0.5), ([240., 180.], 2. / 3.)] {
+            let config = Config::default();
+            let mut native = crate::native_test::Native::new(Size::new(size[0], size[1]));
+            let bounds = Arc::new(Mutex::new(Vec::new()));
+            native.operate(
+                card(Widget::Devbox, size, &config, scale),
+                Box::new(Texts(bounds.clone())),
+            );
+            let bounds = bounds.lock().unwrap();
+            assert!(bounds.len() >= 3, "title, detail and at least one reading");
+            for rect in bounds.iter() {
+                assert!(
+                    rect.y >= 0. && rect.y + rect.height <= size[1],
+                    "{size:?}: {rect:?}"
+                );
+                assert!(
+                    rect.height >= 1.25 * (26. * scale).min(14.) - 0.01,
+                    "partial line: {rect:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn fb06_setup_clock_thumbnail_uses_the_selected_native_face() {
+        use crate::native_test::Native;
+        use cosmic::iced::Size;
+        let mut config = Config::default();
+        let mut native = Native::new(Size::new(245., 100.));
+        config.clock.face = Some(crate::widget_style::resolver::ClockFace::Digital);
+        let digital = native.render(
+            card(Widget::Clock, [245., 100.], &config, 0.5),
+            &cosmic::Theme::dark(),
+        );
+        config.clock.face = Some(crate::widget_style::resolver::ClockFace::Analog);
+        let analog = native.render(
+            card(Widget::Clock, [245., 100.], &config, 0.5),
+            &cosmic::Theme::dark(),
+        );
+        assert!(
+            digital
+                .chunks_exact(4)
+                .zip(analog.chunks_exact(4))
+                .filter(|(a, b)| a != b)
+                .count()
+                > 100,
+            "setup scene retained a digital placeholder"
+        );
+    }
 
     #[test]
     fn redesign_candidate_removing_custom_size_returns_to_natural_geometry() {
@@ -2046,6 +2340,7 @@ mod image_tests {
     #[test]
     fn look_handles_reuse_the_same_decoded_pixels() {
         use cosmic::widget::image::Handle;
+        images::prepare();
         for id in ["halcyon", "calm", "evening", "focus", "paper", "rose"] {
             for wallpaper in [false, true] {
                 let first = look_image(id, wallpaper).unwrap();

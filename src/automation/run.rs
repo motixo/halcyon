@@ -46,6 +46,11 @@ impl Ran {
 /// The profile a rule names, or why it can't be used.
 pub fn load(store: &DesktopStore, target: &ProfileRef, name: &str) -> Result<Profile, String> {
     match target {
+        ProfileRef::Moment(phase) => {
+            let mut profile = Profile::new(&format!("{} moment", phase.title())).unwrap();
+            profile.widget_style = Some(serde_json::json!({"moments":{"active":phase}}));
+            Ok(profile)
+        }
         ProfileRef::Preset(id) => {
             let preset = profiles::preset(id)
                 .ok_or_else(|| format!("The look “{name}” isn’t available."))?;

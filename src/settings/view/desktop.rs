@@ -158,10 +158,7 @@ impl Settings {
         let accent = self.settings_accent();
         let editor = &self.desktop;
         let title = split(
-            heading(
-                "Dock & panel",
-                "Changes apply as you finish each adjustment.",
-            ),
+            heading("Dock & panel", ""),
             super::windows::store_pill(editor.store(), accent),
         );
         if editor.store().is_none() {
@@ -200,19 +197,6 @@ impl Settings {
         let system = button::text("System settings ↗")
             .on_press(Message::OpenDesktop(editor.selected.system_page()));
         let mut parts = vec![title];
-        if let Some(draft) = editor.current().filter(|draft| draft.installed()) {
-            let scene = if self.scene_open() {
-                self.desktop_preview(self.dock_preview_height())
-            } else {
-                cosmic::widget::space().height(0).into()
-            };
-            let caption = if draft.dirty() {
-                "Current adjustment · schematic bar appearance"
-            } else {
-                "Current desktop · schematic bar appearance"
-            };
-            parts.push(self.scene_frame(scene, caption));
-        }
         parts.push(
             row::with_children(vec![label("Editing", 12., MUTED), selector, system.into()])
                 .spacing(12)
@@ -226,6 +210,28 @@ impl Settings {
             .into()
     }
 
+    pub(super) fn dock_workspace(&self) -> Element<'_, Message> {
+        let editor = &self.desktop;
+        let mut parts = Vec::new();
+        if let Some(draft) = editor.current().filter(|draft| draft.installed()) {
+            let scene = if self.scene_open() {
+                self.desktop_preview(self.dock_preview_height())
+            } else {
+                cosmic::widget::space().height(0).into()
+            };
+            let caption = if draft.dirty() {
+                "Current adjustment · schematic bar appearance"
+            } else {
+                "Current desktop · schematic bar appearance"
+            };
+            parts.push(self.scene_frame(scene, caption));
+        }
+        self.inspector_layout(
+            column::with_children(parts).spacing(12).into(),
+            self.desktop_dock_page(),
+            "dock",
+        )
+    }
     /// Scrolling part of the Dock & Panel page: states, then the controls.
     pub(super) fn desktop_dock_page(&self) -> Element<'_, Message> {
         let editor = &self.desktop;
@@ -332,11 +338,7 @@ impl Settings {
 
     /// Full-width scene, with controls still near at compact window sizes.
     fn dock_preview_height(&self) -> f32 {
-        if self.window.width >= 1120. && self.window.height >= 760. {
-            280.
-        } else {
-            180.
-        }
+        self.stage_height()
     }
 
     fn layout_section(&self, draft: &PanelDraft) -> Element<'_, Message> {
@@ -413,7 +415,7 @@ impl Settings {
             choice(&draft.size(), sizes, Edit::Size, accent),
         ));
         style.push(match opacity_percent {
-            Some(percent) => value_slider(
+            Some(percent) => container(value_slider(
                 "Background opacity",
                 format!("{percent}%"),
                 0..=100,
@@ -421,7 +423,9 @@ impl Settings {
                 1,
                 accent,
                 |value| Edit::Opacity(value as u8),
-            ),
+            ))
+            .id("native-bar-opacity")
+            .into(),
             None => field(
                 "Background opacity",
                 kept(match &opacity {

@@ -91,35 +91,26 @@ impl Settings {
             parts.push(header);
         }
         if self.scene_open() {
-            let card = if self.window.width < 1100. && !caption.starts_with("Live controls") {
-                super::sample::fit(card, 120.)
+            let card = if !caption.starts_with("Live controls") {
+                super::sample::fit(card, self.stage_height())
             } else {
                 card
             };
             parts.push(self.preview_stage(card));
         }
         let preview = self.scene_frame(column::with_children(parts).spacing(10).into(), caption);
-        if self.window.width >= 1100. && self.scene_open() {
-            row::with_children(vec![
-                container(preview).width(360).into(),
-                container(controls).width(Length::Fill).into(),
-            ])
-            .spacing(24)
-            .align_y(Alignment::Start)
-            .into()
-        } else {
+        {
             // Empty widgets need content before a sample. Notes always keeps
             // its editor and Save/Revert ahead of the live checklist.
             let needs_content = self.page == Page::Notes
                 || (self.page == Page::Calendar && !self.calendar.connection.connected())
                 || (self.page == Page::Weather && self.config.location.is_none())
                 || (self.page == Page::Projects && self.config.project_roots.is_empty());
-            let parts = if needs_content {
-                vec![controls, preview]
+            if needs_content {
+                self.inspector_layout(controls, preview, "content")
             } else {
-                vec![preview, controls]
-            };
-            column::with_children(parts).spacing(20).into()
+                self.inspector_layout(preview, controls, "widget")
+            }
         }
     }
 }

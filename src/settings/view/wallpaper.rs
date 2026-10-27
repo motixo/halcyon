@@ -115,7 +115,7 @@ impl Settings {
 
     /// Room for display controls beside a compact picture.
     fn wallpaper_wide(&self) -> bool {
-        self.window.width >= 1120.
+        self.content_width() >= 584.
     }
 
     /// The selected display's draft background, as COSMIC will draw it, with
@@ -536,19 +536,8 @@ impl Settings {
         items.extend(self.colors_conflicts());
 
         let enabled = blocked_target.is_none();
-        let content = (self.window.width - 300.).max(260.);
         let scene = if self.scene_open() {
-            // A bounded picture leaves the gallery close to the candidate.
-            // The paired layout splits the page after the sidebar, page
-            // padding and column gap; the scene adds 14 px padding per side.
-            // Size both picture axes from that actual space so a narrow paired
-            // column cannot squeeze a 440 px picture into a taller aspect ratio.
-            let width = if self.wallpaper_wide() {
-                ((self.window.width - 184. - 44. - 16.) / 2. - 28.).min(440.)
-            } else {
-                content.min(340.)
-            };
-            self.wallpaper_preview(width)
+            self.wallpaper_preview(self.stage_width().max(240.) - 12.)
         } else {
             cosmic::widget::space().height(0).into()
         };
@@ -570,10 +559,10 @@ impl Settings {
             side.push(displays);
         }
         side.push(self.wallpaper_related());
-        items.push(super::desktop::paired(
-            self.wallpaper_wide(),
+        items.push(self.inspector_layout(
             preview,
             column::with_children(side).spacing(14).into(),
+            "wallpaper",
         ));
         items.push(self.wallpaper_gallery(enabled, false));
         column::with_children(items).spacing(16).into()

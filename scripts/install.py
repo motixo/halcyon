@@ -90,6 +90,10 @@ def files(binary, prefix, google_client):
         out.append((prefix / 'lib' / PACKAGE / name, (SOURCE / 'scripts' / name).read_bytes(), 0o755))
     for wallpaper in sorted((SOURCE / 'assets/wallpapers').glob('*.jpg')):
         out.append((share / 'backgrounds/halcyon' / wallpaper.name, wallpaper.read_bytes(), 0o644))
+    # Ridge's prepared PNG must match the embedded depth reference, just as in
+    # the Debian package. Do not convert or omit it in a source installation.
+    ridge = SOURCE / 'assets/wallpapers/halcyon-ridge.png'
+    out.append((share / 'backgrounds/halcyon' / ridge.name, ridge.read_bytes(), 0o644))
     for size in ICON_SIZES:
         icon = SOURCE / 'packaging/icons' / str(size) / f'{APP_ID}.png'
         out.append((share / f'icons/hicolor/{size}x{size}/apps' / f'{APP_ID}.png', icon.read_bytes(), 0o644))

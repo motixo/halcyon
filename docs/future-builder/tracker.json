@@ -1,0 +1,411 @@
+{
+  "title": "Halcyon future builder",
+  "working_target": "0.5",
+  "target_is_release_commitment": false,
+  "updated": "2026-10-27",
+  "phase": "FB05\u2013FB19 implemented and locally validated; FB20 local packages validated, physical/live release acceptance pending",
+  "implementation_started": true,
+  "status_source": "This file is the canonical task status; roadmap and archived proposals do not override it.",
+  "next": [
+    "FB20"
+  ],
+  "statuses": [
+    "planned",
+    "design_review",
+    "in_progress",
+    "blocked",
+    "validated",
+    "deferred"
+  ],
+  "tasks": [
+    {
+      "id": "FB01",
+      "title": "Consolidate the design workspace",
+      "status": "validated",
+      "depends_on": [],
+      "exit": "All twelve concepts, prompts, reference proposals and current planning documents are linked locally.",
+      "evidence": [
+        "README.md",
+        "CONCEPTS.md",
+        "concepts/manifest.json",
+        "validation.json"
+      ],
+      "owner": null
+    },
+    {
+      "id": "FB02",
+      "title": "Review model ownership, migration and override contracts",
+      "status": "validated",
+      "depends_on": [
+        "FB01"
+      ],
+      "exit": "Agree one applied source of truth; work through an old profile and one multi-instance example; settle style precedence and unsupported-version behavior.",
+      "evidence": [
+        "CONTRACTS.md",
+        "examples/contracts.json",
+        "evidence/baseline-20261026.json"
+      ],
+      "owner": null,
+      "validation_scope": "Design/source review and existing compatibility regressions; future migration is NOT implemented or validated. Full migration remains FB16."
+    },
+    {
+      "id": "FB03",
+      "title": "Measure the baseline and freeze finite resource budgets",
+      "status": "validated",
+      "depends_on": [
+        "FB02"
+      ],
+      "exit": "Record representative hardware/workloads and numeric latency, idle, memory, asset, instance, recipe and cache limits.",
+      "evidence": [
+        "BUDGETS.md",
+        "evidence/baseline-20261026.json",
+        "probes/README.md"
+      ],
+      "owner": null,
+      "validation_scope": "Current native-tree draw/readback and isolated idle baseline; initial finite budgets. Input-to-present/frame pacing, memory cycles and maximum-load limits remain mandatory FB09/FB20 acceptance, not measured claims."
+    },
+    {
+      "id": "FB04",
+      "title": "Probe native typography, panel and rendering capabilities",
+      "status": "validated",
+      "depends_on": [
+        "FB02"
+      ],
+      "exit": "Verify font styles/digit shaping, standard panel orientation, unavailable-capability states and the native component path; document limits.",
+      "evidence": [
+        "CAPABILITIES.md",
+        "evidence/baseline-20261026.json",
+        "probes/fonts.rs"
+      ],
+      "owner": null,
+      "validation_scope": "36 pinned native paragraph cases, stock Left/Right panel protocol probes, current render paths and existing compatibility-state regressions. Vertical Islands and variable axes are unqualified/excluded from first slice."
+    },
+    {
+      "id": "FB05",
+      "title": "Extend the shared style resolver and built-in clock model",
+      "status": "validated",
+      "depends_on": [
+        "FB02",
+        "FB03",
+        "FB04"
+      ],
+      "exit": "Old defaults retain their appearance; inheritance, explicit no-surface and new face/type fields resolve without I/O or per-preset code.",
+      "evidence": [
+        "FB05.md",
+        "evidence/fb05-20261026.json"
+      ],
+      "owner": null,
+      "validation_scope": "Pure resolver, legacy projection, native Clock choices, scoped transactions/profile version 9, 115 distinct focused regressions, compact/wide real-tree captures and one private COSMIC Settings idle sample. Full rendering/provider/layout integration, finished presets and package acceptance remain later tasks."
+    },
+    {
+      "id": "FB06",
+      "title": "Share component rendering and measurement",
+      "status": "validated",
+      "depends_on": [
+        "FB05"
+      ],
+      "exit": "Clock and Weather use the same measured presentation inputs in desktop and preview; previews cannot perform live actions.",
+      "evidence": [
+        "FB06.md",
+        "evidence/fb06-20261026.json"
+      ],
+      "owner": null,
+      "validation_scope": "Shared Clock/Weather inputs, real scene components, 98 focused regressions (11 new), 100/150/200% renderer checks, 368 GPU/software timing samples, and three private COSMIC Settings windows. Provider deduplication, complete layout/transaction integration, physical output transitions, final presets and package qualification remain later tasks."
+    },
+    {
+      "id": "FB07",
+      "title": "Isolate provider demand and typed snapshots",
+      "status": "validated",
+      "depends_on": [
+        "FB02",
+        "FB03"
+      ],
+      "exit": "Same-key consumers share work; different keys remain separate; stale/cancelled delivery and hidden-consumer demand are controlled.",
+      "evidence": [
+        "FB07.md",
+        "evidence/fb07-20261026.json"
+      ],
+      "owner": null,
+      "validation_scope": "Clock/Weather first slice: bounded keyed Weather work, reference demand, cancellation acknowledgement, generation-fenced typed delivery, accepted/coalesced cache writes and a shared Clock observation. 123 distinct focused regressions (18 new), including production HTTP parser on loopback and isolated runtime/display/native-view checks. Other providers, complete integration, real presentation timing, live providers and package acceptance remain separate."
+    },
+    {
+      "id": "FB08",
+      "title": "Connect layout, input and guarded commits",
+      "status": "validated",
+      "depends_on": [
+        "FB06",
+        "FB07"
+      ],
+      "exit": "Logical geometry, natural sizes, hit regions, scoped edits, journals and display epochs work through the existing store.",
+      "evidence": [
+        "FB08.md",
+        "evidence/fb08-20261026.json"
+      ],
+      "owner": null,
+      "validation_scope": "157 distinct focused regressions, five new, actual native tree hit-region measurements, synthetic output epochs, scoped Undo and existing guarded/journal recovery checks. No separate persistence owner. Fresh compositor/performance/physical acceptance remains FB09/FB20. Implementation review correction validated: hide the shared column during Arrange even with Weather disabled."
+    },
+    {
+      "id": "FB09",
+      "title": "Validate the complete foundation slice",
+      "status": "validated",
+      "depends_on": [
+        "FB08",
+        "FB04"
+      ],
+      "exit": "Real desktop/preview Clock and Weather, two styles, isolated duplicate demand, Undo, crash/stale-work and display-change cases meet QUALITY.md and BUDGETS.md; measure real input-to-present/frame pacing, memory cycles and cold asset cancellation separately from draw/readback.",
+      "evidence": [
+        "FB09.md",
+        "evidence/fb09-20261026.json"
+      ],
+      "owner": null,
+      "validation_scope": "161 distinct regressions, six new; bounded cancellable scene/color workers; native input/frame pacing, edit/Undo memory cycles, 60-second idle, actual desktop and paired maximum standalone workload; 368 GPU/software proxy samples. Physical devices, live providers and exact packages remain FB20."
+    },
+    {
+      "id": "FB10",
+      "title": "Ship coherent presets and the visual type chooser",
+      "status": "validated",
+      "depends_on": [
+        "FB09"
+      ],
+      "exit": "Tidal and Paper are native and usable first; Moss/Carbon follow; Type wall is bounded and fallbacks/readability are truthful.",
+      "evidence": [
+        "FB10.md",
+        "evidence/fb10-20261027.json"
+      ],
+      "owner": null,
+      "validation_scope": "111 focused regressions, five new; native presets and installed-font specimens; asynchronous bounded gallery cache; two private COSMIC windows and 26 select/discard cycles each; reference render budgets pass. Physical/device/package qualification remains later."
+    },
+    {
+      "id": "FB11",
+      "title": "Build the desktop canvas and native inspector",
+      "status": "validated",
+      "depends_on": [
+        "FB10"
+      ],
+      "exit": "Select/move/resize/style through mouse and keyboard; compact UI, explicit override layers, Cancel and Apply preserve all content.",
+      "evidence": [
+        "FB11.md",
+        "evidence/fb11-20261027.json"
+      ],
+      "owner": null,
+      "validation_scope": "115 focused regressions, thirteen new; combined draft/store transaction and private recovery; native mouse/keyboard controls in compact/wide light/dark captures; two private COSMIC windows with 26 Apply/Undo cycles each and under 1 MiB warm RSS growth. Physical outputs, screen readers, exact packages and later design-v1 model remain separate gates."
+    },
+    {
+      "id": "FB12",
+      "title": "Build local Mix board composition",
+      "status": "validated",
+      "depends_on": [
+        "FB11"
+      ],
+      "exit": "Picture/style/layout can be combined from local sources with a coherent change plan, preview, saved provenance and correct Undo.",
+      "evidence": [
+        "FB12.md",
+        "evidence/fb12-20261027.json"
+      ],
+      "owner": null
+    },
+    {
+      "id": "FB13",
+      "title": "Export real-rendered setup cards and existing profile files",
+      "status": "validated",
+      "depends_on": [
+        "FB10"
+      ],
+      "exit": "Shared previews use explicit sample/public input; private content is excluded; local-file sharing works without hosting.",
+      "evidence": [
+        "FB13.md",
+        "evidence/fb13-20261027.json"
+      ],
+      "owner": null,
+      "validation_scope": "178 distinct regressions, eight new; bounded public native-rendered PNG export, source/cancellation fences, confined atomic save and studio-only Spine. Final compact/wide private COSMIC runs qualify standard vertical panel with real Clock, guarded Apply and keyboard Undo. Portal interaction, vertical Islands, physical devices and packages remain separate."
+    },
+    {
+      "id": "FB14",
+      "title": "Prototype and qualify Ridge depth",
+      "status": "validated",
+      "depends_on": [
+        "FB09",
+        "FB04"
+      ],
+      "exit": "Prepared matte/background pairs align at supported fits/scales, retain correct input/layering and fall back cleanly when unavailable.",
+      "evidence": [
+        "FB14.md",
+        "evidence/fb14-20261027.json"
+      ],
+      "owner": null,
+      "validation_scope": "Prepared central mountain pair; 205 focused regressions, thirteen new, five packaging fixtures, compact/wide native Apply/Undo and selected-output depth/fallback at 100/150/200 percent and Fill/Fit. Conservative geometry/readability fallbacks remain; physical devices and final packages are separate."
+    },
+    {
+      "id": "FB15",
+      "title": "Design and implement bounded Moments",
+      "status": "validated",
+      "depends_on": [
+        "FB11",
+        "FB02"
+      ],
+      "exit": "Day/night first: override/manual-change/schedule policy, resume/DST/clock and restore behavior are settled and tested before sun-based extensions.",
+      "evidence": [
+        "FB15.md",
+        "evidence/fb15-20261027.json"
+      ],
+      "owner": null,
+      "validation_scope": "189 distinct focused regressions, fourteen new; compact/wide native keyboard activation and Undo, public sample isolation, actual desktop Day/Night switching and bounded idle. Physical devices, final packages and solar/activity triggers remain separate."
+    },
+    {
+      "id": "FB16",
+      "title": "Migrate applied state to stable widget instances",
+      "status": "validated",
+      "depends_on": [
+        "FB09",
+        "FB02"
+      ],
+      "exit": "One canonical widget-domain record, legacy ID mapping, typed routes, snapshots, history/recovery, newer-version rejection in new clients, old-writer conflict detection and explicit downgrade export pass before duplication is exposed.",
+      "evidence": [
+        "FB16.md",
+        "evidence/fb16-20261027.json"
+      ],
+      "owner": null
+    },
+    {
+      "id": "FB17",
+      "title": "Build personal recipes from trusted native parts",
+      "status": "validated",
+      "depends_on": [
+        "FB16",
+        "FB11"
+      ],
+      "exit": "A user creates a bounded clock/weather recipe with compact/wide behavior, missing-data states, approved actions and shared subscriptions.",
+      "evidence": [
+        "FB17.md",
+        "evidence/fb17-20261027.json"
+      ],
+      "owner": null
+    },
+    {
+      "id": "FB18",
+      "title": "Qualify portable asset packages",
+      "status": "validated",
+      "depends_on": [
+        "FB13",
+        "FB16"
+      ],
+      "exit": "Bounded archive/asset references, staging/recovery, credits, compatibility and cross-machine import/export pass; no content/secrets/commands leak.",
+      "evidence": [
+        "FB18.md",
+        "evidence/fb18-20261027.json"
+      ],
+      "owner": null
+    },
+    {
+      "id": "FB19",
+      "title": "Add curated community discovery and revision links",
+      "status": "validated",
+      "depends_on": [
+        "FB18"
+      ],
+      "exit": "Discover/preview/remix works with credits and explicit updates; offline use and personal forks remain intact.",
+      "evidence": [
+        "FB19.md",
+        "evidence/fb19-20261027.json"
+      ],
+      "owner": null
+    },
+    {
+      "id": "FB20",
+      "title": "Qualify each shipping milestone on its final packages",
+      "status": "in_progress",
+      "depends_on": [
+        "FB09"
+      ],
+      "exit": "Selected shipping features pass QUALITY.md on exact artifacts, with physical/native/device gaps reported and no unsupported claims.",
+      "evidence": [
+        "FB20.md",
+        "evidence/fb20-20261027.json"
+      ],
+      "owner": null,
+      "local_acceptance_complete": true,
+      "remaining": [
+        "Physical hotplug/reconnect while editing, resume and reboot",
+        "Real mixed-DPI/portrait outputs",
+        "Hybrid/discrete GPU and longer battery sessions",
+        "Screen-reader acceptance",
+        "Final release-identity package, reviewed companion pin and live COSMIC/Store/PolicyKit installation"
+      ]
+    }
+  ],
+  "release_gate_note": "FB20 applies to every shipping milestone and additionally requires validation of every feature included in that milestone. FB19 hosted discovery is separately deferrable; it does not block earlier releases.",
+  "deferred": [
+    "Activity-triggered layout rearrangement",
+    "Timed live desktop trials",
+    "Executable recipes and a general code plugin system",
+    "Automatic foreground segmentation",
+    "Unqualified vertical Islands or native compositor effects"
+  ],
+  "evidence_policy": "Validated design tasks FB01\u2013FB04 qualify documentation/contracts/current baseline and scoped capability probes only. They do not validate future behavior. Implementation tasks require exact source/artifact, environment and reproducible results.",
+  "log": [
+    {
+      "date": "2026-10-26",
+      "change": "Created architecture-first project, consolidated twelve concepts and references, recorded open model/measurement/capability gates. No production code changed."
+    },
+    {
+      "date": "2026-10-26",
+      "change": "Recorded contracts and examples, native font/panel/rendering probes, initial budgets and reproducible baseline. Added an opt-in test-only diagnostic. Twelve image hashes and five existing wizard repair hashes preserved. No future feature, installed-service or release changes."
+    },
+    {
+      "date": "2026-10-26",
+      "change": "Implemented and locally validated FB05. Added native digital/analog Clock, discrete type/surface controls, scoped Undo and profile v9 boundary. Existing wizard repair hashes preserved. No install, publication or version bump."
+    },
+    {
+      "date": "2026-10-26",
+      "change": "Implemented and locally validated FB06 shared Clock/Weather presentation and measurement. Preserved wizard-repair hashes and coordinated independent installation edits. No installation, publication or version bump."
+    },
+    {
+      "date": "2026-10-26",
+      "change": "Implemented and locally validated FB07. Same-key demand shares work; stale/cancelled results cannot replace current observations; one bounded cache writer coalesces pending data. Clock retains one shared wake. Wizard-repair hashes preserved; no installation, publication or version bump."
+    },
+    {
+      "date": "2026-10-26",
+      "change": "Implemented and locally validated FB08. Shared logical column frames, precise hit regions, cancelled stale display gestures, retained prior drafts/receipts. 156 focused checks pass; no install, publication or version change."
+    },
+    {
+      "date": "2026-10-26",
+      "change": "FB08 review correction validated on r4: 157 focused regressions, five new, release check passed. Proceeding to FB09; review/fix/validate each stage before the next."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented, reviewed and locally validated FB10. Four new portable looks, native twelve-specimen font pages, bounded compiled image cache. Corrected color-policy inheritance and retained compact onboarding access. No installation, publication or version change; proceeding to FB11."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented, reviewed and locally validated FB14. Prepared alpha-only Ridge depth, selected-output observation, bounded child rendering, source cancellation, truthful plain fallback and profile format 11. Two fixture-only bundled path adaptations; wizard production hashes preserved. Proceeding to FB15."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented, reviewed and locally validated FB15. Day/Night presentation layers reuse existing transactions and scheduler. Corrected partial defaults, commit-time phase guard, compact public samples and capture completion. Proceeding to FB16 stable-instance migration."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented, reviewed and locally validated FB16. Canonical widget document, journaled migration, strict version admission, old-writer recovery and explicit downgrade export. 260 Rust regressions and private new/old binary plus native acceptance pass. Proceeding to FB17."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented, reviewed and locally validated FB17. Bounded native Clock/Weather recipes, immutable library snapshots, guarded Apply/Undo and schema admission. Fixed input/compact behavior, unnecessary profile upgrades and actual native action/face contrast. Proceeding to FB18."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented, reviewed and locally validated FB18. Bounded portable packages, isolated image workers, durable immutable assets, credits and guarded review. 307 focused checks and compact/wide private native flows pass. Proceeding to FB19."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Implemented and reviewed FB19 offline curated discovery, independent remix and retained revision credits. 173 focused regressions and final compact/wide native flows pass. Proceeding to exact-artifact packaging; external release gates remain explicit."
+    },
+    {
+      "date": "2026-10-27",
+      "change": "Completed FB20 local artifact checks: exact dev package, private dpkg lifecycle, source upgrade/backup, 36 Python checks, six CLI compatibility scenarios, packaged native flows and source archive. Fixed omitted Ridge PNG in source installation. Physical/live shipping acceptance remains open; no host install, publish or version bump."
+    }
+  ],
+  "foundation_probe_code_added": true,
+  "execution_rule": "Implement in dependency order; review each implementation, fix findings and validate before advancing.",
+  "implementation_complete": true,
+  "release_eligible": false
+}

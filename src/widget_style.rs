@@ -2,6 +2,7 @@
 //! uses a worst-case wallpaper range, so it needs no sampling or background work.
 use crate::config::Palette;
 use cosmic::iced::{Color, Font};
+pub mod resolver;
 
 pub const PADDING: u16 = 18;
 pub const TITLE: f32 = 18.;
@@ -13,13 +14,15 @@ pub const META: f32 = 10.;
 struct Families {
     body: Option<&'static str>,
     clock: Option<&'static str>,
+    weight: Option<cosmic::iced::font::Weight>,
+    italic: Option<bool>,
 }
 thread_local! {
     static ASSIST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static MOTION: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static MATERIAL: std::cell::Cell<Option<crate::materials::Finish>> = const { std::cell::Cell::new(None) };
     static CONTEXT: std::cell::Cell<Option<crate::desktop_theme::Roles>> = const { std::cell::Cell::new(None) };
-    static FAMILIES: std::cell::Cell<Families> = const { std::cell::Cell::new(Families { body: None, clock: None }) };
+    static FAMILIES: std::cell::Cell<Families> = const { std::cell::Cell::new(Families { body: None, clock: None, weight: None, italic: None }) };
 }
 /// A lexical rendering/measurement context. The guard restores the prior
 /// context, so a widget preview cannot recolor or change Settings typography.
@@ -30,6 +33,36 @@ pub struct Scope(
     bool,
     bool,
 );
+/// An immutable rendering context captured with a component's inputs. Restoring
+/// it while constructing the native tree cannot pick up another preview's style.
+#[derive(Clone, Copy)]
+pub struct Context {
+    roles: Option<crate::desktop_theme::Roles>,
+    families: Families,
+    material: Option<crate::materials::Finish>,
+    motion: bool,
+    assist: bool,
+}
+impl Context {
+    pub fn capture() -> Self {
+        Self {
+            roles: CONTEXT.get(),
+            families: FAMILIES.get(),
+            material: MATERIAL.get(),
+            motion: MOTION.get(),
+            assist: ASSIST.get(),
+        }
+    }
+    pub fn enter(self) -> Scope {
+        Scope(
+            CONTEXT.replace(self.roles),
+            FAMILIES.replace(self.families),
+            MATERIAL.replace(self.material),
+            MOTION.replace(self.motion),
+            ASSIST.replace(self.assist),
+        )
+    }
+}
 impl Drop for Scope {
     fn drop(&mut self) {
         CONTEXT.set(self.0);
@@ -40,9 +73,12 @@ impl Drop for Scope {
     }
 }
 pub fn scope(config: &crate::config::Config) -> Scope {
+    let clock = config.moment_clock();
     let families = Families {
         body: config.widget_font.as_deref().map(intern),
         clock: config.clock_font.as_deref().map(intern),
+        weight: clock.weight.map(resolver::ClockWeight::native),
+        italic: clock.italic,
     };
     Scope(
         CONTEXT.replace(config.theme_roles()),
@@ -67,6 +103,8 @@ pub fn fonts(body: Option<&str>, clock: Option<&str>) -> Fonts {
             clock: clock
                 .map(intern)
                 .or(if body.is_some() { None } else { current.clock }),
+            weight: current.weight,
+            italic: current.italic,
         }),
     )
 }
@@ -190,7 +228,128 @@ pub fn clock_font() -> Font {
     );
     // The clock follows the widget font unless it has its own.
     let families = FAMILIES.get();
-    with_family(theme, families.clock.or(families.body))
+    let mut font = with_family(theme, families.clock.or(families.body));
+    if let Some(weight) = families.weight {
+        font.weight = weight;
+    }
+    if let Some(italic) = families.italic {
+        font.style = if italic {
+            cosmic::iced::font::Style::Italic
+        } else {
+            cosmic::iced::font::Style::Normal
+        };
+    }
+    font
+}
+
+/// Project current preferences without introducing another applied document.
+/// Call inside `scope(config)` to retain grouped-widget font overrides.
+pub fn presentation(
+    config: &crate::config::Config,
+    palette: Palette,
+    clock: bool,
+) -> resolver::Style {
+    use resolver::{ClockFace, ClockSurface, Constraints, Layers, Patch, Surface, Values};
+    let effective = config.moment_clock();
+    let palette = if clock && effective.surface == Some(ClockSurface::Panel) {
+        config.palette()
+    } else {
+        palette
+    };
+    let surface = if clock || palette.background.a == 0. {
+        Surface::None
+    } else {
+        Surface::Solid(palette.background)
+    };
+    let base = Values {
+        ink: palette.foreground,
+        muted: palette.muted,
+        accent: palette.accent,
+        surface,
+        body: font(),
+        display: clock_font(),
+        radius: config.appearance.corner_radius,
+        padding: if clock { 4 } else { PADDING },
+        gap: 8,
+        motion: config.material_motion,
+        clock_face: ClockFace::Digital,
+    };
+    let mut layers = Layers::default();
+    if config.appearance.family.is_some() {
+        layers.setup = Patch {
+            ink: Some(base.ink),
+            muted: Some(base.muted),
+            accent: Some(base.accent),
+            body: Some(base.body),
+            display: Some(base.display),
+            ..Default::default()
+        };
+    }
+    if config.widget_font.is_some() {
+        layers.setup.body = Some(base.body);
+        layers.setup.display = Some(base.display);
+    }
+    if config
+        .moments
+        .selected()
+        .is_some_and(|look| look.family.is_some())
+    {
+        layers.moment = Patch {
+            ink: Some(base.ink),
+            muted: Some(base.muted),
+            accent: Some(base.accent),
+            surface: Some(base.surface),
+            body: Some(base.body),
+            display: Some(base.display),
+            ..Default::default()
+        };
+    }
+    if clock {
+        layers.instance.clock_face = config.clock.face;
+        if config.clock.weight.is_some()
+            || config.clock.italic.is_some()
+            || config.clock_font.is_some()
+        {
+            layers.instance.display = Some(base.display);
+        }
+        if let Some(surface) = config.clock.surface {
+            layers.instance.surface = Some(match surface {
+                ClockSurface::None => Surface::None,
+                ClockSurface::Panel => Surface::Solid(config.palette().background),
+            });
+            if surface == ClockSurface::Panel {
+                layers.instance.padding = Some(16);
+            }
+        }
+    }
+    if clock && let Some(look) = config.moments.selected() {
+        layers.moment_instance.clock_face = look.clock.face;
+        if look.clock.weight.is_some() || look.clock.italic.is_some() {
+            layers.moment_instance.display = Some(base.display);
+        }
+        if let Some(surface) = look.clock.surface {
+            layers.moment_instance.surface = Some(match surface {
+                ClockSurface::None => Surface::None,
+                ClockSurface::Panel => Surface::Solid(config.palette().background),
+            });
+            layers.moment_instance.padding = Some(if surface == ClockSurface::Panel {
+                16
+            } else {
+                4
+            });
+        }
+    }
+    let constraints = Constraints {
+        reduce_motion: !config.material_motion,
+        readable: (clock && effective.surface.is_some() && config.appearance.contrast_assist)
+            .then(|| readable(config.palette())),
+    };
+    resolver::resolve(
+        base,
+        layers,
+        constraints,
+        crate::desktop_theme::font_installed,
+    )
 }
 pub fn semantic(color: Color) -> Color {
     CONTEXT.get().map_or(color, |r| {

@@ -20,3 +20,11 @@ in them retain their respective owners' rights. See the
 No fonts are bundled: widget styles name system fonts and fall back when one isn't installed.
 
 Earlier explorations (icon rounds, wallpaper drafts, mockups) and the reference images used for them are not part of the repository.
+# Ridge prepared wallpaper
+
+`assets/wallpapers/halcyon-ridge.png` and `assets/depth/halcyon-ridge.png`
+were generated for Halcyon with OpenAI image generation on 2026-10-27.
+The second image is a prepared foreground mask, not another wallpaper.
+Original outputs, prompts and refinement history are retained in
+`docs/future-builder/assets/ridge/`. No external photograph, logo or personal
+content was used as a reference. Local depth qualification is tracked under FB14.

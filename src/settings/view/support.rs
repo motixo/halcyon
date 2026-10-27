@@ -46,6 +46,7 @@ impl Settings {
                     .into(),
             )],
         )];
+        let mut groups = Vec::new();
         for (heading, problem) in [("Needs attention", true), ("Local status", false)] {
             let rows = snapshot
                 .components
@@ -65,8 +66,15 @@ impl Settings {
                 })
                 .collect::<Vec<_>>();
             if !rows.is_empty() {
-                items.push(group(Some(heading), rows));
+                groups.push(group(Some(heading), rows));
             }
+        }
+        if groups.len() == 2 {
+            let right = groups.pop().unwrap();
+            let left = groups.pop().unwrap();
+            items.push(self.setting_columns(left, right));
+        } else {
+            items.extend(groups);
         }
         items.push(
             row::with_children(vec![

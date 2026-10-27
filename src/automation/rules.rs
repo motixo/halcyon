@@ -13,6 +13,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub const FORMAT: &str = "desktop-cards-automation";
 pub const VERSION: u32 = 1;
+pub const MOMENTS_VERSION: u32 = 2;
 pub const MAX_RULES: usize = 32;
 pub const MAX_BYTES: usize = 64 * 1024;
 const MAX_LABEL: usize = 80;
@@ -198,6 +199,7 @@ impl<'de> Deserialize<'de> for Time {
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProfileRef {
+    Moment(crate::moments::Phase),
     Preset(String),
     Saved(String),
 }
@@ -205,8 +207,13 @@ pub enum ProfileRef {
 impl ProfileRef {
     fn valid(&self) -> bool {
         match self {
+            Self::Moment(_) => true,
             Self::Preset(id) => {
-                !id.is_empty() && id.len() <= 32 && id.bytes().all(|b| b.is_ascii_lowercase())
+                !id.is_empty()
+                    && id.len() <= 32
+                    && id.bytes().all(|b| {
+                        b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'
+                    })
             }
             Self::Saved(id) => ProfileId::parse(id).is_ok(),
         }
@@ -389,7 +396,7 @@ impl Automation {
         if value
             .get("version")
             .and_then(serde_json::Value::as_u64)
-            .is_some_and(|version| version > u64::from(VERSION))
+            .is_some_and(|version| version > u64::from(MOMENTS_VERSION))
         {
             return Err("The automation settings come from a newer Halcyon.".into());
         }
@@ -398,12 +405,28 @@ impl Automation {
         automation.validate()?;
         Ok(automation)
     }
+    pub fn written_version(&self) -> u32 {
+        if self
+            .rules
+            .iter()
+            .any(|r| matches!(r.profile, ProfileRef::Moment(_)))
+        {
+            MOMENTS_VERSION
+        } else {
+            VERSION
+        }
+    }
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        self.validate()?;
-        serde_json::to_vec_pretty(self).map_err(|error| error.to_string())
+        let mut record = self.clone();
+        record.version = record.written_version();
+        record.validate()?;
+        serde_json::to_vec_pretty(&record).map_err(|error| error.to_string())
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.format != FORMAT || self.version != VERSION {
+        if self.format != FORMAT
+            || ![VERSION, MOMENTS_VERSION].contains(&self.version)
+            || self.version < self.written_version()
+        {
             return Err("The automation settings are not recognized.".into());
         }
         if self.rules.len() > MAX_RULES {

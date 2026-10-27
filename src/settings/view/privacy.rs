@@ -38,12 +38,24 @@ impl Settings {
         column::with_children(controls).spacing(8).into()
     }
     pub(in crate::settings) fn privacy_section(&self) -> Element<'_, Message> {
-        section(vec![
-            detail(
-                "Usage reporting",
-                "Your choice is independent of themes and saved setups.",
-            ),
-            self.usage_control(),
-        ])
+        self.setting_columns(
+            section(vec![
+                label("Usage reporting", 16., FG),
+                self.usage_control(),
+            ]),
+            section(vec![
+                label("Stays on your computer", 16., FG),
+                label(
+                    "Calendar events, notes, account secrets and project content are not included.",
+                    14.,
+                    MUTED,
+                ),
+                label(
+                    "Themes and saved setups do not change your reporting choice.",
+                    13.,
+                    MUTED,
+                ),
+            ]),
+        )
     }
 }

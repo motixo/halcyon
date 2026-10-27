@@ -81,52 +81,129 @@ impl Settings {
 pub fn reveal(target: &'static str) -> Task<Message> {
     use cosmic::iced::runtime::{Action, task};
     task::effect(Action::widget(Reveal {
-        target: cosmic::widget::Id::new(target),
-        view: None,
-        target_top: None,
+        target: Some(cosmic::widget::Id::new(target)),
+        ..Default::default()
     }))
 }
 
-struct Reveal {
-    target: cosmic::widget::Id,
-    view: Option<cosmic::iced::Rectangle>,
-    target_top: Option<f32>,
+/// Reveal inside every containing scroll area, including independent inspectors.
+/// The same operation handles keyboard focus; resizing does not reset offsets.
+#[derive(Default)]
+pub(super) struct Reveal {
+    target: Option<cosmic::widget::Id>,
+    offset: cosmic::iced::Vector,
+    scopes: Vec<(cosmic::widget::Id, cosmic::iced::Rectangle, f32, f32)>,
+    pending: Option<(
+        Option<cosmic::widget::Id>,
+        cosmic::iced::Rectangle,
+        cosmic::iced::Rectangle,
+        cosmic::iced::Vector,
+    )>,
+    moves: Vec<(cosmic::widget::Id, f32)>,
+}
+impl Reveal {
+    #[cfg(test)]
+    pub(super) fn target(id: &str) -> Self {
+        Self {
+            target: Some(cosmic::widget::Id::new(id.to_owned())),
+            ..Default::default()
+        }
+    }
+    fn show(&mut self, bounds: cosmic::iced::Rectangle) {
+        let mut top = bounds.y - self.offset.y;
+        for (id, view, scroll, maximum) in self.scopes.iter().rev() {
+            let height = bounds.height.min((view.height - 12.).max(1.));
+            let delta = if top < view.y + 6. {
+                top - view.y - 6.
+            } else if top + height > view.y + view.height - 6. {
+                top + height - view.y - view.height + 6.
+            } else {
+                0.
+            };
+            let next = (scroll + delta).clamp(0., *maximum);
+            if (next - scroll).abs() > 0.5 {
+                self.moves.push((id.clone(), next));
+                top -= next - scroll;
+            }
+        }
+    }
 }
 impl cosmic::iced::advanced::widget::Operation for Reveal {
-    fn traverse(
-        &mut self,
-        operate: &mut dyn FnMut(&mut dyn cosmic::iced::advanced::widget::Operation),
-    ) {
-        operate(self);
+    fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn cosmic::iced::advanced::widget::Operation)) {
+        let previous = (self.offset, self.scopes.len());
+        if let Some((id, mut bounds, content, translation)) = self.pending.take() {
+            bounds.x -= self.offset.x;
+            bounds.y -= self.offset.y;
+            if let Some(id) = id {
+                self.scopes.push((
+                    id,
+                    bounds,
+                    translation.y,
+                    (content.height - bounds.height).max(0.),
+                ));
+            }
+            self.offset += translation;
+        }
+        f(self);
+        self.offset = previous.0;
+        self.scopes.truncate(previous.1);
     }
     fn scrollable(
         &mut self,
         id: Option<&cosmic::widget::Id>,
         bounds: cosmic::iced::Rectangle,
-        _: cosmic::iced::Rectangle,
-        _: cosmic::iced::Vector,
+        content: cosmic::iced::Rectangle,
+        translation: cosmic::iced::Vector,
         _: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
     ) {
-        if id == Some(&cosmic::widget::Id::new("settings-content")) {
-            self.view = Some(bounds);
-        }
+        self.pending = Some((id.cloned(), bounds, content, translation));
     }
     fn container(&mut self, id: Option<&cosmic::widget::Id>, bounds: cosmic::iced::Rectangle) {
-        if id == Some(&self.target) {
-            self.target_top = Some(bounds.y);
+        if self.target.is_some() && id == self.target.as_ref() {
+            self.show(bounds);
+        }
+    }
+    fn focusable(
+        &mut self,
+        id: Option<&cosmic::widget::Id>,
+        bounds: cosmic::iced::Rectangle,
+        state: &mut dyn cosmic::iced::advanced::widget::operation::Focusable,
+    ) {
+        if (self.target.is_none() && state.is_focused())
+            || (self.target.is_some() && id == self.target.as_ref())
+        {
+            self.show(bounds);
         }
     }
     fn finish(&self) -> cosmic::iced::advanced::widget::operation::Outcome<()> {
-        use cosmic::iced::advanced::widget::operation::{Outcome, scrollable};
-        match (self.view, self.target_top) {
-            (Some(view), Some(top)) => Outcome::Chain(Box::new(scrollable::scroll_to(
-                cosmic::widget::Id::new("settings-content"),
-                scrollable::AbsoluteOffset {
+        use cosmic::iced::advanced::widget::operation::Outcome;
+        if self.moves.is_empty() {
+            Outcome::None
+        } else {
+            Outcome::Chain(Box::new(ScrollTargets(self.moves.clone())))
+        }
+    }
+}
+struct ScrollTargets(Vec<(cosmic::widget::Id, f32)>);
+impl cosmic::iced::advanced::widget::Operation for ScrollTargets {
+    fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn cosmic::iced::advanced::widget::Operation)) {
+        f(self);
+    }
+    fn scrollable(
+        &mut self,
+        id: Option<&cosmic::widget::Id>,
+        _: cosmic::iced::Rectangle,
+        _: cosmic::iced::Rectangle,
+        _: cosmic::iced::Vector,
+        state: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
+    ) {
+        if let Some((_, y)) = self.0.iter().find(|(target, _)| Some(target) == id) {
+            state.scroll_to(
+                cosmic::iced::advanced::widget::operation::scrollable::AbsoluteOffset {
                     x: None,
-                    y: Some((top - view.y - 8.).max(0.)),
+                    y: Some(*y),
                 },
-            ))),
-            _ => Outcome::None,
+            );
         }
     }
 }
@@ -251,7 +328,7 @@ const SEARCH: &[SearchHit] = &[
     hit(
         Page::Clock,
         "Time & date",
-        "clock time date hour format 12 24 size scale alignment center position resize",
+        "clock time date hour format 12 24 size scale alignment center position resize analog digital face typography weight italic surface",
         false,
     ),
     hit(
@@ -378,6 +455,18 @@ const SEARCH: &[SearchHit] = &[
         Page::DesktopProfiles,
         "Starter looks & saved setups",
         "setups profiles presets starter looks saved calm evening focus workbench paper rose clean desktop presentation welcome",
+        false,
+    ),
+    hit(
+        Page::Builder,
+        "Personal widget builder",
+        "recipe custom clock weather native parts compose widget builder",
+        false,
+    ),
+    hit(
+        Page::Moments,
+        "Day & Night moments",
+        "moments day night widget clock style scheduled",
         false,
     ),
     hit(
@@ -579,7 +668,7 @@ impl Page {
             Self::DesktopAppearance | Self::Appearance | Self::DesktopWallpaper => {
                 Some(Self::Themes)
             }
-            Self::DesktopAutomation => Some(Self::DesktopProfiles),
+            Self::DesktopAutomation | Self::Moments => Some(Self::DesktopProfiles),
             Self::PendingChanges => Some(Self::General),
             Self::DesktopWindowRules | Self::DesktopWorkspaces => Some(Self::DesktopWindows),
             Self::DesktopWindows | Self::DesktopIcons | Self::DesktopShortcuts => {
@@ -1000,78 +1089,4 @@ pub(super) fn keyboard_focus(backwards: bool) -> Task<Message> {
         cosmic::iced::runtime::Action::widget(FocusReveal::default()),
     ))
 }
-#[derive(Default)]
-pub(super) struct FocusReveal {
-    offset: cosmic::iced::Vector,
-    scope: Option<(cosmic::widget::Id, cosmic::iced::Rectangle, f32)>,
-    pending: Option<(
-        Option<cosmic::widget::Id>,
-        cosmic::iced::Rectangle,
-        cosmic::iced::Vector,
-    )>,
-    reveal: Option<(cosmic::widget::Id, f32)>,
-}
-impl cosmic::iced::advanced::widget::Operation for FocusReveal {
-    fn traverse(&mut self, f: &mut dyn FnMut(&mut dyn cosmic::iced::advanced::widget::Operation)) {
-        let previous = (self.offset, self.scope.clone());
-        if let Some((id, mut bounds, translation)) = self.pending.take() {
-            bounds.x -= self.offset.x;
-            bounds.y -= self.offset.y;
-            if let Some(id) = id.filter(|id| {
-                ["settings-content", "wizard-body", "wizard-widget-list"]
-                    .into_iter()
-                    .any(|key| *id == cosmic::widget::Id::new(key))
-            }) {
-                self.scope = Some((id, bounds, translation.y));
-            }
-            self.offset += translation;
-        }
-        f(self);
-        (self.offset, self.scope) = previous;
-    }
-    fn scrollable(
-        &mut self,
-        id: Option<&cosmic::widget::Id>,
-        bounds: cosmic::iced::Rectangle,
-        _: cosmic::iced::Rectangle,
-        translation: cosmic::iced::Vector,
-        _: &mut dyn cosmic::iced::advanced::widget::operation::Scrollable,
-    ) {
-        self.pending = Some((id.cloned(), bounds, translation));
-    }
-    fn focusable(
-        &mut self,
-        _: Option<&cosmic::widget::Id>,
-        bounds: cosmic::iced::Rectangle,
-        state: &mut dyn cosmic::iced::advanced::widget::operation::Focusable,
-    ) {
-        if state.is_focused()
-            && let Some((id, view, scroll)) = self.scope.as_ref()
-        {
-            let top = bounds.y - self.offset.y;
-            let bottom = top + bounds.height;
-            let delta = if top < view.y + 6. {
-                top - view.y - 6.
-            } else if bottom > view.y + view.height - 6. {
-                bottom - view.y - view.height + 6.
-            } else {
-                0.
-            };
-            if delta.abs() > 0.5 {
-                self.reveal = Some((id.clone(), (scroll + delta).max(0.)));
-            }
-        }
-    }
-    fn finish(&self) -> cosmic::iced::advanced::widget::operation::Outcome<()> {
-        use cosmic::iced::advanced::widget::operation::{Outcome, scrollable};
-        self.reveal.clone().map_or(Outcome::None, |(id, y)| {
-            Outcome::Chain(Box::new(scrollable::scroll_to(
-                id,
-                scrollable::AbsoluteOffset {
-                    x: None,
-                    y: Some(y),
-                },
-            )))
-        })
-    }
-}
+pub(super) type FocusReveal = Reveal;

@@ -1,0 +1,151 @@
+{
+  "kind": "design-contract-examples",
+  "production_schema": false,
+  "production_migration_test": false,
+  "legacy_profile": {
+    "input": {
+      "format": "desktop-cards-profile",
+      "version": 1,
+      "name": "Old look",
+      "widget_style": {
+        "theme": "rose"
+      }
+    },
+    "expected": "Apply the existing legacy palette conversion: theme rose, custom color source, remove stale explicit accent; omitted layout/content domains stay unchanged. Undo restores the previous source and accent. This existing behavior is covered by the named production regression."
+  },
+  "legacy_projection": {
+    "input": {
+      "clock": {
+        "enabled": true,
+        "size": null
+      },
+      "weather": {
+        "enabled": false,
+        "local_location_ref": "fixture-city"
+      }
+    },
+    "expected": [
+      {
+        "id": "legacy:clock",
+        "kind": "clock",
+        "enabled": true,
+        "size": "automatic"
+      },
+      {
+        "id": "legacy:weather",
+        "kind": "weather",
+        "enabled": false,
+        "binding": "local-only:fixture-city"
+      }
+    ],
+    "other_seven_kinds": "Each also receives its reserved legacy ID; hidden preferences are retained."
+  },
+  "multi_instance": {
+    "instances": [
+      {
+        "id": "legacy:clock",
+        "kind": "clock",
+        "recipe": "builtin:clock",
+        "display_role": "primary",
+        "style": {
+          "face": "editorial"
+        }
+      },
+      {
+        "id": "instance:fixture-b",
+        "kind": "clock",
+        "recipe": "builtin:clock",
+        "display_role": "secondary",
+        "style": {
+          "face": "compact"
+        }
+      }
+    ],
+    "legacy_clock_edit_targets": [
+      "legacy:clock"
+    ],
+    "delete_second_keeps_first": true,
+    "reorder_renames_neither": true,
+    "exact_legacy_export": "refused: duplicate clock is not representable",
+    "portable_export": "Preserve portable design-scoped IDs and roles; omit physical IDs, local bindings and content."
+  },
+  "style_cases": [
+    {
+      "name": "instance beats moment shared",
+      "layers": {
+        "recipe": "gray",
+        "setup": "teal",
+        "moment_shared": "amber",
+        "instance": "red"
+      },
+      "effective": "red",
+      "source": "instance"
+    },
+    {
+      "name": "moment instance wins",
+      "layers": {
+        "setup": "teal",
+        "instance": "red",
+        "moment_instance": "blue"
+      },
+      "effective": "blue",
+      "source": "moment_instance"
+    },
+    {
+      "name": "reset active override",
+      "layers_after_reset": {
+        "setup": "teal",
+        "instance": "red"
+      },
+      "effective": "red",
+      "reset_label": "Use base widget style"
+    },
+    {
+      "name": "surface none is a value",
+      "layers": {
+        "recipe": "solid",
+        "setup": "glass",
+        "instance": "none"
+      },
+      "effective": "none",
+      "source": "instance"
+    },
+    {
+      "name": "accessibility survives fallback",
+      "requested": {
+        "font": "missing-family",
+        "motion": true
+      },
+      "local": {
+        "reduce_motion": true
+      },
+      "effective": {
+        "font": "available-fallback",
+        "motion": false
+      },
+      "saved_intent_unchanged": true
+    }
+  ],
+  "compatibility_cases": [
+    {
+      "input": "future design schema",
+      "new_client": "explain/export/recover; no defaulting or write"
+    },
+    {
+      "input": "old writer changed migrated widget fields",
+      "new_client": "conflict; no automatic overwrite in either direction"
+    },
+    {
+      "input": "old writer changed unrelated app preference",
+      "new_client": "keep the preference; widget authority unchanged"
+    },
+    {
+      "input": "interruption between journal phases",
+      "new_client": "recover activation before starting widget mutation"
+    },
+    {
+      "input": "unmodified 0.3.0 opened after migration",
+      "old_client": "can still read its frozen legacy snapshot; no claim it understands or rejects the new document"
+    }
+  ]
+}

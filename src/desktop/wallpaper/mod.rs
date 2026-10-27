@@ -42,7 +42,8 @@ pub const MAX_OUTPUTS: usize = 16;
 
 /// The built-in wallpapers (file stem, title): the Halcyon scenes the
 /// starter looks use, then one per widget palette.
-pub const BUNDLED: [(&str, &str); 13] = [
+pub const BUNDLED: [(&str, &str); 14] = [
+    ("halcyon-ridge", "Ridge"),
     ("halcyon-night", "Halcyon night"),
     ("halcyon-calm", "Calm"),
     ("halcyon-evening", "Evening"),
@@ -567,7 +568,14 @@ pub fn bundled_dir(store: &DesktopStore) -> PathBuf {
 }
 /// The built-in wallpaper `name` (a 3840x2160 JPEG).
 pub fn bundled_path(dir: &Path, name: &str) -> PathBuf {
-    dir.join(format!("{name}.jpg"))
+    dir.join(format!(
+        "{name}.{}",
+        if name == "halcyon-ridge" {
+            "png"
+        } else {
+            "jpg"
+        }
+    ))
 }
 /// The built-in wallpaper a path from an install before the rename names:
 /// `Desktop Cards/<name>-4k.png` or `-1080p.png` in the Pictures folder.

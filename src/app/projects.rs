@@ -1004,7 +1004,10 @@ impl Cards {
             .spacing(6)
             .width(Length::Fill);
         let footer = container(footer).height(Length::Fixed(20.));
-        let explicit = self.explicit_size(Widget::Projects).is_some();
+        // The shared column uses the same bounded logical frame as placement
+        // and input. Its contents scroll inside that frame instead of shrinking
+        // the native tree behind the independently published geometry.
+        let explicit = !self.custom_layout() || self.explicit_size(Widget::Projects).is_some();
         let limit = self.card_height(Widget::Projects);
         const CHROME: f32 = 116.; // header + footer + two gaps + frame padding
         if limit < CHROME + 44. {

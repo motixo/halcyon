@@ -12,9 +12,12 @@ use std::time::{Duration, Instant};
 
 mod automation;
 mod calendar;
+mod canvas;
 mod city_search;
 mod color_well;
 mod colors;
+mod depth;
+mod design;
 mod desktop;
 mod desktop_icons;
 mod direct;
@@ -22,6 +25,7 @@ mod direct;
 mod display_tests;
 mod drafts;
 mod legacy;
+mod moments;
 mod monitors;
 mod motion;
 mod native_jobs;
@@ -32,9 +36,11 @@ mod privacy;
 #[cfg(test)]
 mod privacy_tests;
 mod profiles;
+mod recipes;
 mod recovery;
 mod reorder;
 pub(crate) mod session_drafts;
+pub(crate) mod sharing;
 mod shortcuts;
 mod support;
 mod system_appearance;
@@ -53,6 +59,8 @@ pub(crate) use wizard::widgets::Draft as TestWidgetDraft;
 use city_search::CitySearch;
 use reorder::Reorder;
 use view::AppSettingsPage;
+
+const FONT_PAGE_SIZE: usize = 12;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -97,6 +105,8 @@ pub enum Page {
     DesktopShortcuts,
     /// Profile schedules and display rules, a subpage of Pop!_OS.
     DesktopAutomation,
+    Moments,
+    Builder,
 }
 impl Page {
     /// Six stable roots; leaf routes keep their existing command keys.
@@ -111,7 +121,7 @@ impl Page {
             Self::General,
         ],
     )];
-    const ALL: [Self; 28] = [
+    const ALL: [Self; 30] = [
         Self::Overview,
         Self::WidgetLayout,
         Self::PendingChanges,
@@ -140,6 +150,8 @@ impl Page {
         Self::DesktopWindowRules,
         Self::DesktopShortcuts,
         Self::DesktopAutomation,
+        Self::Moments,
+        Self::Builder,
     ];
     fn nav(self) -> Self {
         match self {
@@ -152,8 +164,11 @@ impl Page {
             Self::DesktopIcons => Self::DesktopIcons,
             Self::DesktopShortcuts => Self::DesktopShortcuts,
             Self::Overview | Self::WidgetLayout => Self::Overview,
+            Self::Builder => Self::Builder,
             Self::Appearance => Self::Appearance,
-            Self::DesktopProfiles | Self::DesktopAutomation => Self::DesktopProfiles,
+            Self::DesktopProfiles | Self::DesktopAutomation | Self::Moments => {
+                Self::DesktopProfiles
+            }
             Self::DesktopMotion => Self::DesktopMotion,
             Self::General | Self::PendingChanges => Self::General,
             _ => Self::Widgets,
@@ -170,7 +185,9 @@ impl Page {
             | Self::DesktopWindowRules
             | Self::DesktopIcons
             | Self::DesktopShortcuts => Self::DesktopDock,
-            Self::DesktopProfiles | Self::DesktopAutomation => Self::DesktopProfiles,
+            Self::DesktopProfiles | Self::DesktopAutomation | Self::Moments => {
+                Self::DesktopProfiles
+            }
             Self::DesktopMotion => Self::DesktopMotion,
             Self::General | Self::PendingChanges => Self::General,
             _ => Self::Widgets,
@@ -210,8 +227,12 @@ impl Page {
                 Self::DesktopIcons,
                 Self::DesktopShortcuts,
             ],
-            Self::Widgets => &[Self::Widgets, Self::Overview],
-            Self::DesktopProfiles => &[Self::DesktopProfiles, Self::DesktopAutomation],
+            Self::Widgets => &[Self::Widgets, Self::Overview, Self::Builder],
+            Self::DesktopProfiles => &[
+                Self::DesktopProfiles,
+                Self::Moments,
+                Self::DesktopAutomation,
+            ],
             Self::DesktopMotion => &[Self::DesktopMotion],
             _ => &[Self::General],
         }
@@ -290,6 +311,8 @@ impl Page {
             Self::DesktopWindowRules => "desktop-window-rules",
             Self::DesktopShortcuts => "desktop-shortcuts",
             Self::DesktopAutomation => "desktop-automation",
+            Self::Moments => "moments",
+            Self::Builder => "builder",
         }
     }
     fn title(self) -> &'static str {
@@ -322,6 +345,8 @@ impl Page {
             Self::DesktopWindowRules => "Floating apps",
             Self::DesktopShortcuts => "Shortcuts",
             Self::DesktopAutomation => "Schedules & display rules",
+            Self::Moments => "Moments",
+            Self::Builder => "Widget builder",
         }
     }
     fn parse(value: &str) -> Self {
@@ -384,7 +409,9 @@ impl Page {
             | Self::DesktopMotion
             | Self::DesktopWindowRules
             | Self::DesktopShortcuts
-            | Self::DesktopAutomation => "preferences-desktop-symbolic",
+            | Self::DesktopAutomation
+            | Self::Moments
+            | Self::Builder => "preferences-desktop-symbolic",
         }
     }
 }
@@ -502,6 +529,9 @@ pub enum Message {
     /// Opens (or, again, closes) a widget font list.
     FontMenu(Option<FontTarget>),
     FontSearch(String),
+    FontPage(usize),
+    FontCatalogReady(crate::desktop::appearance::catalog::FontCatalog),
+    LookImagesReady,
     /// A widget font family; `None` returns to the default.
     WidgetFont(FontTarget, Option<String>),
     /// At a glance uses the widget style's surface again.
@@ -530,6 +560,7 @@ pub enum Message {
     OpenBar(crate::desktop::panels::PanelKind),
     ToggleAdvanced(Page),
     ToggleHelp(&'static str),
+    ToggleSection(&'static str),
     UndoDesktop,
     UndoDesktopShown(Option<String>),
     ResolveUndoShown(crate::desktop::store::UndoReview, bool),
@@ -542,6 +573,7 @@ pub enum Message {
     RecoveryText(usize, usize, String),
     UndoPreferences,
     Placement(placement::Message),
+    Canvas(canvas::Message),
     EditWidgetLayout(Widget),
     DesktopEditor(desktop::Message),
     SystemAppearance(system_appearance::Message),
@@ -618,6 +650,15 @@ pub enum Message {
     ClockAlignment(ClockAlignment),
     ClockScale(u16),
     ClockVertical(bool),
+    DepthPreviewReady(u64, Option<crate::desktop::wallpaper::media::Pixels>),
+    ClockDepth(bool),
+    Moment(moments::Message),
+    Recipe(recipes::Message),
+    Design(design::Message),
+    ClockFace(Option<crate::widget_style::resolver::ClockFace>),
+    ClockWeight(Option<crate::widget_style::resolver::ClockWeight>),
+    ClockItalic(Option<bool>),
+    ClockSurface(Option<crate::widget_style::resolver::ClockSurface>),
     WeatherDewPoint(bool),
     CityInput(String),
     EditCity(bool),
@@ -670,6 +711,11 @@ pub enum Message {
 }
 
 pub struct Settings {
+    depth_preview: depth::Cache,
+    design: design::State,
+    moment_preview: crate::moments::Phase,
+    recipe_editor: recipes::Editor,
+    moment_base_clock: bool,
     updates: updates::Updates,
     support: support::Support,
     usage_enabled: bool,
@@ -691,6 +737,7 @@ pub struct Settings {
     search_selected: Option<navigation::SearchHit>,
     advanced_pages: Vec<Page>,
     help_open: Option<&'static str>,
+    open_sections: std::collections::BTreeSet<&'static str>,
     last_desktop_change: Option<(crate::desktop::Owner, String, String)>,
     /// The latest change when this window opened; the Undo bar offers only
     /// changes made since, so an old change doesn't follow you around.
@@ -700,6 +747,8 @@ pub struct Settings {
     /// The widget font list that is open, and its search.
     font_menu: Option<FontTarget>,
     font_search: String,
+    font_page: usize,
+    font_loading: bool,
     /// Colors & theme shows the styles browser instead of its main view.
     style_browser: bool,
     style_filter: StyleFilter,
@@ -743,6 +792,7 @@ pub struct Settings {
     devbox_reordering: bool,
     devbox_details: Vec<DevboxSection>,
     placement: placement::PlacementEditor,
+    canvas: Option<canvas::Draft>,
     desktop: desktop::DesktopEditor,
     system_appearance: system_appearance::AppearanceEditor,
     profiles: profiles::ProfilesEditor,
@@ -891,10 +941,17 @@ impl cosmic::Application for Settings {
         let config = Config::load();
         let wizard = OPEN_WIZARD
             .swap(false, std::sync::atomic::Ordering::Relaxed)
-            .then(open_wizard);
+            .then_some(())
+            .filter(|_| config.design_problem.is_none())
+            .map(|_| open_wizard());
         crate::usage::start_status();
         let usage = crate::usage::preference();
         let mut app = Self {
+            depth_preview: Default::default(),
+            design: design::State::load(),
+            moment_preview: crate::moments::Phase::Day,
+            recipe_editor: recipes::Editor::loaded(),
+            moment_base_clock: false,
             updates: updates::Updates::default(),
             support: support::Support::default(),
             usage_enabled: usage.as_ref().copied().unwrap_or(false),
@@ -910,11 +967,14 @@ impl cosmic::Application for Settings {
             search_selected: None,
             advanced_pages: Vec::new(),
             help_open: None,
+            open_sections: Default::default(),
             last_desktop_change: navigation::latest_desktop_change(),
             undo_baseline: navigation::latest_desktop_change().map(|(_, _, id)| id),
             color_well: None,
             font_menu: None,
             font_search: String::new(),
+            font_page: 0,
+            font_loading: false,
             style_browser: page == Page::Themes
                 && OPEN_STYLES.swap(false, std::sync::atomic::Ordering::Relaxed),
             style_filter: StyleFilter::All,
@@ -955,6 +1015,7 @@ impl cosmic::Application for Settings {
             city_search: CitySearch::default(),
             city_editing: false,
             placement: placement::PlacementEditor::new(&config),
+            canvas: None,
             desktop: desktop::DesktopEditor::default(),
             system_appearance: system_appearance::AppearanceEditor::default(),
             profiles: profiles::ProfilesEditor::default(),
@@ -1049,6 +1110,16 @@ impl cosmic::Application for Settings {
             app.profiles.open_home();
         }
         let media = app.media_tasks();
+        #[cfg(test)]
+        view::profiles::prepare_look_images();
+        let gallery = if view::profiles::look_images_ready() {
+            Task::none()
+        } else {
+            cosmic::task::future(async {
+                view::profiles::load_look_images().await;
+                Message::LookImagesReady
+            })
+        };
         let tools = page
             .tool()
             .map(|tool| app.tools.open(tool))
@@ -1076,6 +1147,7 @@ impl cosmic::Application for Settings {
                 title,
                 service,
                 media,
+                gallery,
                 tools,
                 calendar,
                 motion,
@@ -1087,6 +1159,7 @@ impl cosmic::Application for Settings {
     fn subscription(&self) -> Subscription<Message> {
         let paths = Config::path()
             .into_iter()
+            .chain(Config::path().map(|p| crate::design::storage::path(&p)))
             .chain(settings_command_path())
             .chain(crate::usage::path())
             .chain(crate::layout_state::path())
@@ -1173,7 +1246,9 @@ impl cosmic::Application for Settings {
                     Event::Keyboard(keyboard::Event::KeyPressed {
                         key: keyboard::Key::Named(keyboard::key::Named::Escape),
                         ..
-                    }) => Some(Message::SearchSettings(String::new())),
+                    }) if status == cosmic::iced::event::Status::Ignored => {
+                        Some(Message::SearchSettings(String::new()))
+                    }
                     _ => None,
                 }
             }));
@@ -1500,6 +1575,17 @@ impl cosmic::Application for Settings {
         Some(Message::FlushEdits)
     }
     fn update(&mut self, message: Message) -> Task<Message> {
+        if self.config.design_problem.is_some() {
+            match &message {
+                Message::Design(_)
+                | Message::NativeDone(_)
+                | Message::Window(_)
+                | Message::Resized(_)
+                | Message::FlushEdits => {}
+                Message::Tick => return self.update_design(design::Message::Recheck),
+                _ => return Task::none(),
+            }
+        }
         if matches!(message, Message::Window(WindowControl::Close)) {
             self.updates.cancel();
         }
@@ -1567,18 +1653,22 @@ impl cosmic::Application for Settings {
             .and_then(Result::ok);
         let refresh_undo =
             desktop_write_message(&message) || matches!(message, Message::Tick | Message::Page(_));
-        let completion = direct::completion(&message).filter(|completion| {
-            // A color choice made inside a wallpaper preview belongs to its
-            // single Use action, including asynchronous color analysis.
-            !matches!(
-                completion,
-                Message::Wallpaper(wallpaper::Message::ApplyColors)
-            ) || (!self.wallpaper.background_dirty()
-                && (!matches!(
-                    message,
-                    Message::Wallpaper(wallpaper::Message::AccentSubmit)
-                ) || self.wallpaper.valid_accent_input()))
-        });
+        let completion = direct::completion(&message)
+            .filter(|completion| {
+                self.canvas.is_none() || !matches!(completion, Message::Placement(_))
+            })
+            .filter(|completion| {
+                // A color choice made inside a wallpaper preview belongs to its
+                // single Use action, including asynchronous color analysis.
+                !matches!(
+                    completion,
+                    Message::Wallpaper(wallpaper::Message::ApplyColors)
+                ) || (!self.wallpaper.background_dirty()
+                    && (!matches!(
+                        message,
+                        Message::Wallpaper(wallpaper::Message::AccentSubmit)
+                    ) || self.wallpaper.valid_accent_input()))
+            });
         if let Message::DesktopEditor(edit) = &message {
             let start = if self.desktop.selected == crate::desktop::panels::PanelKind::Dock {
                 8
@@ -1714,7 +1804,12 @@ impl cosmic::Application for Settings {
             };
             self.automation.sync_hold(parts);
         }
-        Task::batch(std::iter::once(task).chain(std::mem::take(&mut self.native_tasks)))
+        let depth = self.depth_preview_sync();
+        Task::batch(
+            [task, depth]
+                .into_iter()
+                .chain(std::mem::take(&mut self.native_tasks)),
+        )
     }
 }
 
@@ -1747,6 +1842,7 @@ impl Settings {
                     wizard.refresh_widgets(&self.config, &self.displays);
                 }
                 self.placement.update_displays(&self.config, &self.displays);
+                self.refresh_canvas();
                 if std::env::var_os("DESKTOP_CARDS_DESKTOP_ROOT").is_none() {
                     let generation = self.displays.generation;
                     return cosmic::task::future(async move {
@@ -1763,6 +1859,7 @@ impl Settings {
                         wizard.refresh_widgets(&self.config, &self.displays);
                     }
                     self.placement.update_displays(&self.config, &self.displays);
+                    self.refresh_canvas();
                 }
             }
             Message::MonitorPreview(display) => self.select_monitor_preview(display),
@@ -1801,6 +1898,7 @@ impl Settings {
                     if !self.placement.dirty() {
                         self.save(serde_json::json!({"widget_display": name}));
                         self.placement.refresh(&self.config);
+                        self.refresh_canvas();
                     }
                 }
             }
@@ -1929,8 +2027,14 @@ impl Settings {
                 if !self.search_query.trim().is_empty() {
                     return self.handle(Message::SearchSettings(String::new()));
                 }
+                if self.page == Page::DesktopProfiles && self.profiles.package.is_some() {
+                    return self.handle(Message::Profiles(profiles::Message::Package(
+                        profiles::packages::Edit::Close,
+                    )));
+                }
                 if self.page == Page::DesktopProfiles
-                    && (self.profiles.profile().is_some()
+                    && (self.profiles.mix.is_some()
+                        || self.profiles.profile().is_some()
                         || self.profiles.selection() != &profiles::Selection::Current)
                 {
                     return self.handle(Message::Profiles(profiles::Message::Discard));
@@ -1968,6 +2072,10 @@ impl Settings {
                     self.advanced_pages.push(page);
                 }
             }
+            Message::UndoDesktop if self.canvas.is_some() && self.page == Page::Overview => {
+                return self.update_canvas(canvas::Message::Undo);
+            }
+            Message::Canvas(event) => return self.update_canvas(event),
             Message::UndoDesktop => {
                 let id = self
                     .last_desktop_change
@@ -2151,13 +2259,54 @@ impl Settings {
                     target
                 };
                 self.font_search.clear();
-                if self.font_menu.is_some() && self.font_catalog.is_none() {
-                    self.font_catalog =
-                        Some(crate::desktop::appearance::catalog::FontCatalog::installed());
+                self.font_page = 0;
+                if self.font_menu.is_some() {
+                    self.profiles.open_home();
+                    let media = self.media_tasks();
+                    if self.font_catalog.is_none() && !self.font_loading {
+                        self.font_loading = true;
+                        let fonts = cosmic::task::future(async {
+                            Message::FontCatalogReady(
+                                tokio::task::spawn_blocking(
+                                    crate::desktop::appearance::catalog::FontCatalog::installed,
+                                )
+                                .await
+                                .unwrap_or_default(),
+                            )
+                        });
+                        return Task::batch([media, fonts]);
+                    }
+                    return media;
                 }
             }
-            Message::FontSearch(text) => self.font_search = text,
+            Message::FontSearch(text) => {
+                self.font_search = text;
+                self.font_page = 0;
+            }
+            Message::FontPage(page) => {
+                let total = self.widget_font_families().len();
+                self.font_page = page.min(total.saturating_sub(1) / FONT_PAGE_SIZE);
+            }
+            Message::FontCatalogReady(catalog) => {
+                self.font_loading = false;
+                self.font_catalog = Some(catalog);
+                self.font_page = 0;
+            }
+            Message::LookImagesReady => {}
             Message::Window(control) => return native_jobs::window_action(control),
+            Message::WidgetFont(target, family)
+                if self.canvas.is_some()
+                    && self.page == Page::Overview
+                    && matches!(target, FontTarget::Text | FontTarget::Clock) =>
+            {
+                self.font_menu = None;
+                let pointer = if target == FontTarget::Clock {
+                    "/clock_font"
+                } else {
+                    "/widget_font"
+                };
+                return self.update_canvas(canvas::Message::Style(pointer, json!(family)));
+            }
             Message::WidgetFont(target, family) => {
                 self.font_menu = None;
                 self.font_search.clear();
@@ -2237,10 +2386,21 @@ impl Settings {
             Message::Tick => {
                 self.refresh_usage();
                 self.calendar.refresh();
-                if let Ok(config) = Config::try_load() {
-                    self.config = config;
+                match Config::try_load() {
+                    Ok(config) => self.config = config,
+                    Err(error)
+                        if Config::path()
+                            .as_deref()
+                            .is_some_and(crate::design::storage::managed) =>
+                    {
+                        self.config.design_problem = Some(error);
+                        self.design = design::State::load();
+                        return Task::none();
+                    }
+                    Err(_) => {}
                 }
                 self.placement.refresh(&self.config);
+                self.refresh_canvas();
                 if let Some(wizard) = self.wizard.as_mut() {
                     wizard.refresh_widgets(&self.config, &self.displays);
                 }
@@ -2348,6 +2508,30 @@ impl Settings {
                                     if let Some(message) = capture_glance(event) {
                                         tasks.push(self.update(message));
                                     }
+                                }
+                                if let Some(edit) = recipes::capture(&value["recipe"]) {
+                                    tasks.push(self.update(Message::Recipe(edit)));
+                                }
+                                if let Some(edit) = moments::capture(&value["moment"]) {
+                                    tasks.push(self.update(Message::Moment(edit)));
+                                }
+                                if let Some(command) = value["canvas"].as_str() {
+                                    let edit = match command {
+                                        "start" => Some(canvas::Message::Start),
+                                        "cancel" => Some(canvas::Message::Cancel),
+                                        "undo" => Some(canvas::Message::Undo),
+                                        "apply" => self
+                                            .canvas
+                                            .as_ref()
+                                            .map(|draft| canvas::Message::Apply(draft.id)),
+                                        _ => None,
+                                    };
+                                    if let Some(edit) = edit {
+                                        tasks.push(self.update(Message::Canvas(edit)));
+                                    }
+                                }
+                                if let Some(edit) = canvas::capture_style(&value["canvas_style"]) {
+                                    tasks.push(self.update(Message::Canvas(edit)));
                                 }
                                 for event in value["placement"].as_array().into_iter().flatten() {
                                     if let Some(message) = capture_placement(event) {
@@ -2607,6 +2791,7 @@ impl Settings {
                         self.advanced_pages,
                         self.collapsed_scenes
                     );
+                    let key = format!("{key}:{:?}:{:?}", self.recipe_editor, self.profiles.package);
                     if self.capture_key != key {
                         self.capture_key = key;
                         tasks.push(cosmic::task::future(async {
@@ -2637,6 +2822,7 @@ impl Settings {
                 // page; only an in-progress drag is abandoned.
                 self.placement.leave();
                 self.placement.refresh(&self.config);
+                self.refresh_canvas();
                 self.page = page;
                 self.root_destinations[page.root_index()] = page;
                 if !(capture_dir().is_some() && !preview())
@@ -2738,6 +2924,7 @@ impl Settings {
                     Ok(()) => {
                         self.config = config;
                         self.placement.refresh(&self.config);
+                        self.refresh_canvas();
                         self.saved();
                     }
                     Err(error) => self.failed(error),
@@ -2849,6 +3036,11 @@ impl Settings {
             }
             Message::GlanceSection(key, value) => self.save_glance(json!({key: value})),
             Message::GlanceTomorrow(value) => self.save_glance(json!({"show_tomorrow": value})),
+            Message::ToggleSection(key) => {
+                if !self.open_sections.remove(key) {
+                    self.open_sections.insert(key);
+                }
+            }
             Message::ToggleHelp(key) => {
                 self.help_open = (self.help_open != Some(key)).then_some(key);
             }
@@ -3088,6 +3280,15 @@ impl Settings {
             Message::ClockScale(value) => self.save_clock(json!({"scale": value})),
 
             Message::ClockVertical(value) => self.save_clock(json!({"center_vertically": value})),
+            Message::DepthPreviewReady(id, pixels) => self.depth_preview.ready(id, pixels),
+            Message::Moment(edit) => self.update_moment(edit),
+            Message::Recipe(edit) => self.update_recipe(edit),
+            Message::Design(edit) => return self.update_design(edit),
+            Message::ClockDepth(value) => self.save_clock(json!({"depth": value})),
+            Message::ClockFace(value) => self.save_clock(json!({"face": value})),
+            Message::ClockWeight(value) => self.save_clock(json!({"weight": value})),
+            Message::ClockItalic(value) => self.save_clock(json!({"italic": value})),
+            Message::ClockSurface(value) => self.save_clock(json!({"surface": value})),
             Message::Theme(theme) => {
                 if self.busy {
                     return Task::none();
@@ -3510,7 +3711,8 @@ fn desktop_write_message(message: &Message) -> bool {
         Message::DesktopIcons(message) => message.writes(),
         Message::WindowRules(message) => message.writes(),
         Message::Shortcuts(message) => message.writes(),
-        Message::CommandDone(..)
+        Message::Canvas(canvas::Message::Apply(_))
+        | Message::CommandDone(..)
         | Message::UndoDesktop
         | Message::UndoDesktopShown(..)
         | Message::ResolveUndoShown(..)
@@ -3529,6 +3731,8 @@ fn checkpoint_message(message: &Message) -> bool {
             | Message::Fullscreen
             | Message::AppSettingsPage(..)
             | Message::ToggleScene
+            | Message::ToggleHelp(..)
+            | Message::ToggleSection(..)
             | Message::ToggleSceneObjects
             | Message::Profiles(profiles::Message::Collection(..) | profiles::Message::Compare(..))
             | Message::ContentScrolled(..)
@@ -3612,7 +3816,11 @@ impl Settings {
         // page is showing; everything else belongs to the page.
         let result = matches!(
             message,
-            Edit::Imported(..) | Edit::Exported(..) | Edit::Backdrop(..) | Edit::ThemeReady(..)
+            Edit::Imported(..)
+                | Edit::Exported(..)
+                | Edit::Backdrop(..)
+                | Edit::ThemeReady(..)
+                | Edit::ShareReady(..)
         );
         if !result && !matches!(self.page, Page::DesktopProfiles | Page::Themes) {
             return Task::none();
@@ -3636,9 +3844,40 @@ impl Settings {
                 return Task::none();
             }
         }
+        let mix_transition = matches!(
+            message,
+            Edit::MixStart
+                | Edit::RemixSelected
+                | Edit::MixPart(_)
+                | Edit::MixClosePicker
+                | Edit::MixPick(..)
+                | Edit::Package(profiles::packages::Edit::Open | profiles::packages::Edit::Close)
+        );
         let before = self.profiles.selection().clone();
         let outcome = self.profiles.update(message);
-        let reveal = self.reveal_setup_selection(&before);
+        let reveal = if mix_transition && self.page == Page::DesktopProfiles {
+            self.page_scroll.insert(self.page.key().into(), 0.);
+            Task::batch(
+                [
+                    "settings-content",
+                    "mix-scroll",
+                    "setup-scroll",
+                    "package-scroll",
+                ]
+                .into_iter()
+                .map(|id| {
+                    cosmic::iced::widget::scrollable::snap_to(
+                        cosmic::widget::Id::new(id),
+                        cosmic::iced::widget::scrollable::RelativeOffset {
+                            x: None,
+                            y: Some(0.),
+                        },
+                    )
+                }),
+            )
+        } else {
+            self.reveal_setup_selection(&before)
+        };
         Task::batch([self.profile_outcome(outcome), reveal])
     }
     fn reveal_setup_selection(&mut self, before: &profiles::Selection) -> Task<Message> {
@@ -3766,6 +4005,7 @@ impl Settings {
             self.appearance_draft = self.config.appearance.clone();
         }
         self.placement.refresh(&self.config);
+        self.refresh_canvas();
         if let Some(wizard) = self.wizard.as_mut() {
             wizard.refresh_widgets(&self.config, &self.displays);
         }
@@ -3872,9 +4112,34 @@ impl Settings {
                 "replan" => Edit::Replan,
                 "recover" => Edit::Recover,
                 "keep" => Edit::KeepRecovery,
+                "remix" => Edit::RemixSelected,
                 _ => return Vec::new(),
             }),
             serde_json::Value::Object(map) => {
+                if let Some(query) = map.get("discover").and_then(serde_json::Value::as_str) {
+                    messages.push(Edit::DiscoveryQuery(query.chars().take(80).collect()));
+                }
+                if let Some(action) = map.get("package").and_then(serde_json::Value::as_object) {
+                    use profiles::packages::Edit as Package;
+                    let value = action
+                        .get("value")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default();
+                    let edit = match action.get("action").and_then(serde_json::Value::as_str) {
+                        Some("open") => Some(Package::Open),
+                        Some("close") => Some(Package::Close),
+                        Some("picture") => action
+                            .get("value")
+                            .and_then(serde_json::Value::as_bool)
+                            .map(Package::Picture),
+                        Some("author") => Some(Package::Author(value.chars().take(80).collect())),
+                        Some("license") => {
+                            Some(Package::License(value.chars().take(120).collect()))
+                        }
+                        _ => None,
+                    };
+                    messages.extend(edit.map(Edit::Package));
+                }
                 if let Some(name) = map.get("select").and_then(serde_json::Value::as_str) {
                     let saved = || {
                         self.profiles.library().ok()?.iter().find_map(|entry| {
@@ -3889,6 +4154,29 @@ impl Settings {
                             .or_else(|| saved().map(Selection::Saved)),
                     };
                     messages.extend(selection.map(Edit::Select));
+                }
+                if map.get("mix_start").and_then(serde_json::Value::as_bool) == Some(true) {
+                    messages.push(Edit::MixStart);
+                }
+                if let Some(parts) = map.get("mix_pick").and_then(serde_json::Value::as_array)
+                    && let [part, source] = parts.as_slice()
+                    && let (Some(part), Some(source)) = (part.as_str(), source.as_str())
+                {
+                    use crate::desktop::profiles::mix::Component;
+                    let part = match part {
+                        "picture" => Some(Component::Picture),
+                        "style" => Some(Component::Style),
+                        "layout" => Some(Component::Layout),
+                        _ => None,
+                    };
+                    let source = if source == "current" {
+                        Some(Selection::Current)
+                    } else {
+                        crate::desktop::profiles::preset(source).map(|p| Selection::Preset(p.id))
+                    };
+                    if let (Some(part), Some(source)) = (part, source) {
+                        messages.push(Edit::MixPick(part, source));
+                    }
                 }
                 if let Some(on) = map
                     .get("compare_current")
@@ -3921,6 +4209,7 @@ impl Settings {
                         },
                     ),
                     ("duplicate", NameAction::Duplicate),
+                    ("save_mix", NameAction::SaveMix),
                 ] {
                     if let Some(name) = map.get(key).and_then(serde_json::Value::as_str) {
                         messages.push(Edit::Name(Some(action)));
@@ -4087,6 +4376,7 @@ impl Settings {
                     Ok(config) => {
                         self.config = config;
                         self.placement.refresh(&self.config);
+                        self.refresh_canvas();
                         self.saved();
                     }
                     Err(error) => self.failed(error),
@@ -4107,6 +4397,7 @@ impl Settings {
             Ok(config) => {
                 self.config = config;
                 self.placement.refresh(&self.config);
+                self.refresh_canvas();
                 self.saved();
             }
             Err(error) => self.failed(error),
@@ -4174,6 +4465,7 @@ impl Settings {
     /// Background media work the Wallpaper page (thumbnails, scans,
     /// analysis) and the Profiles page (its backdrop) asked for.
     fn media_tasks(&mut self) -> Task<Message> {
+        let depth = self.depth_preview_sync();
         let wallpaper = self
             .wallpaper
             .take_jobs()
@@ -4189,7 +4481,20 @@ impl Settings {
             .take_theme_jobs()
             .into_iter()
             .map(|job| profiles::theme_task(job, Message::Profiles));
-        Task::batch(wallpaper.chain(profiles).chain(themes).collect::<Vec<_>>())
+        let shares = self.profiles.take_share_jobs().into_iter().map(|job| {
+            cosmic::task::future(async move {
+                let id = job.id;
+                Message::Profiles(profiles::Message::ShareReady(id, job.run().await))
+            })
+        });
+        Task::batch(
+            wallpaper
+                .chain(profiles)
+                .chain(themes)
+                .chain(shares)
+                .chain(std::iter::once(depth))
+                .collect::<Vec<_>>(),
+        )
     }
     /// Wallpaper routing: background results and dialog answers reach the
     /// editor whatever page shows (stale ones are dropped there); edits
@@ -4283,7 +4588,11 @@ impl Settings {
 fn profile_dialog(request: profiles::Request) -> Task<Message> {
     use cosmic::dialog::ashpd::desktop::ResponseError;
     use cosmic::dialog::file_chooser::{self, FileFilter};
-    let filter = || FileFilter::new("Halcyon profile").glob("*.json");
+    let filter = || {
+        FileFilter::new("Halcyon setup or profile")
+            .glob("*.json")
+            .glob("*.halcyon")
+    };
     let cancelled = |error: &file_chooser::Error| {
         matches!(
             error,
@@ -4320,6 +4629,30 @@ fn profile_dialog(request: profiles::Request) -> Task<Message> {
                 .title("Export profile".to_string())
                 .file_name(file_name)
                 .filter(filter())
+                .save_file()
+                .await
+            {
+                Ok(response) => match response.url().map(|url| url.to_file_path()) {
+                    Some(Ok(path)) => profiles::write_export(&path, &bytes, confine.as_deref())
+                        .map(|()| Some(path)),
+                    Some(Err(())) => Err("Choose a local file.".into()),
+                    None => Ok(None),
+                },
+                Err(error) if cancelled(&error) => Ok(None),
+                Err(error) => Err(format!("Could not open the file chooser: {error}")),
+            };
+            Message::Profiles(profiles::Message::Exported(id, result))
+        }),
+        profiles::Request::ExportImage {
+            id,
+            file_name,
+            bytes,
+            confine,
+        } => cosmic::task::future(async move {
+            let result = match file_chooser::save::Dialog::new()
+                .title("Save preview image".to_string())
+                .file_name(file_name)
+                .filter(FileFilter::new("PNG image").glob("*.png"))
                 .save_file()
                 .await
             {
@@ -5246,6 +5579,8 @@ fn service_task() -> Task<Message> {
     })
 }
 
+#[cfg(test)]
+mod future_builder_probe;
 #[cfg(test)]
 mod onboarding_tests;
 #[cfg(test)]
@@ -9608,17 +9943,14 @@ mod tests {
             native.scroll(app.settings_view(), "settings-content", 0.);
             let stage = native.bounds(app.settings_view(), "widget-preview-stage");
             let account = native.bounds(app.settings_view(), "calendar-account-options");
-            if size.width >= 1100. {
-                assert!(
-                    stage.x + stage.width < account.x,
-                    "preview sits beside account controls: {stage:?} {account:?}"
-                );
-            } else {
-                assert!(
-                    stage.y + stage.height < account.y,
-                    "compact preview sits above account controls: {stage:?} {account:?}"
-                );
-            }
+            assert!(
+                stage.x + stage.width <= account.x
+                    || account.x + account.width <= stage.x
+                    || stage.y + stage.height <= account.y
+                    || account.y + account.height <= stage.y,
+                "preview and primary account action never overlap: {stage:?} {account:?}"
+            );
+            visible(account, size, "calendar-account-options");
             for id in ["calendar-account-options", "settings-back"] {
                 visible(native_reveal(&app, &mut native, id), size, id);
             }
@@ -9633,7 +9965,7 @@ mod tests {
         assert_eq!(raw_preferences(), preferences, "rendering saves nothing");
         assert_eq!(fixture_files(&fixture), before, "no desktop file changed");
     }
-    fn settle_settings(app: &mut Settings, task: Task<Message>) {
+    pub(super) fn settle_settings(app: &mut Settings, task: Task<Message>) {
         use cosmic::iced::futures::StreamExt;
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -9681,15 +10013,10 @@ mod tests {
             native.bounds(app.settings_view(), "settings-viewport")
         };
         if !fixed {
-            native.scroll(app.settings_view(), "settings-content", 0.);
-            let bounds = native.bounds(app.settings_view(), id);
-            if bounds.y < viewport.y || bounds.y + bounds.height > viewport.y + viewport.height {
-                native.scroll(
-                    app.settings_view(),
-                    "settings-content",
-                    (bounds.y - viewport.y - 8.).max(0.),
-                );
-            }
+            native.operate(
+                app.settings_view(),
+                Box::new(navigation::Reveal::target(id)),
+            );
         }
         let bounds = native.bounds(app.settings_view(), id);
         assert!(
@@ -10511,7 +10838,9 @@ mod tests {
                     .known()
                     .copied()
                     .unwrap();
-                let point = native.text_bounds(app.settings_view(), label).center();
+                let point =
+                    native_reveal(&app, &mut native, &format!("native-bar-radius-{radius}"))
+                        .center();
                 assert!(point.y < native.size.height, "{label} visible");
                 r2_native_event(
                     &mut app,
@@ -10554,8 +10883,8 @@ mod tests {
                 );
             }
             let arrow = |pressed, repeat| repair_slider_event(pressed, repeat);
-            let bounds = native.text_bounds(app.settings_view(), "Background opacity");
-            let point = Point::new(bounds.x + 180., bounds.y + bounds.height + 12.);
+            let bounds = native_reveal(&app, &mut native, "native-bar-opacity");
+            let point = Point::new(bounds.center_x(), bounds.y + bounds.height - 8.);
             let before = opacity(kind);
             for i in 0..3 {
                 let messages = r2_native_event(&mut app, &mut native, arrow(true, i > 0), point);
@@ -10762,7 +11091,7 @@ mod tests {
             .copied()
             .unwrap();
         assert_ne!(old, 0);
-        let point = native.text_bounds(app.settings_view(), "Square").center();
+        let point = native_reveal(&app, &mut native, "native-bar-radius-0").center();
         r2_native_event(
             &mut app,
             &mut native,
@@ -11150,7 +11479,8 @@ if not presence:
         assert!(
             native
                 .try_bounds(app.settings_view(), "get-islands")
-                .is_some()
+                .is_none(),
+            "unverified installations cannot start a privileged package install"
         );
         native.capture(
             app.settings_view(),
@@ -11218,7 +11548,7 @@ if not presence:
         assert!(
             native
                 .try_bounds(app.settings_view(), "get-islands")
-                .is_some()
+                .is_none()
         );
     }
     #[test]

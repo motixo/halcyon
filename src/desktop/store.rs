@@ -45,7 +45,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub mod activity;
+mod design;
 mod history;
+pub use design::DesignWrite;
 mod ownership;
 pub use history::UndoReview;
 mod undo;
@@ -591,6 +593,8 @@ pub struct Journal {
     pub widget: Option<WidgetChange>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub undo: Option<UndoBefore>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub design: Option<DesignWrite>,
 }
 
 /// The persistent latest change as an owned transaction found it, kept in
@@ -718,6 +722,7 @@ pub(crate) enum Fault {
     /// before the journal is removed.
     InterruptAfterRecord,
     FailWidget,
+    InterruptBetweenDesignFiles,
     FailRecord,
 }
 
@@ -744,6 +749,7 @@ enum Record<'a> {
 struct WidgetWrite {
     path: PathBuf,
     change: WidgetChange,
+    design: Option<DesignWrite>,
 }
 
 #[derive(Clone, Debug)]
@@ -1206,7 +1212,9 @@ impl DesktopStore {
     /// directory or leaf may not be a symlink. Creates nothing.
     pub fn state_subpath(&self, dir: &str, name: Option<&str>) -> Result<PathBuf, DesktopError> {
         self.ensure_writable()?;
-        if dir != PROFILES_DIR || name.is_some_and(|name| !valid_name(name, 96)) {
+        if ![PROFILES_DIR, crate::desktop::profiles::packages::ASSET_DIR].contains(&dir)
+            || name.is_some_and(|name| !valid_name(name, 96))
+        {
             return Err(DesktopError::InvalidKey("Invalid state path".into()));
         }
         let folder = self.state_dir.join(dir);
@@ -1342,6 +1350,9 @@ impl DesktopStore {
         if self.journal_path().exists() {
             return Err(DesktopError::RecoveryPending);
         }
+        if let Some(path) = &self.app_config {
+            crate::design::storage::check(path).map_err(DesktopError::Io)?;
+        }
         // Preparation may observe the new epoch before Restore publishes its
         // acknowledgement. Make the final ownership decision under these locks.
         if let (Some(epoch), Some(stamp)) = (patch.epoch_guard, patch.palette_ack) {
@@ -1423,6 +1434,7 @@ impl DesktopStore {
         let journal = Journal {
             format: JOURNAL_FORMAT.into(),
             version: match (&undo, &write) {
+                (_, Some(write)) if write.design.is_some() => 4,
                 (Some(_), _) => 3,
                 (None, Some(_)) => 2,
                 (None, None) => 1,
@@ -1438,6 +1450,7 @@ impl DesktopStore {
             created: created.clone(),
             entries: entries.iter().map(JournalEntry::from).collect(),
             widget: write.as_ref().map(|write| write.change.clone()),
+            design: write.as_ref().and_then(|write| write.design.clone()),
             undo,
         };
         let bytes = serde_json::to_vec_pretty(&journal)
@@ -1595,6 +1608,23 @@ impl DesktopStore {
         };
         // Nested records and configuration text grow when escaped; nothing
         // is written that `read_record` would later refuse.
+        if self
+            .app_config
+            .as_deref()
+            .map(crate::design::storage::read)
+            .transpose()
+            .map_err(DesktopError::Io)?
+            .flatten()
+            .is_some()
+        {
+            if let Some(bytes) = &mut new_record {
+                let mut file: undo::UndoFile =
+                    serde_json::from_slice(bytes).map_err(|e| DesktopError::Io(e.to_string()))?;
+                file.version = 2;
+                *bytes = serde_json::to_vec_pretty(&file)
+                    .map_err(|e| DesktopError::Io(e.to_string()))?;
+            }
+        }
         if bytes.len() as u64 > MAX_RECORD_BYTES
             || new_record
                 .as_ref()
@@ -1672,6 +1702,13 @@ impl DesktopStore {
         if let Some(write) = &write
             && let Err(error) = self.write_widget(write)
         {
+            #[cfg(test)]
+            if matches!(
+                *self.fault.borrow(),
+                Some(Fault::InterruptBetweenDesignFiles)
+            ) {
+                return Err(DesktopError::Io(error));
+            }
             return Err(self.fail(patch, &written, Some(write), error));
         }
         #[cfg(test)]
@@ -1735,7 +1772,18 @@ impl DesktopStore {
             key: None,
             message: format!("Widget settings: {message}"),
         };
-        let before = config::read_config_text(path).map_err(invalid)?;
+        if let Some(text) = crate::design::storage::read(path).map_err(invalid)? {
+            return self.prepare_design(patch, path, conflicts, text);
+        }
+        if patch.iter().any(|(pointer, entry)| {
+            pointer.starts_with("/recipes/") && entry.desired.as_ref().is_some_and(|v| !v.is_null())
+        }) {
+            return Err(invalid(
+                "Migrate widgets in App settings → Recovery before applying a personal widget"
+                    .into(),
+            ));
+        }
+        let before = config::read_raw_config_text(path).map_err(invalid)?;
         let changes = || {
             patch
                 .changes()
@@ -1783,7 +1831,9 @@ impl DesktopStore {
         }
         Ok(Some(WidgetWrite {
             path: path.to_path_buf(),
+            design: None,
             change: WidgetChange {
+                design_v1: false,
                 before,
                 after,
                 fields,
@@ -1795,6 +1845,9 @@ impl DesktopStore {
         #[cfg(test)]
         if matches!(*self.fault.borrow(), Some(Fault::FailWidget)) {
             return Err("injected widget failure".into());
+        }
+        if let Some(design) = &write.design {
+            return self.write_design(&write.path, design);
         }
         config::write_config_text(&write.path, write.change.after.as_deref())
     }
@@ -1883,7 +1936,15 @@ impl DesktopStore {
     /// Restores the widget file's original bytes if it still holds ours;
     /// returns the settings that could not be restored.
     fn rollback_widget(&self, write: &WidgetWrite) -> Vec<String> {
-        match config::read_config_text(&write.path) {
+        if let Some(design) = &write.design {
+            let mut report = RecoveryReport::default();
+            return match self.recover_design(&write.path, design, Some(&write.change), &mut report)
+            {
+                Ok(()) => report.kept_fields,
+                Err(_) => write.change.labels(),
+            };
+        }
+        match config::read_raw_config_text(&write.path) {
             Ok(current) if current == write.change.before => Vec::new(),
             Ok(current) if current == write.change.after => {
                 match config::write_config_text(&write.path, write.change.before.as_deref()) {
@@ -1944,17 +2005,27 @@ impl DesktopStore {
             .widget
             .as_ref()
             .is_none_or(|widget| widget.validate().is_ok());
-        let supported = journal.format == JOURNAL_FORMAT
+        let design_ok = match &journal.design {
+            Some(design) => journal.version == 4 && design.validate().is_ok(),
+            None => journal.version != 4,
+        };
+        let supported = design_ok
+            && journal.format == JOURNAL_FORMAT
             && widget_ok
             && match (journal.version, &journal.widget, &journal.undo) {
-                (1, None, None) | (2, Some(_), None) => true,
+                (1, None, None) | (2, Some(_), None) | (4, Some(_), None) => true,
                 // An Undo always started from a record; an Apply may not.
-                (3, _, Some(undo)) => {
+                (3 | 4, _, Some(undo)) => {
                     undo.record
                         .as_ref()
                         .is_none_or(|text| text.len() as u64 <= MAX_RECORD_BYTES)
                         && match journal.operation.as_str() {
                             "apply" | "restore" => true,
+                            "migrate" | "repair_design" => {
+                                journal.version == 4
+                                    && journal.widget.is_none()
+                                    && journal.entries.is_empty()
+                            }
                             "undo" | "undo_restore" => undo.record.is_some(),
                             _ => false,
                         }
@@ -2026,7 +2097,24 @@ impl DesktopStore {
                 report.kept_external.push(key);
             }
         }
-        if let Some((change, path)) = widget {
+        if let Some(design) = &journal.design {
+            let path = self.app_config.as_deref().ok_or_else(|| {
+                DesktopError::Io(
+                    "Open the original configuration to recover its widget design".into(),
+                )
+            })?;
+            self.recover_design(path, design, journal.widget.as_ref(), &mut report)?;
+        } else if let Some((change, path)) = widget {
+            // An interrupted old-client journal must not write frozen bytes.
+            if crate::design::storage::read(path)
+                .map_err(DesktopError::Io)?
+                .is_some()
+            {
+                return Err(DesktopError::Io(
+                    "An older transaction needs review before the migrated design can be recovered"
+                        .into(),
+                ));
+            }
             recover_widget(change, path, &mut report)?;
         }
         match &journal.undo {
@@ -2069,13 +2157,14 @@ impl DesktopStore {
             return Ok(true);
         }
         let ours = match (journal.operation.as_str(), &current) {
-            ("apply" | "undo" | "restore" | "undo_restore", Some(bytes)) => {
-                serde_json::from_slice::<undo::UndoFile>(bytes).is_ok_and(|file| {
-                    file.format == undo::FORMAT
-                        && (file.transaction_id.as_deref() == Some(&journal.id)
-                            || file.id == journal.id)
-                })
-            }
+            (
+                "apply" | "undo" | "restore" | "undo_restore" | "migrate" | "repair_design",
+                Some(bytes),
+            ) => serde_json::from_slice::<undo::UndoFile>(bytes).is_ok_and(|file| {
+                file.format == undo::FORMAT
+                    && (file.transaction_id.as_deref() == Some(&journal.id)
+                        || file.id == journal.id)
+            }),
             ("undo" | "undo_restore", None) => true,
             _ => false,
         };
@@ -2094,7 +2183,25 @@ impl DesktopStore {
     /// clears the journal.
     pub fn discard_recovery(&self) -> Result<(), DesktopError> {
         self.ensure_writable()?;
+        let _config_lock = self
+            .app_config
+            .as_deref()
+            .map(config::lock_config)
+            .transpose()
+            .map_err(DesktopError::Io)?;
         let _lock = self.lock()?;
+        let design_pending = match self.pending_recovery() {
+            Ok(journal) => journal.is_some_and(|j| j.version == 4),
+            Err(_) => self
+                .app_config
+                .as_deref()
+                .is_some_and(crate::design::storage::managed),
+        };
+        if design_pending {
+            return Err(DesktopError::Io(
+                "Recover the interrupted widget design change before continuing".into(),
+            ));
+        }
         match fs::remove_file(self.journal_path()) {
             Ok(()) => Ok(()),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -2270,7 +2377,7 @@ fn recover_widget(
     path: &Path,
     report: &mut RecoveryReport,
 ) -> Result<(), DesktopError> {
-    let current = config::read_config_text(path).map_err(DesktopError::Io)?;
+    let current = config::read_raw_config_text(path).map_err(DesktopError::Io)?;
     let written = || {
         change
             .fields
@@ -2951,6 +3058,7 @@ pub(crate) mod tests {
                 after: Some("false".into()),
             }],
             widget: None,
+            design: None,
             undo: None,
         };
         fs::write(

@@ -1,0 +1,516 @@
+{
+  "title": "Halcyon future concepts: additional ideas from the Fable design pass",
+  "date": "2026-10-26",
+  "status": "Proposals for the parent to curate. Not approved scope. Nothing implemented.",
+  "author_role": "Design sub-agent (Claude Code on Claude Fable 5.1), read-only pass",
+  "provenance": {
+    "documents_read": [
+      "01-original-plan.json",
+      "../prompts.json",
+      "../../concepts/manifest.json",
+      "../../concepts/index.html",
+      "../README.md"
+    ],
+    "images_inspected_visually": [
+      "../../concepts/01-tidal.png",
+      "../../concepts/02-moss.png",
+      "../../concepts/03-paper.png",
+      "../../concepts/04-carbon.png",
+      "../../concepts/05-canvas.png",
+      "../../concepts/06-widget-builder.png",
+      "../../concepts/07-community.png",
+      "original inspiration: end4-components.png (end-4 settings dialog, left bar with stacked time, keyboard overlay)",
+      "original inspiration: end4-widgets (end-4 wallpaper browser, clocks app, file manager)",
+      "original inspiration: end4-settings (end-4 overview grid, 'cookie' analogue clock, vertical left bar with 23/37/11/04)",
+      "original inspiration: hyde-mocha.png (HyDE Catppuccin Mocha, bottom status bar, themed dialogs)",
+      "original inspiration: cosmic-gruvbox.png (COSMIC + Conky large clock, disk meters bottom-left)",
+      "original inspiration: dux-reference.png (Dux/DankMaterialShell top bar with media/clock/weather pills and overview popup)"
+    ],
+    "image_observations": [
+      "All four desktop directions put the primary clock at the upper left (Moss: left), Islands along the top edge and a dock at the bottom centre. The compositional grammar is corners and edges.",
+      "In none of the four does a widget interact with the picture; the wallpaper is always a backdrop under overlays.",
+      "05 and 06 are three-column editors (list, canvas, inspector) with a mint accent; 07 is a card grid with a details pane. The inspector vocabulary is dropdowns, sliders and segmented controls.",
+      "Reference end-4 shows a vertical left bar with stacked time digits and a playful analogue clock; Dux shows stacked time in a compact overview; the COSMIC gruvbox post uses one giant clock as the desktop's character. Vertical and centre-weighted compositions are absent from the seven concepts."
+    ],
+    "source_inspected_read_only": [
+      "src/materials.rs and companion/dock-islands-core/src/material.rs: finish kinds Frosted, Clear glass, Smoked glass, Liquid; Finish {kind, opacity, tint}; targets All surfaces, Widgets, Dock, Panel; decorative sheen gradient.",
+      "src/config.rs: ColorSource {Custom, Desktop}; ColorPolicy {Wallpaper, Theme, Custom}; ClockPreferences {format_24h, show_date, alignment}; Glance, Devbox, Music (MPRIS player, artwork, progress), Notes (private file), Focus (rounds, breaks, notify) preferences; RefreshIntervals; appearance.contrast_assist.",
+      "src/drawer.rs Widget: Calendar, Projects, Devbox, Weather, Clock, Glance, Music, Notes, Focus.",
+      "src/desktop_theme.rs Family: Soft, Outline, Paper, Bare, Glass, Frosted, Midnight, Terminal, Neon, Editorial, Retro, Pastel, Bauhaus; src/desktop_theme/tone.rs LCH helpers (lively, steel, readable, contrast).",
+      "src/desktop/profiles/format.rs: format v8, 256 KiB limit, domains Dock, Panel, Appearance, Windows, Workspaces, Wallpaper, DesktopIcons, WidgetStyle, WidgetLayout; PanelLook (anchor, floating, margin, size, autohide, opacity, radius, spacing, padding, background, islands settings, applets start/center/end); VariantLook per light/dark (accent, background, primary, secondary, outline, corners, spacing, blur step, glass); FrostedLook; LOCAL_ONLY rule for personal pictures.",
+      "src/desktop/profiles/presets.rs: six looks Everyday, Slow morning, After hours, Deep work, Writing desk, Studio, plus the presentation preset that hides widgets and the dock; occasion() and islands_composition() per look.",
+      "src/automation/rules.rs: Trigger::Schedule {time, days} and Trigger::Display (connect/disconnect) applying ProfileRef Preset or Saved; Pause; src/schedule.rs wake_at.",
+      "src/desktop/wallpaper/{automatic,palette,collection,media}.rs: deterministic Oklab median-cut palette over a bounded thumbnail, suggestion offered not applied; personal collection and slideshow folders; fit previews that follow cosmic-bg scaler.rs; bundled thumbnails.",
+      "src/data.rs: Open-Meteo forecast provider (no sunrise/sunset fields requested yet); CalendarEvent with meeting_state_at (Later, Soon, Live, Finished), join_url, source_color, private_copy; Projects data; metrics sampler.",
+      "src/desktop/appearance.rs: COSMIC theme mode auto_switch (sunrise/sunset) adapter.",
+      "src/app/settings_preview.rs: settings examples reuse the real desktop cards with fixed illustrative readings (no samplers, services or network).",
+      "src/layout.rs API (normalised positions, grid snap, free_spot_in_area, minimum sizes); src/settings/navigation.rs root pages and Desktop subpages (theme, effects, dock, wallpaper, icons, windows, workspaces, window rules, shortcuts, motion, setups, automation)."
+    ]
+  },
+  "framing": {
+    "what_the_seven_concepts_already_prove": "One shared style system can produce four very different desktops, a direct-manipulation canvas, a parts-based widget builder and a gallery with honest content chips.",
+    "what_they_do_not_yet_do": [
+      "Treat time or activity as a dimension: every desktop is a frozen composition.",
+      "Let the wallpaper participate in the design instead of sitting under it.",
+      "Give typography the room ricing communities expect: the plan reduces it to a dropdown.",
+      "Offer a composition beyond corners and edges: no vertical, centre-weighted or picture-integrated layout.",
+      "Help a setup survive a new wallpaper or a different display without redoing the layout by hand.",
+      "Share anything before hosted links exist."
+    ],
+    "selection_criteria_used": [
+      "Visible to the user in one screenshot or one interaction.",
+      "Built on data and adapters Halcyon already has (clock, weather, calendar, focus, MPRIS, wallpaper palette, automation, materials, presets, undo).",
+      "Bounded cost: event-driven, no new always-on pollers or animations.",
+      "Honest about what COSMIC and the Islands companion support."
+    ]
+  },
+  "ideas": [
+    {
+      "id": "A1",
+      "name": "Ridge: type behind the picture",
+      "kind": "bold desktop treatment",
+      "experience": "On a mountain-lake wallpaper the huge numerals 06:58 sit behind the ridge: the spruce silhouettes overlap the bottom of the digits. Drag the clock in Arrange and the overlap stays correct; a Depth toggle in Clock > Design switches it off.",
+      "why_beyond_current_plan": "In all four directions the wallpaper is a backdrop and widgets are overlays. Letting one widget and the picture form a single image is the most recognisable move in modern lock screens and ricing posts, and it makes the wallpaper a design participant rather than a photo under cards.",
+      "reuses": [
+        "Widget surfaces already render on the GPU below windows and above the wallpaper.",
+        "src/desktop/wallpaper/media.rs reproduces cosmic-bg fit maths (fit_preview follows scaler.rs), so Halcyon can crop a foreground layer exactly as cosmic-bg scales the picture.",
+        "Wallpaper collection, bundled thumbnails, on-desktop Arrange, clock faces from stage 1."
+      ],
+      "new_capability": [
+        "A layered wallpaper asset: picture + foreground matte (PNG with alpha) + fit metadata, bundled with distributable licences.",
+        "A render step that draws the matte crop over the widget inside the widget's own surface (no compositor feature needed).",
+        "Import of a user-made pair (picture + matte). No automatic segmentation; that is a separate, heavier project."
+      ],
+      "complexity_and_stage": "Medium. Depends on clock faces and the wallpaper source classification. Earliest: after stage 1 clock work, before the canvas (call it stage 1b). Sharing layered wallpapers needs the stage 4 bundle.",
+      "failure_or_tradeoff": "A few pixels of fit mismatch (Zoom vs Fit, per-display scale) makes the matte ghost. Enable Depth only for fit modes and displays where Halcyon knows the source and scale, never for slideshows, and fall back to the plain face when the widget is dragged past the matte's edge.",
+      "deserves_image": true,
+      "visual_concept": "Full brief A below."
+    },
+    {
+      "id": "A2",
+      "name": "Moments: one setup, a whole day",
+      "kind": "model extension + editor",
+      "experience": "Tidal has four moments: Dawn, Day, Dusk, Night. Each changes only the wallpaper, the palette and a couple of overrides (clock weight, surface tint). In the setup editor a day strip under the preview holds four thumbnails; dragging the playhead scrubs the preview through the day. Dawn and Dusk can follow sunrise and sunset from the weather location.",
+      "why_beyond_current_plan": "The plan's Setup is a frozen composition, and today's automation swaps whole setups (Preset or Saved), which loses the identity of one desktop and cannot be shared as 'a day'. Moments make a setup feel alive without animation or polling, and a shared Tidal arrives with its evening.",
+      "reuses": [
+        "Automation rules (Schedule trigger, wake_at) for the switch times.",
+        "Wallpaper-derived colours pipeline for each moment's palette.",
+        "VariantLook already keeps light and dark values independently; COSMIC's auto_switch sunrise/sunset adapter exists in src/desktop/appearance.rs.",
+        "Open-Meteo is already the weather provider; its daily sunrise and sunset fields are one request parameter away."
+      ],
+      "new_capability": [
+        "'Moment' as a bounded override set inside a setup (at most four), with scheduler entries derived from the setup rather than hand-written rules.",
+        "Sun-time source (provider field or local computation from the weather location).",
+        "Preview scrubbing in the editor."
+      ],
+      "complexity_and_stage": "Medium. Needs the setup draft and the Follow setup override model, so stage 2. A two-moment version (Light and Dark pictures) can ride stage 1 because VariantLook already splits variants.",
+      "failure_or_tradeoff": "Wallpaper swaps at boundaries can be jarring and cost a cosmic-bg reload. Prefer palette and override changes when the picture is shared across moments, never switch during a presentation state, and keep the 256 KiB profile limit by carrying pictures in the asset bundle with a built-in or colour fallback per moment.",
+      "deserves_image": true,
+      "visual_concept": "Full brief C below."
+    },
+    {
+      "id": "A3",
+      "name": "Sessions: the desktop answers what you are doing",
+      "kind": "interaction + desktop treatment",
+      "experience": "Start a 25-minute focus round. The desktop re-composes: the ring grows to the centre of the screen, the palette cools, the agenda collapses to one line 'Next 14:00 Design review', music becomes a text line, the dock hides. End the round and it returns. 'In a meeting' (calendar event Live) shows a Join chip; 'Presenting' is today's presentation preset.",
+      "why_beyond_current_plan": "Presets already carry an occasion and the presentation preset hides everything, but the plan has no notion of state inside a setup. Focus and calendar data exist and already tick; using them as choreography is the kind of surprising interaction worth more than a subsystem.",
+      "reuses": [
+        "Focus runtime state and notifications.",
+        "CalendarEvent.meeting_state_at (Later, Soon, Live, Finished) and join_url.",
+        "Presentation preset, Apply/Undo transactions, layout anchors.",
+        "No new pollers: the focus timer and the calendar refresh already run."
+      ],
+      "new_capability": [
+        "State override sets in a setup: Default, Focus, Meeting, Presenting.",
+        "A state resolver that picks the active set from events, with a user-visible indicator and a manual override.",
+        "Transitions rendered only inside widget surfaces (crossfade), honouring reduce-motion."
+      ],
+      "complexity_and_stage": "Medium. Needs the override model, so stage 2; a Focus-only version is a credible stage 1 add-on because the Focus widget already owns its state.",
+      "failure_or_tradeoff": "Fighting the user. If they drag a widget while Focus is active, which layout did they edit? Rule: edits apply to the active state only, with an explicit 'Also apply to Default' action, and a per-setup toggle 'Let Focus rearrange widgets' that defaults to visual changes only.",
+      "deserves_image": true,
+      "visual_concept": "Full brief B below."
+    },
+    {
+      "id": "A4",
+      "name": "Type wall: choose the clock face by seeing your own time",
+      "kind": "editor",
+      "experience": "In Clock > Design > Typeface, instead of a dropdown, a wall shows 08:42 at true size in every installed display font, in your accent colour, on a strip of your wallpaper. A weight slider adjusts variable fonts live. A small mark shows which fonts hold their width when the minute changes.",
+      "why_beyond_current_plan": "Ricing communities treat type as the main expression; the plan reduces it to 'Typeface: Display Sans'. The font catalogue already exists (src/desktop/appearance/catalog.rs lists families with a monospace flag), so this is presentation, not plumbing.",
+      "reuses": [
+        "Font catalogue, widget_style scope, settings_preview real-render cards, wallpaper thumbnail."
+      ],
+      "new_capability": [
+        "Variable-font axis control (weight, optical size) in the clock renderer: verify what cosmic-text exposes.",
+        "Tabular-numeral detection (OpenType tnum availability) and auto-enable where present.",
+        "Lazy rendering of tiles on scroll; a licence hint for bundled fonts."
+      ],
+      "complexity_and_stage": "Low to medium. Stage 1: it is the clock-face work seen from the user's side.",
+      "failure_or_tradeoff": "Fonts without tabular numerals make the clock jitter every minute. Enable tnum where available, show a warning mark otherwise, and keep the shaping cost bounded by rendering tiles lazily.",
+      "deserves_image": true,
+      "visual_concept": "Full brief D below."
+    },
+    {
+      "id": "A5",
+      "name": "Fit to picture: the wallpaper tells widgets where to sit",
+      "kind": "editor",
+      "experience": "Drop in a new wallpaper. A faint overlay shows the picture's quiet regions. 'Fit to picture' moves the clock and agenda to the calmest areas, picks light or dark text per region and keeps your grouping. Undo restores the previous layout.",
+      "why_beyond_current_plan": "The canvas lets you move things, but every new wallpaper restarts the layout problem, and community setups look wrong on a different picture. This makes a setup survive a wallpaper change and makes 'Remix with my photo' produce something good on the first try.",
+      "reuses": [
+        "palette.rs bounded Oklab thumbnail (extend with per-cell local variance).",
+        "layout.rs free_spot_in_area and snap; contrast_assist and tone::readable; on-desktop Arrange."
+      ],
+      "new_capability": [
+        "Quiet-map computation (cheap, deterministic, same thumbnail) and suggestion ranking.",
+        "A per-widget 'text tone from picture' rule that chooses light or dark text per region."
+      ],
+      "complexity_and_stage": "Low to medium. Stage 2 with the canvas; a one-button version on the Wallpaper page fits stage 1.",
+      "failure_or_tradeoff": "Slideshow folders change pictures. Either compute a union quiet map over the folder (conservative) or offer Fit only for single pictures. Never move widgets without the user pressing Fit.",
+      "deserves_image": false,
+      "visual_concept": "The 05 canvas with a translucent cell overlay over the preview (dark cells busy, clear cells quiet), two dashed suggested rectangles labelled 'Clock' and 'Agenda', one button 'Fit to picture' in the toolbar, and a footer 'Suggested: 2 moves, 1 text tone change'. Optional image; lower priority than A, B, C, D."
+    },
+    {
+      "id": "A6",
+      "name": "Spine: a vertical desktop",
+      "kind": "bold art direction",
+      "experience": "No top bar. A narrow vertical Islands column on the left edge: stacked time 23 over 37, workspace dots, then tray glyphs at the bottom. The wallpaper fills everything else. The month reads as a tall vertical masthead along the right edge and the few widgets are right-anchored.",
+      "why_beyond_current_plan": "All four directions put Islands across the top and a dock at the bottom. The strongest move in the end-4 reference is the vertical bar with stacked time, and ultrawide and portrait users get a composition made for them.",
+      "reuses": [
+        "PanelLook.anchor already supports left and right in the portable format.",
+        "Stacked clock face from stage 1; per-display portrait placement."
+      ],
+      "new_capability": [
+        "Islands companion vertical orientation: no vertical or orientation code was found in companion/dock-islands-core, so treat as unknown. Fallback: a plain vertical COSMIC panel with ordinary applets.",
+        "Vertical text rendering for the masthead (rotated glyph run).",
+        "Status glyphs inside a widget would need battery and network providers that do not exist; prefer native applets in the vertical panel."
+      ],
+      "complexity_and_stage": "Medium with the Islands unknown. Stage 1 as a vertical COSMIC panel look plus stacked clock; Islands vertical later if the companion supports it.",
+      "failure_or_tradeoff": "A left panel takes horizontal space from tiling users and conflicts with the dock. Ship with autohide choices and a truthful 'Islands: horizontal only' note until supported.",
+      "deserves_image": true,
+      "visual_concept": "Desktop, 16:10. Wallpaper: a tall waterfall in dark basalt and white spray, desaturated. Left edge: one slim vertical graphite island from top to bottom, 56 px wide, containing stacked white digits 23 / 37 at the top, four small workspace dots in the middle, Wi-Fi, sound and battery glyphs at the bottom. Right edge: the word OCTOBER set vertically in a tall condensed serif, pale grey, 60% of screen height, reading bottom to top. Lower right: a two-line text-only weather and a one-line Next up. No top islands, no visible dock (autohidden). Caption lower-left HALCYON CONCEPT. Fifth image if budget allows."
+    },
+    {
+      "id": "A7",
+      "name": "Day line and Next up: time you can see",
+      "kind": "new widget faces",
+      "experience": "A hairline across the bottom of the desktop runs from 06 to 24. A bright dot marks now, small ticks mark today's events, a thicker segment shows the running focus round, and two faint sun marks show sunrise and sunset. 'Next up' is a one-line agenda that grows a Join chip when a meeting is Live or Soon.",
+      "why_beyond_current_plan": "The plan's agenda is a list and the clock is numerals. A timeline merges clock, agenda, focus and sun into one quiet object, the compact useful module the Dux reference shows, and it suits sparse desktops like Tidal and Carbon.",
+      "reuses": [
+        "Calendar agenda_at, MeetingState, join_url; Focus state; Open-Meteo daily (add sunrise and sunset)."
+      ],
+      "new_capability": [
+        "A Timeline face (stage 1 as a built-in) and later a Timeline part for the builder (stage 3).",
+        "A bounded action: Join opens the URL that the trusted calendar provider supplied; no other URLs."
+      ],
+      "complexity_and_stage": "Low for the built-in face. Stage 1 to 2.",
+      "failure_or_tradeoff": "A line across the top conflicts with Islands; offer bottom and inset placements. Dense days overlap ticks; cluster ticks closer than 20 minutes into one mark with a count.",
+      "deserves_image": false,
+      "visual_concept": "Included in brief A as the bottom day line, so the Ridge image carries two new ideas."
+    },
+    {
+      "id": "A8",
+      "name": "Try on: ten seconds on the real desktop",
+      "kind": "interaction",
+      "experience": "In the canvas or in a community preview, 'Try on desktop' applies the draft for real. A small pill on the desktop counts down 'Keep / Revert / 9 s'. Timeout or Escape reverts; Enter keeps.",
+      "why_beyond_current_plan": "An in-window preview cannot show real panel behaviour, scaling or the actual wallpaper across displays. A timed, auto-reverting trial removes the fear of applying, which is what makes people experiment.",
+      "reuses": [
+        "Apply/Undo transactions with baselines (src/desktop/store/undo.rs); Halcyon already owns layer surfaces for the pill."
+      ],
+      "new_capability": [
+        "Timed revert; an on-desktop pill; keyboard handling while Settings is unfocused (a global shortcut may not be available; the pill's buttons and a banner in Settings are the fallback)."
+      ],
+      "complexity_and_stage": "Low. Stage 2, or earlier on the Setups page for preset previews.",
+      "failure_or_tradeoff": "Wallpaper reloads and panel restarts can take longer than the timer on slow machines. Start the countdown only after the transaction completes, and never try on Windows or Workspaces domains because they rearrange windows.",
+      "deserves_image": false,
+      "visual_concept": "A pill may appear in brief B's footer if the parent wants to show it: 'Trying Focus layout · Keep · Revert · 7 s'. Keep it out if it clutters the shot."
+    },
+    {
+      "id": "A9",
+      "name": "Mix board: three parents, one setup",
+      "kind": "remix",
+      "experience": "Setups > New from shows three slots: Picture, Style, Layout. Drop Moss into Style, Carbon into Layout and your own photo into Picture. The preview updates and a readability check says 'Carbon text on this picture: low contrast. Use light text?'.",
+      "why_beyond_current_plan": "07 remixes one setup at a time. Selective domains already exist in the format (Wallpaper, WidgetStyle, WidgetLayout) but no UI makes mixing a creative act, and mixing is how ricers actually work: palette from one post, layout from another.",
+      "reuses": [
+        "Selective domain import, contrast_assist, wallpaper palette, the setups library."
+      ],
+      "new_capability": [
+        "A three-slot composer with a merge preview and a lineage record ('style from Moss')."
+      ],
+      "complexity_and_stage": "Low to medium. Local-only version in stage 2; lineage and credits with the stage 4 bundle.",
+      "failure_or_tradeoff": "A layout built for 16:10 on a portrait picture. Run the compact/wide check before saving and show the result.",
+      "deserves_image": false,
+      "visual_concept": "Halcyon window, Setups selected, title 'New setup'. Three large empty-then-filled slots across the top: Picture (photo thumbnail), Style (Moss swatches and font names), Layout (Carbon wireframe). Below, a wide preview of the merged result and a single yellow readability line. Footer: Cancel, Save setup."
+    },
+    {
+      "id": "A10",
+      "name": "Setup card: a picture you can post",
+      "kind": "sharing",
+      "experience": "'Share as image' renders a 1600 by 1000 card: the real desktop render with sample data, five swatches, font names, included domains, credits and the file name. Post it on r/unixporn or in a chat; the setup file travels alongside.",
+      "why_beyond_current_plan": "Sharing in ricing communities is image-first; the plan jumps to hosted links in stages 4 and 5. A card ships earlier, needs no server, and shows Halcyon honestly because it is rendered, not mocked.",
+      "reuses": [
+        "settings_preview real cards with fixed illustrative readings; wallpaper thumbnail; palette swatches; the export review that excludes personal content."
+      ],
+      "new_capability": [
+        "Offscreen render at a fixed size; a card template; credits layout."
+      ],
+      "complexity_and_stage": "Low. End of stage 1 or start of stage 4.",
+      "failure_or_tradeoff": "A personal picture in the card can leak places or people. Apply the LOCAL_ONLY rule: personal pictures are replaced by their palette unless the user confirms.",
+      "deserves_image": false,
+      "visual_concept": "The card itself: desktop render on the left two thirds, a right column with five swatches, 'Fraunces / Inter', chips Wallpaper, Colours, Widgets, and 'by elm · CC BY'. Could be generated later as a sharing mock."
+    },
+    {
+      "id": "A11",
+      "name": "Now-playing tint: the music card borrows the album's colour",
+      "kind": "small delight",
+      "experience": "When the track changes, the music surface tint shifts to the album art's dominant colour, text stays readable, nothing else on the desktop changes. Off for monochrome setups through a style token 'Allow content colour: music'.",
+      "why_beyond_current_plan": "The plan ties colour to the wallpaper only. Content-aware colour on one surface is a classic ricing touch (end-4, Dux), bounded and event-driven.",
+      "reuses": [
+        "MPRIS artwork, palette.from_pixels, tone::readable, materials tint."
+      ],
+      "new_capability": [
+        "A per-widget content-colour policy and a debounce."
+      ],
+      "complexity_and_stage": "Low. Stage 1.",
+      "failure_or_tradeoff": "Rapid skips flash colours. Debounce 1.5 s, animate only inside the widget, respect reduce-motion.",
+      "deserves_image": false,
+      "visual_concept": "Shown in brief A's music strip (dusty-rose tint from the album)."
+    },
+    {
+      "id": "A12",
+      "name": "Grain and matte: finishes that are not glass",
+      "kind": "style",
+      "experience": "Materials gain Matte, Paper grain and Halftone alongside Frosted, Clear glass, Smoked glass and Liquid: static tiled textures with a subtle tint. Paper and Moss stop looking like tinted glass.",
+      "why_beyond_current_plan": "The current Kind enum is four glass-like finishes. The Paper and Moss directions need tactility, and a shared style must not force one surface language, which the brief flagged.",
+      "reuses": [
+        "Materials targets, Finish opacity and tint, the sheen pipeline."
+      ],
+      "new_capability": [
+        "Bundled texture tiles with licences; texture sampling in the surface renderer; a contrast cap under text."
+      ],
+      "complexity_and_stage": "Low to medium. Stage 1 style work.",
+      "failure_or_tradeoff": "Textures at 200% scaling look blurry or heavy. Ship tiles at 2x, cap texture contrast, and let contrast_assist disable texture under text.",
+      "deserves_image": false,
+      "visual_concept": "None needed; visible in any Paper or Moss re-render later."
+    }
+  ],
+  "strongest": [
+    "A1",
+    "A3",
+    "A2",
+    "A4"
+  ],
+  "visual_briefs": [
+    {
+      "ref": "A1",
+      "id": "08-ridge",
+      "title": "Ridge: a clock behind the mountains",
+      "type": "desktop",
+      "differs_from_existing": "Only image where a widget sits inside the picture; clock centred not top-left; no centre island; the agenda replaced by a day line; music tinted by its album.",
+      "screen_content": [
+        "16:10 desktop, 1600 by 1000, straight on, no hardware.",
+        "Giant light serif numerals '06:58' centred horizontally, top edge at about 22% of the height, spanning about 42% of the width; the digits are off-white with a hint of rose; thin weight, generous tracking.",
+        "A dark spruce ridge and a mountain silhouette cross the lower part of the digits so the bottom 18% of each numeral is hidden behind the trees: the type is visibly behind the landscape.",
+        "Small letter-spaced 'MONDAY, 26 OCTOBER' above the digits, centred.",
+        "Two restrained Islands at the top corners only: left, four workspace dots; right, Wi-Fi, sound, battery '87%'. No centre island: the giant clock is the clock.",
+        "Bottom day line: a hairline from x 12% to x 88% at y 90%, end labels '06' and '24' in tiny caps, a bright dot at now near the left, three small ticks for events, one slightly thicker segment, two faint sun marks. One tiny label near the dot: 'Now'.",
+        "Lower left above the line: a slim text-first music strip 'Blue Hour · Ambient collection' with pause and next glyphs, its surface tinted dusty rose from the album thumbnail.",
+        "Small centred dock, six ordinary Linux app icons, sitting just above the day line.",
+        "Tiny caption lower-left: 'HALCYON • CONCEPT'."
+      ],
+      "spatial_composition": "Centre-weighted. Sky occupies the upper half, the ridge crosses at about 55% height, a still lake below. Everything else hugs edges so the centre reads as one picture: sky, numerals, ridge.",
+      "palette": {
+        "sky": "#f3d9d0 rose to #7f93a8 steel blue",
+        "ridge_and_lake": "#1c2430 ink blue",
+        "numerals": "#f4efe8 off-white",
+        "accent": "mint #91ddc5 for the now dot only",
+        "music_tint": "dusty rose #b98a85 at low opacity"
+      },
+      "native_controls": "Islands as COSMIC-like applet groups; a standard small dock. No window chrome.",
+      "exact_labels": [
+        "06:58",
+        "MONDAY, 26 OCTOBER",
+        "Blue Hour",
+        "Ambient collection",
+        "Now",
+        "06",
+        "24",
+        "87%",
+        "HALCYON • CONCEPT"
+      ],
+      "prompt_draft": "Use case: ui-mockup. Create a beautiful, high-fidelity FUTURE CONCEPT screenshot for Halcyon, a native COSMIC Linux desktop customization application. One flat straight-on desktop screenshot, landscape 16:10, high resolution, exquisitely crisp typography and clean vector-like UI detail. It must look like a real usable Linux desktop designed by a world-class product designer, with an original Halcyon identity. No laptop or monitor hardware, no perspective, no collage, no poster, no explanatory arrows, no giant branding. No macOS traffic-light controls, no Windows taskbar. No terminal, no fake code. UI labels in English; sparse, legible, exactly spelled. Decorative surfaces may be opaque or tinted; do not rely on blurry glass. Tiny subtle caption at lower-left: 'HALCYON • CONCEPT'.\nScene: an original photograph of a cold mountain lake at first light. The sky grades from pale rose at the horizon to steel blue above; a dark spruce ridge and a mountain silhouette cross the frame at about 55% of the height; a still lake fills the bottom, reflecting the sky. No people.\nComposition: enormous thin off-white serif numerals '06:58' centred horizontally with their top at about 22% of the height and spanning about 42% of the width. The spruce ridge and mountain silhouette overlap the bottom fifth of the numerals, so the time clearly sits BEHIND the landscape, like a depth-effect lock screen. Above the numerals, small letter-spaced 'MONDAY, 26 OCTOBER' centred. Only two restrained graphite Islands at the top corners: four workspace dots at left; Wi-Fi, sound and battery '87%' at right; no island in the centre. Along the bottom, a fine hairline timeline from 12% to 88% of the width with tiny end labels '06' and '24', a bright mint dot near the left labelled 'Now', three small ticks, one slightly thicker segment and two faint sun marks. Lower left above that line, a slim text-first music strip 'Blue Hour' / 'Ambient collection' with pause and next glyphs, its surface tinted dusty rose. A small centred dock of six ordinary Linux application icons sits just above the timeline. Mood: cinematic, quiet, centre-weighted; the picture, the numerals and the ridge read as one image. Not a stack of dashboard rectangles."
+    },
+    {
+      "ref": "A3",
+      "id": "09-session-focus",
+      "title": "Session: the desktop during a focus round",
+      "type": "desktop + interaction",
+      "differs_from_existing": "Shows a state, not a style: the composition is centred on one ring, everything else has receded; a state pill explains why; dock hidden; one warm element on a cool desktop.",
+      "screen_content": [
+        "16:10 desktop. Wallpaper: fog over a still lake at dawn, nearly monochrome blue-grey, very low detail.",
+        "Centre: a large thin ring about 30% of the height; the elapsed arc is warm amber, the remainder a faint grey. Inside: '18:21' in a light sans, and beneath it small 'Focus · round 2 of 4'.",
+        "Under the ring, two quiet text actions 'Pause' and 'End', widely spaced, no boxes.",
+        "Top-left: a small clock '10:07' and nothing else.",
+        "Right-middle: one line 'Next · 14:00 Design review', dim.",
+        "Bottom-left: one dim text line 'Blue Hour · paused'.",
+        "Top-centre: a tiny state pill 'Focus · ends 10:32'.",
+        "Top-right: a single slim island with Wi-Fi, sound, battery. No workspaces island, no dock (hidden during Focus).",
+        "Tiny caption lower-left: 'HALCYON • CONCEPT'."
+      ],
+      "spatial_composition": "Radial. The ring sits at the exact centre; all other elements are small, dim and pushed to corners. Large empty margins.",
+      "palette": {
+        "wallpaper": "#2b3540 slate to #c9d3dc mist",
+        "text": "#eef2f5",
+        "ring_elapsed": "#e0a458 warm amber (the only warm element)",
+        "ring_remaining": "#8a98a6 at 35% opacity",
+        "pill": "graphite #1f262d with off-white text"
+      },
+      "native_controls": "One Islands status group at top-right; the state pill is a Halcyon desktop surface, not a panel applet.",
+      "exact_labels": [
+        "18:21",
+        "Focus · round 2 of 4",
+        "Pause",
+        "End",
+        "10:07",
+        "Next · 14:00 Design review",
+        "Blue Hour · paused",
+        "Focus · ends 10:32",
+        "HALCYON • CONCEPT"
+      ],
+      "prompt_draft": "Use case: ui-mockup. Create a beautiful, high-fidelity FUTURE CONCEPT screenshot for Halcyon, a native COSMIC Linux desktop customization application. One flat straight-on desktop screenshot, landscape 16:10, high resolution, exquisitely crisp typography and clean vector-like UI detail. It must look like a real usable Linux desktop designed by a world-class product designer, with an original Halcyon identity. No laptop or monitor hardware, no perspective, no collage, no poster, no explanatory arrows, no giant branding. No macOS traffic-light controls, no Windows taskbar. No terminal, no fake code. UI labels in English; sparse, legible, exactly spelled. Decorative surfaces may be opaque or tinted; do not rely on blurry glass. Tiny subtle caption at lower-left: 'HALCYON • CONCEPT'.\nScene: an original photograph of thin fog over a still lake at dawn, nearly monochrome slate blue and mist grey, very low detail, no people.\nComposition: this desktop is in a Focus session, so everything has receded except one object. At the exact centre a large thin ring about 30% of the screen height; its elapsed arc is warm amber, the rest a faint grey. Inside the ring, light sans numerals '18:21' and beneath them small text 'Focus · round 2 of 4'. Under the ring, two quiet unboxed text actions 'Pause' and 'End', widely spaced. Top-left, a small clock '10:07' and nothing else. Right-middle, one dim line 'Next · 14:00 Design review'. Bottom-left, one dim line 'Blue Hour · paused'. Top-centre, a tiny graphite pill 'Focus · ends 10:32'. Top-right, a single slim graphite island with Wi-Fi, sound and battery glyphs. No workspaces island and no dock: the dock is hidden during Focus. Palette: slate and mist with off-white text; the amber arc is the only warm element. Mood: still, radial, spacious; the desktop has cleared itself for one task."
+    },
+    {
+      "ref": "A2",
+      "id": "10-moments-editor",
+      "title": "Moments: editing one setup across the day",
+      "type": "app editor",
+      "differs_from_existing": "Not object editing: the left column lists moments, the preview has a day track with a playhead, and the inspector shows a moment's few overrides over 'Follows Day'. The preview is Tidal at dusk, so the same setup looks new.",
+      "screen_content": [
+        "Native Halcyon window, same chrome as the canvas concept: opaque charcoal, warm off-white type, mint accent, six sidebar roots 'Appearance', 'Desktop', 'Widgets', 'Setups', 'Accessibility', 'App settings'; Setups selected.",
+        "Header breadcrumb 'Setups / Tidal' and a small segmented control 'Canvas | Moments | Share' with Moments selected.",
+        "Left column titled 'Moments': rows 'Dawn 06:40', 'Day 09:00', 'Dusk 17:50', 'Night 21:00'; Dawn and Dusk carry a small sun glyph; Dusk selected. Below the list a toggle 'Follow the sun' (on) with a helper line 'Uses the Weather location'.",
+        "Centre: a large preview of the Tidal desktop at dusk: the same thin clock '17:52', the same agenda and music strip, but a peach-to-violet sky and warmer surface tints.",
+        "Under the preview a day track from 00 to 24 with four small thumbnails sitting at their times and a mint playhead at 17:50 labelled 'Dusk'.",
+        "Right inspector titled 'Dusk': a thumbnail row 'Wallpaper · Tidal dusk', a row 'Colours · From wallpaper', a section 'Overrides (2)' listing 'Clock weight · Regular' and 'Surface tint · +10', then a quiet line 'Everything else follows Day'.",
+        "Footer: left 'Previewing Dusk · 2 overrides'; right buttons 'Cancel' and accented 'Apply setup'.",
+        "Tiny caption bottom-left inside the window: 'HALCYON • CONCEPT'."
+      ],
+      "spatial_composition": "Three columns like the canvas concept so it reads as the same product, but the centre column is preview over a horizontal day track; the track is the new element and must be clearly visible.",
+      "palette": {
+        "chrome": "charcoal #1b1f23, off-white text, mint #91ddc5 accent",
+        "preview": "Tidal at dusk: peach #f0b48c to violet #4a3f6b sky, indigo sea"
+      },
+      "native_controls": "COSMIC-like window header with title Halcyon and minimise/maximise/close at the upper right; segmented control; toggle; rows with dropdowns.",
+      "exact_labels": [
+        "Setups / Tidal",
+        "Canvas",
+        "Moments",
+        "Share",
+        "Dawn 06:40",
+        "Day 09:00",
+        "Dusk 17:50",
+        "Night 21:00",
+        "Follow the sun",
+        "Uses the Weather location",
+        "Dusk",
+        "Overrides (2)",
+        "Clock weight · Regular",
+        "Surface tint · +10",
+        "Everything else follows Day",
+        "Previewing Dusk · 2 overrides",
+        "Cancel",
+        "Apply setup"
+      ],
+      "prompt_draft": "Use case: ui-mockup. Create a high-fidelity FUTURE CONCEPT screenshot of Halcyon, a native COSMIC Linux application for designing personal desktops and widgets. One flat straight-on landscape 16:10 screenshot, high resolution, meticulously crisp typography and usable controls. A coherent native desktop product, not a website or poster. No laptop hardware, no perspective, no browser chrome, no macOS traffic lights. COSMIC-like native window header with title Halcyon and small minimise / maximise / close controls at the upper right. App chrome is opaque, theme-aware, quiet charcoal with warm off-white text and an understated mint accent; rounded grouped rows, clear hierarchy, generous breathing room, simple symbolic icons, 10 to 14 px corners, subtle borders, no blurred glass chrome. Do not cram tiny labels. Sidebar has six root entries: 'Appearance', 'Desktop', 'Widgets', 'Setups', 'Accessibility', 'App settings'; Setups selected. Tiny caption at bottom left inside the window: 'HALCYON • CONCEPT'.\nShow the Moments view of a setup named Tidal. Header breadcrumb 'Setups / Tidal' and a small segmented control 'Canvas | Moments | Share' with Moments selected. Left column titled 'Moments' lists 'Dawn 06:40', 'Day 09:00', 'Dusk 17:50', 'Night 21:00'; Dawn and Dusk carry a small sun glyph; Dusk is selected. Below the list, a toggle 'Follow the sun' switched on with a helper line 'Uses the Weather location'. Centre: a large accurate preview of the Tidal desktop at dusk: thin borderless clock '17:52' upper left, a small agenda card at right, a slim music strip lower left, three top Islands, a small dock; the sky is peach fading to violet over an indigo sea and the surfaces are warmer. Directly under the preview, a horizontal day track from 00 to 24 with four small thumbnails placed at their times and a mint playhead at 17:50 labelled 'Dusk'. Right inspector titled 'Dusk': a thumbnail row 'Wallpaper · Tidal dusk', a row 'Colours · From wallpaper', a section 'Overrides (2)' listing 'Clock weight · Regular' and 'Surface tint · +10', then a quiet line 'Everything else follows Day'. Fixed footer: left 'Previewing Dusk · 2 overrides'; right native buttons 'Cancel' and accented 'Apply setup'. The screenshot should show one desktop that lives through a day, edited calmly."
+    },
+    {
+      "ref": "A4",
+      "id": "11-type-wall",
+      "title": "Type wall: choosing the clock typeface",
+      "type": "app editor",
+      "differs_from_existing": "No canvas and no object list: a wall of the same time set in many fonts on the user's wallpaper, with a live weight slider. The product moment is choosing type, which none of the seven images show.",
+      "screen_content": [
+        "Native Halcyon window, same chrome; Widgets selected in the sidebar.",
+        "Header breadcrumb 'Widgets / Clock / Typeface'. A filter row 'All', 'Serif', 'Sans', 'Mono' with All selected, and a search field 'Search fonts'.",
+        "Main area: a 4 by 3 grid of tiles. Every tile shows '08:42' large on a strip of the Tidal blue-hour wallpaper, with the font name small below. Fonts (illustrative, all open-licence): Inter, Fraunces, Space Grotesk, IBM Plex Mono, Cormorant, Work Sans, Literata, DM Serif Display, JetBrains Mono, Playfair Display, Manrope, Fira Sans. Each numeral set clearly differs in character.",
+        "Fraunces tile selected with a mint outline. Tiles for fonts with tabular numerals show a tiny 'tabular' mark; two tiles show a faint warning mark instead.",
+        "Right inspector titled 'Fraunces': a large live sample '08:42' on the wallpaper strip; 'Weight' slider at 'Light'; 'Optical size' slider; a row 'Tabular numerals · available' with a check; 'Letter spacing' stepper '+4'; a small line 'Shared setups name the font; missing fonts fall back to Display Sans'.",
+        "Footer: left 'Preview on: Tidal'; right buttons 'Cancel' and accented 'Use typeface'.",
+        "Tiny caption bottom-left inside the window: 'HALCYON • CONCEPT'."
+      ],
+      "spatial_composition": "Two columns: a wide specimen grid and a narrower inspector. The grid must dominate; each tile is about 300 by 170 px with the numerals filling most of it.",
+      "palette": {
+        "chrome": "charcoal, off-white, mint accent",
+        "tiles": "Tidal blue-hour strip (indigo to peach) under off-white numerals"
+      },
+      "native_controls": "COSMIC-like header, filter chips, search field, sliders, stepper, buttons.",
+      "exact_labels": [
+        "Widgets / Clock / Typeface",
+        "All",
+        "Serif",
+        "Sans",
+        "Mono",
+        "Search fonts",
+        "08:42",
+        "Fraunces",
+        "Weight",
+        "Light",
+        "Optical size",
+        "Tabular numerals · available",
+        "Letter spacing",
+        "Preview on: Tidal",
+        "Cancel",
+        "Use typeface"
+      ],
+      "prompt_draft": "Use case: ui-mockup. Create a high-fidelity FUTURE CONCEPT screenshot of Halcyon, a native COSMIC Linux application for designing personal desktops and widgets. One flat straight-on landscape 16:10 screenshot, high resolution, meticulously crisp typography and usable controls. A coherent native desktop product, not a website or poster. No laptop hardware, no perspective, no browser chrome, no macOS traffic lights. COSMIC-like native window header with title Halcyon and small minimise / maximise / close controls at the upper right. App chrome is opaque, theme-aware, quiet charcoal with warm off-white text and an understated mint accent; rounded grouped rows, clear hierarchy, generous breathing room, simple symbolic icons, 10 to 14 px corners, subtle borders, no blurred glass chrome. Sidebar has six root entries: 'Appearance', 'Desktop', 'Widgets', 'Setups', 'Accessibility', 'App settings'; Widgets selected. Tiny caption at bottom left inside the window: 'HALCYON • CONCEPT'.\nShow the clock typeface chooser. Header breadcrumb 'Widgets / Clock / Typeface'. A filter row 'All', 'Serif', 'Sans', 'Mono' with All selected and a search field 'Search fonts'. The main area is a 4 by 3 grid of specimen tiles; every tile shows the same time '08:42' large in off-white on a strip of a blue-hour ocean wallpaper (indigo sea, peach horizon), with the font name in small text below: Inter, Fraunces, Space Grotesk, IBM Plex Mono, Cormorant, Work Sans, Literata, DM Serif Display, JetBrains Mono, Playfair Display, Manrope, Fira Sans. The numerals must visibly differ in character from tile to tile: thin geometric, soft serif, grotesque, monospace, high-contrast serif. The Fraunces tile is selected with a mint outline. Most tiles carry a tiny 'tabular' mark; two show a faint warning mark instead. Right inspector titled 'Fraunces': a large live sample '08:42' on the same wallpaper strip; a 'Weight' slider at 'Light'; an 'Optical size' slider; a row 'Tabular numerals · available' with a check; a 'Letter spacing' stepper showing '+4'; a quiet line 'Shared setups name the font; missing fonts fall back to Display Sans'. Footer: left 'Preview on: Tidal'; right native buttons 'Cancel' and accented 'Use typeface'. The screenshot should feel like a type specimen book made of your own clock."
+    }
+  ],
+  "critique_of_current_plan": {
+    "simplify": [
+      "Stage 1 carries too much: schema plus migration, three faces, compact/wide variants for four widgets, four desktops and performance budgets. The first useful release is narrower: clock faces and typography, a shared style with Follow setup, and Tidal and Paper delivered as two more entries of the existing six presets (presets.rs looks and compositions), not as the first users of a full declarative recipe. Stacked face, Moss and Carbon can follow.",
+      "Collapse the 05 inspector from Design / Content / Layout to Design and Layout. Content for most widgets is their existing settings page; link to it instead of duplicating it inside the canvas.",
+      "Make Follow setup the single inheritance mechanism for colours, type, surfaces, moments and states. One mental model (inherited or overridden) instead of a toggle per feature.",
+      "Do not block Tidal and Paper on responsive variants for all nine widgets; only clock, agenda and weather need compact and wide forms for those two presets."
+    ],
+    "missing_from_the_model": [
+      "A time and activity dimension (Moments, Sessions). Today a setup is frozen and automation can only swap whole setups.",
+      "Typography beyond family: weight and optical-size axes, tabular numerals, and a size scale (display, title, body, caption) as shared tokens.",
+      "The wallpaper as a structured asset: fit mode, optional foreground matte, quiet map, and per-moment pictures. Today it is a path or a colour.",
+      "A surface language beyond glass (matte, grain) and 'no surface' as a first-class value; Tidal and Carbon depend on borderless objects.",
+      "A setup-level sample-data contract for previews, cards and thumbnails, generalising what settings_preview already does, so personal content never appears in anything shareable.",
+      "A capability manifest per setup (Islands, layered wallpaper, named fonts, weather location, calendar account) with truthful fallbacks from stage 1, not only in stage 4 bundles, so built-ins are honest too.",
+      "Compositional variety before the layout schema is frozen: all four directions share one grammar (top Islands, bottom dock, clock top-left). Add one vertical or centre-weighted direction early, or anchoring to corners gets baked into the schema.",
+      "A bounded action vocabulary (join the calendar's meeting URL, start or pause Focus, open an app from the dock list). The builder has no behaviour parts at all.",
+      "Accessibility as setup-respected constraints: contrast_assist and reduce-motion must win over any setup's style, and the preview should show the adjusted result."
+    ],
+    "should_not_delay_first_release": [
+      "Community gallery, hosted links and immutable revisions: ship 'Share as file' plus the Setup card first.",
+      "Remix lineage and update review.",
+      "The widget builder and provider sharing.",
+      "Canvas grouping, alignment and snapping polish; a per-widget Design popover on the existing settings pages gives most of the value before the canvas exists.",
+      "Islands vertical orientation and any new Islands sections.",
+      "Texture finishes and layered wallpapers (fast follow after faces).",
+      "The full asset-bundle format."
+    ],
+    "art_direction_notes": [
+      "Three of four desktops put the clock top-left; the next generations should vary anchoring (centre, bottom, right edge, vertical).",
+      "The dock appears in every image; at least one direction should show it hidden to prove setups can be about absence.",
+      "Keep the mint accent for app chrome only; desktops should each own their accent so the gallery does not look like one brand with four wallpapers."
+    ]
+  },
+  "suggested_generation_order": [
+    "08-ridge (bold desktop, two new ideas in one image)",
+    "09-session-focus (state, interaction)",
+    "10-moments-editor (model extension, reuses Tidal so the contrast is obvious)",
+    "11-type-wall (typography as the product)",
+    "optional: Spine vertical desktop (A6) if a fifth image fits"
+  ],
+  "unresolved_uncertainty": [
+    "Islands companion orientation: no vertical or orientation code was found in companion/dock-islands-core; vertical Islands (A6) may need native-panel fallback.",
+    "Variable-font axes and OpenType tnum control in the clock renderer depend on what cosmic-text and iced expose; A4 assumes at least weight selection among installed instances.",
+    "Overlay alignment for A1 across per-display fit modes and HiDPI scales is untested; media.rs has the fit maths but it has not been used for compositing over the live wallpaper.",
+    "Open-Meteo daily sunrise and sunset are not requested in data.rs today; A2 and A7 assume a small provider change.",
+    "A global keyboard shortcut for Try on (A8) while Settings is unfocused may not be available under COSMIC; the pill's buttons are the fallback.",
+    "Licences for bundled layered wallpapers, texture tiles and named fonts must be cleared before shipping presets that use them.",
+    "The Islands Capabilities struct was not located during the read-only pass; truthful native limits for A6 need a look at the companion's capability list."
+  ],
+  "archive_notice": "Historical proposal. Current architecture and sequencing are in ../../ARCHITECTURE.md, ../../ROADMAP.md and ../../tracker.json."
+}

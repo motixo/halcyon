@@ -1,5 +1,7 @@
 // Native layer-shell setup adapted from longer54/pop-os-cosmic-widgets (GPL-3.0-or-later).
-use crate::config::{Appearance, Config, Location, Palette};
+#[cfg(test)]
+use crate::config::Location;
+use crate::config::{Appearance, Config, Palette};
 use crate::data::{
     self, CalendarData, CalendarEvent, MeetingState, Metrics, ProjectsData, Sampler, Weather,
     WeatherSnapshot,
@@ -10,26 +12,92 @@ mod auditfix_tests;
 mod autoswitch;
 mod calendar_details;
 mod clock;
+mod depth;
 mod devbox;
 #[cfg(test)]
 mod display_tests;
 mod glance;
 mod monitors;
+mod recipe;
 
 pub(crate) fn settings_clock_preview(
     config: &Config,
     size: [f32; 2],
 ) -> cosmic::Element<'static, Message> {
-    clock::view(config, chrono::Local::now().naive_local(), size)
+    settings_clock_preview_at(config, size, chrono::Local::now().naive_local())
 }
 
+pub(crate) fn settings_clock_preview_at(
+    config: &Config,
+    size: [f32; 2],
+    now: chrono::NaiveDateTime,
+) -> cosmic::Element<'static, Message> {
+    clock::view_context(
+        config,
+        now,
+        size,
+        crate::widget_presentation::Context::LocalPreview,
+    )
+}
+
+pub(crate) fn settings_recipe_preview(
+    config: &Config,
+    recipe: &crate::recipes::Recipe,
+    missing: bool,
+    size: [f32; 2],
+) -> cosmic::Element<'static, Message> {
+    let mut config = config.clone();
+    config.recipes.set(recipe.kind, Some(recipe.clone()));
+    config.location = (!missing).then(|| crate::config::Location {
+        name: "Sample city".into(),
+        latitude: 0.,
+        longitude: 0.,
+    });
+    let now = chrono::Local::now();
+    if recipe.kind == crate::recipes::Kind::Clock {
+        clock::view_context(
+            &config,
+            chrono::NaiveDate::from_ymd_opt(2026, 7, 21)
+                .unwrap()
+                .and_hms_opt(9, 41, 0)
+                .unwrap(),
+            size,
+            crate::widget_presentation::Context::LocalPreview,
+        )
+    } else if missing {
+        weather::Presentation::new(
+            &config,
+            weather::Snapshot {
+                weather: None,
+                updated_at: None,
+                failed: false,
+            },
+            now,
+        )
+        .view(crate::widget_presentation::Context::LocalPreview, size)
+    } else {
+        settings_weather_preview_at(&config, size, now)
+    }
+}
+
+pub(crate) fn settings_clock_face_rows(
+    config: &Config,
+    size: [f32; 2],
+    now: chrono::NaiveDateTime,
+) -> [f32; 2] {
+    clock::Presentation::new(config)
+        .frame(now, size)
+        .face_rows()
+}
 mod history;
 mod layout;
 mod panel;
 mod projects;
+mod providers;
 mod settings_preview;
 pub(crate) use settings_preview::{
     SettingsSamples, settings_devbox_preview, settings_weather_preview,
+    settings_weather_preview_at, settings_weather_preview_sized,
 };
 #[cfg(test)]
 mod look_render_tests;
@@ -41,6 +109,7 @@ mod tools;
 #[cfg(test)]
 mod utility_tests;
 mod wallpaper_colors;
+mod weather;
 use chrono::{Datelike, Duration as Days, Local, NaiveDate};
 use cosmic::Application as _;
 use cosmic::Element;
@@ -64,6 +133,8 @@ pub enum Message {
     FilesChanged,
     DesktopPaletteChanged,
     WallpaperColorsChanged,
+    DepthObserved(u64, Option<crate::desktop::wallpaper::BgEntry>),
+    DepthReady(u64, Option<crate::desktop::wallpaper::media::Pixels>),
     WallpaperColorsReady(
         u64,
         Result<Option<crate::desktop::wallpaper::automatic::Prepared>, String>,
@@ -103,7 +174,8 @@ pub enum Message {
     ToggleEarlier,
     RefreshProjects,
     Projects(Vec<String>, Result<ProjectsData, String>),
-    Weather(Location, Result<WeatherSnapshot, String>),
+    Weather(crate::providers::weather::Completion),
+    WeatherCacheSaved(Result<(), String>),
     Service(bool),
     Calendar(String, String, Result<CalendarData, String>),
     CalendarToday(String, Result<CalendarData, String>),
@@ -116,6 +188,7 @@ pub enum Message {
     Open(String),
     Settings,
     WeatherSettings,
+    ClockSettings,
     CalendarSettings,
     ProjectSettings,
     ControlFinished(Result<(), String>),
@@ -189,12 +262,13 @@ pub struct Cards {
     service_fetching: bool,
     next_service: Instant,
     next_clock: Instant,
+    clock_at: chrono::DateTime<Local>,
     next_calendar_view: Instant,
     weather: Option<Weather>,
     weather_error: bool,
     weather_at: Option<String>,
-    next_weather: Instant,
-    fetching: bool,
+    weather_hub: crate::providers::weather::Hub,
+    weather_cache: crate::providers::weather::Cache,
     capture_key: Option<String>,
     calendar: Option<CalendarData>,
     calendar_details: Option<String>,
@@ -219,6 +293,7 @@ pub struct Cards {
     /// Part of the wake's identity, so a fired wake can be armed again for
     /// the same deadline.
     wake_generation: u64,
+    depth: depth::State,
     wallpaper_color_generation: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 impl cosmic::Application for Cards {
@@ -286,12 +361,15 @@ impl cosmic::Application for Cards {
             service_fetching: false,
             next_service: Instant::now(),
             next_clock: Instant::now(),
+            clock_at: Local::now(),
             next_calendar_view: Instant::now(),
             weather: weather.as_ref().map(|snapshot| snapshot.weather.clone()),
             weather_error: false,
             weather_at: weather.map(|snapshot| snapshot.updated_at),
-            next_weather: Instant::now(),
-            fetching: false,
+            weather_hub: crate::providers::weather::Hub::new(
+                crate::widget_presentation::Context::Live,
+            ),
+            weather_cache: Default::default(),
             capture_key: None,
             calendar_details: None,
             calendar_today: calendar.clone(),
@@ -313,6 +391,7 @@ impl cosmic::Application for Cards {
             automator: crate::automation::runtime::Automator::from_env(),
             woke_at: (Instant::now(), SystemTime::now()),
             wake_generation: 0,
+            depth: Default::default(),
             wallpaper_color_generation: Default::default(),
         };
         // Output discovery creates the first probe, including on late startup.
@@ -336,6 +415,7 @@ impl cosmic::Application for Cards {
         }
         let paths = Config::path()
             .into_iter()
+            .chain(Config::path().map(|p| crate::design::storage::path(&p)))
             .chain(Self::command_path())
             .chain(crate::tools::notes::path())
             .chain(crate::calendar::account_path())
@@ -347,7 +427,9 @@ impl cosmic::Application for Cards {
                 .color_subscription()
                 .map(|_| Message::DesktopPaletteChanged),
         );
-        if (self.config.appearance.wallpaper_colors || self.config.appearance.family.is_some())
+        if (self.config.clock.depth
+            || self.config.appearance.wallpaper_colors
+            || self.config.appearance.family.is_some())
             && let Ok(store) = crate::desktop::DesktopStore::from_env()
             && store.writable()
         {
@@ -356,6 +438,13 @@ impl cosmic::Application for Cards {
                     &store,
                 ))
                 .map(|_| Message::WallpaperColorsChanged),
+            );
+        }
+        if self.config.clock.depth
+            && let Some(path) = self.depth.picture()
+        {
+            subscriptions.push(
+                crate::watch::read_only_files(vec![path]).map(|_| Message::WallpaperColorsChanged),
             );
         }
         subscriptions.push(
@@ -467,7 +556,8 @@ impl cosmic::Application for Cards {
         } else {
             self.sync_music_shown()
         };
-        Task::batch([task, surfaces])
+        let depth = self.depth_sync();
+        Task::batch([task, surfaces, depth])
     }
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
         Some(cosmic::iced::theme::Style {
@@ -492,10 +582,9 @@ impl Cards {
         if id == self.ids[3] {
             return self.edge_handle();
         }
-        if self.layout_editor.active
-            && Widget::ALL
-                .into_iter()
-                .any(|w| self.widget_id(w) == id && self.arranging_widget(w))
+        if Widget::ALL
+            .into_iter()
+            .any(|w| self.widget_id(w) == id && self.arrange_hides_surface(w))
         {
             return empty_surface();
         }
@@ -576,6 +665,7 @@ impl Cards {
     /// Each transition waits for a fresh probe. Old callbacks cannot create a new set.
     fn reconcile_output(&mut self) -> Task<Message> {
         self.refresh_display_layouts();
+        self.reconcile_weather(Instant::now());
         let selected = self
             .displays
             .selected(
@@ -755,7 +845,18 @@ impl Cards {
                 }
                 self.capture_if_changed()
             }
-            Message::WallpaperColorsChanged => self.wallpaper_colors_changed(),
+            Message::WallpaperColorsChanged => {
+                self.depth.invalidate();
+                self.wallpaper_colors_changed()
+            }
+            Message::DepthObserved(id, entry) => {
+                self.depth.observe(id, entry);
+                Task::none()
+            }
+            Message::DepthReady(id, pixels) => {
+                self.depth.complete(id, pixels);
+                Task::none()
+            }
             Message::WallpaperColorsReady(id, result) => self.wallpaper_colors_ready(id, result),
             Message::WallpaperColorsApplied(result) => {
                 if let Err(error) = result {
@@ -1017,26 +1118,12 @@ impl Cards {
                     Instant::now() + self.config.refresh_intervals.duration(Widget::Projects);
                 self.sync_widget_surfaces()
             }
-            Message::Weather(loc, result) => {
-                self.fetching = false;
-                if self.config.location.as_ref() != Some(&loc) {
-                    return Task::none();
+            Message::Weather(completion) => self.weather_finished(completion),
+            Message::WeatherCacheSaved(result) => {
+                if let Err(error) = result {
+                    eprintln!("Weather cache: {error}");
                 }
-                match result {
-                    Ok(snapshot) => {
-                        self.weather = Some(snapshot.weather);
-                        self.weather_error = false;
-                        self.weather_at = Some(snapshot.updated_at);
-                        self.next_weather = Instant::now()
-                            + self.config.refresh_intervals.duration(Widget::Weather);
-                    }
-                    Err(e) => {
-                        eprintln!("Weather: {e}");
-                        self.weather_error = true;
-                        self.next_weather = Instant::now() + Duration::from_secs(120);
-                    }
-                }
-                self.sync_widget_surfaces()
+                Task::none()
             }
             Message::Calendar(revision, month, result) => {
                 if revision != self.calendar_connection.revision {
@@ -1142,6 +1229,10 @@ impl Cards {
                 Task::none()
             }
             Message::Settings => self.launch(crate::paths::CONTROLLER, vec!["settings".into()]),
+            Message::ClockSettings => self.launch(
+                crate::paths::CONTROLLER,
+                vec!["settings".into(), "--page".into(), "clock".into()],
+            ),
             Message::WeatherSettings => {
                 self.launch(crate::paths::CONTROLLER, vec!["weather-picker".into()])
             }
@@ -1402,12 +1493,22 @@ fn card<'a>(
     widget: Widget,
     height: f32,
 ) -> Element<'a, Message> {
+    card_sized(children, p, appearance, widget, height, Length::Fill)
+}
+fn card_sized<'a>(
+    children: Vec<Element<'a, Message>>,
+    p: Palette,
+    appearance: Appearance,
+    widget: Widget,
+    height: f32,
+    width: Length,
+) -> Element<'a, Message> {
     let spacing = match widget {
         Widget::Weather => 6,
         Widget::Devbox => 8,
         _ => 10,
     };
-    card_frame(
+    card_frame_width(
         scrollable(
             container(
                 column::with_children(children)
@@ -1427,6 +1528,7 @@ fn card<'a>(
         p,
         appearance,
         Length::Fixed(height),
+        width,
     )
 }
 fn card_frame<'a>(
@@ -1434,6 +1536,15 @@ fn card_frame<'a>(
     p: Palette,
     appearance: Appearance,
     height: Length,
+) -> Element<'a, Message> {
+    card_frame_width(content, p, appearance, height, Length::Fill)
+}
+fn card_frame_width<'a>(
+    content: Element<'a, Message>,
+    p: Palette,
+    appearance: Appearance,
+    height: Length,
+    width: Length,
 ) -> Element<'a, Message> {
     // The pinned keyed column diffs card roots directly. Keep their root types
     // identical so switching between an agenda and a scroller reconciles state
@@ -1456,7 +1567,7 @@ fn card_frame<'a>(
     )
     .height(height)
     .padding(crate::widget_style::PADDING)
-    .width(Length::Fill)
+    .width(width)
     .class(cosmic::theme::Container::custom(move |_| {
         cosmic::iced::widget::container::Style {
             text_color: Some(p.foreground),
@@ -1494,7 +1605,8 @@ fn weather_dew_point(config: &Config, current: &data::Current) -> Option<String>
     weather_dew_point_degrees(config, current).map(|degrees| format!("Dew point {degrees}C"))
 }
 
-/// Shared, read-only rendering for desktop weather and its Settings preview.
+/// Compatibility wrapper for existing focused fixtures.
+#[cfg(test)]
 fn weather_view(
     config: &Config,
     weather: Option<&Weather>,
@@ -1502,150 +1614,25 @@ fn weather_view(
     failed: bool,
     height: f32,
 ) -> Element<'static, Message> {
-    let _style = crate::widget_style::scope(config);
-    let p = config.palette();
-    let title = label(
-        config
-            .location
-            .as_ref()
-            .map(|l| l.name.as_str())
-            .unwrap_or("Weather"),
-        crate::widget_style::TITLE,
-        p.foreground,
-    );
-    let mut rows = vec![if let Some(status) =
-        weather.and_then(|_| weather_status(config, updated_at, failed, Local::now()))
-    {
-        spread(
-            title,
-            container(label(status, 10., p.muted))
-                .id(cosmic::widget::Id::new("weather-status"))
-                .into(),
-        )
-    } else {
-        title
-    }];
-    match (&config.location, weather) {
-        (_, Some(w)) => {
-            let wind = format!("Wind\u{a0}{:.0}\u{a0}km/h", w.current.wind_speed_10m);
-            let details = weather_dew_point(config, &w.current)
-                .map(|dew| format!("{dew} · {wind}"))
-                .unwrap_or(wind);
-            rows.push(
-                row::with_children(vec![
-                    label(
-                        data::weather_icon(w.current.weather_code, w.current.is_day != 0),
-                        32.,
-                        p.accent,
-                    ),
-                    label(
-                        format!("{:.0}°", w.current.temperature_2m),
-                        44.,
-                        p.foreground,
-                    ),
-                    container(
-                        column::with_children(vec![
-                            label(
-                                data::weather_description(w.current.weather_code),
-                                12.,
-                                p.foreground,
-                            ),
-                            label(
-                                format!(
-                                    "Feels {:.0}°C · Humidity {:.0}%",
-                                    w.current.apparent_temperature, w.current.relative_humidity_2m
-                                ),
-                                10.,
-                                p.muted,
-                            ),
-                            container(label(details, 10., p.muted))
-                                .id(cosmic::widget::Id::new("weather-details"))
-                                .into(),
-                        ])
-                        .spacing(2),
-                    )
-                    .width(Length::Fill)
-                    .into(),
-                ])
-                .spacing(10)
-                .align_y(Alignment::Center)
-                .into(),
-            );
-            let today = Local::now().date_naive();
-            let forecast: Vec<Element<'_, Message>> = weather_forecast_days(&w.daily, today)
-                .take(3)
-                .map(|(i, day)| {
-                    let title = if day == today {
-                        "Today".into()
-                    } else if day == today + Days::days(1) {
-                        "Tomorrow".into()
-                    } else {
-                        day.format("%a %-d").to_string()
-                    };
-                    let high = forecast_temperature(w.daily.temperature_2m_max.get(i));
-                    let low = forecast_temperature(w.daily.temperature_2m_min.get(i));
-                    let rain = w
-                        .daily
-                        .precipitation_probability_max
-                        .get(i)
-                        .and_then(|v| *v)
-                        .map(|n| format!("Rain {n:.0}%"))
-                        .unwrap_or_else(|| "Rain —".into());
-                    container(
-                        column::with_children(vec![
-                            spread(
-                                label(title, 10., p.muted),
-                                label(
-                                    data::weather_icon(
-                                        *w.daily.weather_code.get(i).unwrap_or(&3),
-                                        true,
-                                    ),
-                                    16.,
-                                    p.accent,
-                                ),
-                            ),
-                            label(format!("{high} / {low}"), 13., p.foreground),
-                            label(rain, 9., p.muted),
-                        ])
-                        .spacing(2),
-                    )
-                    .width(Length::Fill)
-                    .into()
-                })
-                .collect();
-            if forecast.is_empty() {
-                rows.push(label("Forecast unavailable", 10., p.muted));
-            } else {
-                rows.push(row::with_children(forecast).spacing(12).into());
-            }
-        }
-        (Some(_), None) => rows.push(label(
-            if failed {
-                "Weather unavailable — retrying soon"
-            } else {
-                "Checking the skies…"
-            },
-            14.,
-            p.muted,
-        )),
-        (None, None) => rows.push(action(
-            "Choose your city →",
-            Message::WeatherSettings,
-            p.accent,
-        )),
-    }
-    card(rows, p, config.appearance, Widget::Weather, height)
+    weather::Presentation::new(
+        config,
+        weather::Snapshot {
+            weather,
+            updated_at,
+            failed,
+        },
+        Local::now(),
+    )
+    .view(
+        crate::widget_presentation::Context::Live,
+        [crate::widget_presentation::WEATHER_SIZE[0], height],
+    )
 }
 
+#[cfg(test)]
 fn clock_labels(now: chrono::NaiveTime, format_24h: bool) -> (String, Option<String>) {
-    if format_24h {
-        (now.format("%H:%M").to_string(), None)
-    } else {
-        (
-            now.format("%-I:%M").to_string(),
-            Some(now.format("%p").to_string()),
-        )
-    }
+    let reading = crate::widget_style::resolver::ClockReading::at(now, format_24h);
+    (reading.time, reading.period)
 }
 fn week_start(day: NaiveDate) -> NaiveDate {
     day - Days::days(day.weekday().num_days_from_monday().into())
@@ -1768,16 +1755,6 @@ impl Cards {
             Message::ControlFinished(result)
         })
     }
-    fn weather_task(&mut self) -> Task<Message> {
-        let Some(loc) = self.config.location.clone() else {
-            return Task::none();
-        };
-        self.fetching = true;
-        cosmic::task::future(async move {
-            let result = data::fetch_weather(&loc).await;
-            Message::Weather(loc, result)
-        })
-    }
     fn reload_calendar_connection(&mut self) -> Task<Message> {
         if self.calendar_preview {
             return Task::none();
@@ -1813,19 +1790,31 @@ impl Cards {
         })
     }
     fn clock(&self) -> Element<'_, Message> {
+        if let Some(view) = self.depth_view() {
+            return view;
+        }
         clock::view(
             &self.config,
-            Local::now().naive_local(),
+            self.clock_at.naive_local(),
             self.widget_size(Widget::Clock),
         )
     }
     fn weather_card(&self) -> Element<'_, Message> {
-        weather_view(
+        weather::Presentation::new(
             &self.config,
-            self.weather.as_ref(),
-            self.weather_at.as_deref(),
-            self.weather_error,
-            self.card_height(Widget::Weather),
+            weather::Snapshot {
+                weather: self.weather.as_ref(),
+                updated_at: self.weather_at.as_deref(),
+                failed: self.weather_error,
+            },
+            Local::now(),
+        )
+        .view(
+            crate::widget_presentation::Context::Live,
+            [
+                self.widget_size(Widget::Weather)[0],
+                self.card_height(Widget::Weather),
+            ],
         )
     }
     #[cfg(test)]
@@ -2559,13 +2548,13 @@ mod tests {
             ..Default::default()
         };
         cards.config.project_roots = vec!["/fixture/projects".into()];
-        assert!(!cards.fetching && !cards.calendar_fetching && !cards.projects_fetching);
+        assert!(!cards.weather_fetching() && !cards.calendar_fetching && !cards.projects_fetching);
         assert!(cards.refresh_visible_data().is_empty());
         cards.config.enabled_widgets = vec!["weather".into(), "calendar".into(), "projects".into()];
         // Refresh may also reconcile calendar geometry; the fetching flags below
         // track the three data jobs independently of those local UI tasks.
         assert!(!cards.refresh_visible_data().is_empty());
-        assert!(cards.fetching && cards.calendar_fetching && cards.projects_fetching);
+        assert!(cards.weather_fetching() && cards.calendar_fetching && cards.projects_fetching);
         // A second refresh must not queue duplicate jobs while these are in flight.
         assert!(cards.refresh_visible_data().is_empty());
     }

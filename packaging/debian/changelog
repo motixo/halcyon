@@ -1,3 +1,14 @@
+cosmic-ext-halcyon (0.4.0) unstable; urgency=medium
+
+  * Add setup remixing, shared setup packages, Canvas and widget recipes.
+  * Add clock faces, typography, depth compositions and day/night Moments.
+  * Reflow Settings into columns with compact controls and contextual help.
+  * Install and activate optional Islands from Settings using the system
+    installer.
+  * Fix setup wizard navigation and bind native source provenance completely.
+
+ -- profilaz3 <261673162+profilaz3@users.noreply.github.com>  Tue, 27 Oct 2026 12:00:00 +0000
+
 cosmic-ext-halcyon (0.3.0) unstable; urgency=medium
 
   * Redesign native Settings, Setups and first-run widget selection and ordering.

@@ -1,0 +1,189 @@
+{
+  "title": "Halcyon customization system — concept and staged plan",
+  "date": "2026-10-26",
+  "status": "Concept proposal; implementation not started",
+  "generation_mode": "Built-in image_gen",
+  "purpose": "Choose a complete desktop, change it visually, make personal components, and share the result.",
+  "existing_foundation": [
+    "Native GPU-rendered COSMIC Settings",
+    "Widget data providers and live tools",
+    "Theme families, wallpaper colours and shared/per-surface materials",
+    "Setups with domain selection, import/export, schedules, Apply and Undo",
+    "Multi-display widget placement and optional Islands"
+  ],
+  "system_model": [
+    {
+      "part": "Setup",
+      "meaning": "A portable composition of wallpaper, style, widget instances, layout rules and optional dock/panel preferences."
+    },
+    {
+      "part": "Shared style",
+      "meaning": "Named colours, typography, spacing, corner shapes, borders and surface treatment. Each component can Follow setup or keep an explicit override."
+    },
+    {
+      "part": "Widget recipe",
+      "meaning": "A reusable presentation assembled from text, images, icons, meters and layout containers, bound to existing providers."
+    },
+    {
+      "part": "Widget instance",
+      "meaning": "A recipe placed on a display, with independent sizing and optional style overrides. Account connections and personal content remain local."
+    },
+    {
+      "part": "Layout",
+      "meaning": "Anchors, groups, spacing and compact/wide variants that adapt to available display area rather than copying physical monitor IDs."
+    },
+    {
+      "part": "Capability adapters",
+      "meaning": "Translate supported choices into native COSMIC theme, font, icon and panel configuration; expose unsupported controls accurately."
+    }
+  ],
+  "interaction_rules": [
+    "Choose a complete setup; Preview, Apply or Remix.",
+    "Click an object on the desktop canvas, or choose it from an equivalent keyboard-accessible list.",
+    "Keep Design, Content and Layout separate; visually identify inherited values and overrides.",
+    "Preview display changes the canvas being inspected. It does not make global system fonts or colours per-display.",
+    "Canvas changes form a setup-scoped draft with Cancel and Apply; preserve existing direct-control semantics elsewhere.",
+    "Save widget saves a reusable design; it does not export live notes, accounts or calendar contents.",
+    "Missing data has deliberate empty, stale and disconnected states; previews use clearly identified sample data.",
+    "Narrow windows show a canvas/inspector switch instead of squeezing three columns.",
+    "Islands remain optional; setups retain a standard-panel fallback."
+  ],
+  "concepts": [
+    {
+      "id": "01-tidal",
+      "title": "Tidal — editorial desktop",
+      "image": "../../concepts/01-tidal.png"
+    },
+    {
+      "id": "02-moss",
+      "title": "Moss — soft material desktop",
+      "image": "../../concepts/02-moss.png"
+    },
+    {
+      "id": "03-paper",
+      "title": "Paper — warm light desktop",
+      "image": "../../concepts/03-paper.png"
+    },
+    {
+      "id": "04-carbon",
+      "title": "Carbon — compact technical desktop",
+      "image": "../../concepts/04-carbon.png"
+    },
+    {
+      "id": "05-canvas",
+      "title": "Desktop canvas — direct visual editing",
+      "image": "../../concepts/05-canvas.png"
+    },
+    {
+      "id": "06-widget-builder",
+      "title": "Widget builder — personal components",
+      "image": "../../concepts/06-widget-builder.png"
+    },
+    {
+      "id": "07-community",
+      "title": "Community setups — discover, preview, remix",
+      "image": "../../concepts/07-community.png"
+    }
+  ],
+  "phases": [
+    {
+      "stage": 1,
+      "title": "Shared styling and first real desktops",
+      "deliver": [
+        "Additive, versioned style and widget-layout schema with migration for existing preferences and setups.",
+        "Digital, stacked and analogue clock faces; compact and expanded weather, agenda and music variants.",
+        "Implement Tidal and Paper first to prove very different layouts through one renderer; then Moss and Carbon.",
+        "Use existing data providers and native panel controls; add only capabilities demonstrated by the first looks."
+      ],
+      "exit": [
+        "Real screenshots match agreed composition and hierarchy.",
+        "Old setups still import; Apply and Undo preserve content and display assignments.",
+        "Readable at 100%, 150% and 200% scaling, light/dark themes and minimum supported sizes.",
+        "Record idle/animated CPU, GPU, memory and wakeup measurements against current baseline; choose numeric budgets before extending effects."
+      ]
+    },
+    {
+      "stage": 2,
+      "title": "Desktop canvas editor",
+      "deliver": [
+        "Select, move, resize, group, align and snap objects with inspector controls.",
+        "Shared-style editing, per-object overrides, clear inheritance/reset actions.",
+        "Display preview, compact/wide layout previews and setup-scoped draft review.",
+        "Keyboard alternatives and compact-window inspector navigation."
+      ],
+      "exit": [
+        "Tidal can be remixed into a different working desktop without editing a file.",
+        "Preview and applied output agree on size, placement and supported native styling.",
+        "Cancel/Undo and display disconnect/reconnect retain draft and placement correctness."
+      ]
+    },
+    {
+      "stage": 3,
+      "title": "Personal widget builder",
+      "deliver": [
+        "Start from an existing widget or a small set of templates.",
+        "Compose native Text, Time, Date, Icon, Image, Meter, Row and Column parts.",
+        "Bind approved data and actions from current Clock, Weather, Calendar, Music and monitoring services.",
+        "Save reusable recipes with minimum sizes, compact/wide layouts and explicit missing-data states."
+      ],
+      "exit": [
+        "A user can build and reuse the illustrated clock/weather card.",
+        "Several recipes share provider subscriptions; hidden widgets do not keep unnecessary work alive.",
+        "Recipes remain bounded, accessible, versioned and recoverable on invalid input."
+      ]
+    },
+    {
+      "stage": 4,
+      "title": "Portable sharing and remix",
+      "deliver": [
+        "Extend existing setup import/export with bounded asset bundles, previews, capability requirements and creator/licence metadata.",
+        "Export review identifies included domains and excludes secrets, personal content and physical display IDs.",
+        "Import preview explains optional dependencies and supports compatible fallbacks.",
+        "Add a curated catalogue and stable links after package import/export works; Copy link refers to a published immutable revision."
+      ],
+      "exit": [
+        "A setup round-trips between two different display arrangements.",
+        "Missing fonts, assets or Islands produce clear fallback previews.",
+        "Imported designs cannot run arbitrary commands; package updates never silently replace personal remixes."
+      ]
+    },
+    {
+      "stage": 5,
+      "title": "Community and polish",
+      "deliver": [
+        "Built-in, Mine and Community views with filters, creator credits and local favourites.",
+        "Remix lineage, explicit update review, reporting/removal process for hosted contributions.",
+        "Improve animation, presets and additional native integrations from measured user feedback."
+      ],
+      "exit": [
+        "People can discover, preview, remix and share a desktop through the UI.",
+        "Fresh-machine, offline, mixed-display and keyboard acceptance passes.",
+        "Gallery operations and large catalogues stay within agreed resource budgets."
+      ]
+    }
+  ],
+  "boundaries": [
+    "The seven images are generated concepts, not screenshots of implemented features. Exact dates, app icons, preview content and controls are illustrative.",
+    "Four desktop treatments are expressions of one system, not four separately hardcoded widget implementations.",
+    "Current profile transport is allowlisted and bounded. Rich packages require an additive format and migration, not relaxing existing import rules.",
+    "Settings chrome remains native and readable; desktop components can be expressive.",
+    "Real compositor blur, lock-screen replacement and arbitrary shell scripts are outside the initial plan.",
+    "A general third-party code plugin system needs a separate design; this first builder composes existing trusted providers.",
+    "Artwork, fonts and icon sets need distributable licences before inclusion in shipping presets."
+  ],
+  "first_deliverable": "Two real desktops, Tidal and Paper, using the same new clock/style model with existing data providers, plus measured compact/scaled/Undo acceptance.",
+  "source_inspiration": [
+    "https://github.com/end-4/dots-hyprland",
+    "https://github.com/HyDE-Project/hyde-gallery",
+    "https://github.com/caelestia-dots/shell"
+  ],
+  "code_review_anchors": [
+    "src/materials.rs",
+    "src/desktop/profiles/format.rs",
+    "src/desktop/profiles/plan.rs",
+    "src/settings/profiles.rs",
+    "src/layout.rs",
+    "src/config.rs"
+  ],
+  "archive_notice": "Historical proposal. Current architecture and sequencing are in ../../ARCHITECTURE.md, ../../ROADMAP.md and ../../tracker.json."
+}

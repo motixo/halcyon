@@ -93,6 +93,11 @@ def default_wallpapers():
 
 
 def build(args):
+    release_updates = getattr(args, "release_updates", False)
+    development = getattr(args, "development", False)
+    if release_updates == development:
+        raise ValueError("choose --release-updates for release packaging or --development for an isolated package identity; use scripts/install.py for per-user source installs")
+    package = PACKAGE if release_updates else PACKAGE + "-dev"
     if not re.fullmatch(r"[0-9][A-Za-z0-9.+~\-]*", args.version):
         raise ValueError("version must be a Debian version without an epoch or path separators")
     binary = args.binary.resolve(strict=True)
@@ -105,7 +110,7 @@ def build(args):
     if args.google_client:
         args.google_client.resolve(strict=True)
     args.out.mkdir(parents=True, exist_ok=True)
-    output = args.out.resolve() / f"{PACKAGE}_{args.version}_amd64.deb"
+    output = args.out.resolve() / f"{package}_{args.version}_amd64.deb"
 
     with tempfile.TemporaryDirectory(prefix="halcyon-deb-") as temp:
         scratch = Path(temp)
@@ -123,6 +128,7 @@ def build(args):
                 usr / "share" / PACKAGE / "google-calendar-setup.html")
         if args.google_client:
             install(args.google_client, usr / "share" / PACKAGE / "google-calendar-client.json")
+        install(REPO / "assets/wallpapers/halcyon-ridge.png", usr / "share/backgrounds/halcyon/halcyon-ridge.png")
         for wallpaper in wallpapers:
             install(wallpaper, usr / "share/backgrounds/halcyon" / wallpaper.name)
         install(REPO / "packaging/systemd/halcyon.service",
@@ -134,7 +140,7 @@ def build(args):
             name = f"{APP_ID}.png"
             install(REPO / "packaging/icons" / str(size) / name,
                     usr / f"share/icons/hicolor/{size}x{size}/apps" / name)
-        docs = usr / "share/doc" / PACKAGE
+        docs = usr / "share/doc" / package
         for name in ("LICENSE", "THIRD_PARTY.md", "ASSETS.md"):
             install(REPO / name, docs / name)
         install(REPO / "packaging/debian/copyright", docs / "copyright")
@@ -157,7 +163,8 @@ def build(args):
 
         control = root / "DEBIAN"
         control.mkdir()
-        update_defaults(root, control)
+        if release_updates:
+            update_defaults(root, control)
         depends = dependencies(binary, scratch)
         # Debian Policy: regular files rounded up to KiB, plus 1 KiB per directory.
         installed_size = 1 + sum(
@@ -165,7 +172,8 @@ def build(args):
             for path in usr.rglob("*")
         )
         (control / "control").write_text(
-            f"Package: {PACKAGE}\nVersion: {args.version}\nArchitecture: amd64\n"
+            f"Package: {package}\nVersion: {args.version}\nArchitecture: amd64\n"
+            + (f"Conflicts: {PACKAGE}\nReplaces: {PACKAGE}\n" if development else "") +
             "Section: x11\nPriority: optional\n"
             f"Maintainer: {MAINTAINER}\nHomepage: {HOMEPAGE}\n"
             f"Installed-Size: {installed_size}\nDepends: {depends}\n"
@@ -178,8 +186,9 @@ def build(args):
             " clock, date, weather, system monitor, calendar, projects, music, notes\n"
             " and a focus timer. Changes can be undone, and your applets, their order\n"
             " and your panel position stay yours.\n"
-            " Fresh installations enable the signed Halcyon system update source.\n"
-            " Existing disabled or administrator-modified sources are preserved.\n"
+            + (" Development package; no release update enrollment.\n" if development else
+               " Fresh installations enable the signed Halcyon system update source.\n"
+               " Existing disabled or administrator-modified sources are preserved.\n")
         )
         (control / "md5sums").write_text("".join(
             f"{hashlib.md5(path.read_bytes()).hexdigest()}  {path.relative_to(root)}\n"
@@ -205,6 +214,11 @@ def build(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--release-updates", action="store_true",
+                      help="release identity with signed APT enrollment on clean install")
+    mode.add_argument("--development", action="store_true",
+                      help="distinct -dev identity, no APT enrollment; conflicts with release")
     parser.add_argument("--version", required=True)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--google-client", type=Path)

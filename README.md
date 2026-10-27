@@ -2,45 +2,46 @@
 
 Desktop widgets, themes and layouts for **COSMIC on Pop!_OS 24.04**.
 
-**[Download 0.3.0](https://github.com/profilaz3/halcyon/releases/download/v0.3.0/cosmic-ext-halcyon_0.3.0_amd64.deb)** · [Release notes](https://github.com/profilaz3/halcyon/releases/tag/v0.3.0) · [Report an issue](https://github.com/profilaz3/halcyon/issues)
+**[Download 0.4.0](https://github.com/profilaz3/halcyon/releases/download/v0.4.0/cosmic-ext-halcyon_0.4.0_amd64.deb)** · [Release notes](https://github.com/profilaz3/halcyon/releases/tag/v0.4.0) · [Report an issue](https://github.com/profilaz3/halcyon/issues)
 
-[![Everyday setup: clock, weather, system monitor and optional Islands panel](docs/screenshots/030/everyday-islands.png)](docs/screenshots/030/everyday-islands.png)
+[![Tidal setup review in native Halcyon Settings](docs/screenshots/040/setup-preview.png)](docs/screenshots/040/setup-preview.png)
 
 - **Widgets:** clock, weather, calendar, system monitor, music, Git projects, notes and focus timer.
-- **Layout:** move, resize and order widgets; assign each to a display.
+- **Layout:** move, resize and order widgets in Canvas; assign each to a display.
 - **Appearance:** wallpapers, light and dark themes, colors, fonts and surface finishes.
-- **Setups:** six starter configurations, saved layouts and scheduled switching.
+- **Setups:** starter compositions, wallpaper/style/layout remixing, shared setup packages and scheduled switching.
 
 ## Install
 
-Download the `.deb` above, then run:
+1. Download **Halcyon** using the button above. Choose the main app; Islands is optional.
+2. Open the downloaded file with **COSMIC Store**, choose **Install**, and approve the system password prompt if asked.
+3. Open **Halcyon** from the application launcher and finish setup.
+
+For 64-bit Intel and AMD PCs running Pop!_OS 24.04 with COSMIC. Stay online so the system can fetch any missing dependencies. If the Store cannot install the local file, use:
 
 ```sh
-sudo apt install ./cosmic-ext-halcyon_0.3.0_amd64.deb
+sudo apt install ~/Downloads/cosmic-ext-halcyon_0.4.0_amd64.deb
 ```
 
-For 64-bit Intel and AMD PCs. Open **Halcyon** from the application launcher; setup lets you choose a look, enable widgets and arrange them.
+Setup lets you choose a look, enable widgets and arrange them. Adjust the fallback command if you saved the file elsewhere.
 
-Fresh installations enable the signed APT source by default. Future updates use APT or **COSMIC Store → Updates**. Existing disabled or modified sources are preserved. [Update and removal instructions](docs/DISTRIBUTION.md).
+Fresh installations enable the signed APT source by default. Future updates use APT or **COSMIC Store → Updates**, according to your OS update settings. This does not turn on automatic installation. Existing disabled or modified sources are preserved. [Update and removal instructions](docs/DISTRIBUTION.md).
 
 ## Settings
 
-Settings and first-run setup now use GPU rendering. The native interface groups appearance, desktop controls, widgets, Setups, accessibility and app settings. Desktop previews show your changes; Recent changes provides eligible Undo actions.
+Settings and first-run setup use GPU rendering. Controls reflow into columns, with help beside settings that need explanation. Desktop previews show changes before Apply; Recent changes provides eligible Undo actions.
 
-[![Halcyon 0.3.0 Settings: desktop preview, wallpaper colors and light or dark mode](docs/screenshots/030/settings-wide.png)](docs/screenshots/030/settings-wide.png)
+[![Halcyon 0.4.0 Settings: desktop preview, wallpaper colors and light or dark mode](docs/screenshots/040/settings-wide.png)](docs/screenshots/040/settings-wide.png)
 
-[Native capture details and more screenshots](docs/screenshots/030/README.md) · [Rendering measurements](docs/PERFORMANCE.md)
+[Native capture details and more screenshots](docs/screenshots/040/README.md) · [Rendering measurements](docs/PERFORMANCE.md)
 
 ## Optional Islands
 
-Islands splits the dock and panel into floating applet groups. It also provides bar surface finishes. Install the [matching add-on](https://github.com/profilaz3/halcyon/releases/download/v0.3.0/cosmic-ext-halcyon-islands_0.3.0_amd64.deb):
+Islands splits the dock and panel into floating applet groups and adds bar surface finishes.
 
-```sh
-sudo apt install ./cosmic-ext-halcyon-islands_0.3.0_amd64.deb
-halcyon-islands enable
-```
+Open **App settings → Updates → Get Islands…**. Review the installation, approve the system installer, then choose **Enable for next login**. Log out and back in.
 
-Log out and back in. Widgets and themes work without Islands. [Compatibility, activation and removal](packaging/islands/README.md).
+Widgets and themes work without Islands. [Compatibility, manual installation and removal](packaging/islands/README.md).
 
 ## Calendar and privacy
 

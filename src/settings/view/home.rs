@@ -37,6 +37,9 @@ pub(in crate::settings) fn widget_page(widget: Widget) -> Page {
 
 impl Settings {
     pub(super) fn overview_page(&self) -> Element<'_, Message> {
+        if self.canvas.is_some() {
+            return self.canvas_page();
+        }
         if self.setup_requested {
             return column::with_children(vec![
                 button::text("Back to Layout and displays")
@@ -59,6 +62,12 @@ impl Settings {
         if self.needs_setup() {
             parts.push(self.setup_prompt());
         }
+        parts.push(
+            button::suggested("Edit desktop…")
+                .id(cosmic::widget::Id::new("canvas-start"))
+                .on_press(Message::Canvas(crate::settings::canvas::Message::Start))
+                .into(),
+        );
         parts.push(self.placement_editor(height));
         // Use the same selection message as the canvas. Keep every visible
         // widget reachable even when cards overlap or a display is disconnected.
@@ -132,6 +141,17 @@ impl Settings {
     /// The real wallpaper behind the shared placement editor. The backdrop
     /// deliberately has no actions: clicking empty space clears selection.
     pub(in crate::settings) fn home_backdrop(&self, size: [f32; 2]) -> Vec<Element<'_, Message>> {
+        // A missing image must not substitute Settings' own light/dark theme
+        // for the desktop: transparent white clock text still needs dark ink
+        // contrast. This neutral fallback is labelled by the canvas editor.
+        let fallback =
+            if crate::desktop_theme::luminance(self.canvas_config().wallpaper_palette().foreground)
+                > 0.18
+            {
+                Color::BLACK
+            } else {
+                Color::WHITE
+            };
         let background: Element<'_, Message> = match self.profiles.home_image() {
             Some(handle) => cosmic::widget::image(handle.clone())
                 .width(size[0])
@@ -142,17 +162,9 @@ impl Settings {
             None => container(text::body(""))
                 .width(size[0])
                 .height(size[1])
-                .class(cosmic::theme::Container::custom(|theme| {
+                .class(cosmic::theme::Container::custom(move |_| {
                     cosmic::iced::widget::container::Style {
-                        background: Some(Background::Gradient(
-                            cosmic::iced::gradient::Linear::new(2.4)
-                                .add_stop(0., theme.cosmic().primary(theme.transparent).base.into())
-                                .add_stop(
-                                    1.,
-                                    theme.cosmic().background(theme.transparent).base.into(),
-                                )
-                                .into(),
-                        )),
+                        background: Some(Background::Color(fallback)),
                         border: Border {
                             radius: 10.into(),
                             ..Default::default()

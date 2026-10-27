@@ -377,10 +377,12 @@ impl Settings {
             ]
         };
         let intro = column::with_children(vec![
-            heading("Welcome to Halcyon", 36.),
-            words("Make your COSMIC desktop feel like home.", 18., SOFT),
-            words("Start with a setup, shape your dock and panel, and choose and arrange your widgets. Every step is optional.", 14., SOFT),
-            words("You can change everything later in Settings.", 14., SOFT),
+            heading("Welcome to Halcyon", 32.),
+            words(
+                "Choose a look, add widgets and arrange your desktop. Every step is optional.",
+                15.,
+                SOFT,
+            ),
             cosmic::iced::widget::space().height(18.).into(),
             row::with_children(actions)
                 .spacing(16)
@@ -389,12 +391,25 @@ impl Settings {
         ])
         .spacing(6);
         column::with_children(vec![
-            container(intro)
-                .width(Length::Fill)
-                .height(Length::Fill)
-                .padding([24, 40])
-                .align_y(Alignment::Center)
+            container(super::adaptive::columns(
+                column::with_children(vec![
+                    words("Sample desktop", 12., SOFT),
+                    self.wizard_widget_preview(
+                        wizard,
+                        (self.window.height - 220.).clamp(220., 360.),
+                    ),
+                ])
+                .spacing(12)
                 .into(),
+                intro.into(),
+                [320., 280.],
+                false,
+            ))
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .padding([24, 40])
+            .align_y(Alignment::Center)
+            .into(),
             container(dots(Screen::Welcome))
                 .width(Length::Fill)
                 .padding([0, 0, 28, 0])
@@ -406,6 +421,9 @@ impl Settings {
 
     fn wizard_card<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
         let step = wizard.step;
+        let placement_error = (step == Screen::Arrange)
+            .then(|| wizard.widget_plan(&self.config).error)
+            .flatten();
         let body = match step {
             Screen::Look => self.wizard_looks(wizard),
             Screen::Bars => self.wizard_bars(wizard),
@@ -473,10 +491,8 @@ impl Settings {
                         "Setups · Choices apply as you go. Cancel reverses setup’s desktop changes."
                     }
                     Screen::Bars => "Desktop · Choose the shape and behavior of your bars.",
-                    Screen::Widgets => "Choose what you want on your desktop.",
-                    Screen::Arrange => {
-                        "Drag to reorder, or use the arrows. The preview follows along."
-                    }
+                    Screen::Widgets => "Turn widgets on or off. Arrange them in the next step.",
+                    Screen::Arrange => "Drag or use the arrows to reorder.",
                     Screen::Weather => {
                         "Widgets · Choose a forecast city. This preference stays if you cancel setup."
                     }
@@ -492,8 +508,15 @@ impl Settings {
                 .height(Length::Fill)
                 .into(),
         ];
-        if let Some(error) = &wizard.error {
-            parts.push(words(error.clone(), 13., DANGER));
+        // The reason a step cannot apply stays beside its action, outside the
+        // scrollable preview. Give the person a way to correct it, keeping the draft.
+        if let Some(error) = wizard.error.as_ref().or(placement_error.as_ref()) {
+            parts.push(
+                container(words(error.clone(), 13., DANGER))
+                    .id(cosmic::widget::Id::new("wizard-step-error"))
+                    .width(Length::Fill)
+                    .into(),
+            );
         }
         let (left, right): (Vec<Element<'a, Message>>, Element<'a, Message>) = match step {
             Screen::Ready => (
@@ -531,17 +554,19 @@ impl Settings {
                     quiet("Cancel", "wizard-cancel", go(Step::Cancel)),
                     button::suggested(match step {
                         Screen::Widgets => "Arrange widgets",
+                        Screen::Arrange if placement_error.is_some() => "Choose widgets",
                         Screen::Arrange if wizard.widgets.active().is_empty() => "Continue",
                         Screen::Arrange => "Use these widgets",
                         _ => "Next",
                     })
                     .id(cosmic::widget::Id::new("wizard-next"))
-                    .on_press_maybe(
-                        (!self.native_busy
-                            && (step != Screen::Arrange
-                                || wizard.widget_plan(&self.config).error.is_none()))
-                        .then_some(go(Step::Next)),
-                    )
+                    .on_press_maybe((!self.native_busy).then_some(go(
+                        if placement_error.is_some() {
+                            Step::Show(Screen::Widgets)
+                        } else {
+                            Step::Next
+                        },
+                    )))
                     .into(),
                 ])
                 .spacing(8)
@@ -590,11 +615,12 @@ impl Settings {
                 preset.id != crate::desktop::profiles::CLEAN && !preset.profile.appearance_only
             })
             .collect();
-        // Three tiles a row; the miniature fills its tile at 16:9.
-        // Two rows always fit the window's height too, without scrolling.
-        let by_width = ((self.wizard_inner_width() - 24.) / 3. - 14.) * 9. / 16.;
-        let by_height = (self.window.height - 290.) / 2. - 38.;
-        let thumb_height = by_width.min(by_height).floor().max(80.);
+        let columns = ((self.wizard_inner_width() + 12.) / 232.).floor().max(1.) as usize;
+        let tile_width = (self.wizard_inner_width() - (columns - 1) as f32 * 12.) / columns as f32;
+        let by_width = (tile_width - 14.) * 9. / 16.;
+        let thumb_height = by_width
+            .min((self.window.height - 390.).max(100.))
+            .clamp(96., 180.);
         let tile = |preset: &'a Preset| -> Element<'a, Message> {
             let selected = wizard.look == Some(preset.id);
             button::custom(
@@ -626,19 +652,14 @@ impl Settings {
                 12.,
             ))
             .padding(7)
-            .width(Length::Fill)
+            .width(tile_width)
             .on_press(go(Step::Look(preset.id)))
             .into()
         };
-        let mut rows = Vec::new();
-        for chunk in looks.chunks(3) {
-            let mut cells: Vec<Element<'a, Message>> = chunk.iter().map(|p| tile(p)).collect();
-            while cells.len() < 3 {
-                cells.push(cosmic::iced::widget::space().width(Length::Fill).into());
-            }
-            rows.push(row::with_children(cells).spacing(12).into());
-        }
-        column::with_children(rows).spacing(12).into()
+        row::with_children(looks.iter().map(|preset| tile(preset)).collect::<Vec<_>>())
+            .spacing(12)
+            .wrap()
+            .into()
     }
 
     fn wizard_bars<'a>(&'a self, wizard: &'a Wizard) -> Element<'a, Message> {
@@ -978,23 +999,18 @@ impl Settings {
                 .into(),
             );
         }
-        row::with_children(vec![
-            container(column::with_children(parts).spacing(8))
-                .width(Length::FillPortion(3))
-                .into(),
-            container(
-                column::with_children(vec![
-                    words("Your desktop · Sample content", 12., SOFT),
-                    self.wizard_widget_preview(wizard, 210.),
-                    self.usage_control(),
-                ])
-                .spacing(12),
-            )
-            .width(Length::FillPortion(2))
+        super::adaptive::columns(
+            column::with_children(vec![
+                words("Sample desktop", 12., SOFT),
+                self.wizard_widget_preview(wizard, 210.),
+                self.usage_control(),
+            ])
+            .spacing(12)
             .into(),
-        ])
-        .spacing(20)
-        .into()
+            column::with_children(parts).spacing(8).into(),
+            [300., 340.],
+            true,
+        )
     }
 }
 

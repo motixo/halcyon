@@ -14,6 +14,7 @@ use super::{
 use crate::desktop::store::DesktopStore;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+pub(crate) mod worker;
 
 /// Thumbnail bounds (aspect ratio kept).
 pub const THUMB: (u32, u32) = (320, 180);
@@ -262,10 +263,49 @@ fn decode_at(bytes: &[u8], bounds: (u32, u32)) -> Preview {
 /// The compiled-in thumbnail of bundled wallpaper `name`; `None` for a
 /// name that is not built in.
 pub fn bundled_thumbnail(name: &str) -> Option<Pixels> {
+    if name == "halcyon-ridge" {
+        return match decode(crate::depth::PICTURE) {
+            Preview::Ready(p) => Some(p),
+            _ => None,
+        };
+    }
     let (_, bytes) = BUNDLED.iter().find(|(known, _)| *known == name)?;
     match decode(bytes) {
         Preview::Ready(pixels) => Some(pixels),
         Preview::None(_) => None,
+    }
+}
+
+/// Full bundled scenes are immutable public assets, decoded only in the child.
+pub(crate) fn bundled_scene(name: &str) -> Option<Pixels> {
+    if name == "halcyon-ridge" {
+        return match decode_at(crate::depth::PICTURE, SCENE) {
+            Preview::Ready(p) => Some(p),
+            _ => None,
+        };
+    }
+    macro_rules! scenes {
+        ($($id:literal),*) => { [$(($id, &include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/wallpapers/", $id, ".jpg"))[..])),*] };
+    }
+    let scenes = scenes!(
+        "halcyon-night",
+        "halcyon-calm",
+        "halcyon-evening",
+        "halcyon-focus",
+        "halcyon-workbench",
+        "halcyon-paper",
+        "halcyon-rose",
+        "lavender",
+        "amber",
+        "teal",
+        "ocean",
+        "rose",
+        "graphite"
+    );
+    let (_, bytes) = scenes.iter().find(|(id, _)| *id == name)?;
+    match decode_at(bytes, SCENE) {
+        Preview::Ready(pixels) => Some(pixels),
+        _ => None,
     }
 }
 

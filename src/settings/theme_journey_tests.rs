@@ -155,27 +155,6 @@ fn click(app: &mut Settings, native: &mut Native, id: &str) {
     drive(app);
 }
 
-fn reveal_text(app: &Settings, native: &mut Native, text: &str) -> cosmic::iced::Rectangle {
-    native.scroll(app.settings_view(), "settings-content", 0.);
-    let bounds = native.text_bounds(app.settings_view(), text);
-    if bounds.y + bounds.height > native.size.height - 64. {
-        native.scroll(
-            app.settings_view(),
-            "settings-content",
-            (bounds.y - 160.).max(0.),
-        );
-    }
-    let bounds = native.text_bounds(app.settings_view(), text);
-    assert!(
-        bounds.x >= 0.
-            && bounds.x + bounds.width <= native.size.width
-            && bounds.y >= 100.
-            && bounds.y + bounds.height <= native.size.height - 48.,
-        "{text} must be visible after scrolling: {bounds:?}"
-    );
-    bounds
-}
-
 fn prefix() -> String {
     std::env::var("DESKTOP_CARDS_JOURNEY_PREFIX").unwrap_or_else(|_| "journey".into())
 }
@@ -442,14 +421,17 @@ fn material_native_chooser_adjust_reset_and_undo() {
         assert_eq!(Config::load().appearance, original.appearance);
         assert_eq!(Config::load().glance, original.glance);
         click(&mut native, &mut app, "material-adjust");
-        let motion = reveal_text(&app, &mut native, "Liquid widget motion");
+        // Adjust is now an independent inspector. Reveal the real row through
+        // both scroll areas and compare against the actual content viewport.
+        let viewport = native.bounds(app.settings_view(), "settings-viewport");
+        let motion = super::tests::native_reveal(&app, &mut native, "material-motion");
         assert!(
-            motion.y >= 0. && motion.y + motion.height <= native.size.height - 48.,
+            motion.y >= viewport.y && motion.y + motion.height <= viewport.y + viewport.height,
             "Liquid widget motion fits above the footer: {motion:?}"
         );
         let readability = super::tests::native_reveal(&app, &mut native, "material-readability");
         assert!(
-            readability.y + readability.height <= native.size.height - 48.,
+            readability.y + readability.height <= viewport.y + viewport.height,
             "Adjust fits above the footer: {readability:?}"
         );
         let b = super::tests::native_reveal(&app, &mut native, "material-transparency");
@@ -526,7 +508,8 @@ fn material_native_chooser_adjust_reset_and_undo() {
         let _ = app.update(Message::UndoPreferences);
         assert!(Config::load().materials.shared.unwrap().opacity.is_some());
         // Real scope tabs, real chooser; a new shared choice keeps the Dock override.
-        let bounds = reveal_text(&app, &mut native, "Dock");
+        super::tests::native_reveal(&app, &mut native, "material-scope");
+        let bounds = native.text_bounds(app.settings_view(), "Dock");
         let p = bounds.center();
         let _ = native.event(
             app.settings_view(),

@@ -15,6 +15,8 @@ pub struct Location {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
+    #[serde(skip)]
+    pub design_problem: Option<String>,
     pub theme: String,
     /// Read-only desktop colors, cached outside the saved configuration.
     /// Rendering never reads files or changes COSMIC preferences.
@@ -45,6 +47,8 @@ pub struct Config {
     /// The clock's font family; `None` follows `widget_font`, then the style.
     pub clock_font: Option<String>,
     pub clock: ClockPreferences,
+    pub moments: crate::moments::Moments,
+    pub recipes: crate::recipes::Applied,
     pub weather: WeatherPreferences,
     pub glance: GlancePreferences,
     pub devbox: DevboxPreferences,
@@ -73,6 +77,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            design_problem: None,
             theme: "lavender".into(),
             desktop_palette: None,
             saved: SavedChoices::default(),
@@ -99,6 +104,8 @@ impl Default for Config {
             widget_font: None,
             clock_font: None,
             clock: ClockPreferences::default(),
+            moments: Default::default(),
+            recipes: Default::default(),
             weather: WeatherPreferences::default(),
             glance: GlancePreferences::default(),
             devbox: DevboxPreferences::default(),
@@ -125,15 +132,36 @@ impl Config {
             .or_else(|| crate::paths::config_dir().map(|dir| dir.join("config.json")))
     }
     pub fn load() -> Self {
-        Self::try_load().unwrap_or_default()
+        let problem = crate::design::commands::pending_problem();
+        match (Self::try_load(), problem) {
+            (Ok(config), None) => config,
+            (result, pending) => {
+                let error = pending.or_else(|| result.err());
+                if crate::design::commands::pending_problem().is_some()
+                    || Self::path()
+                        .as_deref()
+                        .is_some_and(crate::design::storage::managed)
+                {
+                    Self {
+                        design_problem: error,
+                        widgets_visible: false,
+                        enabled_widgets: vec![],
+                        onboarded: true,
+                        ..Self::default()
+                    }
+                } else {
+                    Self::default()
+                }
+            }
+        }
     }
     pub fn try_load() -> Result<Self, String> {
         let path = Self::path().ok_or("Configuration directory unavailable")?;
         Self::read_at(&path)
     }
     fn read_at(path: &std::path::Path) -> Result<Self, String> {
-        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-        let mut config = Self::from_bytes(&bytes)?;
+        let text = read_config_text(path)?.ok_or("No saved settings")?;
+        let mut config = Self::from_bytes(text.as_bytes())?;
         config.validate()?;
         config.normalize_policy();
         let _ = config.refresh_desktop_palette();
@@ -147,7 +175,7 @@ impl Config {
         config.saved = saved;
         Ok(config)
     }
-    fn from_saved_value(value: serde_json::Value) -> Result<Self, String> {
+    pub(crate) fn from_saved_value(value: serde_json::Value) -> Result<Self, String> {
         let saved = SavedChoices::of(&value);
         let mut config: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
         config.saved = saved;
@@ -165,6 +193,7 @@ impl Config {
         }
     }
     fn validate(&self) -> Result<(), String> {
+        self.recipes.validate()?;
         self.validate_monitors()?;
         if self
             .widget_display
@@ -523,6 +552,31 @@ impl Config {
         placement: PlacementPreferences,
         baseline_placement: PlacementPreferences,
     ) -> Result<Self, String> {
+        Self::edit_layout_context_at(
+            path,
+            contexts,
+            positions,
+            baseline_positions,
+            sizes,
+            baseline_sizes,
+            implicit_positions,
+            placement,
+            baseline_placement,
+            |_| Ok(()),
+        )
+    }
+    pub(crate) fn edit_layout_context_at(
+        path: &std::path::Path,
+        contexts: &monitors::Contexts,
+        positions: &std::collections::BTreeMap<String, [f32; 2]>,
+        baseline_positions: &std::collections::BTreeMap<String, [f32; 2]>,
+        sizes: &std::collections::BTreeMap<String, [f32; 2]>,
+        baseline_sizes: &std::collections::BTreeMap<String, [f32; 2]>,
+        implicit_positions: &std::collections::BTreeMap<String, [f32; 2]>,
+        placement: PlacementPreferences,
+        baseline_placement: PlacementPreferences,
+        extra: impl FnOnce(&mut serde_json::Value) -> Result<(), String>,
+    ) -> Result<Self, String> {
         // Apply only edits made in this draft while holding the shared file lock.
         // Another editor may have moved untouched cards or changed the grid.
         let value = patch_config(path, |value| {
@@ -648,7 +702,7 @@ impl Config {
                     }
                 }
             }
-            Ok(())
+            extra(value)
         })?;
         Self::from_saved_value(value)
     }
@@ -949,6 +1003,12 @@ pub struct ClockPreferences {
     pub alignment: ClockAlignment,
     pub scale: u16,
     pub center_vertically: bool,
+    pub face: Option<crate::widget_style::resolver::ClockFace>,
+    pub weight: Option<crate::widget_style::resolver::ClockWeight>,
+    pub italic: Option<bool>,
+    pub surface: Option<crate::widget_style::resolver::ClockSurface>,
+    /// Prepared wallpaper occlusion; unsupported contexts keep the plain clock.
+    pub depth: bool,
 }
 impl Default for ClockPreferences {
     fn default() -> Self {
@@ -958,6 +1018,11 @@ impl Default for ClockPreferences {
             alignment: ClockAlignment::Left,
             scale: 100,
             center_vertically: false,
+            face: None,
+            weight: None,
+            italic: None,
+            surface: None,
+            depth: false,
         }
     }
 }
@@ -1446,21 +1511,38 @@ pub fn lock_config(path: &std::path::Path) -> Result<ConfigLock, String> {
 
 /// The configuration file's text, or `None` when it does not exist.
 pub fn read_config_text(path: &std::path::Path) -> Result<Option<String>, String> {
-    match std::fs::metadata(path) {
-        Ok(metadata) if metadata.len() > MAX_CONFIG_BYTES as u64 => {
-            return Err("Configuration file is too large".into());
-        }
-        Ok(_) => {}
+    crate::design::storage::projected_text(path)
+}
+
+/// Physical legacy/preferences bytes. Only the transaction participant and
+/// migration use this; editors consume `read_config_text`.
+pub(crate) fn read_raw_config_text(path: &std::path::Path) -> Result<Option<String>, String> {
+    use std::io::Read;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error.to_string()),
+    };
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() > MAX_CONFIG_BYTES as u64 {
+        return Err("Configuration is not a bounded regular file".into());
     }
-    match std::fs::read(path) {
-        Ok(bytes) => String::from_utf8(bytes)
-            .map(Some)
-            .map_err(|_| "Configuration is not valid UTF-8".into()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error.to_string()),
+    let mut bytes = Vec::new();
+    (&mut file)
+        .take(MAX_CONFIG_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > MAX_CONFIG_BYTES {
+        return Err("Configuration file is too large".into());
     }
+    String::from_utf8(bytes)
+        .map(Some)
+        .map_err(|_| "Configuration is not valid UTF-8".into())
 }
 
 /// Parses configuration text as a JSON object; a missing file is `{}`.
@@ -1544,7 +1626,17 @@ pub(crate) fn patch_config(
     if let Some(label) = crate::desktop::actions::current_label() {
         return crate::desktop::actions::preferences(path, &label, change);
     }
-    let _lock = lock_config(path)?;
+    // Once migrated, every edit (including local provider preferences) joins
+    // the same journal; there is never a writable legacy widget mirror.
+    if crate::design::storage::read(path)?.is_some() {
+        return crate::desktop::actions::preferences(path, "Widget settings", change);
+    }
+    let lock = lock_config(path)?;
+    if crate::design::storage::managed(path) {
+        drop(lock);
+        return crate::desktop::actions::preferences(path, "Widget settings", change);
+    }
+    let _lock = lock;
     let mut value = parse_config_text(read_config_text(path)?.as_deref())?;
     let before = value.clone();
     change(&mut value)?;

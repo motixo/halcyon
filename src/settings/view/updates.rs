@@ -223,7 +223,7 @@ impl Settings {
             content.push(label(error, 12., MUTED));
         }
         if !actions.is_empty() {
-            content.push(row::with_children(actions).spacing(8).into());
+            content.push(row::with_children(actions).spacing(8).wrap().into());
         }
         if crate::settings::updates::pending_islands(&self.desktop.islands.installation) {
             content.push(label(

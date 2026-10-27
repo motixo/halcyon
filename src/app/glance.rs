@@ -198,15 +198,13 @@ impl Cards {
         .max(1.)
     }
     fn glance_clock_size_at_width(&self, width: f32) -> f32 {
-        let _style = crate::widget_style::scope(&self.config);
         let base = match (self.glance_panel(), self.glance_compact()) {
             (true, true) => 60.,
             (true, false) => 76.,
             (false, true) => 72.,
             (false, false) => 104.,
         };
-        super::clock::fit(
-            &self.config.clock,
+        super::clock::Presentation::grouped(&self.config, self.glance_palette()).fit(
             self.glance_clock_width(width),
             base * f32::from(self.config.clock.scale) / 100.,
         )
@@ -539,12 +537,13 @@ impl Cards {
         rects
     }
     fn glance_clock(&self) -> Element<'_, Message> {
-        super::clock::face(
-            &self.config,
-            Local::now().time(),
+        super::clock::Presentation::grouped(&self.config, self.glance_palette()).face(
+            crate::widget_style::resolver::ClockReading::at(
+                self.clock_at.time(),
+                self.config.clock.format_24h,
+            ),
             self.glance_clock_width(self.glance_width()),
             self.glance_clock_size(),
-            self.glance_palette(),
         )
     }
     fn glance_weather(&self, block: bool) -> Element<'_, Message> {
@@ -696,9 +695,13 @@ impl Cards {
         let mut rows = Vec::new();
         let date = || {
             label(
-                Local::now()
-                    .format(if compact { "%a, %-d %b" } else { "%A, %B %-d" })
-                    .to_string(),
+                (if self.config.glance.show_clock {
+                    self.clock_at
+                } else {
+                    Local::now()
+                })
+                .format(if compact { "%a, %-d %b" } else { "%A, %B %-d" })
+                .to_string(),
                 if compact {
                     16.
                 } else if self.glance_panel() {
@@ -1112,8 +1115,8 @@ impl Cards {
         } else {
             opacity
         };
-        let themed =
-            self.config.appearance.family.is_some() || self.config.materials.widgets().is_some();
+        let themed = self.config.moment_appearance().family.is_some()
+            || self.config.materials.widgets().is_some();
         let opacity = if themed { p.background.a } else { opacity };
         let outline = if themed {
             self.config.appearance.border_opacity as f32 / 100.
@@ -1801,7 +1804,7 @@ mod tests {
         assert!(!cards.config.widget_visible(Widget::Weather));
         assert!(!cards.config.widget_visible(Widget::Calendar));
         let _ = cards.refresh_visible_data();
-        assert!(cards.fetching && cards.calendar_fetching);
+        assert!(cards.weather_fetching() && cards.calendar_fetching);
         assert!(cards.next_wake().is_some());
         cards.config.glance.show_clock = false;
         cards.config.glance.show_weather = false;

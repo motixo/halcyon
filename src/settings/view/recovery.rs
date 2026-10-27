@@ -2,41 +2,69 @@ use super::*;
 impl Settings {
     pub(super) fn addons_section(&self) -> Element<'_, Message> {
         use crate::desktop::islands::Installation;
-        match &self.desktop.islands.installation {
-            Installation::Absent => pages::section(vec![split(
-                label("Add-ons", 14., FG),
-                button::text("Get Islands ↗")
-                    .id("get-islands".into())
-                    .on_press(Message::OpenIslandsGuide)
-                    .into(),
-            )]),
-            Installation::Installed { .. } => {
-                let mut rows = vec![split(
-                    detail("Islands", self.desktop.islands.installation.status_label()),
-                    row::with_children(vec![
-                        button::text("Check again")
-                            .on_press_maybe(
-                                (!self.installation_busy).then_some(Message::RecheckInstallation),
-                            )
-                            .into(),
-                        button::text("Copy diagnostics")
-                            .on_press(Message::CopyIslandsDiagnostics)
-                            .into(),
-                        button::text("Islands")
-                            .id("manage-islands".into())
-                            .on_press(Message::Page(Page::DesktopDock))
-                            .into(),
-                    ])
-                    .spacing(8)
-                    .into(),
-                )];
-                for message in self.desktop.islands.installation.applet_messages() {
-                    rows.push(label(message, 12., MUTED));
-                }
-                pages::section(rows)
+        use crate::settings::updates::{
+            Message as UpdateMessage,
+            islands::{self, Message as AddonMessage, Phase},
+        };
+        let action = |value| Message::Updates(UpdateMessage::Islands(value));
+        let state = &self.updates.islands;
+        let mut rows = vec![detail(
+            "Islands (optional)",
+            self.desktop.islands.installation.status_label(),
+        )];
+        match &state.phase {
+            Phase::Preparing => {
+                rows.push(label("Downloading and verifying Islands…", 12., MUTED));
+                rows.push(button::text("Cancel").on_press(action(AddonMessage::Cancel)).into());
             }
-            Installation::Pending => cosmic::widget::space().height(0).into(),
+            Phase::Ready => {
+                rows.push(label("Install the verified Islands package? Your system may ask for an administrator password. Activation is a separate choice after installation.", 12., MUTED));
+                rows.push(row::with_children(vec![
+                    button::suggested("Install Islands").id("install-islands-confirm".into()).on_press(action(AddonMessage::Install)).into(),
+                    button::text("Cancel").id("install-islands-cancel".into()).on_press(action(AddonMessage::Cancel)).into(),
+                ]).spacing(8).wrap().into());
+            }
+            Phase::Installing => rows.push(label("Installing Islands… Complete the system authorization dialog. The system installer continues if this window closes.", 12., MUTED)),
+            Phase::Enabling => rows.push(label("Preparing Islands for the next login…", 12., MUTED)),
+            Phase::Failed(error) => {
+                rows.push(label(error.label(), 12., MUTED));
+                rows.push(button::text("Check again").on_press(action(AddonMessage::Recheck)).into());
+            }
+            Phase::Idle => match &self.desktop.islands.installation {
+                Installation::Absent => {
+                    rows.push(label("Add floating dock and panel islands. Halcyon works without this add-on.", 12., MUTED));
+                    if self.updates.identity.as_ref().is_some_and(|id| id.can_install_islands()) {
+                        rows.push(button::suggested("Get Islands…")
+                            .id("get-islands".into()).on_press(action(AddonMessage::Prepare)).into());
+                    }
+                }
+                Installation::Installed { .. } => {
+                    if islands::can_enable(&self.desktop.islands.installation)
+                        && self.updates.identity.as_ref().is_some_and(|id| id.can_install_islands()) {
+                        rows.push(label("Check compatibility and enable for your user, then log out and back in. Startup checks decide whether Islands can run.", 12., MUTED));
+                        rows.push(button::suggested("Enable for next login")
+                            .id("enable-islands".into()).on_press(action(AddonMessage::Enable)).into());
+                    }
+                    rows.push(row::with_children(vec![
+                        button::text("Check again").on_press_maybe(
+                            (!self.installation_busy).then_some(Message::RecheckInstallation)).into(),
+                        button::text("Copy diagnostics").on_press(Message::CopyIslandsDiagnostics).into(),
+                        button::text("Islands").id("manage-islands".into())
+                            .on_press(Message::Page(Page::DesktopDock)).into(),
+                    ]).spacing(8).wrap().into());
+                    for value in self.desktop.islands.installation.applet_messages() {
+                        rows.push(label(value, 12., MUTED));
+                    }
+                }
+                Installation::Pending => {}
+            },
         }
+        rows.push(
+            button::text("Installation guide ↗")
+                .on_press(Message::OpenIslandsGuide)
+                .into(),
+        );
+        pages::section(rows)
     }
     pub(super) fn desktop_recovery_section(&self) -> Element<'_, Message> {
         let recovery = &self.desktop_recovery;

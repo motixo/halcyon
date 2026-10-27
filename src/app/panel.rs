@@ -17,7 +17,7 @@ impl Cards {
     pub(super) fn next_wake(&self) -> Option<Instant> {
         let visible = |widget| self.config.data_visible(widget);
         [
-            (visible(Widget::Clock)).then_some(self.next_clock),
+            (self.provider_visible(Widget::Clock)).then_some(self.next_clock),
             (visible(Widget::Calendar)).then_some(self.next_calendar_view),
             (visible(Widget::Devbox)
                 && self.config.devbox.needs_sample()
@@ -25,8 +25,9 @@ impl Cards {
                 .then_some(self.next_metrics),
             (visible(Widget::Devbox) && self.config.devbox.services && !self.service_fetching)
                 .then_some(self.next_service),
-            (visible(Widget::Weather) && self.config.location.is_some() && !self.fetching)
-                .then_some(self.next_weather),
+            self.provider_visible(Widget::Weather)
+                .then(|| self.weather_hub.deadline())
+                .flatten(),
             (visible(Widget::Projects)
                 && !self.config.project_roots.is_empty()
                 && !self.projects_fetching)
@@ -79,13 +80,13 @@ impl Cards {
             &mut self.next_calendar_view,
             &mut self.next_metrics,
             &mut self.next_service,
-            &mut self.next_weather,
             &mut self.next_projects,
             &mut self.next_calendar,
             &mut self.next_today_calendar,
         ] {
             *deadline = deadline.checked_sub(lost).unwrap_or(now);
         }
+        self.weather_hub.resumed(lost, now);
         self.automator.resumed(lost, now);
     }
     pub(super) fn apply_config(&mut self, mut cfg: Config) -> Task<Message> {
@@ -103,7 +104,6 @@ impl Cards {
             self.weather = cached.as_ref().map(|snapshot| snapshot.weather.clone());
             self.weather_at = cached.map(|snapshot| snapshot.updated_at);
             self.weather_error = false;
-            self.next_weather = now;
         }
         if cfg.project_roots != self.config.project_roots {
             // A new folder selection must not keep showing checkouts from the
@@ -123,7 +123,7 @@ impl Cards {
                         self.next_metrics = now;
                         self.next_service = now;
                     }
-                    Widget::Weather => self.next_weather = now,
+                    Widget::Weather => self.weather_hub.due_now(now),
                     Widget::Calendar => {
                         self.next_calendar = now;
                         self.next_today_calendar = now;
@@ -149,6 +149,7 @@ impl Cards {
             || self.config.widget_monitors != cfg.widget_monitors;
         self.config = cfg;
         self.refresh_display_layouts();
+        self.reconcile_weather(now);
         if display_changed {
             tasks.push(self.reconcile_output());
         }
@@ -200,7 +201,8 @@ impl Cards {
     pub(super) fn refresh_visible_data(&mut self) -> Vec<Task<Message>> {
         let mut tasks = Vec::new();
         let now = Instant::now();
-        if self.config.data_visible(Widget::Clock) && now >= self.next_clock {
+        if self.provider_visible(Widget::Clock) && now >= self.next_clock {
+            self.clock_at = Local::now();
             self.next_clock = crate::schedule::next_clock_tick(
                 now,
                 self.config.refresh_intervals.duration(Widget::Clock),
@@ -249,9 +251,7 @@ impl Cards {
                 }));
             }
         }
-        if self.config.data_visible(Widget::Weather) && !self.fetching && now >= self.next_weather {
-            tasks.push(self.weather_task());
-        }
+        tasks.extend(self.refresh_weather(now));
         if self.config.data_visible(Widget::Projects)
             && !self.config.project_roots.is_empty()
             && !self.projects_fetching
@@ -596,15 +596,7 @@ impl Cards {
         if widget == Widget::Calendar {
             return self.calendar_height.max(1.);
         }
-        drawer::card_layout_with_devbox(
-            &self.visible_cards(),
-            self.desktop_height,
-            self.devbox_natural_height(),
-        )
-        .into_iter()
-        .find(|(w, _)| *w == widget)
-        .map(|(_, h)| h)
-        .unwrap_or(270.)
+        self.widget_size(widget)[1]
     }
     pub(super) fn calendar_widget(&self) -> Element<'_, Message> {
         let mut widgets = Vec::new();
@@ -634,6 +626,7 @@ impl Cards {
         .spacing(drawer::CARD_GAP)
         .width(Length::Fill);
         container(cards)
+            .padding(crate::widget_style::shadow_margin(&self.config))
             .height(Length::Fill)
             .width(Length::Fill)
             .align_y(Alignment::Center)

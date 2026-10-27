@@ -1,4 +1,4 @@
-//! The profile record (`desktop-cards-profile`, up to version 8).
+//! The profile record (`desktop-cards-profile`, up to version 9).
 //!
 //! Version 2 adds the `windows` and `workspaces` sections and per-variant
 //! window `gaps` under Appearance; version 3 adds `wallpaper` and
@@ -48,8 +48,16 @@ pub use super::desktop_look::{
 };
 
 pub const FORMAT: &str = "desktop-cards-profile";
-/// The newest format, written when a record includes glass materials.
-pub const VERSION: u32 = 8;
+/// Frozen composition provenance requires version 10.
+/// Clock face, weight, italic and surface choices retain version 9.
+pub const VERSION: u32 = 15;
+pub const VERSION_14: u32 = 14;
+pub const VERSION_13: u32 = 13;
+pub const VERSION_12: u32 = 12;
+pub const VERSION_11: u32 = 11;
+pub const VERSION_10: u32 = 10;
+pub const VERSION_9: u32 = 9;
+pub const VERSION_8: u32 = 8;
 pub const VERSION_7: u32 = 7;
 pub const VERSION_6: u32 = 6;
 pub const VERSION_5: u32 = 5;
@@ -844,6 +852,10 @@ fn check_key(key: &ConfigKey, value: &RawValue) -> Result<(), String> {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<super::packages::Origin>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub composition: Option<super::mix::Provenance>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub appearance_only: bool,
     pub format: String,
@@ -892,6 +904,8 @@ impl Profile {
     /// An empty profile; `None` for an invalid name.
     pub fn new(name: &str) -> Option<Self> {
         valid_name(name).then(|| Self {
+            package: None,
+            composition: None,
             appearance_only: false,
             format: FORMAT.into(),
             version: VERSION,
@@ -967,8 +981,30 @@ impl Profile {
     }
     /// The version this record is written as.
     pub fn written_version(&self) -> u32 {
+        if let Some(package) = &self.package {
+            return if package.ancestors.is_empty() {
+                VERSION_14
+            } else {
+                VERSION
+            };
+        }
+        if self.has_recipes() {
+            return VERSION_13;
+        }
+        if self.has_moments() {
+            return VERSION_12;
+        }
+        if self.has_depth() {
+            return VERSION_11;
+        }
+        if self.composition.is_some() {
+            return VERSION_10;
+        }
+        if self.has_clock_presentation() {
+            return VERSION_9;
+        }
         if self.has_materials() {
-            return VERSION;
+            return VERSION_8;
         }
         if self.appearance_only || self.has_theme_members() {
             return VERSION_7;
@@ -993,6 +1029,9 @@ impl Profile {
     /// The first member a shared profile may not have: a personal picture
     /// or folder, display names or the display arrangement.
     pub fn local_member(&self) -> Option<&'static str> {
+        if self.composition.as_ref().is_some_and(|p| p.has_local_ids()) {
+            return Some("local source IDs");
+        }
         if [&self.dock, &self.panel]
             .into_iter()
             .flatten()
@@ -1009,8 +1048,13 @@ impl Profile {
     pub fn portable(&self) -> (Self, Vec<&'static str>) {
         let mut profile = self.clone();
         let mut omitted = Vec::new();
+        if let Some(composition) = &mut profile.composition {
+            if composition.strip_local_ids() {
+                omitted.push("local source IDs");
+            }
+        }
         if let Some(look) = &mut profile.wallpaper {
-            omitted = look.strip_local();
+            omitted.extend(look.strip_local());
             if look.is_empty() && !omitted.is_empty() {
                 profile.wallpaper = None;
             }
@@ -1029,6 +1073,34 @@ impl Profile {
             }
         }
         (profile, omitted)
+    }
+    fn has_recipes(&self) -> bool {
+        self.widget_style
+            .as_ref()
+            .and_then(|v| v.get("recipes"))
+            .is_some()
+    }
+    fn has_moments(&self) -> bool {
+        self.widget_style
+            .as_ref()
+            .and_then(|v| v.get("moments"))
+            .is_some()
+    }
+    fn has_depth(&self) -> bool {
+        self.widget_style
+            .as_ref()
+            .and_then(|v| v.pointer("/clock/depth"))
+            .is_some()
+    }
+    fn has_clock_presentation(&self) -> bool {
+        self.widget_style
+            .as_ref()
+            .and_then(|v| v.get("clock"))
+            .is_some_and(|clock| {
+                ["face", "weight", "italic", "surface"]
+                    .iter()
+                    .any(|key| clock.get(key).is_some())
+            })
     }
     fn has_materials(&self) -> bool {
         self.widget_style
@@ -1110,9 +1182,50 @@ impl Profile {
                 "Shared themes require profile version 7".into(),
             ));
         }
-        if self.has_materials() && self.version < VERSION {
+        if self.has_materials() && self.version < VERSION_8 {
             return Err(ProfileError::Invalid(
                 "Materials require profile version 8".into(),
+            ));
+        }
+        if let Some(composition) = &self.composition {
+            if self.version < VERSION_10 {
+                return Err(ProfileError::Invalid(
+                    "Composition requires profile version 10".into(),
+                ));
+            }
+            composition.validate().map_err(ProfileError::Invalid)?;
+        }
+        if let Some(package) = &self.package {
+            if self.version < VERSION_14 {
+                return Err(ProfileError::Invalid(
+                    "Package credits require profile version 14".into(),
+                ));
+            }
+            package.validate().map_err(ProfileError::Invalid)?;
+            if !package.ancestors.is_empty() && self.version < VERSION {
+                return Err(ProfileError::Invalid(
+                    "Remix credits require profile version 15".into(),
+                ));
+            }
+        }
+        if self.has_recipes() && self.version < VERSION_13 {
+            return Err(ProfileError::Invalid(
+                "Personal recipes require profile version 13".into(),
+            ));
+        }
+        if self.has_moments() && self.version < VERSION_12 {
+            return Err(ProfileError::Invalid(
+                "Moments require profile version 12".into(),
+            ));
+        }
+        if self.has_depth() && self.version < VERSION_11 {
+            return Err(ProfileError::Invalid(
+                "Clock depth requires profile version 11".into(),
+            ));
+        }
+        if self.has_clock_presentation() && self.version < VERSION_9 {
+            return Err(ProfileError::Invalid(
+                "Clock presentation choices require profile version 9".into(),
             ));
         }
         if self.appearance_only {
@@ -1263,7 +1376,11 @@ pub fn import_local(bytes: &[u8]) -> Result<Profile, ProfileError> {
     };
     // The version a section first appears in.
     let since = |key: &str| {
-        if key == "appearance_only" {
+        if key == "package" {
+            Some(VERSION_14)
+        } else if key == "composition" {
+            Some(VERSION_10)
+        } else if key == "appearance_only" {
             Some(VERSION_7)
         } else if SECTIONS_V1.contains(&key) {
             Some(LEGACY_VERSION)

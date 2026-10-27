@@ -1,7 +1,10 @@
 use cosmic::iced::Point;
 use std::time::{Duration, Instant};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 pub enum Widget {
     Calendar,
     Projects,
@@ -286,7 +289,7 @@ pub fn card_layout_with_devbox(
         Widget::Calendar => 540.,
         Widget::Projects => 300.,
         Widget::Devbox => devbox_height,
-        Widget::Weather => 180.,
+        Widget::Weather => crate::widget_presentation::WEATHER_SIZE[1],
         Widget::Clock | Widget::Glance | Widget::Music | Widget::Notes | Widget::Focus => 0.,
     };
     let total: f32 = widgets.iter().map(|w| desired(*w)).sum();
